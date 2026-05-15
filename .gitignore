@@ -1,0 +1,15 @@
+# Built binaries
+/flux
+/flux-cli
+/dist/
+
+# Go
+*.test
+*.out
+coverage.txt
+
+# Editor
+.idea/
+.vscode/
+*.swp
+.DS_Store
