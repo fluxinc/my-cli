@@ -1,40 +1,111 @@
 # flux-ai
 
-`flux` is a small CLI for bootstrapping agent workspaces from an organization
-manifest. A manifest can declare skills, tool hints, content mounts, product
-catalog entries, and local meeting-note folders that AI harnesses can use.
+`flux` is a small, dependency-free CLI that bootstraps an AI agent's working
+environment from a single organization manifest. One command turns a fresh
+machine into one where every installed AI harness — Claude Code, Codex,
+OpenCode, Gemini — has the same skills, the same company context, and the same
+local tooling.
 
-This repository contains the generic CLI mechanics. Organization-specific
-skills, catalogs, handbook content, and meeting notes should live in a separate
-private manifest repository.
-
-## Quick Start
+It is built for a world where **agents are the primary operators**. Humans own
+intent — goals, products, decisions — and express it as content in a Git repo.
+`flux` is the deterministic, machine-friendly bridge that gets that content and
+those capabilities onto every agent surface, the same way, every time.
 
 ```sh
-# install the CLI
 go install github.com/fluxinc/flux-ai/cmd/flux@latest
 
-# register an organization manifest
 flux manifest add acme https://github.com/example/acme-workspace.git
 flux manifest sync acme
-
-# create the local umbrella, install declared skills, and sync default mounts
 flux onboard --manifest acme
-
-# inspect what was installed
-flux skills list --manifest acme
 ```
 
-Run `flux --help` for the full surface.
+That's the whole setup. Open any AI harness and it already has the org's skills
+installed and the org's knowledge synced locally.
 
-## What It Manages
+## The Model
 
-- **Manifests**: organization configuration stored in a Git repo.
-- **Skills**: static manifest skills and tool-provided skills.
-- **Umbrellas**: local workspace envelopes such as `~/acme` or `~/flux`.
-- **Mounts**: Git-backed content folders inside an umbrella.
-- **Catalogs**: JSON product catalog entries from the manifest repo.
-- **Tools**: manifest-declared diagnostics and install hints.
+`flux` has six concepts. Everything in the CLI is one of these:
+
+| Concept | What it is |
+|---|---|
+| **Manifest** | An organization's configuration, stored in a Git repo. Declares skills, mounts, catalog, and tool hints. The single source of truth. |
+| **Skill** | A capability installed into harness skill directories. Either *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer). |
+| **Umbrella** | A per-user, non-Git directory (e.g. `~/acme`) that is the operating envelope: a `.flux/` identity namespace plus mounts and local scratch as peers. |
+| **Mount** | A Git-backed content folder cloned into the umbrella (handbook, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
+| **Catalog** | A JSON inventory of an org's products. Users opt specific products into their umbrella on demand. |
+| **Tool** | An external executable the org depends on. `flux` reports presence and install hints — it never silently installs tools. |
+
+## Commands
+
+Run `flux --help` for the authoritative surface. The essentials:
+
+### Onboarding
+
+```sh
+flux onboard [harness...] | --all   # install skills + create umbrella + sync default mounts
+                                    # [--manifest NAME] [--umbrella DIR] [--copy] [--link] [--print]
+```
+
+`onboard` is the normal path: idempotent, non-interactive, safe to re-run.
+
+### Manifests
+
+```sh
+flux manifest add <name> <git-url>          # register an org manifest
+flux manifest sync <name...> | --all        # fetch/refresh the manifest cache
+flux manifest list                          # list registered manifests
+flux manifest validate <name|path>          # schema + reference checks
+```
+
+### Skills
+
+```sh
+flux skills install [harness...] | --all    # materialize skills into harness dirs
+flux skills uninstall <harness...> | --all
+flux skills list [--json]                   # what is installed, where, and its provenance
+```
+
+Skills install as symlinks by default (`--copy` to vendor a copy). `flux`
+records provenance and refuses to clobber a directory it did not place.
+
+### Umbrella mounts
+
+```sh
+flux mount list                             # manifest mounts + opted-in products
+flux mount add <kind:id|id>                 # opt a catalog product / mount in
+flux mount sync <mount...> | --all          # clone or fast-forward mounts
+flux mount remove <mount...> [--force]
+```
+
+### Catalog
+
+```sh
+flux catalog list products [--json]         # the org's product inventory
+```
+
+### Meeting notes
+
+```sh
+flux meetings list   [--since DATE] [--customer ID] [--product ID] [--json]
+flux meetings search <text> [--json]
+flux meetings get    <id|path> [--json]
+flux meetings add    <slug> [--date DATE] [--title TEXT]
+```
+
+A markdown-first operational record (YAML frontmatter), resolved against the
+umbrella by default. The same `list/add/search/get` shape extends to other
+entities over time.
+
+### Diagnostics
+
+```sh
+flux tools info <name>                      # install hints for a declared tool
+flux doctor                                 # manifest validity, mount state, tool presence
+```
+
+Every command accepts `--json`. Errors are structured: a machine-readable
+`{error, message, remediation}` with a concrete next command, so an agent that
+hits a wall can recover without a human.
 
 ## Supported Harnesses
 
@@ -45,17 +116,45 @@ Run `flux --help` for the full surface.
 | OpenCode | `~/.opencode/skills/<skill>` |
 | Gemini | via `gemini skills link` |
 
-Missing harnesses are skipped silently.
+Missing harnesses are skipped silently — `flux` configures what is present and
+never fails because a harness is absent.
 
 ## Public/Private Boundary
 
-Keep this repo public-safe. Put organization knowledge, customer notes, product
-runbooks, private catalogs, and proprietary skills in a private manifest repo.
+**This repository is the generic mechanism and is public-safe. It must never
+contain organization content.**
+
+- **`flux-ai` (this repo, public)** — the CLI: onboarding, manifest, skill,
+  mount, catalog, and meeting mechanics. Generic. No customer data, no
+  proprietary skills, no internal strategy.
+- **`<org>-workspace` (private)** — the org's operating layer: `manifest.json`,
+  proprietary skills, catalog JSON, tool declarations, and handbook content
+  (meetings, decisions, policy, projects).
+
+The manifest repo is private and is also mounted as the org's handbook content,
+**scoped** so only content directories land in the umbrella — the manifest and
+skill sources stay in the manifest cache and are never exposed as a second,
+drifting copy. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full
+design rationale.
+
+## Design Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the design: concepts, the
+  manifest schema, umbrella shape, mount scoping, skill resolution, the
+  agents-primary philosophy, and the public/private boundary.
 
 ## Dependencies
 
-Go stdlib only. No third-party Go dependencies.
+Go standard library only. No third-party Go dependencies, by policy — supply
+chain surface is part of the threat model for a tool that installs things.
+
+## Contributing
+
+The public repo carries the generic CLI and its tests only. Fixtures and
+examples use neutral placeholders (`acme`, `example`, `sampleco`). If a change
+would require organization-specific data to test, the test belongs against a
+private manifest, not here. `go test ./...` and `go vet ./...` must pass.
 
 ## License
 
-MIT (see [LICENSE](LICENSE)).
+MIT — see [LICENSE](LICENSE).
