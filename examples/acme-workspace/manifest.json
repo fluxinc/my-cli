@@ -1,0 +1,56 @@
+{
+  "manifest_version": 1,
+  "organization": {
+    "id": "acme",
+    "name": "Acme Example"
+  },
+  "allowed_external_namespaces": [
+    "mock"
+  ],
+  "umbrella": {
+    "recommended_path": "~/acme"
+  },
+  "skills": [
+    {
+      "id": "acme:handbook",
+      "install_slug": "acme-handbook",
+      "path": "skills/acme-handbook",
+      "capabilities": [
+        "meetings",
+        "decisions",
+        "workspace"
+      ],
+      "requires": [
+        "workspace:handbook"
+      ]
+    }
+  ],
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": "https://github.com/example/acme-workspace.git",
+      "mode": "default",
+      "include_paths": [
+        "meetings",
+        "decisions",
+        "projects",
+        "policy",
+        "people"
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "id": "qmd",
+      "mode": "optional",
+      "purpose": "Higher quality local markdown search and retrieval",
+      "install": {
+        "commands": [
+          "npm install -g @tobilu/qmd"
+        ],
+        "docs_url": "https://github.com/tobilu/qmd"
+      }
+    }
+  ]
+}

@@ -142,6 +142,10 @@ design rationale.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the design: concepts, the
   manifest schema, umbrella shape, mount scoping, skill resolution, the
   agents-primary philosophy, and the public/private boundary.
+- [docs/PLAN.md](docs/PLAN.md) — public-safe implementation plan and repo
+  boundaries for continuing work while this repo remains published.
+- [examples/acme-workspace](examples/acme-workspace) — neutral manifest,
+  catalog, skill, and handbook fixture for local development.
 
 ## Dependencies
 
