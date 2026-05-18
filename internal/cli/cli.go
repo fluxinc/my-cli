@@ -744,16 +744,40 @@ func (a app) printProducts(products []manifest.Product) {
 			fmt.Fprintf(a.stdout, " - %s", product.Name)
 		}
 		fmt.Fprintln(a.stdout)
-		fmt.Fprintf(a.stdout, "  source: %s\n", product.GitURL)
+		printHumanField(a.stdout, "source", product.GitURL)
 		if product.Purpose != "" {
-			fmt.Fprintf(a.stdout, "  purpose: %s\n", product.Purpose)
+			printHumanField(a.stdout, "purpose", product.Purpose)
 		} else if product.Description != "" {
-			fmt.Fprintf(a.stdout, "  description: %s\n", product.Description)
+			printHumanField(a.stdout, "description", product.Description)
 		}
 		if len(product.RelatedSkills) != 0 {
-			fmt.Fprintf(a.stdout, "  skills: %s\n", strings.Join(product.RelatedSkills, ", "))
+			printHumanField(a.stdout, "skills", strings.Join(product.RelatedSkills, ", "))
 		}
 	}
+}
+
+func printHumanField(w io.Writer, label, value string) {
+	const width = 88
+	text := strings.Join(strings.Fields(value), " ")
+	if text == "" {
+		return
+	}
+	firstPrefix := "  " + label + ": "
+	nextPrefix := strings.Repeat(" ", len(firstPrefix))
+	line := firstPrefix
+	for _, word := range strings.Fields(text) {
+		if line == firstPrefix {
+			line += word
+			continue
+		}
+		if len(line)+1+len(word) <= width {
+			line += " " + word
+			continue
+		}
+		fmt.Fprintln(w, line)
+		line = nextPrefix + word
+	}
+	fmt.Fprintln(w, line)
 }
 
 func (a app) findToolInfo(home, manifestName, toolID string) ([]toolInfo, error) {
@@ -2122,7 +2146,7 @@ func (a app) runSkillsList(args []string) error {
 		return fmt.Errorf("skills list does not accept positional arguments")
 	}
 
-	bundled, _, _, err := a.discoverSkills(skillsCommandOpts{source: source, manifestName: manifestName, home: home})
+	bundled, _, _, err := a.discoverSkills(skillsCommandOpts{source: source, manifestName: manifestName, home: home, quietSource: true})
 	if err != nil {
 		return err
 	}
@@ -2133,14 +2157,26 @@ func (a app) runSkillsList(args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(bundled)
 	}
-	for _, s := range bundled {
-		if s.Description == "" {
-			fmt.Fprintln(a.stdout, s.Name)
-			continue
-		}
-		fmt.Fprintf(a.stdout, "%s\t%s\n", s.Name, s.Description)
-	}
+	a.printSkillsList(bundled)
 	return nil
+}
+
+func (a app) printSkillsList(bundled []skills.Skill) {
+	for i, s := range bundled {
+		if i != 0 {
+			fmt.Fprintln(a.stdout)
+		}
+		fmt.Fprintln(a.stdout, s.Name)
+		if s.CanonicalID != "" {
+			printHumanField(a.stdout, "id", s.CanonicalID)
+		}
+		if s.SkillName != "" && s.SkillName != s.Name {
+			printHumanField(a.stdout, "skill", s.SkillName)
+		}
+		if s.Description != "" {
+			printHumanField(a.stdout, "description", s.Description)
+		}
+	}
 }
 
 type skillsCommandOpts struct {
@@ -2154,6 +2190,7 @@ type skillsCommandOpts struct {
 	home         string
 	manifestName string
 	umbrellaRoot string
+	quietSource  bool
 }
 
 func selectedHarnesses(all bool, names []string) ([]harness.Harness, error) {
@@ -2195,11 +2232,11 @@ func (a app) discoverSkills(opts skillsCommandOpts) ([]skills.Skill, []string, b
 		return nil, nil, false, fmt.Errorf("--source and --manifest are mutually exclusive")
 	}
 	if opts.manifestName != "" {
-		found, sourceRoots, err := a.discoverManifestSkills(opts.home, opts.manifestName, opts.print)
+		found, sourceRoots, err := a.discoverManifestSkills(opts.home, opts.manifestName, opts.print, !opts.quietSource)
 		return found, sourceRoots, true, err
 	}
 	if opts.source == "" {
-		if found, sourceRoots, ok, err := a.discoverDefaultManifestSkills(opts.home, opts.print); err != nil {
+		if found, sourceRoots, ok, err := a.discoverDefaultManifestSkills(opts.home, opts.print, !opts.quietSource); err != nil {
 			return nil, nil, false, err
 		} else if ok {
 			return found, sourceRoots, true, nil
@@ -2325,15 +2362,15 @@ func commandLine(command string, args []string) string {
 	return strings.Join(parts, " ")
 }
 
-func (a app) discoverManifestSkills(home, manifestName string, allowMissingToolSkills bool) ([]skills.Skill, []string, error) {
+func (a app) discoverManifestSkills(home, manifestName string, allowMissingToolSkills, showSource bool) ([]skills.Skill, []string, error) {
 	docs, err := loadRegisteredDocs(home, manifestName)
 	if err != nil {
 		return nil, nil, err
 	}
-	return a.discoverManifestSkillDocs(home, docs, allowMissingToolSkills)
+	return a.discoverManifestSkillDocs(home, docs, allowMissingToolSkills, showSource)
 }
 
-func (a app) discoverDefaultManifestSkills(home string, allowMissingToolSkills bool) ([]skills.Skill, []string, bool, error) {
+func (a app) discoverDefaultManifestSkills(home string, allowMissingToolSkills, showSource bool) ([]skills.Skill, []string, bool, error) {
 	reg, err := manifest.LoadRegistry(home)
 	if err != nil {
 		return nil, nil, false, err
@@ -2345,14 +2382,14 @@ func (a app) discoverDefaultManifestSkills(home string, allowMissingToolSkills b
 	if err != nil {
 		return nil, nil, false, err
 	}
-	found, sourceRoots, err := a.discoverManifestSkillDocs(home, docs, allowMissingToolSkills)
+	found, sourceRoots, err := a.discoverManifestSkillDocs(home, docs, allowMissingToolSkills, showSource)
 	if err != nil {
 		return nil, nil, false, err
 	}
 	return found, sourceRoots, true, nil
 }
 
-func (a app) discoverManifestSkillDocs(home string, docs []registeredDoc, allowMissingToolSkills bool) ([]skills.Skill, []string, error) {
+func (a app) discoverManifestSkillDocs(home string, docs []registeredDoc, allowMissingToolSkills, showSource bool) ([]skills.Skill, []string, error) {
 	var out []skills.Skill
 	var sourceRoots []string
 	materializedRoot, err := bundle.SkillsRoot(home)
@@ -2401,7 +2438,9 @@ func (a app) discoverManifestSkillDocs(home string, docs []registeredDoc, allowM
 		if err != nil {
 			return nil, nil, fmt.Errorf("manifest %q: %w", doc.ref.Name, err)
 		}
-		fmt.Fprintf(a.stderr, "# source: manifest %s -> %s\n", doc.ref.Name, doc.ref.LocalPath)
+		if showSource {
+			fmt.Fprintf(a.stderr, "# source: manifest %s -> %s\n", doc.ref.Name, doc.ref.LocalPath)
+		}
 		out = append(out, found...)
 		sourceRoots = append(sourceRoots, doc.ref.LocalPath)
 	}

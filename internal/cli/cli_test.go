@@ -52,6 +52,61 @@ func TestSkillsListJSON(t *testing.T) {
 	}
 }
 
+func TestSkillsListHumanFormatting(t *testing.T) {
+	home := t.TempDir()
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-handbook", "SKILL.md"), `---
+name: acme-handbook
+description: >
+  Use the Acme handbook for customer commitments, meeting context, policy details, and project history before asking the operator for facts.
+---
+`)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"flux", "manifest", "add", "acme",
+		"https://github.com/acme/acme-ai-manifest.git",
+		"--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"flux", "skills", "list", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"acme-handbook\n",
+		"  id: acme:handbook\n",
+		"  description: Use the Acme handbook",
+		"\n               details",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("skills list stdout = %q, missing %q", out, want)
+		}
+	}
+	if strings.Contains(out, "\t") {
+		t.Fatalf("skills list stdout contains tabbed columns: %q", out)
+	}
+	if strings.Contains(stderr.String(), "# source:") {
+		t.Fatalf("skills list stderr contains source noise: %q", stderr.String())
+	}
+	for _, line := range strings.Split(strings.TrimSuffix(out, "\n"), "\n") {
+		if len(line) > 88 {
+			t.Fatalf("skills list line too long (%d): %q", len(line), line)
+		}
+	}
+}
+
 func TestSkillsInstallFromManifestRecordsCanonicalID(t *testing.T) {
 	home := t.TempDir()
 	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
