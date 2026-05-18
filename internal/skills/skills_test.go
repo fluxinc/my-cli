@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/flux-ai/internal/harness"
+	"github.com/fluxinc/flux/internal/harness"
 )
 
 func TestDiscoverFrontmatterAndWarnings(t *testing.T) {
@@ -242,7 +242,7 @@ func TestProvenanceAcceptsManagedSymlinks(t *testing.T) {
 	if err := os.Remove(filepath.Join(targetDir, "demo-skill")); err != nil {
 		t.Fatal(err)
 	}
-	materialized := filepath.Join(home, ".local", "share", "flux-ai", "skills", "demo-skill")
+	materialized := filepath.Join(home, ".local", "share", "flux", "skills", "demo-skill")
 	mustMkdir(t, materialized)
 	if err := os.Symlink(materialized, filepath.Join(targetDir, "demo-skill")); err != nil {
 		t.Fatal(err)

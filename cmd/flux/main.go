@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/fluxinc/flux-ai/internal/cli"
+	"github.com/fluxinc/flux/internal/cli"
 )
 
 func main() {

@@ -3,6 +3,6 @@
     "id": "sample-product",
     "name": "Sample Product",
     "git_url": "https://github.com/example/sample-product.git",
-    "description": "Example product used by public flux-ai fixtures."
+    "description": "Example product used by public flux fixtures."
   }
 ]

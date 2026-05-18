@@ -54,7 +54,7 @@ func TestSkillsListJSON(t *testing.T) {
 
 func TestSkillsInstallFromManifestRecordsCanonicalID(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "flux-ai", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
 	skillDir := filepath.Join(manifestCache, "skills", "acme-handbook")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -196,7 +196,7 @@ func TestManifestCommands(t *testing.T) {
 
 func TestWorkspaceCommands(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "flux-ai", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
 	if err := os.MkdirAll(manifestCache, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestWorkspaceCommands(t *testing.T) {
 
 func TestMountCommands(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "flux-ai", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
 	if err := os.MkdirAll(manifestCache, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +321,7 @@ func TestMountAddProductRecordsState(t *testing.T) {
 	writeCLITestFile(t, filepath.Join(productSource, "README.md"), "product repo\n")
 	initCLIGitRepo(t, productSource)
 
-	manifestCache := filepath.Join(home, ".local", "share", "flux-ai", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -422,7 +422,7 @@ func TestMountAddProductRecordsState(t *testing.T) {
 
 func TestMountAddProductUnknownJSON(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "flux-ai", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -467,7 +467,7 @@ func TestMeetingJSONErrorWithoutUmbrella(t *testing.T) {
 
 func TestOnboardJSONAndDoctorUmbrella(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "flux-ai", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
 	if err := os.MkdirAll(filepath.Join(manifestCache, "skills", "acme-handbook"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -520,7 +520,7 @@ func TestOnboardJSONAndDoctorUmbrella(t *testing.T) {
 
 func TestToolsInfoAndDoctorCommands(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "flux-ai", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
 	if err := os.MkdirAll(manifestCache, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -584,7 +584,7 @@ func TestToolsInfoAndDoctorCommands(t *testing.T) {
 
 func TestMeetingsCommands(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "flux-ai", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
 	workspaceRoot := filepath.Join(home, ".flux", "workspaces", "handbook")
 	if err := os.MkdirAll(filepath.Join(manifestCache), 0o755); err != nil {
 		t.Fatal(err)

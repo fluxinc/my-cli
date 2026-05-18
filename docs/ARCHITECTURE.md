@@ -1,4 +1,4 @@
-# flux-ai — Architecture & Design
+# flux — Architecture & Design
 
 This document explains *why* `flux` is shaped the way it is. The README covers
 usage; this covers the model and the decisions behind it. It is intentionally
@@ -87,7 +87,7 @@ and what to run. `flux` never silently installs a tool — hints, not actions.
 The mechanism is generic and public; the content is proprietary and private.
 These are **two repositories**:
 
-1. **`flux-ai` (public)** — this CLI. Generic, no org data, tests use neutral
+1. **`flux` (public)** — this CLI. Generic, no org data, tests use neutral
    placeholders.
 2. **`<org>-workspace` (private)** — `manifest.json`, proprietary skills,
    catalog JSON, tool declarations, and handbook content.

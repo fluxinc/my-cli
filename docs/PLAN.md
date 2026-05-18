@@ -1,10 +1,10 @@
-# flux-ai Implementation Plan
+# flux Implementation Plan
 
 Status: public-safe working plan for the published CLI repository.
 
 ## Repository Shape
 
-`flux-ai` is the generic mechanism. It stays public and contains the Go CLI,
+`flux` is the generic mechanism. It stays public and contains the Go CLI,
 tests, neutral fixtures, and public architecture docs. It must not contain
 organization skills, private manifests, customer notes, internal catalogs, or
 company-specific operating content.

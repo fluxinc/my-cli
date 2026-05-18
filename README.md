@@ -1,4 +1,4 @@
-# flux-ai
+# flux
 
 `flux` is a small, dependency-free CLI that bootstraps an AI agent's working
 environment from a single organization manifest. One command turns a fresh
@@ -12,7 +12,7 @@ intent — goals, products, decisions — and express it as content in a Git rep
 those capabilities onto every agent surface, the same way, every time.
 
 ```sh
-go install github.com/fluxinc/flux-ai/cmd/flux@latest
+go install github.com/fluxinc/flux/cmd/flux@latest
 
 flux manifest add acme https://github.com/example/acme-workspace.git
 flux manifest sync acme
@@ -124,7 +124,7 @@ never fails because a harness is absent.
 **This repository is the generic mechanism and is public-safe. It must never
 contain organization content.**
 
-- **`flux-ai` (this repo, public)** — the CLI: onboarding, manifest, skill,
+- **`flux` (this repo, public)** — the CLI: onboarding, manifest, skill,
   mount, catalog, and meeting mechanics. Generic. No customer data, no
   proprietary skills, no internal strategy.
 - **`<org>-workspace` (private)** — the org's operating layer: `manifest.json`,

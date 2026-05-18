@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fluxinc/flux-ai/internal/ghauth"
-	"github.com/fluxinc/flux-ai/internal/manifest"
-	"github.com/fluxinc/flux-ai/internal/umbrella"
+	"github.com/fluxinc/flux/internal/ghauth"
+	"github.com/fluxinc/flux/internal/manifest"
+	"github.com/fluxinc/flux/internal/umbrella"
 )
 
 // Runner executes external commands. Tests can replace it.

@@ -13,13 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fluxinc/flux-ai/internal/bundle"
-	"github.com/fluxinc/flux-ai/internal/harness"
-	"github.com/fluxinc/flux-ai/internal/manifest"
-	"github.com/fluxinc/flux-ai/internal/meetings"
-	"github.com/fluxinc/flux-ai/internal/skills"
-	"github.com/fluxinc/flux-ai/internal/umbrella"
-	"github.com/fluxinc/flux-ai/internal/workspace"
+	"github.com/fluxinc/flux/internal/bundle"
+	"github.com/fluxinc/flux/internal/harness"
+	"github.com/fluxinc/flux/internal/manifest"
+	"github.com/fluxinc/flux/internal/meetings"
+	"github.com/fluxinc/flux/internal/skills"
+	"github.com/fluxinc/flux/internal/umbrella"
+	"github.com/fluxinc/flux/internal/workspace"
 )
 
 // Run executes the CLI and returns a process exit code.

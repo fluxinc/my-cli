@@ -1,3 +1,3 @@
-module github.com/fluxinc/flux-ai
+module github.com/fluxinc/flux
 
 go 1.25

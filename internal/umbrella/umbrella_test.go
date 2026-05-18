@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fluxinc/flux-ai/internal/manifest"
+	"github.com/fluxinc/flux/internal/manifest"
 )
 
 func TestResolveRootUsesManifestRecommendation(t *testing.T) {

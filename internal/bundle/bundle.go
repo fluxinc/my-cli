@@ -11,15 +11,15 @@ import (
 	"runtime/debug"
 	"strings"
 
-	fluxai "github.com/fluxinc/flux-ai"
+	flux "github.com/fluxinc/flux"
 )
 
 const (
-	modulePath  = "github.com/fluxinc/flux-ai"
-	installer   = "flux-ai"
+	modulePath  = "github.com/fluxinc/flux"
+	installer   = "flux"
 	skillsDir   = "skills"
 	sourceFlag  = "--source flag"
-	sourceEnv   = "$FLUX_AI_HOME"
+	sourceEnv   = "$FLUX_HOME"
 	sourceRepo  = "repo walk-up"
 	sourceEmbed = "embedded"
 )
@@ -52,7 +52,7 @@ type Marker struct {
 }
 
 // ResolveSkillsSource returns a filesystem skills directory using the R1
-// source-selection order: explicit flag, FLUX_AI_HOME, repo walk-up, embedded.
+// source-selection order: explicit flag, FLUX_HOME, repo walk-up, embedded.
 func ResolveSkillsSource(opts ResolveOptions) (Source, error) {
 	cwd := opts.Cwd
 	if cwd == "" {
@@ -67,7 +67,7 @@ func ResolveSkillsSource(opts ResolveOptions) (Source, error) {
 		return Source{Kind: sourceFlag, SkillsDir: dir}, nil
 	}
 
-	if root := lookupEnv(opts.Env, "FLUX_AI_HOME"); root != "" {
+	if root := lookupEnv(opts.Env, "FLUX_HOME"); root != "" {
 		dir, err := requireDir(filepath.Join(root, skillsDir))
 		if err != nil {
 			return Source{}, fmt.Errorf("%s: %w", sourceEnv, err)
@@ -101,7 +101,7 @@ func SkillsRoot(homeOverride string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local", "share", "flux-ai", skillsDir), nil
+	return filepath.Join(home, ".local", "share", "flux", skillsDir), nil
 }
 
 func materializeEmbedded(homeOverride string) (string, error) {
@@ -113,7 +113,7 @@ func materializeEmbedded(homeOverride string) (string, error) {
 		return "", err
 	}
 
-	if err := fs.WalkDir(fluxai.Embedded, skillsDir, func(path string, d fs.DirEntry, err error) error {
+	if err := fs.WalkDir(flux.Embedded, skillsDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -125,7 +125,7 @@ func materializeEmbedded(homeOverride string) (string, error) {
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
-		data, err := fluxai.Embedded.ReadFile(path)
+		data, err := flux.Embedded.ReadFile(path)
 		if err != nil {
 			return err
 		}

@@ -19,7 +19,7 @@ func TestRegisteredManifestAdoptionSmoke(t *testing.T) {
 	}
 
 	home := t.TempDir()
-	manifestRoot := filepath.Join(home, ".local", "share", "flux-ai", "manifests", "acme")
+	manifestRoot := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
 	umbrellaRoot := filepath.Join(home, "acme")
 	workspaceRoot := filepath.Join(umbrellaRoot, "handbook")
 	workspaceSource := filepath.Join(home, "workspace-source")
@@ -248,7 +248,7 @@ func repoRoot(t *testing.T) string {
 		t.Fatal(err)
 	}
 	for {
-		if data, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil && strings.Contains(string(data), "module github.com/fluxinc/flux-ai") {
+		if data, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil && strings.Contains(string(data), "module github.com/fluxinc/flux") {
 			return dir
 		}
 		parent := filepath.Dir(dir)

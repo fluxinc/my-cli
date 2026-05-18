@@ -11,12 +11,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fluxinc/flux-ai/internal/ghauth"
+	"github.com/fluxinc/flux/internal/ghauth"
 )
 
 const (
 	registryVersion = 1
-	appDir          = "flux-ai"
+	appDir          = "flux"
 	manifestFile    = "manifest.json"
 )
 

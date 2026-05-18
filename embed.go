@@ -1,4 +1,4 @@
-package fluxai
+package flux
 
 import "embed"
 

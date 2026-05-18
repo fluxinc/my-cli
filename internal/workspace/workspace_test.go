@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/flux-ai/internal/manifest"
+	"github.com/fluxinc/flux/internal/manifest"
 )
 
 func TestListReadsSyncedManifest(t *testing.T) {

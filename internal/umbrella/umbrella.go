@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/fluxinc/flux-ai/internal/manifest"
+	"github.com/fluxinc/flux/internal/manifest"
 )
 
 const (

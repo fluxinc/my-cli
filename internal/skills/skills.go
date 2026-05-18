@@ -15,8 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fluxinc/flux-ai/internal/bundle"
-	"github.com/fluxinc/flux-ai/internal/harness"
+	"github.com/fluxinc/flux/internal/bundle"
+	"github.com/fluxinc/flux/internal/harness"
 )
 
 type Skill struct {
@@ -461,7 +461,10 @@ func sourceRootFor(s Skill, opts InstallOpts) string {
 }
 
 func managedSourceRoots(sourceRoot string, sourceRoots []string, home string) []string {
-	roots := []string{filepath.Join(home, ".local", "share", "flux-ai", "skills")}
+	roots := []string{
+		filepath.Join(home, ".local", "share", "flux", "skills"),
+		filepath.Join(home, ".local", "share", "flux-ai", "skills"),
+	}
 	if sourceRoot != "" {
 		roots = append(roots, sourceRoot)
 	}
@@ -497,7 +500,7 @@ func hasManagedMarker(dir string) bool {
 	if err := json.Unmarshal(data, &marker); err != nil {
 		return false
 	}
-	return marker.Installer == "flux-ai"
+	return marker.Installer == "flux" || marker.Installer == "flux-ai"
 }
 
 func pathWithin(path, root string) bool {
@@ -524,7 +527,7 @@ func pathWithin(path, root string) bool {
 
 func writeManagedMarker(dir, mode, source, canonicalID string) error {
 	marker := bundle.Marker{
-		Installer:   "flux-ai",
+		Installer:   "flux",
 		Version:     bundle.Version(),
 		Mode:        mode,
 		Source:      source,
