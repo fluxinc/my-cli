@@ -73,10 +73,14 @@ handbook, meetings, policy, docs, repo. Modes: `required`, `default`,
 they are skipped with a warning, not a failure (RBAC by Git permissions, not by
 the CLI).
 
-**Catalog** — a JSON inventory of the org's products. Products are *not* mounted
-by default; a user opts one in with `flux mount add product:<id>`, which clones
-it under `products/<id>` and records it in umbrella state. This keeps the
-default umbrella small and lets each operator pull only what they work on.
+**Catalog** — a JSON inventory of the org's products. Each product records its
+source-code `git_url`, a short purpose, and any related manifest skill IDs that
+help agents work in that repo. Products are *not* mounted by default; a user
+opts one in with `flux mount add product:<id>`, which clones it under
+`products/<id>` and records it in umbrella state. This keeps the default
+umbrella small and lets each operator pull only what they work on.
+`related_skills` are references to skills declared by the manifest; mounting a
+product repo does not let that repo inject new org-namespaced skills.
 
 **Tool** — an external executable the org depends on. The manifest declares
 purpose and install hints. `flux doctor` / `flux tools info` report presence

@@ -100,10 +100,12 @@ type Mount struct {
 
 // Product describes one catalog product that can be opted into an umbrella.
 type Product struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	GitURL      string `json:"git_url"`
-	Description string `json:"description"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	GitURL        string   `json:"git_url"`
+	Description   string   `json:"description"`
+	Purpose       string   `json:"purpose,omitempty"`
+	RelatedSkills []string `json:"related_skills,omitempty"`
 }
 
 // Workspace describes one local knowledge workspace in a manifest.
@@ -255,6 +257,7 @@ func ValidateFile(path string) ValidationResult {
 		return result
 	}
 	validateOrgManifest(doc, &result)
+	validateProductCatalog(filepath.Dir(resolved), doc, &result)
 	return result
 }
 
@@ -296,7 +299,11 @@ func LoadCatalog(home, manifestName string) ([]Product, error) {
 	if err := json.Unmarshal(data, &products); err != nil {
 		return nil, fmt.Errorf("read product catalog %s: invalid JSON%s: %w", path, jsonErrorOffset(err), err)
 	}
-	if err := validateProducts(path, products); err != nil {
+	doc, _, err := LoadDocument(ref.LocalPath)
+	if err != nil {
+		return nil, fmt.Errorf("load manifest for product catalog %s: %w", path, err)
+	}
+	if err := validateProducts(path, products, manifestSkillIDs(doc)); err != nil {
 		return nil, err
 	}
 	return products, nil
@@ -511,6 +518,34 @@ func validateOrgManifest(doc Document, result *ValidationResult) {
 	}
 }
 
+func validateProductCatalog(root string, doc Document, result *ValidationResult) {
+	path := filepath.Join(root, "catalog", "products.json")
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	if err != nil {
+		result.Errors = append(result.Errors, err.Error())
+		return
+	}
+	var products []Product
+	if err := json.Unmarshal(data, &products); err != nil {
+		result.Errors = append(result.Errors, fmt.Sprintf("read product catalog %s: invalid JSON%s: %v", path, jsonErrorOffset(err), err))
+		return
+	}
+	if err := validateProducts(path, products, manifestSkillIDs(doc)); err != nil {
+		result.Errors = append(result.Errors, err.Error())
+	}
+}
+
+func manifestSkillIDs(doc Document) map[string]bool {
+	out := make(map[string]bool, len(doc.Skills))
+	for _, skill := range doc.Skills {
+		out[skill.ID] = true
+	}
+	return out
+}
+
 func validateUmbrella(u Umbrella, result *ValidationResult) {
 	if u.RecommendedPath == "" {
 		return
@@ -664,7 +699,7 @@ func validateWorkspace(w Workspace, result *ValidationResult) {
 	}
 }
 
-func validateProducts(path string, products []Product) error {
+func validateProducts(path string, products []Product, knownSkillIDs map[string]bool) error {
 	seen := map[string]bool{}
 	for _, product := range products {
 		if !portableID(product.ID) {
@@ -677,8 +712,21 @@ func validateProducts(path string, products []Product) error {
 		if strings.TrimSpace(product.GitURL) == "" {
 			return fmt.Errorf("product catalog %s: product %q git_url is required", path, product.ID)
 		}
+		for _, skillID := range product.RelatedSkills {
+			if !portableNamespacedID(skillID) {
+				return fmt.Errorf("product catalog %s: product %q related skill %q must be namespace:name with lowercase kebab-case parts", path, product.ID, skillID)
+			}
+			if knownSkillIDs != nil && !knownSkillIDs[skillID] {
+				return fmt.Errorf("product catalog %s: product %q related skill %q is not declared by manifest", path, product.ID, skillID)
+			}
+		}
 	}
 	return nil
+}
+
+func portableNamespacedID(value string) bool {
+	parts := strings.SplitN(value, ":", 2)
+	return len(parts) == 2 && portableID(parts[0]) && portableID(parts[1])
 }
 
 func jsonErrorOffset(err error) string {

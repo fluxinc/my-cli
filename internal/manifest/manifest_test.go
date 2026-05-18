@@ -271,20 +271,32 @@ func TestLoadCatalogReadsProducts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	writeFile(t, filepath.Join(ref.LocalPath, manifestFile), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
 	writeFile(t, ProductCatalogPath(ref), `[
   {
     "id": "sample-product",
     "name": "Sample Product",
     "git_url": "https://github.com/acme/sample-product.git",
-    "description": "Sample service"
+    "description": "Sample service",
+    "purpose": "Synthetic product source for public fixture tests",
+    "related_skills": ["acme:handbook"]
   }
 ]`)
 	products, err := LoadCatalog(home, "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(products) != 1 || products[0].ID != "sample-product" {
+	if len(products) != 1 || products[0].ID != "sample-product" || products[0].Purpose == "" {
 		t.Fatalf("products = %#v", products)
+	}
+	if len(products[0].RelatedSkills) != 1 || products[0].RelatedSkills[0] != "acme:handbook" {
+		t.Fatalf("related skills = %#v", products[0].RelatedSkills)
 	}
 	product, ok, err := FindProduct(home, "acme", "sample-product")
 	if err != nil {
@@ -292,6 +304,29 @@ func TestLoadCatalogReadsProducts(t *testing.T) {
 	}
 	if !ok || product.GitURL == "" {
 		t.Fatalf("product = %#v, ok=%v", product, ok)
+	}
+}
+
+func TestValidateManifestCatchesCatalogUnknownRelatedSkill(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
+	writeFile(t, filepath.Join(dir, "catalog", "products.json"), `[
+  {
+    "id": "sample-product",
+    "name": "Sample Product",
+    "git_url": "https://github.com/acme/sample-product.git",
+    "related_skills": ["acme:missing"]
+  }
+]`)
+	result := ValidateFile(dir)
+	if len(result.Errors) != 1 || !strings.Contains(result.Errors[0], "not declared by manifest") {
+		t.Fatalf("errors = %#v", result.Errors)
 	}
 }
 
@@ -318,6 +353,60 @@ func TestLoadCatalogRejectsMalformedJSON(t *testing.T) {
 	writeFile(t, ProductCatalogPath(ref), `[{`)
 	_, err = LoadCatalog(home, "acme")
 	if err == nil || !strings.Contains(err.Error(), "products.json") || !strings.Contains(err.Error(), "invalid JSON") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestLoadCatalogRejectsMalformedRelatedSkill(t *testing.T) {
+	home := t.TempDir()
+	ref, err := Add(home, "acme", "https://github.com/acme/acme-ai-manifest.git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(ref.LocalPath, manifestFile), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
+	writeFile(t, ProductCatalogPath(ref), `[
+  {
+    "id": "sample-product",
+    "name": "Sample Product",
+    "git_url": "https://github.com/acme/sample-product.git",
+    "related_skills": ["Acme Handbook"]
+  }
+]`)
+	_, err = LoadCatalog(home, "acme")
+	if err == nil || !strings.Contains(err.Error(), "related skill") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestLoadCatalogRejectsUnknownRelatedSkillWhenManifestPresent(t *testing.T) {
+	home := t.TempDir()
+	ref, err := Add(home, "acme", "https://github.com/acme/acme-ai-manifest.git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(ref.LocalPath, manifestFile), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
+	writeFile(t, ProductCatalogPath(ref), `[
+  {
+    "id": "sample-product",
+    "name": "Sample Product",
+    "git_url": "https://github.com/acme/sample-product.git",
+    "related_skills": ["acme:missing"]
+  }
+]`)
+	_, err = LoadCatalog(home, "acme")
+	if err == nil || !strings.Contains(err.Error(), "not declared by manifest") {
 		t.Fatalf("err = %v", err)
 	}
 }

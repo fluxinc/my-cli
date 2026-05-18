@@ -53,7 +53,9 @@ EOF
     "id": "sample-product",
     "name": "Sample Product",
     "git_url": %q,
-    "description": "Sample service"
+    "description": "Sample service",
+    "purpose": "Synthetic product source for public fixture tests",
+    "related_skills": ["acme:handbook"]
   }
 ]`, productSource))
 	writeFile(t, filepath.Join(manifestRoot, "manifest.json"), fmt.Sprintf(`{

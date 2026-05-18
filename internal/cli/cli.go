@@ -730,7 +730,11 @@ func (a app) runCatalogList(args []string) error {
 		return printJSON(a.stdout, products)
 	}
 	for _, product := range products {
-		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\n", product.ID, product.Name, product.GitURL, product.Description)
+		summary := product.Description
+		if product.Purpose != "" {
+			summary = product.Purpose
+		}
+		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\n", product.ID, product.Name, product.GitURL, summary)
 	}
 	return nil
 }
