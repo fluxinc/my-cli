@@ -420,6 +420,53 @@ func TestMountAddProductRecordsState(t *testing.T) {
 	}
 }
 
+func TestCatalogListHumanFormatting(t *testing.T) {
+	home := t.TempDir()
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "products.json"), `[
+  {
+    "id": "sample-product",
+    "name": "Sample Product",
+    "git_url": "https://github.com/acme/sample-product.git",
+    "description": "Sample service",
+    "purpose": "Synthetic source used by tests.",
+    "related_skills": ["acme:handbook"]
+  }
+]`)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"flux", "manifest", "add", "acme",
+		"https://github.com/acme/acme-ai-manifest.git",
+		"--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	if err := a.run([]string{"flux", "catalog", "list", "products", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"sample-product - Sample Product\n",
+		"  source: https://github.com/acme/sample-product.git\n",
+		"  purpose: Synthetic source used by tests.\n",
+		"  skills: acme:handbook\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("catalog list stdout = %q, missing %q", out, want)
+		}
+	}
+}
+
 func TestMountAddProductUnknownJSON(t *testing.T) {
 	home := t.TempDir()
 	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")

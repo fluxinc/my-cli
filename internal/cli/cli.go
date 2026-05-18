@@ -729,14 +729,30 @@ func (a app) runCatalogList(args []string) error {
 	if jsonOut {
 		return printJSON(a.stdout, products)
 	}
-	for _, product := range products {
-		summary := product.Description
-		if product.Purpose != "" {
-			summary = product.Purpose
-		}
-		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\n", product.ID, product.Name, product.GitURL, summary)
-	}
+	a.printProducts(products)
 	return nil
+}
+
+func (a app) printProducts(products []manifest.Product) {
+	for i, product := range products {
+		if i != 0 {
+			fmt.Fprintln(a.stdout)
+		}
+		fmt.Fprintf(a.stdout, "%s", product.ID)
+		if product.Name != "" {
+			fmt.Fprintf(a.stdout, " - %s", product.Name)
+		}
+		fmt.Fprintln(a.stdout)
+		fmt.Fprintf(a.stdout, "  source: %s\n", product.GitURL)
+		if product.Purpose != "" {
+			fmt.Fprintf(a.stdout, "  purpose: %s\n", product.Purpose)
+		} else if product.Description != "" {
+			fmt.Fprintf(a.stdout, "  description: %s\n", product.Description)
+		}
+		if len(product.RelatedSkills) != 0 {
+			fmt.Fprintf(a.stdout, "  skills: %s\n", strings.Join(product.RelatedSkills, ", "))
+		}
+	}
 }
 
 func (a app) findToolInfo(home, manifestName, toolID string) ([]toolInfo, error) {
