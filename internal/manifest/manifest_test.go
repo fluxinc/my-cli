@@ -215,6 +215,21 @@ func TestValidateManifestCatchesInvalidMountIncludePaths(t *testing.T) {
 	}
 }
 
+func TestValidateManifestCatchesInvalidAgentGuidancePaths(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "agent_guidance": {
+    "paths": ["agent-guidance/acme.md", "../private.md", "/tmp/guide.md"]
+  }
+}`)
+	result := ValidateFile(dir)
+	if len(result.Errors) != 2 {
+		t.Fatalf("errors = %#v", result.Errors)
+	}
+}
+
 func TestValidateManifestAllowsWorkspaceRequirementFromMount(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `{

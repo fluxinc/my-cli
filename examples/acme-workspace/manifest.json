@@ -10,6 +10,11 @@
   "umbrella": {
     "recommended_path": "~/acme"
   },
+  "agent_guidance": {
+    "paths": [
+      "agent-guidance/acme.md"
+    ]
+  },
   "skills": [
     {
       "id": "acme:handbook",

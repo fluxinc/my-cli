@@ -52,14 +52,15 @@ type ValidationResult struct {
 
 // Document is the organization manifest.json schema consumed by the CLI.
 type Document struct {
-	ManifestVersion           int          `json:"manifest_version"`
-	Organization              Organization `json:"organization"`
-	AllowedExternalNamespaces []string     `json:"allowed_external_namespaces"`
-	Umbrella                  Umbrella     `json:"umbrella"`
-	Skills                    []Skill      `json:"skills"`
-	Mounts                    []Mount      `json:"mounts"`
-	Workspaces                []Workspace  `json:"workspaces"`
-	Tools                     []Tool       `json:"tools"`
+	ManifestVersion           int           `json:"manifest_version"`
+	Organization              Organization  `json:"organization"`
+	AllowedExternalNamespaces []string      `json:"allowed_external_namespaces"`
+	Umbrella                  Umbrella      `json:"umbrella"`
+	AgentGuidance             AgentGuidance `json:"agent_guidance"`
+	Skills                    []Skill       `json:"skills"`
+	Mounts                    []Mount       `json:"mounts"`
+	Workspaces                []Workspace   `json:"workspaces"`
+	Tools                     []Tool        `json:"tools"`
 }
 
 // Organization identifies the organization owning this manifest.
@@ -87,6 +88,12 @@ type Source struct {
 // Umbrella describes the local organization workspace envelope.
 type Umbrella struct {
 	RecommendedPath string `json:"recommended_path"`
+}
+
+// AgentGuidance describes manifest-owned additions to generated workspace
+// AGENTS.md files.
+type AgentGuidance struct {
+	Paths []string `json:"paths"`
 }
 
 // Mount describes one content source that can be cloned into an umbrella.
@@ -507,6 +514,7 @@ func validateOrgManifest(doc Document, result *ValidationResult) {
 		validateSkill(s, allowed, mountIDs, tools, result)
 	}
 	validateUmbrella(doc.Umbrella, result)
+	validateAgentGuidance(doc.AgentGuidance, result)
 	for _, m := range doc.Mounts {
 		validateMount(m, result)
 	}
@@ -552,6 +560,14 @@ func validateUmbrella(u Umbrella, result *ValidationResult) {
 	}
 	if strings.TrimSpace(u.RecommendedPath) == "" {
 		result.Errors = append(result.Errors, "umbrella.recommended_path must not be blank")
+	}
+}
+
+func validateAgentGuidance(g AgentGuidance, result *ValidationResult) {
+	for _, path := range g.Paths {
+		if !portableIncludePath(path) {
+			result.Errors = append(result.Errors, fmt.Sprintf("agent_guidance paths entry %q must be a relative path that stays inside the manifest repo", path))
+		}
 	}
 }
 

@@ -59,7 +59,9 @@ mounts plus local-only scratch:
 ├── <handbook mount>/    manifest-declared content
 ├── <other mounts>/
 ├── products/            opted-in catalog products (detached clones)
-└── personal/            local-only, never synced — agent + human scratch
+├── personal/            local-only, never synced — agent + human scratch
+├── AGENTS.md            generated workspace instructions for agents
+└── CLAUDE.md            alias for harnesses that read Claude-specific names
 ```
 
 `personal/` and `products/` always exist after `onboard`. Entity commands
@@ -126,8 +128,11 @@ outside its own tree.
    a directory `flux` did not place is never overwritten.
 4. Create/repair the umbrella: `.flux/workspace.json`, `.flux/state.json`,
    `personal/`, `products/`.
-5. Sync `required` and `default` mounts (scoped by `include_paths` if present).
-6. Re-sync any previously selected catalog products recorded in umbrella state.
+5. Generate root `AGENTS.md` from the embedded public baseline plus
+   `agent_guidance.paths` declared by the manifest, and make `CLAUDE.md` point
+   at it where the platform permits symlinks.
+6. Sync `required` and `default` mounts (scoped by `include_paths` if present).
+7. Re-sync any previously selected catalog products recorded in umbrella state.
 
 Every step is convergent: re-running `onboard` reconciles rather than
 duplicates.

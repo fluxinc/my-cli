@@ -24,7 +24,7 @@ installed and the org's knowledge synced locally.
 
 ## The Model
 
-`flux` has six concepts. Everything in the CLI is one of these:
+`flux` has seven concepts. Everything in the CLI is one of these:
 
 | Concept | What it is |
 |---|---|
@@ -33,6 +33,7 @@ installed and the org's knowledge synced locally.
 | **Umbrella** | A per-user, non-Git directory (e.g. `~/acme`) that is the operating envelope: a `.flux/` identity namespace plus mounts and local scratch as peers. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
 | **Catalog** | A JSON inventory of an org's products. Users opt specific products into their umbrella on demand. |
+| **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared fragments. `CLAUDE.md` points to the same file. |
 | **Tool** | An external executable the org depends on. `flux` reports presence and install hints — it never silently installs tools. |
 
 ## Commands
@@ -42,7 +43,7 @@ Run `flux --help` for the authoritative surface. The essentials:
 ### Onboarding
 
 ```sh
-flux onboard [harness...] | --all   # install skills + create umbrella + sync default mounts
+flux onboard [harness...] | --all   # create umbrella, write guidance, install skills, sync mounts
                                     # [--manifest NAME] [--umbrella DIR] [--copy] [--link] [--print]
 ```
 

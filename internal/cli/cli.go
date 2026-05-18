@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/fluxinc/flux/internal/bundle"
+	"github.com/fluxinc/flux/internal/guidance"
 	"github.com/fluxinc/flux/internal/harness"
 	"github.com/fluxinc/flux/internal/manifest"
 	"github.com/fluxinc/flux/internal/meetings"
@@ -1915,6 +1916,13 @@ func (a app) runOnboard(args []string) error {
 		}
 		ws = ensured
 	}
+	guidanceResult, err := guidance.Ensure(root, doc.ref.LocalPath, doc.doc, guidance.Options{
+		Force:  opts.force,
+		DryRun: opts.print,
+	})
+	if err != nil {
+		return err
+	}
 	results, err := workspace.SyncMounts(opts.home, doc.ref.Name, root, nil, false, []string{"required", "default"}, opts.print, nil)
 	if err != nil {
 		return err
@@ -1941,18 +1949,34 @@ func (a app) runOnboard(args []string) error {
 	if opts.jsonOut {
 		if err := printJSON(a.stdout, struct {
 			Umbrella umbrella.Workspace     `json:"umbrella"`
+			Guidance guidance.Result        `json:"guidance"`
 			Mounts   []workspace.SyncResult `json:"mounts"`
 			Skills   []skills.Result        `json:"skills"`
-		}{Umbrella: ws, Mounts: results, Skills: skillResults}); err != nil {
+		}{Umbrella: ws, Guidance: guidanceResult, Mounts: results, Skills: skillResults}); err != nil {
 			return err
 		}
-		if resultsFailed(skillResults) {
+		if guidanceResult.Status == "blocked" || resultsFailed(skillResults) {
 			return fmt.Errorf("one or more operations failed")
 		}
 		return nil
 	}
+	a.printGuidanceResult(guidanceResult)
 	a.printWorkspaceResults(results)
-	return a.printResults(skillResults, false)
+	if err := a.printResults(skillResults, false); err != nil {
+		return err
+	}
+	if guidanceResult.Status == "blocked" {
+		return fmt.Errorf("one or more operations failed")
+	}
+	return nil
+}
+
+func (a app) printGuidanceResult(result guidance.Result) {
+	line := fmt.Sprintf("workspace-guidance\t%s\t%s", result.Status, result.TargetPath)
+	if result.Message != "" {
+		line += "\t" + result.Message
+	}
+	fmt.Fprintln(a.stdout, line)
 }
 
 func (a app) runSkillsInstall(args []string) error {

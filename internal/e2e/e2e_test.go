@@ -58,11 +58,16 @@ EOF
     "related_skills": ["acme:handbook"]
   }
 ]`, productSource))
+	writeFile(t, filepath.Join(manifestRoot, "agent-guidance", "acme.md"), `# Acme Agent Defaults
+
+Acme operators should check the local handbook before answering operational questions.
+`)
 	writeFile(t, filepath.Join(manifestRoot, "manifest.json"), fmt.Sprintf(`{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
   "allowed_external_namespaces": ["mock"],
   "umbrella": { "recommended_path": "~/acme" },
+  "agent_guidance": { "paths": ["agent-guidance/acme.md"] },
   "skills": [
     { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" },
     {
@@ -147,10 +152,23 @@ status: finalized
 		filepath.Join(umbrellaRoot, ".flux", "state.json"),
 		filepath.Join(umbrellaRoot, "personal"),
 		filepath.Join(umbrellaRoot, "products"),
+		filepath.Join(umbrellaRoot, "AGENTS.md"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("onboard did not create %s: %v", path, err)
 		}
+	}
+	agents, err := os.ReadFile(filepath.Join(umbrellaRoot, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Flux Workspace", "Acme Agent Defaults", "flux meetings search <text>"} {
+		if !strings.Contains(string(agents), want) {
+			t.Fatalf("AGENTS.md = %s, missing %q", agents, want)
+		}
+	}
+	if target, err := os.Readlink(filepath.Join(umbrellaRoot, "CLAUDE.md")); err != nil || target != "AGENTS.md" {
+		t.Fatalf("CLAUDE.md is not a symlink to AGENTS.md: target=%q err=%v", target, err)
 	}
 
 	searchOut := runFluxDir(t, bin, home, umbrellaRoot, "meetings", "search", "SampleCo", "--home", home, "--json")
