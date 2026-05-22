@@ -2,8 +2,13 @@
 id: 2026-03-12-sampleco-implementation
 date: 2026-03-12
 title: "SampleCo implementation"
-customer: sampleco
+attendees:
+  - "Alex Example"
+customer: sampleco.example.com
+partners:
+  - integratorco
 product: sample-product
+source_id: spark-123
 status: finalized
 ---
 

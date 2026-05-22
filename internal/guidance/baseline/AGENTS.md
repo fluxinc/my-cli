@@ -6,10 +6,12 @@ context for one organization, not as a product repository or a monorepo.
 Use the `flux` CLI before falling back to ad hoc file searches:
 
 - `flux catalog list products` shows available source repositories.
+- `flux customers list` shows canonical customer IDs and aliases.
 - `flux mount add product:<id>` clones a product source under `products/<id>`.
 - `flux mount list` shows mounted handbook content and selected products.
 - `flux meetings list`, `flux meetings search <text>`, and
-  `flux meetings get <id>` query local meeting notes.
+  `flux meetings get <id>` query local meeting notes; use `--customer`,
+  `--partner`, and `--product` filters when those axes are known.
 - Add `--json` when a harness needs structured output.
 
 Default layout:

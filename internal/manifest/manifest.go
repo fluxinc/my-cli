@@ -115,6 +115,16 @@ type Product struct {
 	RelatedSkills []string `json:"related_skills,omitempty"`
 }
 
+// Customer describes one canonical customer identity.
+type Customer struct {
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	Domain          string   `json:"domain,omitempty"`
+	DomainConfirmed bool     `json:"domain_confirmed,omitempty"`
+	Aliases         []string `json:"aliases,omitempty"`
+	Partners        []string `json:"partners,omitempty"`
+}
+
 // Workspace describes one local knowledge workspace in a manifest.
 type Workspace struct {
 	ID        string `json:"id"`
@@ -265,6 +275,7 @@ func ValidateFile(path string) ValidationResult {
 	}
 	validateOrgManifest(doc, &result)
 	validateProductCatalog(filepath.Dir(resolved), doc, &result)
+	validateCustomerCatalog(filepath.Dir(resolved), &result)
 	return result
 }
 
@@ -316,6 +327,46 @@ func LoadCatalog(home, manifestName string) ([]Product, error) {
 	return products, nil
 }
 
+// LoadCustomers reads catalog/customers.json from selected registered manifests.
+func LoadCustomers(home, manifestName string) ([]Customer, error) {
+	refs, err := selectedCatalogRefs(home, manifestName)
+	if err != nil {
+		return nil, err
+	}
+	var out []Customer
+	for _, ref := range refs {
+		customers, err := loadCustomersFromRef(ref)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, customers...)
+	}
+	return out, nil
+}
+
+// FindCustomer resolves a canonical customer by id, alias, or domain.
+func FindCustomer(home, manifestName, value string) (Customer, bool, error) {
+	value = normalizeCustomerLookup(value)
+	if value == "" {
+		return Customer{}, false, nil
+	}
+	customers, err := LoadCustomers(home, manifestName)
+	if err != nil {
+		return Customer{}, false, err
+	}
+	for _, customer := range customers {
+		if normalizeCustomerLookup(customer.ID) == value || normalizeCustomerLookup(customer.Domain) == value {
+			return customer, true, nil
+		}
+		for _, alias := range customer.Aliases {
+			if normalizeCustomerLookup(alias) == value {
+				return customer, true, nil
+			}
+		}
+	}
+	return Customer{}, false, nil
+}
+
 // FindProduct returns one product catalog entry by id.
 func FindProduct(home, manifestName, id string) (Product, bool, error) {
 	products, err := LoadCatalog(home, manifestName)
@@ -338,6 +389,11 @@ func ManifestPath(ref Ref) string {
 // ProductCatalogPath returns the expected product catalog path for a registered ref.
 func ProductCatalogPath(ref Ref) string {
 	return filepath.Join(ref.LocalPath, "catalog", "products.json")
+}
+
+// CustomerCatalogPath returns the expected catalog/customers.json path for a registered ref.
+func CustomerCatalogPath(ref Ref) string {
+	return filepath.Join(ref.LocalPath, "catalog", "customers.json")
 }
 
 // EffectiveMounts returns native mounts plus legacy workspaces projected into
@@ -426,6 +482,43 @@ func singleRef(home, manifestName string) (Ref, error) {
 		return Ref{}, fmt.Errorf("multiple manifests registered; pass --manifest")
 	}
 	return reg.Manifests[0], nil
+}
+
+func selectedCatalogRefs(home, manifestName string) ([]Ref, error) {
+	if manifestName != "" {
+		ref, ok, err := Find(home, manifestName)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("manifest %q is not registered", manifestName)
+		}
+		return []Ref{ref}, nil
+	}
+	reg, err := LoadRegistry(home)
+	if err != nil {
+		return nil, err
+	}
+	return reg.Manifests, nil
+}
+
+func loadCustomersFromRef(ref Ref) ([]Customer, error) {
+	path := CustomerCatalogPath(ref)
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return []Customer{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var customers []Customer
+	if err := json.Unmarshal(data, &customers); err != nil {
+		return nil, fmt.Errorf("read customer catalog %s: invalid JSON%s: %w", path, jsonErrorOffset(err), err)
+	}
+	if err := validateCustomers(path, customers); err != nil {
+		return nil, err
+	}
+	return customers, nil
 }
 
 func syncOne(ref Ref, dryRun bool, runner Runner) SyncResult {
@@ -542,6 +635,26 @@ func validateProductCatalog(root string, doc Document, result *ValidationResult)
 		return
 	}
 	if err := validateProducts(path, products, manifestSkillIDs(doc)); err != nil {
+		result.Errors = append(result.Errors, err.Error())
+	}
+}
+
+func validateCustomerCatalog(root string, result *ValidationResult) {
+	path := filepath.Join(root, "catalog", "customers.json")
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	if err != nil {
+		result.Errors = append(result.Errors, err.Error())
+		return
+	}
+	var customers []Customer
+	if err := json.Unmarshal(data, &customers); err != nil {
+		result.Errors = append(result.Errors, fmt.Sprintf("read customer catalog %s: invalid JSON%s: %v", path, jsonErrorOffset(err), err))
+		return
+	}
+	if err := validateCustomers(path, customers); err != nil {
 		result.Errors = append(result.Errors, err.Error())
 	}
 }
@@ -740,6 +853,31 @@ func validateProducts(path string, products []Product, knownSkillIDs map[string]
 	return nil
 }
 
+func validateCustomers(path string, customers []Customer) error {
+	seen := map[string]bool{}
+	seenAliases := map[string]string{}
+	for _, customer := range customers {
+		if !customerID(customer.ID) {
+			return fmt.Errorf("customer catalog %s: customer id %q must be lowercase FQDN-style or kebab-case", path, customer.ID)
+		}
+		if seen[customer.ID] {
+			return fmt.Errorf("customer catalog %s: duplicate customer id %q", path, customer.ID)
+		}
+		seen[customer.ID] = true
+		for _, value := range append([]string{customer.Domain}, customer.Aliases...) {
+			normalized := normalizeCustomerLookup(value)
+			if normalized == "" {
+				continue
+			}
+			if existing := seenAliases[normalized]; existing != "" && existing != customer.ID {
+				return fmt.Errorf("customer catalog %s: customer alias/domain %q is used by both %q and %q", path, value, existing, customer.ID)
+			}
+			seenAliases[normalized] = customer.ID
+		}
+	}
+	return nil
+}
+
 func portableNamespacedID(value string) bool {
 	parts := strings.SplitN(value, ":", 2)
 	return len(parts) == 2 && portableID(parts[0]) && portableID(parts[1])
@@ -776,6 +914,32 @@ func portableID(value string) bool {
 		return false
 	}
 	return true
+}
+
+func customerID(value string) bool {
+	if value == "" || strings.TrimSpace(value) != value {
+		return false
+	}
+	lastPunct := true
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			lastPunct = false
+			continue
+		}
+		if r == '-' || r == '.' {
+			if lastPunct {
+				return false
+			}
+			lastPunct = true
+			continue
+		}
+		return false
+	}
+	return !lastPunct
+}
+
+func normalizeCustomerLookup(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func execCommand(name string, args ...string) ([]byte, error) {

@@ -6,6 +6,7 @@ It demonstrates the same shape a private organization workspace would use:
 - `manifest.json` declares the org, skills, mounts, catalog, and tools.
 - `skills/` contains static agent skills.
 - `catalog/products.json` lists opt-in products.
+- `catalog/customers.json` lists canonical customer IDs and aliases.
 - `meetings/`, `decisions/`, `projects/`, `policy/`, and `people/` are handbook
   content directories that can be mounted into an umbrella.
 

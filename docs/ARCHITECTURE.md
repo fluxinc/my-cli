@@ -66,8 +66,9 @@ mounts plus local-only scratch:
 
 `personal/` and `products/` always exist after `onboard`. Entity commands
 (`flux meetings ...`) resolve against the umbrella by walking up from the
-working directory to find `.flux/workspace.json`, so agents can run them from
-anywhere inside it.
+working directory to find `.flux/workspace.json`. If the caller is outside the
+umbrella, meeting commands use the single configured registered manifest's
+recommended umbrella when it has been onboarded.
 
 **Mount** — a Git-backed content folder cloned into the umbrella. Kinds include
 handbook, meetings, policy, docs, repo. Modes: `required`, `default`,
@@ -75,18 +76,23 @@ handbook, meetings, policy, docs, repo. Modes: `required`, `default`,
 they are skipped with a warning, not a failure (RBAC by Git permissions, not by
 the CLI).
 
-**Catalog** — a JSON inventory of the org's products. Each product records its
-source-code `git_url`, a short purpose, and any related manifest skill IDs that
-help agents work in that repo. Products are *not* mounted by default; a user
-opts one in with `flux mount add product:<id>`, which clones it under
-`products/<id>` and records it in umbrella state. This keeps the default
-umbrella small and lets each operator pull only what they work on.
+**Catalog** — JSON inventories for products and canonical customers. Each
+product records its source-code `git_url`, a short purpose, and any related
+manifest skill IDs that help agents work in that repo. Products are *not*
+mounted by default; a user opts one in with `flux mount add product:<id>`, which
+clones it under `products/<id>` and records it in umbrella state. This keeps the
+default umbrella small and lets each operator pull only what they work on.
 `related_skills` are references to skills declared by the manifest; mounting a
-product repo does not let that repo inject new org-namespaced skills.
+product repo does not let that repo inject new org-namespaced skills. Customer
+catalog entries provide stable IDs, aliases, partner associations, and optional
+domain confirmation so meeting metadata can resolve to one canonical identity.
 
 **Tool** — an external executable the org depends on. The manifest declares
 purpose and install hints. `flux doctor` / `flux tools info` report presence
 and what to run. `flux` never silently installs a tool — hints, not actions.
+Meeting search is allowed to use `qmd` when present because it is an operator
+tool declared by the manifest, but the built-in markdown scan remains the
+fallback and keeps the CLI functional without optional tools.
 
 ## 4. The public/private boundary (a first-class constraint)
 

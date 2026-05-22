@@ -32,7 +32,7 @@ installed and the org's knowledge synced locally.
 | **Skill** | A capability installed into harness skill directories. Either *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer). |
 | **Umbrella** | A per-user, non-Git directory (e.g. `~/acme`) that is the operating envelope: a `.flux/` identity namespace plus mounts and local scratch as peers. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
-| **Catalog** | A JSON inventory of an org's products. Users opt specific products into their umbrella on demand. |
+| **Catalog** | JSON inventories for products and canonical customers. Users opt specific products into their umbrella on demand. |
 | **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared fragments. `CLAUDE.md` points to the same file. |
 | **Tool** | An external executable the org depends on. `flux` reports presence and install hints — it never silently installs tools. |
 
@@ -68,6 +68,8 @@ flux skills list [--json]                   # what is installed, where, and its 
 
 Skills install as symlinks by default (`--copy` to vendor a copy). `flux`
 records provenance and refuses to clobber a directory it did not place.
+`skills install` only refreshes harness skill directories; rerun `flux onboard`
+when manifest guidance or the generated umbrella `AGENTS.md` should change too.
 
 ### Umbrella mounts
 
@@ -82,20 +84,23 @@ flux mount remove <mount...> [--force]
 
 ```sh
 flux catalog list products [--json]         # the org's product inventory
+flux customers list [--json]                # canonical customer IDs, aliases, and partners
 ```
 
 ### Meeting notes
 
 ```sh
-flux meetings list   [--since DATE] [--customer ID] [--product ID] [--json]
-flux meetings search <text> [--json]
+flux meetings list   [--since DATE] [--customer ID] [--partner ID] [--product ID] [--json]
+flux meetings search <text> [--customer ID] [--partner ID] [--product ID] [--json]
 flux meetings get    <id|path> [--json]
-flux meetings add    <slug> [--date DATE] [--title TEXT]
+flux meetings add    <slug> [--date DATE] [--title TEXT] [--customer ID]
+                     [--attendees NAME] [--partner ID] [--source-id ID]
 ```
 
 A markdown-first operational record (YAML frontmatter), resolved against the
-umbrella by default. The same `list/add/search/get` shape extends to other
-entities over time.
+umbrella by default, including the configured umbrella from the registered
+manifest when the command is run outside the umbrella. Search uses `qmd` when it
+is present and falls back to built-in token-AND markdown search.
 
 ### Diagnostics
 

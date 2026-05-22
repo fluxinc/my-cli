@@ -162,7 +162,7 @@ status: finalized
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Flux Workspace", "Acme Agent Defaults", "flux meetings search <text>"} {
+	for _, want := range []string{"Flux Workspace", "Acme Agent Defaults", "flux customers list", "flux meetings search <text>"} {
 		if !strings.Contains(string(agents), want) {
 			t.Fatalf("AGENTS.md = %s, missing %q", agents, want)
 		}

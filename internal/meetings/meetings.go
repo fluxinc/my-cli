@@ -21,33 +21,41 @@ type Root struct {
 
 // Filter limits meeting results.
 type Filter struct {
-	Since    string
-	Customer string
-	Product  string
+	Since          string
+	Customer       string
+	CustomerValues []string
+	Partner        string
+	Product        string
 }
 
 // Meeting is a parsed meeting note.
 type Meeting struct {
-	Manifest  string `json:"manifest"`
-	Workspace string `json:"workspace"`
-	ID        string `json:"id"`
-	Path      string `json:"path"`
-	Date      string `json:"date,omitempty"`
-	Title     string `json:"title,omitempty"`
-	Customer  string `json:"customer,omitempty"`
-	Product   string `json:"product,omitempty"`
-	Status    string `json:"status,omitempty"`
-	Snippet   string `json:"snippet,omitempty"`
+	Manifest  string   `json:"manifest"`
+	Workspace string   `json:"workspace"`
+	ID        string   `json:"id"`
+	Path      string   `json:"path"`
+	Date      string   `json:"date,omitempty"`
+	Title     string   `json:"title,omitempty"`
+	Customer  string   `json:"customer,omitempty"`
+	Attendees []string `json:"attendees,omitempty"`
+	Partners  []string `json:"partners,omitempty"`
+	Product   string   `json:"product,omitempty"`
+	SourceID  string   `json:"source_id,omitempty"`
+	Status    string   `json:"status,omitempty"`
+	Snippet   string   `json:"snippet,omitempty"`
 }
 
 // AddOptions controls meeting scaffold creation.
 type AddOptions struct {
-	Date     string
-	Title    string
-	Customer string
-	Product  string
-	Status   string
-	DryRun   bool
+	Date      string
+	Title     string
+	Customer  string
+	Attendees []string
+	Partners  []string
+	Product   string
+	SourceID  string
+	Status    string
+	DryRun    bool
 }
 
 // List returns meeting notes from all roots.
@@ -61,30 +69,36 @@ func List(roots []Root, filter Filter) ([]Meeting, error) {
 	return meetings, nil
 }
 
-// Search returns meeting notes whose markdown contains query.
+// Search returns meeting notes whose markdown contains every query term.
 func Search(roots []Root, query string, filter Filter) ([]Meeting, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, fmt.Errorf("search text is required")
 	}
-	needle := strings.ToLower(query)
+	terms := parseSearchTerms(query)
+	if len(terms) == 0 {
+		return nil, fmt.Errorf("search text is required")
+	}
 	all, err := scan(roots)
 	if err != nil {
 		return nil, err
 	}
 	var out []Meeting
+	scores := map[string]int{}
 	for _, meeting := range applyFilter(all, filter) {
 		data, err := os.ReadFile(meeting.Path)
 		if err != nil {
 			return nil, err
 		}
-		if !strings.Contains(strings.ToLower(string(data)), needle) {
+		lowerContent := strings.ToLower(string(data))
+		if !matchesAllTerms(lowerContent, terms) {
 			continue
 		}
-		meeting.Snippet = snippetBodyFirst(data, needle)
+		meeting.Snippet = snippetBodyFirst(data, terms)
+		scores[meeting.Path] = matchScore(lowerContent, terms)
 		out = append(out, meeting)
 	}
-	sortMeetings(out)
+	sortSearchMeetings(out, scores)
 	return out, nil
 }
 
@@ -142,7 +156,7 @@ func Add(root Root, slug string, opts AddOptions) (Meeting, string, error) {
 	}
 	id := date + "-" + slug
 	path := filepath.Join(root.Path, "meetings", id+".md")
-	body := scaffold(id, date, title, opts.Customer, opts.Product, status)
+	body := scaffold(id, date, title, opts.Customer, opts.Attendees, opts.Partners, opts.Product, opts.SourceID, status)
 	meeting := Meeting{
 		Manifest:  root.Manifest,
 		Workspace: root.Workspace,
@@ -151,7 +165,10 @@ func Add(root Root, slug string, opts AddOptions) (Meeting, string, error) {
 		Date:      date,
 		Title:     title,
 		Customer:  opts.Customer,
+		Attendees: append([]string(nil), opts.Attendees...),
+		Partners:  append([]string(nil), opts.Partners...),
 		Product:   opts.Product,
+		SourceID:  opts.SourceID,
 		Status:    status,
 	}
 	if opts.DryRun {
@@ -206,19 +223,22 @@ func parseMeeting(root Root, path string) (Meeting, string, error) {
 	meeting := Meeting{
 		Manifest:  root.Manifest,
 		Workspace: root.Workspace,
-		ID:        first(frontmatter["id"], stem),
+		ID:        first(firstValue(frontmatter, "id"), stem),
 		Path:      path,
-		Date:      first(frontmatter["date"], dateFromStem(stem)),
-		Title:     first(frontmatter["title"], titleFromSlug(stem)),
-		Customer:  frontmatter["customer"],
-		Product:   frontmatter["product"],
-		Status:    frontmatter["status"],
+		Date:      first(firstValue(frontmatter, "date"), dateFromStem(stem)),
+		Title:     first(firstValue(frontmatter, "title"), titleFromSlug(stem)),
+		Customer:  firstValue(frontmatter, "customer"),
+		Attendees: values(frontmatter, "attendees"),
+		Partners:  firstValues(frontmatter, "partners", "partner"),
+		Product:   firstValue(frontmatter, "product"),
+		SourceID:  first(firstValue(frontmatter, "source_id"), firstValue(frontmatter, "source_ref"), firstValue(frontmatter, "spark_meeting_id")),
+		Status:    firstValue(frontmatter, "status"),
 	}
 	return meeting, string(data), nil
 }
 
-func splitFrontmatter(data []byte) (map[string]string, []byte) {
-	out := map[string]string{}
+func splitFrontmatter(data []byte) (map[string][]string, []byte) {
+	out := map[string][]string{}
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	if !scanner.Scan() || strings.TrimSpace(scanner.Text()) != "---" {
@@ -226,6 +246,7 @@ func splitFrontmatter(data []byte) (map[string]string, []byte) {
 	}
 	var bodyStart int
 	offset := len(scanner.Text()) + 1
+	currentKey := ""
 	for scanner.Scan() {
 		line := scanner.Text()
 		bodyStart = offset + len(line) + 1
@@ -237,12 +258,22 @@ func splitFrontmatter(data []byte) (map[string]string, []byte) {
 			return out, data[bodyStart:]
 		}
 		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			trimmed := strings.TrimSpace(line)
+			if currentKey != "" && strings.HasPrefix(trimmed, "- ") {
+				out[currentKey] = append(out[currentKey], cleanValue(trimmed[2:]))
+			}
 			continue
 		}
+		currentKey = ""
 		if i := strings.Index(line, ":"); i > 0 {
 			key := strings.TrimSpace(line[:i])
-			value := cleanValue(line[i+1:])
-			out[key] = value
+			value := strings.TrimSpace(line[i+1:])
+			if value == "" {
+				out[key] = nil
+				currentKey = key
+				continue
+			}
+			out[key] = parseFrontmatterValue(value)
 		}
 	}
 	return out, data
@@ -254,7 +285,10 @@ func applyFilter(meetings []Meeting, filter Filter) []Meeting {
 		if filter.Since != "" && meeting.Date < filter.Since {
 			continue
 		}
-		if filter.Customer != "" && meeting.Customer != filter.Customer {
+		if !matchesFilterValue(meeting.Customer, filter.Customer, filter.CustomerValues) {
+			continue
+		}
+		if filter.Partner != "" && !containsValue(meeting.Partners, filter.Partner) {
 			continue
 		}
 		if filter.Product != "" && meeting.Product != filter.Product {
@@ -274,31 +308,50 @@ func sortMeetings(meetings []Meeting) {
 	})
 }
 
-func snippet(content, lowerNeedle string) string {
+func sortSearchMeetings(meetings []Meeting, scores map[string]int) {
+	sort.Slice(meetings, func(i, j int) bool {
+		if scores[meetings[i].Path] != scores[meetings[j].Path] {
+			return scores[meetings[i].Path] > scores[meetings[j].Path]
+		}
+		if meetings[i].Date != meetings[j].Date {
+			return meetings[i].Date > meetings[j].Date
+		}
+		return meetings[i].ID < meetings[j].ID
+	})
+}
+
+func snippet(content string, terms []searchTerm) string {
 	for _, line := range strings.Split(content, "\n") {
-		if strings.Contains(strings.ToLower(line), lowerNeedle) {
+		if matchesAllTerms(strings.ToLower(line), terms) {
+			return strings.TrimSpace(line)
+		}
+	}
+	for _, line := range strings.Split(content, "\n") {
+		if matchesAnyTerm(strings.ToLower(line), terms) {
 			return strings.TrimSpace(line)
 		}
 	}
 	return ""
 }
 
-func snippetBodyFirst(data []byte, lowerNeedle string) string {
+func snippetBodyFirst(data []byte, terms []searchTerm) string {
 	_, body := splitFrontmatter(data)
-	if found := snippet(string(body), lowerNeedle); found != "" {
+	if found := snippet(string(body), terms); found != "" {
 		return found
 	}
-	return snippet(string(data), lowerNeedle)
+	return snippet(string(data), terms)
 }
 
-func scaffold(id, date, title, customer, product, status string) string {
+func scaffold(id, date, title, customer string, attendees, partners []string, product, sourceID, status string) string {
 	return fmt.Sprintf(`---
 id: %s
 date: %s
 title: "%s"
-attendees: []
+%s
 customer: %s
+%s
 product: %s
+%s
 source: meeting
 status: %s
 ---
@@ -310,13 +363,160 @@ status: %s
 ## Promises
 
 ## Follow-ups
-`, id, date, escapeTitle(title), customer, product, status, title)
+`, id, date, escapeTitle(title), yamlList("attendees", attendees), customer, yamlList("partners", partners), product, optionalScalar("source_id", sourceID), status, title)
 }
 
 func cleanValue(value string) string {
 	value = strings.TrimSpace(value)
 	value = strings.Trim(value, "\"'")
 	return value
+}
+
+func parseFrontmatterValue(value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "[]" {
+		return nil
+	}
+	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
+		inner := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(value, "["), "]"))
+		if inner == "" {
+			return nil
+		}
+		var out []string
+		for _, part := range strings.Split(inner, ",") {
+			if cleaned := cleanValue(part); cleaned != "" {
+				out = append(out, cleaned)
+			}
+		}
+		return out
+	}
+	return []string{cleanValue(value)}
+}
+
+type searchTerm struct {
+	value string
+}
+
+func parseSearchTerms(query string) []searchTerm {
+	var terms []searchTerm
+	var current strings.Builder
+	inQuote := false
+	flush := func() {
+		value := strings.ToLower(strings.TrimSpace(current.String()))
+		current.Reset()
+		if value != "" {
+			terms = append(terms, searchTerm{value: value})
+		}
+	}
+	for _, r := range query {
+		switch {
+		case r == '"':
+			flush()
+			inQuote = !inQuote
+		case !inQuote && (r == ' ' || r == '\t' || r == '\n' || r == '\r'):
+			flush()
+		default:
+			current.WriteRune(r)
+		}
+	}
+	flush()
+	return terms
+}
+
+func matchesAllTerms(content string, terms []searchTerm) bool {
+	for _, term := range terms {
+		if !strings.Contains(content, term.value) {
+			return false
+		}
+	}
+	return true
+}
+
+func matchesAnyTerm(content string, terms []searchTerm) bool {
+	for _, term := range terms {
+		if strings.Contains(content, term.value) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchScore(content string, terms []searchTerm) int {
+	score := 0
+	for _, term := range terms {
+		score += strings.Count(content, term.value)
+	}
+	return score
+}
+
+func matchesFilterValue(value, exact string, allowed []string) bool {
+	if exact == "" && len(allowed) == 0 {
+		return true
+	}
+	if exact != "" && value == exact {
+		return true
+	}
+	for _, candidate := range allowed {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func containsValue(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func firstValue(frontmatter map[string][]string, key string) string {
+	values := frontmatter[key]
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+func values(frontmatter map[string][]string, key string) []string {
+	if len(frontmatter[key]) == 0 {
+		return nil
+	}
+	return append([]string(nil), frontmatter[key]...)
+}
+
+func firstValues(frontmatter map[string][]string, keys ...string) []string {
+	for _, key := range keys {
+		if found := values(frontmatter, key); len(found) != 0 {
+			return found
+		}
+	}
+	return nil
+}
+
+func yamlList(key string, values []string) string {
+	if len(values) == 0 {
+		return key + ": []"
+	}
+	var out strings.Builder
+	out.WriteString(key)
+	out.WriteString(":\n")
+	for _, value := range values {
+		out.WriteString("  - \"")
+		out.WriteString(escapeTitle(value))
+		out.WriteString("\"\n")
+	}
+	return strings.TrimSuffix(out.String(), "\n")
+}
+
+func optionalScalar(key, value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s: %s", key, value)
 }
 
 func cleanSlug(value string) string {

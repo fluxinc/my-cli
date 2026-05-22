@@ -28,7 +28,9 @@ not part of the public product surface.
 - Umbrella creation with `.flux/workspace.json` and `.flux/state.json`.
 - Sparse scoped mounts through `include_paths`.
 - Product catalog opt-in through `flux mount add product:<id>`.
-- Markdown meeting commands: `list`, `search`, `get`, and `add`.
+- Customer catalog listing and alias resolution for meeting filters/adds.
+- Markdown meeting commands: `list`, `search`, `get`, and `add`, with qmd-first
+  search when `qmd` is installed.
 - Neutral example workspace fixture under `examples/acme-workspace/`.
 - Public tests use neutral `acme`, `sampleco`, and `sample-product` fixtures.
 

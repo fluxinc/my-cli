@@ -12,6 +12,9 @@ knowledge. Prefer `flux meetings list`, `flux meetings search <text>`, and
 `flux meetings get <id>` over ad hoc file searches when the question is about
 meetings or commitments.
 
+Use `flux customers list` when a task needs the canonical customer ID before
+adding or filtering meeting notes.
+
 If no umbrella is available, ask the operator to run:
 
 ```sh

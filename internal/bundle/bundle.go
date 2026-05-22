@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	flux "github.com/fluxinc/flux"
+	"github.com/fluxinc/flux/internal/version"
 )
 
 const (
@@ -155,7 +156,7 @@ func materializeEmbedded(homeOverride string) (string, error) {
 func Version() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok || info.Main.Version == "" || info.Main.Version == "(devel)" {
-		return "dev"
+		return version.Version
 	}
 	return info.Main.Version
 }

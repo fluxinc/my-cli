@@ -59,6 +59,8 @@ func (a app) run(args []string) error {
 	case "-h", "--help", "help":
 		a.printUsage()
 		return nil
+	case "-v", "--version", "version":
+		return a.runVersion(args[2:])
 	case "skills":
 		return a.runSkills(args[2:])
 	case "onboard":
@@ -75,6 +77,8 @@ func (a app) run(args []string) error {
 		return a.runDoctor(args[2:])
 	case "meetings":
 		return a.runMeetings(args[2:])
+	case "customers":
+		return a.runCustomers(args[2:])
 	case "catalog":
 		return a.runCatalog(args[2:])
 	default:
@@ -104,8 +108,18 @@ Usage:
   flux meetings search <text>
   flux meetings get <id|path>
   flux meetings add <slug>
+  flux customers list
   flux catalog list products
-  flux doctor`)
+  flux doctor
+  flux version`)
+}
+
+func (a app) runVersion(args []string) error {
+	if len(args) != 0 {
+		return fmt.Errorf("version does not accept arguments")
+	}
+	fmt.Fprintln(a.stdout, bundle.Version())
+	return nil
 }
 
 func (a app) runMeetings(args []string) error {
@@ -131,10 +145,10 @@ func (a app) runMeetings(args []string) error {
 
 func (a app) printMeetingsUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  flux meetings list [--manifest NAME] [--workspace ID] [--since DATE] [--customer ID] [--product ID] [--json]
-  flux meetings search <text> [--manifest NAME] [--workspace ID] [--customer ID] [--product ID] [--json]
+  flux meetings list [--manifest NAME] [--workspace ID] [--since DATE] [--customer ID] [--partner ID] [--product ID] [--json]
+  flux meetings search <text> [--manifest NAME] [--workspace ID] [--customer ID] [--partner ID] [--product ID] [--json]
   flux meetings get <id|path> [--manifest NAME] [--workspace ID] [--json]
-  flux meetings add <slug> [--manifest NAME] [--workspace ID] [--date DATE] [--title TEXT] [--customer ID] [--product ID] [--print] [--json]
+  flux meetings add <slug> [--manifest NAME] [--workspace ID] [--date DATE] [--title TEXT] [--customer ID] [--attendees NAME] [--partner ID] [--product ID] [--source-id ID] [--print] [--json]
 
 Meeting commands use local markdown files under workspace meetings/ directories.`)
 }
@@ -151,7 +165,8 @@ func (a app) runMeetingsList(args []string) error {
 	if err != nil {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
-	found, err := meetings.List(roots, opts.filter())
+	filter := a.resolveMeetingFilter(opts.home, opts.manifestName, opts.umbrellaRoot, opts.filter())
+	found, err := meetings.List(roots, filter)
 	if err != nil {
 		return err
 	}
@@ -170,7 +185,8 @@ func (a app) runMeetingsSearch(args []string) error {
 	if err != nil {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
-	found, err := meetings.Search(roots, rest[0], opts.filter())
+	filter := a.resolveMeetingFilter(opts.home, opts.manifestName, opts.umbrellaRoot, opts.filter())
+	found, err := meetingSearch(roots, rest[0], filter)
 	if err != nil {
 		return err
 	}
@@ -213,7 +229,10 @@ func (a app) runMeetingsAdd(args []string) error {
 	fs.StringVar(&opts.date, "date", "", "meeting date, YYYY-MM-DD")
 	fs.StringVar(&opts.title, "title", "", "meeting title")
 	fs.StringVar(&opts.customer, "customer", "", "customer ID")
+	fs.Var(&opts.attendees, "attendees", "meeting attendee (repeatable)")
+	fs.Var(&opts.partners, "partner", "partner ID (repeatable)")
 	fs.StringVar(&opts.product, "product", "", "product ID")
+	fs.StringVar(&opts.sourceID, "source-id", "", "source system identifier")
 	fs.StringVar(&opts.status, "status", "", "meeting status")
 	fs.BoolVar(&opts.printOnly, "print", false, "print the scaffold without writing a file")
 	rest, err := parseInterspersed(fs, args, map[string]bool{
@@ -224,7 +243,10 @@ func (a app) runMeetingsAdd(args []string) error {
 		"date":      true,
 		"title":     true,
 		"customer":  true,
+		"attendees": true,
+		"partner":   true,
 		"product":   true,
+		"source-id": true,
 		"status":    true,
 	})
 	if err != nil {
@@ -240,13 +262,17 @@ func (a app) runMeetingsAdd(args []string) error {
 	if len(roots) != 1 {
 		return fmt.Errorf("meetings add requires exactly one workspace; pass --manifest and --workspace")
 	}
+	customer := a.resolveCustomerForWrite(opts.home, opts.manifestName, opts.umbrellaRoot, opts.customer)
 	meeting, content, err := meetings.Add(roots[0], rest[0], meetings.AddOptions{
-		Date:     opts.date,
-		Title:    opts.title,
-		Customer: opts.customer,
-		Product:  opts.product,
-		Status:   opts.status,
-		DryRun:   opts.printOnly,
+		Date:      opts.date,
+		Title:     opts.title,
+		Customer:  customer,
+		Attendees: []string(opts.attendees),
+		Partners:  []string(opts.partners),
+		Product:   opts.product,
+		SourceID:  opts.sourceID,
+		Status:    opts.status,
+		DryRun:    opts.printOnly,
 	})
 	if err != nil {
 		return err
@@ -277,6 +303,7 @@ type meetingReadOpts struct {
 	meetingCommonOpts
 	since    string
 	customer string
+	partner  string
 	product  string
 }
 
@@ -285,9 +312,28 @@ type meetingAddOpts struct {
 	date      string
 	title     string
 	customer  string
+	attendees stringListFlag
+	partners  stringListFlag
 	product   string
+	sourceID  string
 	status    string
 	printOnly bool
+}
+
+type stringListFlag []string
+
+func (f *stringListFlag) String() string {
+	return strings.Join(*f, ",")
+}
+
+func (f *stringListFlag) Set(value string) error {
+	for _, part := range strings.Split(value, ",") {
+		cleaned := strings.TrimSpace(part)
+		if cleaned != "" {
+			*f = append(*f, cleaned)
+		}
+	}
+	return nil
 }
 
 func parseMeetingReadOpts(name string, stderr io.Writer, args []string) (meetingReadOpts, []string, error) {
@@ -296,6 +342,7 @@ func parseMeetingReadOpts(name string, stderr io.Writer, args []string) (meeting
 	bindMeetingCommonFlags(fs, &opts.meetingCommonOpts)
 	fs.StringVar(&opts.since, "since", "", "minimum meeting date, YYYY-MM-DD")
 	fs.StringVar(&opts.customer, "customer", "", "customer ID")
+	fs.StringVar(&opts.partner, "partner", "", "partner ID")
 	fs.StringVar(&opts.product, "product", "", "product ID")
 	rest, err := parseInterspersed(fs, args, map[string]bool{
 		"home":      true,
@@ -304,6 +351,7 @@ func parseMeetingReadOpts(name string, stderr io.Writer, args []string) (meeting
 		"umbrella":  true,
 		"since":     true,
 		"customer":  true,
+		"partner":   true,
 		"product":   true,
 	})
 	return opts, rest, err
@@ -330,6 +378,7 @@ func (opts meetingReadOpts) filter() meetings.Filter {
 	return meetings.Filter{
 		Since:    opts.since,
 		Customer: opts.customer,
+		Partner:  opts.partner,
 		Product:  opts.product,
 	}
 }
@@ -341,8 +390,11 @@ func meetingRoots(home, manifestName, workspaceID, umbrellaRoot string) ([]meeti
 	if root, ok := umbrella.FindRoot("."); ok {
 		return umbrellaMeetingRoots(home, workspaceID, root)
 	}
+	if roots, ok, err := configuredUmbrellaMeetingRoots(home, manifestName, workspaceID); ok || err != nil {
+		return roots, err
+	}
 	if manifestName == "" {
-		return nil, fmt.Errorf("no flux umbrella found; run flux onboard or pass --umbrella")
+		return nil, noUmbrellaError("no flux umbrella found; run flux onboard or pass --umbrella", "run flux onboard or pass --umbrella <path>")
 	}
 	entries, err := workspace.List(home, manifestName)
 	if err != nil {
@@ -366,6 +418,45 @@ func meetingRoots(home, manifestName, workspaceID, umbrellaRoot string) ([]meeti
 		return nil, fmt.Errorf("no workspaces declared by selected manifests")
 	}
 	return roots, nil
+}
+
+func configuredUmbrellaMeetingRoots(home, manifestName, workspaceID string) ([]meetings.Root, bool, error) {
+	docs, err := loadRegisteredDocs(home, manifestName)
+	if err != nil || len(docs) == 0 {
+		return nil, false, nil
+	}
+	type candidate struct {
+		root string
+		ref  string
+	}
+	var candidates []candidate
+	var configured []candidate
+	for _, doc := range docs {
+		root, err := umbrella.ResolveRoot(home, "", "", doc.doc)
+		if err != nil {
+			return nil, true, err
+		}
+		configured = append(configured, candidate{root: root, ref: doc.ref.Name})
+		if _, err := umbrella.LoadWorkspace(root); err == nil {
+			candidates = append(candidates, candidate{root: root, ref: doc.ref.Name})
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, true, err
+		}
+	}
+	if len(candidates) == 1 {
+		roots, err := umbrellaMeetingRoots(home, workspaceID, candidates[0].root)
+		return roots, true, err
+	}
+	if len(candidates) > 1 {
+		return nil, true, fmt.Errorf("multiple flux umbrellas configured; pass --manifest or --umbrella")
+	}
+	if manifestName == "" && len(configured) == 1 {
+		return nil, true, noUmbrellaError(
+			fmt.Sprintf("no flux umbrella found; configured umbrella is %s", configured[0].root),
+			fmt.Sprintf("run flux onboard --manifest %s or pass --umbrella %s", configured[0].ref, configured[0].root),
+		)
+	}
+	return nil, false, nil
 }
 
 func umbrellaMeetingRoots(home, workspaceID, umbrellaRoot string) ([]meetings.Root, error) {
@@ -408,17 +499,435 @@ func (a app) printMeetings(found []meetings.Meeting, jsonOut bool) error {
 		return printJSON(a.stdout, found)
 	}
 	for _, meeting := range found {
-		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			meeting.Date,
 			meeting.ID,
 			meeting.Title,
 			meeting.Customer,
+			strings.Join(meeting.Partners, ","),
 			meeting.Product,
 			meeting.Snippet,
 			meeting.Path,
 		)
 	}
 	return nil
+}
+
+var meetingSearch = defaultMeetingSearch
+var qmdMeetingSearch = runQMDMeetingSearch
+
+func defaultMeetingSearch(roots []meetings.Root, query string, filter meetings.Filter) ([]meetings.Meeting, error) {
+	qmdFound, qmdOK := qmdMeetingSearch(roots, query, filter)
+	fallback, err := meetings.Search(roots, query, filter)
+	if err != nil {
+		return nil, err
+	}
+	if qmdOK && len(qmdFound) != 0 {
+		return mergeMeetingResults(qmdFound, fallback), nil
+	}
+	return fallback, nil
+}
+
+type qmdSearchResult struct {
+	File    string  `json:"file"`
+	Snippet string  `json:"snippet"`
+	Score   float64 `json:"score"`
+}
+
+func runQMDMeetingSearch(roots []meetings.Root, query string, filter meetings.Filter) ([]meetings.Meeting, bool) {
+	qmd, err := exec.LookPath("qmd")
+	if err != nil {
+		return nil, false
+	}
+	index, err := qmdMeetingIndex(roots, filter)
+	if err != nil || len(index) == 0 {
+		return nil, false
+	}
+	cmd := exec.Command(qmd, "search", query, "--json", "-n", "100")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, false
+	}
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" || strings.HasPrefix(trimmed, "No results found") {
+		return nil, true
+	}
+	var results []qmdSearchResult
+	if err := json.Unmarshal([]byte(trimmed), &results); err != nil {
+		return nil, false
+	}
+	var found []meetings.Meeting
+	seen := map[string]bool{}
+	for _, result := range results {
+		meeting, ok := matchQMDMeeting(index, result.File)
+		if !ok || seen[meeting.Path] {
+			continue
+		}
+		if snippet := cleanQMDSnippet(result.Snippet); snippet != "" {
+			meeting.Snippet = snippet
+		}
+		found = append(found, meeting)
+		seen[meeting.Path] = true
+	}
+	return found, true
+}
+
+func qmdMeetingIndex(roots []meetings.Root, filter meetings.Filter) (map[string]meetings.Meeting, error) {
+	found, err := meetings.List(roots, filter)
+	if err != nil {
+		return nil, err
+	}
+	index := map[string]meetings.Meeting{}
+	for _, meeting := range found {
+		for _, key := range qmdMeetingKeys(meeting) {
+			if _, exists := index[key]; !exists {
+				index[key] = meeting
+			}
+		}
+	}
+	return index, nil
+}
+
+func qmdMeetingKeys(meeting meetings.Meeting) []string {
+	var keys []string
+	add := func(value string) {
+		value = strings.ToLower(filepath.ToSlash(value))
+		if value != "" {
+			keys = append(keys, value)
+		}
+	}
+	add(meeting.Path)
+	if abs, err := filepath.Abs(meeting.Path); err == nil {
+		add(abs)
+	}
+	root := filepath.Dir(filepath.Dir(meeting.Path))
+	if rel, err := filepath.Rel(root, meeting.Path); err == nil {
+		add(rel)
+	}
+	if rel, err := filepath.Rel(filepath.Dir(root), meeting.Path); err == nil {
+		add(rel)
+	}
+	return keys
+}
+
+func matchQMDMeeting(index map[string]meetings.Meeting, file string) (meetings.Meeting, bool) {
+	for _, key := range qmdResultKeys(file) {
+		if meeting, ok := index[key]; ok {
+			return meeting, true
+		}
+	}
+	return meetings.Meeting{}, false
+}
+
+func qmdResultKeys(file string) []string {
+	file = strings.TrimSpace(file)
+	var keys []string
+	add := func(value string) {
+		value = strings.ToLower(filepath.ToSlash(value))
+		if value != "" {
+			keys = append(keys, value)
+		}
+	}
+	add(file)
+	withoutScheme := strings.TrimPrefix(file, "qmd://")
+	add(withoutScheme)
+	if i := strings.Index(withoutScheme, "/"); i >= 0 {
+		rel := withoutScheme[i+1:]
+		add(rel)
+		parts := strings.Split(filepath.ToSlash(rel), "/")
+		for i, part := range parts {
+			if part != "meetings" {
+				continue
+			}
+			add(strings.Join(parts[i:], "/"))
+			if i > 0 {
+				add(strings.Join(parts[i-1:], "/"))
+			}
+		}
+	}
+	return keys
+}
+
+func cleanQMDSnippet(snippet string) string {
+	for _, line := range strings.Split(snippet, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "@@") {
+			continue
+		}
+		return line
+	}
+	return ""
+}
+
+func mergeMeetingResults(primary, fallback []meetings.Meeting) []meetings.Meeting {
+	out := append([]meetings.Meeting(nil), primary...)
+	seen := map[string]bool{}
+	for _, meeting := range primary {
+		seen[meeting.Path] = true
+	}
+	for _, meeting := range fallback {
+		if !seen[meeting.Path] {
+			out = append(out, meeting)
+			seen[meeting.Path] = true
+		}
+	}
+	return out
+}
+
+func (a app) resolveMeetingFilter(home, manifestName, umbrellaRoot string, filter meetings.Filter) meetings.Filter {
+	if filter.Customer == "" {
+		return filter
+	}
+	customer, ok, err := a.findCustomer(home, manifestName, umbrellaRoot, filter.Customer)
+	if err != nil || !ok {
+		return filter
+	}
+	filter.CustomerValues = uniqueStrings(append(append([]string{filter.Customer, customer.ID, customer.Domain}, customer.Aliases...), customer.Name))
+	return filter
+}
+
+func (a app) resolveCustomerForWrite(home, manifestName, umbrellaRoot, value string) string {
+	if strings.TrimSpace(value) == "" {
+		return value
+	}
+	customer, ok, err := a.findCustomer(home, manifestName, umbrellaRoot, value)
+	if err == nil && ok {
+		return customer.ID
+	}
+	customers, loadErr := a.loadCustomers(home, manifestName, umbrellaRoot)
+	if loadErr == nil && len(customers) != 0 {
+		fmt.Fprintf(a.stderr, "warning: unknown customer %q; keeping literal value\n", value)
+	}
+	return value
+}
+
+func (a app) findCustomer(home, manifestName, umbrellaRoot, value string) (manifest.Customer, bool, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return manifest.Customer{}, false, nil
+	}
+	customers, err := a.loadCustomers(home, manifestName, umbrellaRoot)
+	if err != nil {
+		return manifest.Customer{}, false, err
+	}
+	for _, customer := range customers {
+		if strings.ToLower(customer.ID) == value || strings.ToLower(customer.Domain) == value || strings.ToLower(customer.Name) == value {
+			return customer, true, nil
+		}
+		for _, alias := range customer.Aliases {
+			if strings.ToLower(alias) == value {
+				return customer, true, nil
+			}
+		}
+	}
+	return manifest.Customer{}, false, nil
+}
+
+func (a app) loadCustomers(home, manifestName, umbrellaRoot string) ([]manifest.Customer, error) {
+	catalogCustomers, err := manifest.LoadCustomers(home, manifestName)
+	if err != nil {
+		return nil, err
+	}
+	root, ok, err := customerUmbrellaRoot(home, manifestName, umbrellaRoot)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return catalogCustomers, nil
+	}
+	registryCustomers, err := handbookRegistryCustomers(root)
+	if err != nil {
+		return nil, err
+	}
+	return mergeCustomers(catalogCustomers, registryCustomers), nil
+}
+
+func customerUmbrellaRoot(home, manifestName, umbrellaRoot string) (string, bool, error) {
+	if umbrellaRoot != "" {
+		root, err := resolveUmbrellaRoot(home, umbrellaRoot)
+		return root, err == nil, err
+	}
+	if root, ok := umbrella.FindRoot("."); ok {
+		return root, true, nil
+	}
+	roots, ok, err := configuredUmbrellaRoots(home, manifestName)
+	if err != nil || !ok || len(roots) == 0 {
+		return "", false, err
+	}
+	if len(roots) > 1 {
+		return "", false, nil
+	}
+	return roots[0], true, nil
+}
+
+func configuredUmbrellaRoots(home, manifestName string) ([]string, bool, error) {
+	docs, err := loadRegisteredDocs(home, manifestName)
+	if err != nil || len(docs) == 0 {
+		return nil, false, nil
+	}
+	var roots []string
+	for _, doc := range docs {
+		root, err := umbrella.ResolveRoot(home, "", "", doc.doc)
+		if err != nil {
+			return nil, true, err
+		}
+		if _, err := umbrella.LoadWorkspace(root); err == nil {
+			roots = append(roots, root)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, true, err
+		}
+	}
+	return roots, true, nil
+}
+
+func handbookRegistryCustomers(root string) ([]manifest.Customer, error) {
+	state, err := umbrella.LoadState(root)
+	if err != nil {
+		return nil, nil
+	}
+	var out []manifest.Customer
+	for _, mount := range state.Mounts {
+		if mount.Status != "synced" || mount.Kind != "handbook" {
+			continue
+		}
+		path := filepath.Join(umbrella.MountPath(root, mount.ID), "customers", "registry.md")
+		customers, err := parseCustomerRegistry(path)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, customers...)
+	}
+	return out, nil
+}
+
+func parseCustomerRegistry(path string) ([]manifest.Customer, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []manifest.Customer
+	confirmed := false
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		lower := strings.ToLower(trimmed)
+		if strings.HasPrefix(lower, "## registry") && strings.Contains(lower, "confirmed") {
+			confirmed = !strings.Contains(lower, "unconfirmed")
+			continue
+		}
+		if !strings.HasPrefix(trimmed, "|") || strings.Contains(trimmed, "---") {
+			continue
+		}
+		cells := markdownTableCells(trimmed)
+		if len(cells) < 4 || strings.Contains(strings.ToLower(cells[0]), "canonical id") || strings.Contains(strings.ToLower(cells[0]), "placeholder id") {
+			continue
+		}
+		id := cleanMarkdownCell(cells[0])
+		if id == "" {
+			continue
+		}
+		customer := manifest.Customer{
+			ID:              id,
+			Name:            cleanMarkdownCell(cells[1]),
+			Partners:        splitCustomerPartners(cleanMarkdownCell(cells[2])),
+			DomainConfirmed: confirmed,
+			Aliases:         registryAliases(id, cells[3]),
+		}
+		if confirmed && strings.Contains(id, ".") {
+			customer.Domain = id
+		}
+		out = append(out, customer)
+	}
+	return out, nil
+}
+
+func markdownTableCells(line string) []string {
+	line = strings.Trim(line, "|")
+	parts := strings.Split(line, "|")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+func cleanMarkdownCell(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.ReplaceAll(value, "`", "")
+	value = strings.ReplaceAll(value, "**", "")
+	if value == "\u2014" {
+		return ""
+	}
+	return value
+}
+
+func splitCustomerPartners(value string) []string {
+	if value == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" && part != "\u2014" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func registryAliases(id, notes string) []string {
+	var out []string
+	for _, part := range strings.Split(notes, "`") {
+		part = strings.TrimSpace(part)
+		if part == "" || part == id {
+			continue
+		}
+		if strings.ContainsAny(part, " /,()") {
+			continue
+		}
+		out = append(out, part)
+	}
+	return uniqueStrings(out)
+}
+
+func mergeCustomers(primary, secondary []manifest.Customer) []manifest.Customer {
+	out := append([]manifest.Customer(nil), primary...)
+	seen := map[string]int{}
+	for i, customer := range out {
+		seen[customer.ID] = i
+	}
+	for _, customer := range secondary {
+		if i, ok := seen[customer.ID]; ok {
+			out[i].Aliases = uniqueStrings(append(out[i].Aliases, customer.Aliases...))
+			out[i].Partners = uniqueStrings(append(out[i].Partners, customer.Partners...))
+			if out[i].Name == "" {
+				out[i].Name = customer.Name
+			}
+			if out[i].Domain == "" {
+				out[i].Domain = customer.Domain
+			}
+			out[i].DomainConfirmed = out[i].DomainConfirmed || customer.DomainConfirmed
+			continue
+		}
+		seen[customer.ID] = len(out)
+		out = append(out, customer)
+	}
+	return out
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
 }
 
 type registeredDoc struct {
@@ -679,6 +1188,69 @@ func (a app) runToolsInfo(args []string) error {
 		if info.Tool.Install.DocsURL != "" {
 			fmt.Fprintf(a.stdout, "docs\t%s\n", info.Tool.Install.DocsURL)
 		}
+	}
+	return nil
+}
+
+func (a app) runCustomers(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing customers subcommand")
+	}
+	switch args[0] {
+	case "list":
+		return a.runCustomersList(args[1:])
+	case "-h", "--help", "help":
+		a.printCustomersUsage()
+		return nil
+	default:
+		return fmt.Errorf("unknown customers subcommand %q", args[0])
+	}
+}
+
+func (a app) printCustomersUsage() {
+	fmt.Fprintln(a.stdout, `Usage:
+  flux customers list [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+
+Customer data comes from catalog/customers.json and mounted handbook customers/registry.md files.`)
+}
+
+func (a app) runCustomersList(args []string) error {
+	var home string
+	var manifestName string
+	var umbrellaRoot string
+	var jsonOut bool
+	fs := newFlagSet("flux customers list", a.stderr)
+	fs.StringVar(&home, "home", "", "override home directory")
+	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
+	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home":     true,
+		"manifest": true,
+		"umbrella": true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("customers list does not accept positional arguments")
+	}
+	customers, err := a.loadCustomers(home, manifestName, umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(jsonOut, err)
+	}
+	if jsonOut {
+		return printJSON(a.stdout, customers)
+	}
+	for _, customer := range customers {
+		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%t\t%s\t%s\n",
+			customer.ID,
+			customer.Name,
+			customer.Domain,
+			customer.DomainConfirmed,
+			strings.Join(customer.Aliases, ","),
+			strings.Join(customer.Partners, ","),
+		)
 	}
 	return nil
 }
@@ -1876,7 +2448,10 @@ Harnesses:
 
 With no harnesses, install targets all supported harnesses and silently skips
 missing ones. If synced manifests are registered, skills commands use them by
-default; --source forces a local skills directory.`)
+default; --source forces a local skills directory.
+
+Skills install only changes harness skill directories. Run flux onboard to
+regenerate workspace guidance such as AGENTS.md.`)
 }
 
 func (a app) runOnboard(args []string) error {
@@ -2019,6 +2594,17 @@ func (a app) runSkillsInstallNamed(commandName string, args []string) error {
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	fs.StringVar(&opts.manifestName, "manifest", "", "use skills declared by a synced manifest")
+	fs.Usage = func() {
+		fmt.Fprintf(a.stderr, `Usage of %s:
+  %s [harness...] | --all [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+
+Skills install only changes harness skill directories. Run flux onboard to
+regenerate workspace guidance such as AGENTS.md.
+
+Options:
+`, commandName, commandName)
+		fs.PrintDefaults()
+	}
 	rest, err := parseInterspersed(fs, args, map[string]bool{
 		"source":   true,
 		"home":     true,
@@ -2563,6 +3149,14 @@ func (e structuredCommandError) Error() string {
 	return e.message
 }
 
+func noUmbrellaError(message, remediation string) error {
+	return structuredCommandError{
+		code:        "no_umbrella",
+		message:     message,
+		remediation: remediation,
+	}
+}
+
 func (a app) maybeJSONError(jsonOut bool, err error) error {
 	if !jsonOut {
 		return err
@@ -2576,8 +3170,7 @@ func (a app) maybeJSONError(jsonOut bool, err error) error {
 		payload.Error = structured.code
 		payload.Message = structured.message
 		payload.Remediation = structured.remediation
-	}
-	if strings.Contains(err.Error(), "no flux umbrella found") {
+	} else if strings.Contains(err.Error(), "no flux umbrella found") {
 		payload.Error = "no_umbrella"
 		payload.Remediation = "run flux onboard or pass --umbrella <path>"
 	}
