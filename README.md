@@ -17,10 +17,12 @@ go install github.com/fluxinc/flux/cmd/flux@latest
 flux manifest add acme https://github.com/example/acme-workspace.git
 flux manifest sync acme
 flux onboard --manifest acme
+cd "$(flux root --manifest acme)" && claude
 ```
 
-That's the whole setup. Open any AI harness and it already has the org's skills
-installed and the org's knowledge synced locally.
+That's the whole setup. Launch AI harnesses from the umbrella root so they see
+the generated workspace context; `flux launch --manifest acme codex` performs
+the same root resolution and verifies the generated guidance before starting.
 
 ## The Model
 
@@ -48,6 +50,18 @@ flux onboard [harness...] | --all   # create umbrella, write guidance, install s
 ```
 
 `onboard` is the normal path: idempotent, non-interactive, safe to re-run.
+
+### Startup
+
+```sh
+flux root [--product ID]                     # print the umbrella or product path
+flux launch [--product ID] [harness]         # verify guidance, then start a harness
+flux launch codex --model gpt-5              # pass harness flags after the harness name
+flux launch --print codex                    # print cd <umbrella> && codex
+```
+
+`launch` refuses to start against missing or stale generated guidance. Pass
+`--onboard` to reconcile first, or run `flux onboard` directly.
 
 ### Manifests
 
@@ -106,12 +120,12 @@ is present and falls back to built-in token-AND markdown search.
 
 ```sh
 flux tools info <name>                      # install hints for a declared tool
-flux doctor                                 # manifest validity, mount state, tool presence
+flux doctor                                 # guidance freshness, manifest validity, mounts, tools
 ```
 
-Every command accepts `--json`. Errors are structured: a machine-readable
-`{error, message, remediation}` with a concrete next command, so an agent that
-hits a wall can recover without a human.
+Data-returning commands expose `--json` where shown. Structured errors use a
+machine-readable `{error, message, remediation}` with a concrete next command,
+so an agent that hits a wall can recover without a human.
 
 ## Supported Harnesses
 
@@ -150,6 +164,9 @@ design rationale.
   agents-primary philosophy, and the public/private boundary.
 - [docs/PLAN.md](docs/PLAN.md) — public-safe implementation plan and repo
   boundaries for continuing work while this repo remains published.
+- [docs/plans/2026-05-28-startup-context-ergonomics.md](docs/plans/2026-05-28-startup-context-ergonomics.md)
+  — converged design for `flux root`, `flux launch`, `flux doctor` guidance
+  freshness, and the post-launch orientation section in generated `AGENTS.md`.
 - [examples/acme-workspace](examples/acme-workspace) — neutral manifest,
   catalog, skill, and handbook fixture for local development.
 

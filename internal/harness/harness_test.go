@@ -48,3 +48,17 @@ func TestParseAliases(t *testing.T) {
 		t.Fatal("Parse unknown returned nil error")
 	}
 }
+
+func TestCommandName(t *testing.T) {
+	tests := map[Harness]string{
+		ClaudeCode: "claude",
+		Codex:      "codex",
+		OpenCode:   "opencode",
+		Gemini:     "gemini",
+	}
+	for h, want := range tests {
+		if got := h.CommandName(); got != want {
+			t.Fatalf("%s.CommandName() = %q, want %q", h, got, want)
+		}
+	}
+}

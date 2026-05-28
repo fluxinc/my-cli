@@ -36,6 +36,14 @@ type Result struct {
 	Message    string `json:"message,omitempty"`
 }
 
+// CheckResult describes whether generated workspace guidance is current.
+type CheckResult struct {
+	AgentsPath string `json:"agents_path"`
+	ClaudePath string `json:"claude_path"`
+	Status     string `json:"status"`
+	Message    string `json:"message,omitempty"`
+}
+
 // Ensure writes AGENTS.md and makes CLAUDE.md an alias for it.
 func Ensure(root, manifestRoot string, doc manifest.Document, opts Options) (Result, error) {
 	agentsPath := filepath.Join(root, agentsFile)
@@ -75,6 +83,51 @@ func Ensure(root, manifestRoot string, doc manifest.Document, opts Options) (Res
 		res.Status = "installed"
 	}
 	res.Message = "workspace guidance ready"
+	return res, nil
+}
+
+// Check reports whether AGENTS.md and its CLAUDE.md alias match the generated
+// guidance for the supplied manifest. It never writes files.
+func Check(root, manifestRoot string, doc manifest.Document) (CheckResult, error) {
+	agentsPath := filepath.Join(root, agentsFile)
+	claudePath := filepath.Join(root, claudeFile)
+	res := CheckResult{
+		AgentsPath: agentsPath,
+		ClaudePath: claudePath,
+	}
+
+	expected, err := Compose(manifestRoot, doc)
+	if err != nil {
+		return res, err
+	}
+
+	agents, err := os.ReadFile(agentsPath)
+	if os.IsNotExist(err) {
+		res.Status = "missing"
+		res.Message = "run flux onboard"
+		return res, nil
+	}
+	if err != nil {
+		return res, err
+	}
+	if !isManaged(agents) {
+		res.Status = "unmanaged"
+		res.Message = "run flux onboard --force"
+		return res, nil
+	}
+	if !bytes.Equal(agents, expected) {
+		res.Status = "stale"
+		res.Message = "run flux onboard"
+		return res, nil
+	}
+
+	if !claudeAliasOK(claudePath, expected) {
+		res.Status = "alias-broken"
+		res.Message = "run flux onboard"
+		return res, nil
+	}
+
+	res.Status = "ok"
 	return res, nil
 }
 
@@ -159,6 +212,19 @@ func ensureClaudeAlias(path string, force bool, content []byte) error {
 	// Some platforms/users cannot create symlinks. A managed copy is a portable
 	// fallback, while Unix-like systems still get the preferred symlink path.
 	return writeFileIfChanged(path, content, 0o644)
+}
+
+func claudeAliasOK(path string, expected []byte) bool {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return false
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(path)
+		return err == nil && target == agentsFile
+	}
+	data, err := os.ReadFile(path)
+	return err == nil && isManaged(data) && bytes.Equal(data, expected)
 }
 
 func writeFileIfChanged(path string, data []byte, perm fs.FileMode) error {

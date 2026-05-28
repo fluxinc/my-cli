@@ -636,6 +636,160 @@ func TestOnboardJSONAndDoctorUmbrella(t *testing.T) {
 	if !strings.Contains(stdout.String(), "umbrella\tacme\tok") {
 		t.Fatalf("doctor stdout = %q", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "umbrella\tguidance\tok") {
+		t.Fatalf("doctor stdout = %q, want guidance ok", stdout.String())
+	}
+}
+
+func TestRootCommandPrintsUmbrellaAndProductPaths(t *testing.T) {
+	home, _ := setupCLILaunchFixture(t)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"flux", "root", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	umbrellaRoot := filepath.Join(home, "acme")
+	if strings.TrimSpace(stdout.String()) != umbrellaRoot {
+		t.Fatalf("root stdout = %q, want %q", stdout.String(), umbrellaRoot)
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"flux", "root", "--manifest", "acme", "--home", home, "--product", "sample-product"}); err != nil {
+		t.Fatal(err)
+	}
+	wantProduct := filepath.Join(umbrellaRoot, "products", "sample-product")
+	if strings.TrimSpace(stdout.String()) != wantProduct {
+		t.Fatalf("root --product stdout = %q, want %q", stdout.String(), wantProduct)
+	}
+}
+
+func TestDoctorReportsGuidanceDrift(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"flux", "onboard", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(umbrellaRoot, "AGENTS.md"), "<!-- flux:generated workspace-guidance v1 -->\n\nstale\n")
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"flux", "doctor", "--umbrella", umbrellaRoot, "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "umbrella\tguidance\tstale") ||
+		!strings.Contains(stdout.String(), "run flux onboard") {
+		t.Fatalf("doctor stdout = %q", stdout.String())
+	}
+}
+
+func TestLaunchPrintsResolvedCommandWithoutCheckingGuidance(t *testing.T) {
+	home, _ := setupCLILaunchFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{
+		"flux", "launch",
+		"--manifest", "acme",
+		"--home", home,
+		"--product", "sample-product",
+		"--print",
+		"codex", "--model", "gpt-5",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "cd " + filepath.Join(home, "acme", "products", "sample-product") + " && codex --model gpt-5\n"
+	if stdout.String() != want {
+		t.Fatalf("launch --print stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestLaunchRefusesMissingGuidance(t *testing.T) {
+	home, _ := setupCLILaunchFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(string) (string, error) {
+			t.Fatal("lookPath called before guidance gate")
+			return "", nil
+		},
+	}
+	err := a.run([]string{"flux", "launch", "--manifest", "acme", "--home", home, "codex"})
+	if !errors.Is(err, errAlreadyPrinted) {
+		t.Fatalf("err = %v, want errAlreadyPrinted", err)
+	}
+	if !strings.Contains(stderr.String(), "workspace guidance missing") ||
+		!strings.Contains(stderr.String(), "run flux onboard") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestLaunchOnboardThenExecsWithArgs(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchFixture(t)
+	var stdout, stderr bytes.Buffer
+	var gotPath, gotDir string
+	var gotArgs []string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			return "/test/bin/codex", nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotPath = path
+			gotArgs = append([]string(nil), args...)
+			gotDir = dir
+			return nil
+		},
+	}
+	err := a.run([]string{"flux", "launch", "--manifest", "acme", "--home", home, "--onboard", "codex", "--model", "gpt-5", "--full-auto"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/test/bin/codex" || gotDir != umbrellaRoot || strings.Join(gotArgs, " ") != "--model gpt-5 --full-auto" {
+		t.Fatalf("exec path=%q dir=%q args=%#v", gotPath, gotDir, gotArgs)
+	}
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, "AGENTS.md")); err != nil {
+		t.Fatalf("launch --onboard did not write guidance: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "launch\tcodex\tcd "+umbrellaRoot+" && codex") {
+		t.Fatalf("onboard stdout missing launch hint: %q", stdout.String())
+	}
+}
+
+func TestLaunchMissingHarnessPrintsFallbackAndFails(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"flux", "onboard", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	a = app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			return "", exec.ErrNotFound
+		},
+	}
+	err := a.run([]string{"flux", "launch", "--manifest", "acme", "--home", home, "codex", "--model", "gpt-5"})
+	if !errors.Is(err, errAlreadyPrinted) {
+		t.Fatalf("err = %v, want errAlreadyPrinted", err)
+	}
+	wantLine := "cd " + umbrellaRoot + " && codex --model gpt-5"
+	if !strings.Contains(stderr.String(), "codex not found on PATH") || !strings.Contains(stderr.String(), wantLine) {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
 }
 
 func TestToolsInfoAndDoctorCommands(t *testing.T) {
@@ -1033,6 +1187,27 @@ func writeCLITestFile(t *testing.T, path, body string) {
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func setupCLILaunchFixture(t *testing.T) (string, string) {
+	t.Helper()
+	home := t.TempDir()
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"flux", "manifest", "add", "acme",
+		"https://github.com/acme/acme-ai-manifest.git",
+		"--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return home, filepath.Join(home, "acme")
 }
 
 func initCLIGitRepo(t *testing.T, dir string) {

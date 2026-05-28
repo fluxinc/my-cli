@@ -36,6 +36,10 @@ func Run(args []string) int {
 		if errors.Is(err, errAlreadyPrinted) {
 			return 1
 		}
+		var exitErr exitCodeError
+		if errors.As(err, &exitErr) {
+			return exitErr.code
+		}
 		fmt.Fprintf(a.stderr, "flux: %v\n", err)
 		return 1
 	}
@@ -43,11 +47,21 @@ func Run(args []string) int {
 }
 
 type app struct {
-	stdout io.Writer
-	stderr io.Writer
+	stdout      io.Writer
+	stderr      io.Writer
+	lookPath    func(string) (string, error)
+	execHarness func(path string, args []string, dir string) error
 }
 
 var errAlreadyPrinted = errors.New("error already printed")
+
+type exitCodeError struct {
+	code int
+}
+
+func (e exitCodeError) Error() string {
+	return fmt.Sprintf("process exited with code %d", e.code)
+}
 
 func (a app) run(args []string) error {
 	if len(args) < 2 {
@@ -65,6 +79,10 @@ func (a app) run(args []string) error {
 		return a.runSkills(args[2:])
 	case "onboard":
 		return a.runOnboard(args[2:])
+	case "root":
+		return a.runRoot(args[2:])
+	case "launch":
+		return a.runLaunch(args[2:])
 	case "manifest":
 		return a.runManifest(args[2:])
 	case "workspace":
@@ -91,6 +109,8 @@ func (a app) printUsage() {
 
 Usage:
   flux onboard [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR]
+  flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR]
+  flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [harness] [-- harness args...]
   flux skills install [harness...] | --all [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
   flux skills uninstall <harness...> | --all [--print] [--force] [--source DIR] [--manifest NAME]
   flux skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
@@ -112,6 +132,305 @@ Usage:
   flux catalog list products
   flux doctor
   flux version`)
+}
+
+func (a app) runRoot(args []string) error {
+	var home string
+	var manifestName string
+	var umbrellaRoot string
+	var productID string
+	fs := newFlagSet("flux root", a.stderr)
+	fs.StringVar(&home, "home", "", "override home directory")
+	fs.StringVar(&manifestName, "manifest", "", "use a registered manifest when no umbrella is found")
+	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
+	fs.StringVar(&productID, "product", "", "print this product's path under the umbrella")
+	fs.Usage = func() {
+		a.printRootUsage()
+		fs.PrintDefaults()
+	}
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home":     true,
+		"manifest": true,
+		"umbrella": true,
+		"product":  true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("root does not accept positional arguments")
+	}
+	root, err := resolveFluxRoot(home, manifestName, umbrellaRoot)
+	if err != nil {
+		return err
+	}
+	target := root
+	if productID != "" {
+		target = umbrella.ProductPath(root, productID)
+	}
+	fmt.Fprintln(a.stdout, target)
+	return nil
+}
+
+func (a app) printRootUsage() {
+	fmt.Fprintln(a.stderr, `Usage of flux root:
+  flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR]
+
+Examples:
+  cd "$(flux root)" && claude
+  cd "$(flux root --product sample-product)" && codex
+
+Options:`)
+}
+
+type launchCommandOpts struct {
+	home         string
+	manifestName string
+	umbrellaRoot string
+	productID    string
+	onboard      bool
+	printOnly    bool
+}
+
+func (a app) runLaunch(args []string) error {
+	opts, harnessName, harnessArgs, help, err := parseLaunchArgs(args)
+	if help {
+		a.printLaunchUsage()
+		return flag.ErrHelp
+	}
+	if err != nil {
+		return err
+	}
+	h, err := harness.Parse(harnessName)
+	if err != nil {
+		return err
+	}
+	commandName := h.CommandName()
+	root, err := resolveFluxRoot(opts.home, opts.manifestName, opts.umbrellaRoot)
+	if err != nil {
+		return err
+	}
+	targetDir := root
+	if opts.productID != "" {
+		targetDir = umbrella.ProductPath(root, opts.productID)
+	}
+	line := shellCommandLine(targetDir, commandName, harnessArgs)
+	if opts.printOnly {
+		fmt.Fprintln(a.stdout, line)
+		return nil
+	}
+
+	doc, err := launchGuidanceDoc(opts.home, opts.manifestName, root)
+	if err != nil {
+		return err
+	}
+	check, err := guidance.Check(root, doc.ref.LocalPath, doc.doc)
+	if err != nil {
+		return err
+	}
+	if check.Status != "ok" {
+		if !opts.onboard {
+			a.printLaunchGuidanceBlock(check)
+			return errAlreadyPrinted
+		}
+		if err := a.runOnboard(onboardArgsForLaunch(opts.home, doc.ref.Name, root)); err != nil {
+			return err
+		}
+		doc, err = loadSingleRegisteredDoc(opts.home, doc.ref.Name)
+		if err != nil {
+			return err
+		}
+		check, err = guidance.Check(root, doc.ref.LocalPath, doc.doc)
+		if err != nil {
+			return err
+		}
+		if check.Status != "ok" {
+			a.printLaunchGuidanceBlock(check)
+			return errAlreadyPrinted
+		}
+	}
+
+	binary, err := a.lookupPath(commandName)
+	if err != nil {
+		fmt.Fprintf(a.stderr, "%s not found on PATH; run:\n%s\n", commandName, line)
+		return errAlreadyPrinted
+	}
+	return a.runHarness(binary, harnessArgs, targetDir)
+}
+
+func (a app) printLaunchUsage() {
+	fmt.Fprintln(a.stderr, `Usage of flux launch:
+  flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [harness] [-- harness args...]
+
+Harness defaults to claude-code. Harness flags go after the harness name.
+
+Examples:
+  flux launch claude-code
+  flux launch codex --model gpt-5
+  flux launch --product sample-product codex
+  flux launch --print codex
+
+Options:
+  --home DIR        override home directory
+  --manifest NAME   use a registered manifest when no umbrella is found
+  --umbrella DIR    override umbrella root
+  --product ID      run from products/<id> under the umbrella
+  --onboard         reconcile the umbrella first if guidance is stale or missing
+  --print           print the resolved launch command without checking or execing`)
+}
+
+func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, error) {
+	var opts launchCommandOpts
+	harnessName := "claude-code"
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-h" || arg == "--help" || arg == "help":
+			return opts, "", nil, true, nil
+		case arg == "--":
+			if i+1 >= len(args) {
+				return opts, "", nil, false, fmt.Errorf("usage: flux launch [harness]")
+			}
+			return opts, args[i+1], args[i+2:], false, nil
+		case arg == "--onboard":
+			opts.onboard = true
+		case arg == "--print":
+			opts.printOnly = true
+		case arg == "--home" || arg == "--manifest" || arg == "--umbrella" || arg == "--product":
+			i++
+			if i >= len(args) {
+				return opts, "", nil, false, fmt.Errorf("missing value for %s", arg)
+			}
+			setLaunchValue(&opts, arg[2:], args[i])
+		case strings.HasPrefix(arg, "--home="):
+			opts.home = strings.TrimPrefix(arg, "--home=")
+		case strings.HasPrefix(arg, "--manifest="):
+			opts.manifestName = strings.TrimPrefix(arg, "--manifest=")
+		case strings.HasPrefix(arg, "--umbrella="):
+			opts.umbrellaRoot = strings.TrimPrefix(arg, "--umbrella=")
+		case strings.HasPrefix(arg, "--product="):
+			opts.productID = strings.TrimPrefix(arg, "--product=")
+		case isFlagArg(arg):
+			return opts, "", nil, false, fmt.Errorf("unknown flux launch flag %q; put harness flags after the harness name", arg)
+		default:
+			return opts, arg, args[i+1:], false, nil
+		}
+	}
+	return opts, harnessName, nil, false, nil
+}
+
+func setLaunchValue(opts *launchCommandOpts, name, value string) {
+	switch name {
+	case "home":
+		opts.home = value
+	case "manifest":
+		opts.manifestName = value
+	case "umbrella":
+		opts.umbrellaRoot = value
+	case "product":
+		opts.productID = value
+	}
+}
+
+func resolveFluxRoot(home, manifestName, explicit string) (string, error) {
+	if manifestName != "" {
+		doc, err := loadSingleRegisteredDoc(home, manifestName)
+		if err != nil {
+			return "", err
+		}
+		return umbrella.ResolveRoot(home, ".", explicit, doc.doc)
+	}
+	if explicit != "" {
+		return resolveUmbrellaRoot(home, explicit)
+	}
+	if root, ok := umbrella.FindRoot("."); ok {
+		return root, nil
+	}
+	doc, err := loadSingleRegisteredDoc(home, "")
+	if err != nil {
+		return "", err
+	}
+	return umbrella.ResolveRoot(home, ".", "", doc.doc)
+}
+
+func launchGuidanceDoc(home, manifestName, root string) (registeredDoc, error) {
+	ws, err := umbrella.LoadWorkspace(root)
+	if err == nil {
+		if manifestName != "" && ws.ManifestRef != manifestName {
+			return registeredDoc{}, fmt.Errorf("umbrella uses manifest %q, not %q", ws.ManifestRef, manifestName)
+		}
+		return loadSingleRegisteredDoc(home, ws.ManifestRef)
+	}
+	if !os.IsNotExist(err) {
+		return registeredDoc{}, err
+	}
+	return loadSingleRegisteredDoc(home, manifestName)
+}
+
+func onboardArgsForLaunch(home, manifestName, root string) []string {
+	args := []string{"--manifest", manifestName, "--umbrella", root}
+	if home != "" {
+		args = append(args, "--home", home)
+	}
+	return args
+}
+
+func (a app) printLaunchGuidanceBlock(result guidance.CheckResult) {
+	fmt.Fprintf(a.stderr, "workspace guidance %s at %s\n", result.Status, result.AgentsPath)
+	if result.Status == "alias-broken" {
+		fmt.Fprintf(a.stderr, "CLAUDE.md alias is not current at %s\n", result.ClaudePath)
+	}
+	if result.Message != "" {
+		fmt.Fprintln(a.stderr, result.Message)
+	}
+}
+
+func shellCommandLine(dir, command string, args []string) string {
+	parts := []string{"cd", shellQuote(dir), "&&", shellQuote(command)}
+	for _, arg := range args {
+		parts = append(parts, shellQuote(arg))
+	}
+	return strings.Join(parts, " ")
+}
+
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			strings.ContainsRune("_+-./:=@", r) {
+			continue
+		}
+		return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+	}
+	return value
+}
+
+func (a app) lookupPath(name string) (string, error) {
+	if a.lookPath != nil {
+		return a.lookPath(name)
+	}
+	return exec.LookPath(name)
+}
+
+func (a app) runHarness(path string, args []string, dir string) error {
+	if a.execHarness != nil {
+		return a.execHarness(path, args, dir)
+	}
+	cmd := exec.Command(path, args...)
+	cmd.Dir = dir
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return exitCodeError{code: exitErr.ExitCode()}
+		}
+		return err
+	}
+	return nil
 }
 
 func (a app) runVersion(args []string) error {
@@ -986,10 +1305,10 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string) doctorRe
 		if err != nil {
 			report.Umbrella = append(report.Umbrella, doctorItem{Name: umbrellaRoot, Status: "error", Message: err.Error()})
 		} else {
-			report.Umbrella = append(report.Umbrella, doctorUmbrella(root)...)
+			report.Umbrella = append(report.Umbrella, doctorUmbrella(home, root)...)
 		}
 	} else if root, ok := umbrella.FindRoot("."); ok {
-		report.Umbrella = append(report.Umbrella, doctorUmbrella(root)...)
+		report.Umbrella = append(report.Umbrella, doctorUmbrella(home, root)...)
 	}
 	refs, err := manifestRefs(home, manifestName)
 	if err != nil {
@@ -1097,7 +1416,7 @@ func (a app) printDoctorReport(report doctorReport) {
 	printItems("tool", report.Tools)
 }
 
-func doctorUmbrella(root string) []doctorItem {
+func doctorUmbrella(home, root string) []doctorItem {
 	ws, err := umbrella.LoadWorkspace(root)
 	if err != nil {
 		return []doctorItem{{Name: root, Status: "error", Path: root, Message: err.Error()}}
@@ -1108,6 +1427,7 @@ func doctorUmbrella(root string) []doctorItem {
 		Path:    root,
 		Message: "manifest " + ws.ManifestRef,
 	}}
+	items = append(items, doctorGuidance(home, root, ws.ManifestRef))
 	state, err := umbrella.LoadState(root)
 	if err != nil {
 		items = append(items, doctorItem{Name: "state", Status: "error", Path: filepath.Join(root, umbrella.DirName, umbrella.StateFile), Message: err.Error()})
@@ -1126,6 +1446,30 @@ func doctorUmbrella(root string) []doctorItem {
 		items = append(items, item)
 	}
 	return items
+}
+
+func doctorGuidance(home, root, manifestName string) doctorItem {
+	item := doctorItem{Name: "guidance"}
+	doc, err := loadSingleRegisteredDoc(home, manifestName)
+	if err != nil {
+		item.Status = "error"
+		item.Message = err.Error()
+		return item
+	}
+	result, err := guidance.Check(root, doc.ref.LocalPath, doc.doc)
+	if err != nil {
+		item.Status = "error"
+		item.Path = result.AgentsPath
+		item.Message = err.Error()
+		return item
+	}
+	item.Status = result.Status
+	item.Path = result.AgentsPath
+	item.Message = result.Message
+	if result.ClaudePath != "" {
+		item.Details = append(item.Details, "claude_path="+result.ClaudePath)
+	}
+	return item
 }
 
 func (a app) runTools(args []string) error {
@@ -2567,6 +2911,7 @@ func (a app) runOnboard(args []string) error {
 	if guidanceResult.Status == "blocked" {
 		return fmt.Errorf("one or more operations failed")
 	}
+	a.printLaunchHints(root)
 	return nil
 }
 
@@ -2576,6 +2921,11 @@ func (a app) printGuidanceResult(result guidance.Result) {
 		line += "\t" + result.Message
 	}
 	fmt.Fprintln(a.stdout, line)
+}
+
+func (a app) printLaunchHints(root string) {
+	fmt.Fprintf(a.stdout, "launch\tclaude-code\t%s\n", shellCommandLine(root, "claude", nil))
+	fmt.Fprintf(a.stdout, "launch\tcodex\t%s\n", shellCommandLine(root, "codex", nil))
 }
 
 func (a app) runSkillsInstall(args []string) error {

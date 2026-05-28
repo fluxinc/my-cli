@@ -22,6 +22,21 @@ func All() []Harness {
 	return []Harness{ClaudeCode, Codex, OpenCode, Gemini}
 }
 
+// CommandName returns the executable normally used to start the harness.
+func (h Harness) CommandName() string {
+	switch h {
+	case ClaudeCode:
+		return "claude"
+	case Codex:
+		return "codex"
+	case OpenCode:
+		return "opencode"
+	case Gemini:
+		return "gemini"
+	}
+	return string(h)
+}
+
 // Parse accepts canonical names and a few common aliases.
 func Parse(s string) (Harness, error) {
 	switch s {
