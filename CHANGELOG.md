@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.0 - 2026-06-03
+
+### Added
+
+- Added `flux skills show` and `flux skills status` for operational skill
+  inspection.
+- Added `--skill` filtering for install, uninstall, sync, purge, and status.
+- Added `flux skills sync` and `flux skills purge` for local harness
+  reconciliation with Flux-managed provenance.
+- Added `flux admin skills add` and `flux admin skills remove` for explicit
+  manifest skill authoring.
+- Added admin aliases for mutating/configuration commands while keeping
+  operational reads top-level.
+- Added GoReleaser packaging, a checksum-verified `install.sh`, and a
+  VitePress GitHub Pages documentation site.
+
+### Changed
+
+- Clarified the split between operational skill materialization and admin
+  source-of-truth changes.
+- Kept top-level mutating forms as quiet compatibility aliases.
+
 ## 0.1.0 - 2026-05-21
 
 ### Added

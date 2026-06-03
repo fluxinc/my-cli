@@ -1,0 +1,35 @@
+version: 2
+
+before:
+  hooks:
+    - go mod verify
+    - go vet ./...
+    - go test ./...
+
+builds:
+  - main: ./cmd/flux
+    binary: flux
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/fluxinc/flux/internal/version.Version={{.Version}}
+
+archives:
+  - format: tar.gz
+    name_template: "flux_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  github:
+    owner: fluxinc
+    name: flux

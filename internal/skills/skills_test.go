@@ -107,6 +107,9 @@ func TestInstallUninstallCopyRoundTrip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(skill.SourcePath, "references", "note.md"), []byte("nested"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Symlink("references/note.md", filepath.Join(skill.SourcePath, "linked-note.md")); err != nil {
+		t.Skipf("symlink creation unavailable: %v", err)
+	}
 	home := t.TempDir()
 	mustMkdir(t, filepath.Join(home, ".claude"))
 
@@ -128,6 +131,16 @@ func TestInstallUninstallCopyRoundTrip(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(target, "references", "note.md")); err != nil {
 		t.Fatalf("nested file missing from copy: %v", err)
+	}
+	if info, err := os.Lstat(filepath.Join(target, "linked-note.md")); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("linked note was not copied as symlink: info=%v err=%v", info, err)
+	}
+	inspection, err := InspectDeclared(skill, harness.ClaudeCode, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Stale {
+		t.Fatalf("fresh copy reported stale: %#v", inspection)
 	}
 	kind, err := Inspect("demo-skill", harness.ClaudeCode, home)
 	if err != nil {
@@ -250,6 +263,45 @@ func TestProvenanceAcceptsManagedSymlinks(t *testing.T) {
 	res = Install(skill, harness.ClaudeCode, InstallOpts{Link: true, Home: home, SourceRoot: source})
 	if res.Status != StatusUpdated {
 		t.Fatalf("materialized symlink install = %s, want updated", res.Status)
+	}
+}
+
+func TestListInstalledReportsManagedEntries(t *testing.T) {
+	source := t.TempDir()
+	skill := writeSkill(t, source, "demo-skill", "demo-skill", "Demo")
+	home := t.TempDir()
+	targetDir := filepath.Join(home, ".claude", "skills")
+	mustMkdir(t, targetDir)
+	if err := os.Symlink(skill.SourcePath, filepath.Join(targetDir, "demo-skill")); err != nil {
+		t.Fatal(err)
+	}
+	userDir := filepath.Join(targetDir, "user-skill")
+	mustMkdir(t, userDir)
+	if err := os.WriteFile(filepath.Join(userDir, "SKILL.md"), []byte("---\nname: user-skill\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	copyDir := filepath.Join(targetDir, "copy-skill")
+	mustMkdir(t, copyDir)
+	if err := writeManagedMarker(copyDir, "copy", source, "flux:copy-skill"); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := ListInstalled(harness.ClaudeCode, InstallOpts{Home: home, SourceRoot: source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]InstalledSkill{}
+	for _, entry := range found {
+		byName[entry.Skill] = entry
+	}
+	if !byName["demo-skill"].Managed || byName["demo-skill"].Kind != "symlink" {
+		t.Fatalf("demo-skill entry = %#v, want managed symlink", byName["demo-skill"])
+	}
+	if !byName["copy-skill"].Managed || byName["copy-skill"].CanonicalID != "flux:copy-skill" {
+		t.Fatalf("copy-skill entry = %#v, want managed marker with canonical id", byName["copy-skill"])
+	}
+	if byName["user-skill"].Managed {
+		t.Fatalf("user-skill entry = %#v, want unmanaged", byName["user-skill"])
 	}
 }
 

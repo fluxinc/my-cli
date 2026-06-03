@@ -11,8 +11,10 @@ intent — goals, products, decisions — and express it as content in a Git rep
 `flux` is the deterministic, machine-friendly bridge that gets that content and
 those capabilities onto every agent surface, the same way, every time.
 
+Documentation: https://fluxinc.github.io/flux/
+
 ```sh
-go install github.com/fluxinc/flux/cmd/flux@latest
+curl -sSL https://raw.githubusercontent.com/fluxinc/flux/master/install.sh | sh
 
 flux manifest add acme https://github.com/example/acme-workspace.git
 flux manifest sync acme
@@ -23,6 +25,8 @@ cd "$(flux root --manifest acme)" && claude
 That's the whole setup. Launch AI harnesses from the umbrella root so they see
 the generated workspace context; `flux launch --manifest acme codex` performs
 the same root resolution and verifies the generated guidance before starting.
+Re-run `install.sh` to update to the latest GitHub release. Developers can
+still install from source with `go install github.com/fluxinc/flux/cmd/flux@latest`.
 
 ## The Model
 
@@ -75,15 +79,51 @@ flux manifest validate <name|path>          # schema + reference checks
 ### Skills
 
 ```sh
+flux skills list [--json]                   # manifest/source skills available to install
+flux skills show <id|slug> [--json]         # one skill's metadata and source path
+flux skills status [--skill ID_OR_SLUG]     # installed/absent status across harnesses
 flux skills install [harness...] | --all    # materialize skills into harness dirs
-flux skills uninstall <harness...> | --all
-flux skills list [--json]                   # what is installed, where, and its provenance
+flux skills uninstall <harness...> | --all  # remove materialized skills
+flux skills sync [harness...] | --all       # install/update and prune stale Flux-managed skills
+flux skills purge <harness...> | --all      # remove Flux-managed materializations
 ```
 
-Skills install as symlinks by default (`--copy` to vendor a copy). `flux`
-records provenance and refuses to clobber a directory it did not place.
-`skills install` only refreshes harness skill directories; rerun `flux onboard`
-when manifest guidance or the generated umbrella `AGENTS.md` should change too.
+Use `--skill ID_OR_SLUG` on `install`, `uninstall`, `sync`, `purge`, or
+`status` to target a single declared skill. Skills install as symlinks by
+default (`--copy` to vendor a copy). `flux` records provenance and refuses to
+clobber a directory it did not place. `skills sync` prunes stale Flux-managed
+skills by default; pass `--no-prune` to only install/update. Skill commands only
+refresh harness skill directories; rerun `flux onboard` when manifest guidance
+or the generated umbrella `AGENTS.md` should change too.
+
+Manifest authoring is explicit admin work:
+
+```sh
+flux admin skills add <skill-dir> --id org:name --manifest-dir <checkout>
+flux admin skills remove <id|slug> --manifest-dir <checkout>
+```
+
+Admin skill commands write a maintainer checkout, not the synced cache. They
+refuse dirty git checkouts unless `--force` is supplied, never commit or push,
+and require explicit flags for duplicate-prone or destructive cleanup such as
+`--keep-original`, `--remove-original`, `--delete-source`, or product
+`related_skills` pruning. After a write they print the relevant `git status`
+and `git diff` follow-up commands.
+
+`flux admin` is the home for shared/workspace configuration. Mutating or
+configuration commands are reachable there too, with the top-level forms
+retained as quiet compatibility aliases:
+
+```sh
+flux admin onboard ...                 # alias of flux onboard
+flux admin manifest add|sync|validate  # alias of flux manifest ...
+flux admin mount add|remove|sync       # alias of flux mount ...
+flux admin meetings add                # alias of flux meetings add
+```
+
+Admin aliases are intentionally limited to those mutating/configuration
+subcommands. Operational reads (`list`/`show`/`status`/`search`/`get`) stay
+under their top-level commands.
 
 ### Umbrella mounts
 
@@ -133,7 +173,7 @@ so an agent that hits a wall can recover without a human.
 |---|---|
 | Claude Code | `~/.claude/skills/<skill>` |
 | Codex | `~/.codex/skills/<skill>` |
-| OpenCode | `~/.opencode/skills/<skill>` |
+| OpenCode | `~/.config/opencode/skills/<skill>` |
 | Gemini | via `gemini skills link` |
 
 Missing harnesses are skipped silently — `flux` configures what is present and

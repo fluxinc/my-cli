@@ -5,6 +5,7 @@ package skills
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -215,6 +216,19 @@ type Result struct {
 	Err         error
 }
 
+// InstalledSkill describes one materialized skill entry under a filesystem
+// harness skill directory.
+type InstalledSkill struct {
+	Harness     harness.Harness `json:"harness"`
+	Skill       string          `json:"skill"`
+	CanonicalID string          `json:"canonical_id,omitempty"`
+	TargetPath  string          `json:"target_path"`
+	Kind        string          `json:"kind"`
+	LinkTarget  string          `json:"link_target,omitempty"`
+	Managed     bool            `json:"managed"`
+	Source      string          `json:"source,omitempty"`
+}
+
 const (
 	StatusInstalled    = "installed"
 	StatusUpdated      = "updated"
@@ -420,6 +434,12 @@ type InstalledKind struct {
 	Target string // for symlinks, the link target; otherwise empty
 }
 
+type DeclaredInspection struct {
+	Kind        InstalledKind
+	Stale       bool
+	StaleReason string
+}
+
 // Inspect reports what's currently installed for a given skill name in a harness.
 func Inspect(skillName string, h harness.Harness, home string) (InstalledKind, error) {
 	if home == "" {
@@ -448,6 +468,91 @@ func Inspect(skillName string, h harness.Harness, home string) (InstalledKind, e
 		return InstalledKind{Kind: "symlink", Target: link}, nil
 	}
 	return InstalledKind{Kind: "copy"}, nil
+}
+
+// InspectDeclared reports installed state for a declared skill and marks stale
+// copy-mode materializations whose marker or content no longer matches source.
+func InspectDeclared(s Skill, h harness.Harness, opts InstallOpts) (DeclaredInspection, error) {
+	home, err := resolveHome(opts.Home)
+	if err != nil {
+		return DeclaredInspection{}, err
+	}
+	kind, err := Inspect(s.Name, h, home)
+	if err != nil {
+		return DeclaredInspection{}, err
+	}
+	inspection := DeclaredInspection{Kind: kind}
+	if h == harness.Gemini || kind.Kind != "copy" {
+		return inspection, nil
+	}
+	target := h.SkillTargetPath(home, s.Name)
+	if marker, ok := readManagedMarker(target); ok {
+		expectedSource := sourceRootFor(s, opts)
+		if marker.Source != "" && expectedSource != "" && !sameFilesystemPath(marker.Source, expectedSource) {
+			inspection.Stale = true
+			inspection.StaleReason = fmt.Sprintf("source changed from %s to %s", marker.Source, expectedSource)
+			return inspection, nil
+		}
+		if marker.CanonicalID != "" && s.CanonicalID != "" && marker.CanonicalID != s.CanonicalID {
+			inspection.Stale = true
+			inspection.StaleReason = fmt.Sprintf("canonical id changed from %s to %s", marker.CanonicalID, s.CanonicalID)
+			return inspection, nil
+		}
+	}
+	if differs, err := dirContentDiffers(s.SourcePath, target); err != nil {
+		return DeclaredInspection{}, err
+	} else if differs {
+		inspection.Stale = true
+		inspection.StaleReason = "copy differs from source"
+	}
+	return inspection, nil
+}
+
+// ListInstalled returns the current filesystem skill materializations for a
+// harness. Gemini is intentionally empty because its lifecycle is CLI-managed.
+func ListInstalled(h harness.Harness, opts InstallOpts) ([]InstalledSkill, error) {
+	home, err := resolveHome(opts.Home)
+	if err != nil {
+		return nil, err
+	}
+	if !h.IsFilesystem() {
+		return nil, nil
+	}
+	dir := filepath.Join(h.ConfigDir(home), "skills")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	sourceRoots := managedSourceRoots(opts.SourceRoot, opts.SourceRoots, home)
+	var out []InstalledSkill
+	for _, entry := range entries {
+		target := filepath.Join(dir, entry.Name())
+		info, err := os.Lstat(target)
+		if err != nil {
+			return nil, err
+		}
+		installed := InstalledSkill{
+			Harness:    h,
+			Skill:      entry.Name(),
+			TargetPath: target,
+			Kind:       "copy",
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			installed.Kind = "symlink"
+			if link, err := os.Readlink(target); err == nil {
+				installed.LinkTarget = link
+			}
+		} else if marker, ok := readManagedMarker(target); ok {
+			installed.CanonicalID = marker.CanonicalID
+			installed.Source = marker.Source
+		}
+		installed.Managed = isFluxManagedTarget(target, info, sourceRoots)
+		out = append(out, installed)
+	}
+	return out, nil
 }
 
 func sourceRootFor(s Skill, opts InstallOpts) string {
@@ -492,15 +597,23 @@ func isFluxManagedTarget(target string, info fs.FileInfo, sourceRoots []string) 
 }
 
 func hasManagedMarker(dir string) bool {
+	_, ok := readManagedMarker(dir)
+	return ok
+}
+
+func readManagedMarker(dir string) (bundle.Marker, bool) {
 	data, err := os.ReadFile(filepath.Join(dir, bundle.MarkerName))
 	if err != nil {
-		return false
+		return bundle.Marker{}, false
 	}
 	var marker bundle.Marker
 	if err := json.Unmarshal(data, &marker); err != nil {
-		return false
+		return bundle.Marker{}, false
 	}
-	return marker.Installer == "flux" || marker.Installer == "flux-ai"
+	if marker.Installer != "flux" && marker.Installer != "flux-ai" {
+		return bundle.Marker{}, false
+	}
+	return marker, true
 }
 
 func pathWithin(path, root string) bool {
@@ -523,6 +636,24 @@ func pathWithin(path, root string) bool {
 		return false
 	}
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
+}
+
+func sameFilesystemPath(a, b string) bool {
+	absA, err := filepath.Abs(a)
+	if err != nil {
+		return false
+	}
+	absB, err := filepath.Abs(b)
+	if err != nil {
+		return false
+	}
+	if resolved, err := filepath.EvalSymlinks(absA); err == nil {
+		absA = resolved
+	}
+	if resolved, err := filepath.EvalSymlinks(absB); err == nil {
+		absB = resolved
+	}
+	return filepath.Clean(absA) == filepath.Clean(absB)
 }
 
 func writeManagedMarker(dir, mode, source, canonicalID string) error {
@@ -555,6 +686,11 @@ func removePath(target string, info fs.FileInfo) error {
 	return os.RemoveAll(target)
 }
 
+// CopyDir copies a skill directory tree.
+func CopyDir(src, dst string) error {
+	return copyDir(src, dst)
+}
+
 func copyDir(src, dst string) error {
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -572,9 +708,109 @@ func copyDir(src, dst string) error {
 			}
 			return os.MkdirAll(target, info.Mode().Perm())
 		}
+		if d.Type()&os.ModeSymlink != 0 {
+			link, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			return os.Symlink(link, target)
+		}
 		return copyFile(path, target)
 	})
 }
+
+func dirContentDiffers(src, dst string) (bool, error) {
+	if err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		target := filepath.Join(dst, rel)
+		targetInfo, err := os.Lstat(target)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return errContentDiffers
+			}
+			return err
+		}
+		if d.IsDir() {
+			if !targetInfo.IsDir() {
+				return errContentDiffers
+			}
+			return nil
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			if targetInfo.Mode()&os.ModeSymlink == 0 {
+				return errContentDiffers
+			}
+			srcLink, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			dstLink, err := os.Readlink(target)
+			if err != nil {
+				return err
+			}
+			if srcLink != dstLink {
+				return errContentDiffers
+			}
+			return nil
+		}
+		if targetInfo.IsDir() {
+			return errContentDiffers
+		}
+		srcData, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		dstData, err := os.ReadFile(target)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(srcData, dstData) {
+			return errContentDiffers
+		}
+		return nil
+	}); err != nil {
+		if errors.Is(err, errContentDiffers) {
+			return true, nil
+		}
+		return false, err
+	}
+	if err := filepath.WalkDir(dst, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dst, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." || rel == bundle.MarkerName {
+			return nil
+		}
+		if _, err := os.Lstat(filepath.Join(src, rel)); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return errContentDiffers
+			}
+			return err
+		}
+		return nil
+	}); err != nil {
+		if errors.Is(err, errContentDiffers) {
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
+}
+
+var errContentDiffers = errors.New("content differs")
 
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)

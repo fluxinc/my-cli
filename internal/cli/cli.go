@@ -99,6 +99,8 @@ func (a app) run(args []string) error {
 		return a.runCustomers(args[2:])
 	case "catalog":
 		return a.runCatalog(args[2:])
+	case "admin":
+		return a.runAdmin(args[2:])
 	default:
 		return fmt.Errorf("unknown command %q", args[1])
 	}
@@ -111,9 +113,19 @@ Usage:
   flux onboard [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR]
   flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR]
   flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [harness] [-- harness args...]
-  flux skills install [harness...] | --all [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
-  flux skills uninstall <harness...> | --all [--print] [--force] [--source DIR] [--manifest NAME]
+  flux skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+  flux skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
+  flux skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+  flux skills purge <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
   flux skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  flux skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  flux skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  flux admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
+  flux admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--force] [--json]
+  flux admin onboard ...                      (alias of flux onboard)
+  flux admin manifest add|sync|validate ...   (alias of flux manifest ...)
+  flux admin mount add|remove|sync ...        (alias of flux mount ...)
+  flux admin meetings add ...                 (alias of flux meetings add)
   flux manifest add <name> <git-url>
   flux manifest list
   flux manifest sync <name...> | --all [--print]
@@ -121,6 +133,7 @@ Usage:
   flux mount list [--manifest NAME]
   flux mount add <kind:id|id> [--manifest NAME]
   flux mount sync <mount...> | --all [--manifest NAME] [--print]
+  flux mount remove <mount...> [--print] [--force]
   flux workspace list [--manifest NAME]
   flux workspace sync <workspace...> | --all [--manifest NAME] [--print]
   flux tools info <name>
@@ -2597,6 +2610,616 @@ func resolveUmbrellaRoot(home, explicit string) (string, error) {
 	return "", fmt.Errorf("no flux umbrella found; run flux onboard or pass --umbrella")
 }
 
+func (a app) runAdmin(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing admin subcommand")
+	}
+	switch args[0] {
+	case "skills":
+		return a.runAdminSkills(args[1:])
+	case "onboard":
+		return a.runOnboard(args[1:])
+	case "manifest":
+		return a.runAdminManifest(args[1:])
+	case "mount":
+		return a.runAdminMount(args[1:])
+	case "meetings":
+		return a.runAdminMeetings(args[1:])
+	case "-h", "--help", "help":
+		a.printAdminUsage()
+		return nil
+	default:
+		return fmt.Errorf("unknown admin subcommand %q", args[0])
+	}
+}
+
+func (a app) printAdminUsage() {
+	fmt.Fprintln(a.stdout, `Usage:
+  flux admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
+  flux admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--force] [--json]
+  flux admin onboard ...                      (alias of flux onboard)
+  flux admin manifest add|sync|validate ...   (alias of flux manifest ...)
+  flux admin mount add|remove|sync ...        (alias of flux mount ...)
+  flux admin meetings add ...                 (alias of flux meetings add)
+
+admin groups shared/workspace configuration. The top-level command forms remain
+as compatibility aliases. Admin aliases are limited to mutating/configuration
+subcommands; operational reads (skills list/show/status, manifest list, mount
+list, meetings list/search/get) stay under their top-level commands.`)
+}
+
+func adminOperationalReadError(group, subcommand string) error {
+	return fmt.Errorf("flux admin %s %s is operational; use flux %s %s", group, subcommand, group, subcommand)
+}
+
+func (a app) runAdminManifest(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing admin manifest subcommand")
+	}
+	switch args[0] {
+	case "add", "sync", "validate":
+		return a.runManifest(args)
+	case "list":
+		return adminOperationalReadError("manifest", args[0])
+	case "-h", "--help", "help":
+		a.printAdminUsage()
+		return nil
+	default:
+		return fmt.Errorf("unknown admin manifest subcommand %q", args[0])
+	}
+}
+
+func (a app) runAdminMount(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing admin mount subcommand")
+	}
+	switch args[0] {
+	case "add", "sync", "remove":
+		return a.runMount(args)
+	case "list":
+		return adminOperationalReadError("mount", args[0])
+	case "-h", "--help", "help":
+		a.printAdminUsage()
+		return nil
+	default:
+		return fmt.Errorf("unknown admin mount subcommand %q", args[0])
+	}
+}
+
+func (a app) runAdminMeetings(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing admin meetings subcommand")
+	}
+	switch args[0] {
+	case "add":
+		return a.runMeetings(args)
+	case "list", "search", "get":
+		return adminOperationalReadError("meetings", args[0])
+	case "-h", "--help", "help":
+		a.printAdminUsage()
+		return nil
+	default:
+		return fmt.Errorf("unknown admin meetings subcommand %q", args[0])
+	}
+}
+
+func (a app) runAdminSkills(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing admin skills subcommand")
+	}
+	switch args[0] {
+	case "add":
+		return a.runAdminSkillsAdd(args[1:])
+	case "remove":
+		return a.runAdminSkillsRemove(args[1:])
+	case "list", "show", "status":
+		return adminOperationalReadError("skills", args[0])
+	case "-h", "--help", "help":
+		a.printAdminUsage()
+		return nil
+	default:
+		return fmt.Errorf("unknown admin skills subcommand %q", args[0])
+	}
+}
+
+type adminSkillResult struct {
+	Action          string   `json:"action"`
+	ID              string   `json:"id"`
+	InstallSlug     string   `json:"install_slug,omitempty"`
+	ManifestPath    string   `json:"manifest_path"`
+	SourcePath      string   `json:"source_path,omitempty"`
+	RemovedOriginal bool     `json:"removed_original,omitempty"`
+	DeletedSource   bool     `json:"deleted_source,omitempty"`
+	PrunedProducts  []string `json:"pruned_products,omitempty"`
+	Message         string   `json:"message,omitempty"`
+	NextCommands    []string `json:"next_commands,omitempty"`
+}
+
+func (a app) runAdminSkillsAdd(args []string) error {
+	var id string
+	var manifestDir string
+	var installSlug string
+	var keepOriginal bool
+	var removeOriginal bool
+	var force bool
+	var jsonOut bool
+	fs := newFlagSet("flux admin skills add", a.stderr)
+	fs.StringVar(&id, "id", "", "canonical skill id namespace:name")
+	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
+	fs.StringVar(&installSlug, "install-slug", "", "portable harness install slug")
+	fs.BoolVar(&keepOriginal, "keep-original", false, "explicitly keep a harness-visible original skill directory")
+	fs.BoolVar(&removeOriginal, "remove-original", false, "delete the original skill directory after import")
+	fs.BoolVar(&force, "force", false, "allow dirty checkout or replace an existing declaration/source")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON result")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"id":           true,
+		"manifest-dir": true,
+		"install-slug": true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 || id == "" || manifestDir == "" {
+		return fmt.Errorf("usage: flux admin skills add <skill-dir> --id namespace:name --manifest-dir DIR")
+	}
+	if keepOriginal && removeOriginal {
+		return fmt.Errorf("--keep-original and --remove-original are mutually exclusive")
+	}
+	result, err := a.adminSkillsAdd(rest[0], id, installSlug, manifestDir, keepOriginal, removeOriginal, force)
+	if err != nil {
+		return err
+	}
+	if jsonOut {
+		return printJSON(a.stdout, result)
+	}
+	fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\n", result.Action, result.ID, result.InstallSlug, result.ManifestPath)
+	if result.Message != "" {
+		fmt.Fprintln(a.stdout, result.Message)
+	}
+	printAdminNextCommands(a.stdout, result.NextCommands)
+	return nil
+}
+
+func (a app) adminSkillsAdd(skillDir, id, installSlug, manifestDir string, keepOriginal, removeOriginal, force bool) (adminSkillResult, error) {
+	source, err := filepath.Abs(skillDir)
+	if err != nil {
+		return adminSkillResult{}, err
+	}
+	if resolved, err := filepath.EvalSymlinks(source); err == nil {
+		source = resolved
+	}
+	if _, err := os.Stat(filepath.Join(source, "SKILL.md")); err != nil {
+		return adminSkillResult{}, fmt.Errorf("skill directory %s must contain SKILL.md: %w", source, err)
+	}
+	if visible := harnessVisibleSkillSource(source); visible != "" && !keepOriginal && !removeOriginal {
+		return adminSkillResult{}, fmt.Errorf("source skill is already visible to %s; pass --keep-original or --remove-original explicitly", visible)
+	}
+	doc, manifestPath, root, err := loadAdminManifestCheckout(manifestDir)
+	if err != nil {
+		return adminSkillResult{}, err
+	}
+	if err := ensureAdminManifestClean(root, force); err != nil {
+		return adminSkillResult{}, err
+	}
+	if installSlug == "" {
+		installSlug = filepath.Base(source)
+	}
+	if !portableKebab(installSlug) {
+		return adminSkillResult{}, fmt.Errorf("install slug %q must be lowercase kebab-case", installSlug)
+	}
+	if err := validateAdminSkillID(id, doc); err != nil {
+		return adminSkillResult{}, err
+	}
+	if meta, err := discoverSingleSkill(source); err == nil {
+		for _, warning := range meta.Warnings {
+			fmt.Fprintf(a.stderr, "warning: %s\n", warning)
+		}
+		if meta.SkillName != "" && meta.SkillName != installSlug {
+			fmt.Fprintf(a.stderr, "warning: SKILL.md name %q does not match install slug %q\n", meta.SkillName, installSlug)
+		}
+	}
+
+	replaced := false
+	for _, existing := range doc.Skills {
+		if existing.ID == id || existing.InstallSlug == installSlug {
+			if !force {
+				return adminSkillResult{}, fmt.Errorf("skill id or install slug already exists; re-run with --force to replace it")
+			}
+			replaced = true
+		}
+	}
+	relPath := filepath.ToSlash(filepath.Join("skills", installSlug))
+	target := filepath.Join(root, "skills", installSlug)
+	nextSkills := make([]manifest.Skill, 0, len(doc.Skills)+1)
+	for _, existing := range doc.Skills {
+		if existing.ID == id || existing.InstallSlug == installSlug {
+			continue
+		}
+		nextSkills = append(nextSkills, existing)
+	}
+	doc.Skills = append(nextSkills, manifest.Skill{
+		ID:          id,
+		InstallSlug: installSlug,
+		Path:        relPath,
+		Source:      manifest.Source{Type: "static"},
+	})
+	if result := manifest.ValidateDocument(root, doc); len(result.Errors) != 0 {
+		return adminSkillResult{}, fmt.Errorf("updated manifest is invalid: %s", strings.Join(result.Errors, "; "))
+	}
+	if !samePath(source, target) {
+		if _, err := os.Stat(target); err == nil {
+			if !force {
+				return adminSkillResult{}, fmt.Errorf("manifest skill source %s already exists; re-run with --force to replace it", target)
+			}
+			if err := os.RemoveAll(target); err != nil {
+				return adminSkillResult{}, err
+			}
+		} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return adminSkillResult{}, err
+		}
+		if err := skills.CopyDir(source, target); err != nil {
+			return adminSkillResult{}, fmt.Errorf("copy skill into manifest: %w", err)
+		}
+	}
+	if err := manifest.SaveDocument(manifestPath, doc); err != nil {
+		return adminSkillResult{}, err
+	}
+	removedOriginal := false
+	if removeOriginal {
+		if samePath(source, target) {
+			return adminSkillResult{}, fmt.Errorf("--remove-original would delete the imported manifest source")
+		}
+		if err := os.RemoveAll(source); err != nil {
+			return adminSkillResult{}, err
+		}
+		removedOriginal = true
+	}
+	message := "imported skill"
+	if replaced {
+		message = "replaced skill declaration"
+	}
+	return adminSkillResult{
+		Action:          "added",
+		ID:              id,
+		InstallSlug:     installSlug,
+		ManifestPath:    manifestPath,
+		SourcePath:      target,
+		RemovedOriginal: removedOriginal,
+		Message:         message,
+		NextCommands:    adminNextCommands(root),
+	}, nil
+}
+
+func (a app) runAdminSkillsRemove(args []string) error {
+	var manifestDir string
+	var deleteSource bool
+	var pruneRelated bool
+	var force bool
+	var jsonOut bool
+	fs := newFlagSet("flux admin skills remove", a.stderr)
+	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
+	fs.BoolVar(&deleteSource, "delete-source", false, "delete the static manifest source directory")
+	fs.BoolVar(&pruneRelated, "prune-related", false, "remove product catalog related_skills references")
+	fs.BoolVar(&force, "force", false, "allow dirty checkout")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON result")
+	rest, err := parseInterspersed(fs, args, map[string]bool{"manifest-dir": true})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 || manifestDir == "" {
+		return fmt.Errorf("usage: flux admin skills remove <id|slug> --manifest-dir DIR")
+	}
+	result, err := a.adminSkillsRemove(rest[0], manifestDir, deleteSource, pruneRelated, force)
+	if err != nil {
+		return err
+	}
+	if jsonOut {
+		return printJSON(a.stdout, result)
+	}
+	fmt.Fprintf(a.stdout, "%s\t%s\t%s\n", result.Action, result.ID, result.ManifestPath)
+	if result.Message != "" {
+		fmt.Fprintln(a.stdout, result.Message)
+	}
+	printAdminNextCommands(a.stdout, result.NextCommands)
+	return nil
+}
+
+func (a app) adminSkillsRemove(ref, manifestDir string, deleteSource, pruneRelated, force bool) (adminSkillResult, error) {
+	doc, manifestPath, root, err := loadAdminManifestCheckout(manifestDir)
+	if err != nil {
+		return adminSkillResult{}, err
+	}
+	if err := ensureAdminManifestClean(root, force); err != nil {
+		return adminSkillResult{}, err
+	}
+	idx := -1
+	for i, skill := range doc.Skills {
+		if skill.ID == ref || skill.InstallSlug == ref {
+			if idx != -1 {
+				return adminSkillResult{}, fmt.Errorf("skill %q is ambiguous; match by canonical id", ref)
+			}
+			idx = i
+		}
+	}
+	if idx == -1 {
+		return adminSkillResult{}, fmt.Errorf("skill %q is not declared by the manifest", ref)
+	}
+	removed := doc.Skills[idx]
+	products, productPath, productsFound, err := loadAdminProductCatalog(root)
+	if err != nil {
+		return adminSkillResult{}, err
+	}
+	prunedProducts := productRefsSkill(products, removed.ID)
+	if len(prunedProducts) != 0 && !pruneRelated {
+		return adminSkillResult{}, fmt.Errorf("skill %q is referenced by product related_skills: %s; re-run with --prune-related to remove those references", removed.ID, strings.Join(prunedProducts, ", "))
+	}
+	if pruneRelated && len(prunedProducts) != 0 {
+		products = pruneProductSkillRefs(products, removed.ID)
+	}
+	sourcePath := filepath.Join(root, filepath.FromSlash(removed.Path))
+	if deleteSource {
+		sourceType := removed.Source.Type
+		if sourceType == "" {
+			sourceType = "static"
+		}
+		if sourceType != "static" {
+			return adminSkillResult{}, fmt.Errorf("--delete-source is only valid for static manifest-owned skills")
+		}
+		if removed.Path == "" {
+			return adminSkillResult{}, fmt.Errorf("refusing to delete empty skill source path")
+		}
+		if !pathWithinRoot(sourcePath, root) {
+			return adminSkillResult{}, fmt.Errorf("refusing to delete skill source outside manifest checkout: %s", sourcePath)
+		}
+	}
+	doc.Skills = append(doc.Skills[:idx], doc.Skills[idx+1:]...)
+	if result := manifest.ValidateDocument("", doc); len(result.Errors) != 0 {
+		return adminSkillResult{}, fmt.Errorf("updated manifest is invalid: %s", strings.Join(result.Errors, "; "))
+	}
+	// Write the product catalog before manifest.json so a failure between the
+	// two writes still leaves a consistent checkout: a pruned related_skills
+	// reference with the skill still declared validates fine, whereas a removed
+	// skill that a product still references would not.
+	if pruneRelated && len(prunedProducts) != 0 && productsFound {
+		if err := saveAdminProductCatalog(productPath, products); err != nil {
+			return adminSkillResult{}, err
+		}
+	}
+	if err := manifest.SaveDocument(manifestPath, doc); err != nil {
+		return adminSkillResult{}, err
+	}
+	deletedSource := false
+	if deleteSource {
+		if err := os.RemoveAll(sourcePath); err != nil {
+			return adminSkillResult{}, err
+		}
+		deletedSource = true
+	}
+	return adminSkillResult{
+		Action:         "removed",
+		ID:             removed.ID,
+		InstallSlug:    removed.InstallSlug,
+		ManifestPath:   manifestPath,
+		SourcePath:     sourcePath,
+		DeletedSource:  deletedSource,
+		PrunedProducts: prunedProducts,
+		Message:        "removed skill declaration",
+		NextCommands:   adminNextCommands(root),
+	}, nil
+}
+
+func printAdminNextCommands(w io.Writer, commands []string) {
+	for _, command := range commands {
+		fmt.Fprintf(w, "next\t%s\n", command)
+	}
+}
+
+func adminNextCommands(root string) []string {
+	return []string{
+		"git -C " + shellQuote(root) + " status --short",
+		"git -C " + shellQuote(root) + " diff -- manifest.json catalog skills",
+	}
+}
+
+func loadAdminManifestCheckout(dir string) (manifest.Document, string, string, error) {
+	doc, manifestPath, err := manifest.LoadDocument(dir)
+	if err != nil {
+		return manifest.Document{}, "", "", err
+	}
+	root := filepath.Dir(manifestPath)
+	return doc, manifestPath, root, nil
+}
+
+func ensureAdminManifestClean(root string, force bool) error {
+	if force {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(root, ".git")); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	cmd := exec.Command("git", "-C", root, "status", "--porcelain")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(out))
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("check manifest git status: %s", message)
+	}
+	if strings.TrimSpace(string(out)) != "" {
+		return fmt.Errorf("manifest checkout %s has uncommitted changes; commit or stash them, or re-run with --force", root)
+	}
+	return nil
+}
+
+func validateAdminSkillID(id string, doc manifest.Document) error {
+	parts := strings.SplitN(id, ":", 2)
+	if len(parts) != 2 || !portableKebab(parts[0]) || !portableKebab(parts[1]) {
+		return fmt.Errorf("skill id %q must be namespace:name with lowercase kebab-case parts", id)
+	}
+	if parts[0] == doc.Organization.ID {
+		return nil
+	}
+	for _, allowed := range doc.AllowedExternalNamespaces {
+		if parts[0] == allowed {
+			return nil
+		}
+	}
+	return fmt.Errorf("skill id namespace %q is not organization.id %q or an allowed external namespace", parts[0], doc.Organization.ID)
+}
+
+func portableKebab(value string) bool {
+	if value == "" || value[0] == '-' || value[len(value)-1] == '-' {
+		return false
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func discoverSingleSkill(dir string) (skills.Skill, error) {
+	parent := filepath.Dir(dir)
+	base := filepath.Base(dir)
+	found, err := skills.Discover(parent)
+	if err != nil {
+		return skills.Skill{}, err
+	}
+	for _, skill := range found {
+		if skill.Name == base {
+			return skill, nil
+		}
+	}
+	return skills.Skill{}, fmt.Errorf("skill %s was not discovered", dir)
+}
+
+func harnessVisibleSkillSource(dir string) string {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return ""
+	}
+	clean := filepath.Clean(abs)
+	parent := filepath.Dir(clean)
+	grandparent := filepath.Dir(parent)
+	if filepath.Base(parent) == "skills" {
+		switch filepath.Base(grandparent) {
+		case ".claude":
+			return "Claude Code"
+		case ".codex":
+			return "Codex"
+		case ".agents":
+			return "agent-compatible harnesses"
+		case "opencode":
+			if filepath.Base(filepath.Dir(grandparent)) == ".config" {
+				return "OpenCode"
+			}
+		}
+	}
+	if filepath.Base(grandparent) == ".opencode" && filepath.Base(parent) == "skill" {
+		return "OpenCode"
+	}
+	return ""
+}
+
+func loadAdminProductCatalog(root string) ([]manifest.Product, string, bool, error) {
+	path := filepath.Join(root, "catalog", "products.json")
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, path, false, nil
+	}
+	if err != nil {
+		return nil, path, false, err
+	}
+	var products []manifest.Product
+	if err := json.Unmarshal(data, &products); err != nil {
+		return nil, path, false, fmt.Errorf("read product catalog %s: %w", path, err)
+	}
+	return products, path, true, nil
+}
+
+func saveAdminProductCatalog(path string, products []manifest.Product) error {
+	data, err := json.MarshalIndent(products, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
+func productRefsSkill(products []manifest.Product, skillID string) []string {
+	var refs []string
+	for _, product := range products {
+		for _, related := range product.RelatedSkills {
+			if related == skillID {
+				refs = append(refs, product.ID)
+				break
+			}
+		}
+	}
+	return refs
+}
+
+func pruneProductSkillRefs(products []manifest.Product, skillID string) []manifest.Product {
+	for i := range products {
+		var kept []string
+		for _, related := range products[i].RelatedSkills {
+			if related != skillID {
+				kept = append(kept, related)
+			}
+		}
+		products[i].RelatedSkills = kept
+	}
+	return products
+}
+
+func samePath(a, b string) bool {
+	absA, err := filepath.Abs(a)
+	if err != nil {
+		return false
+	}
+	absB, err := filepath.Abs(b)
+	if err != nil {
+		return false
+	}
+	if resolved, err := filepath.EvalSymlinks(absA); err == nil {
+		absA = resolved
+	}
+	if resolved, err := filepath.EvalSymlinks(absB); err == nil {
+		absB = resolved
+	}
+	return filepath.Clean(absA) == filepath.Clean(absB)
+}
+
+func pathWithinRoot(path, root string) bool {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	if resolved, err := filepath.EvalSymlinks(absPath); err == nil {
+		absPath = resolved
+	}
+	if resolved, err := filepath.EvalSymlinks(absRoot); err == nil {
+		absRoot = resolved
+	}
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
+}
+
 func (a app) runManifest(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("missing manifest subcommand")
@@ -2769,10 +3392,16 @@ func (a app) runSkills(args []string) error {
 		return a.runSkillsInstall(args[1:])
 	case "uninstall":
 		return a.runSkillsUninstall(args[1:])
+	case "sync":
+		return a.runSkillsSync(args[1:])
+	case "purge":
+		return a.runSkillsPurge(args[1:])
 	case "list":
 		return a.runSkillsList(args[1:])
-	case "sync", "purge":
-		return fmt.Errorf("skills %s is not implemented yet", args[0])
+	case "show":
+		return a.runSkillsShow(args[1:])
+	case "status":
+		return a.runSkillsStatus(args[1:])
 	case "-h", "--help", "help":
 		a.printSkillsUsage()
 		return nil
@@ -2783,9 +3412,13 @@ func (a app) runSkills(args []string) error {
 
 func (a app) printSkillsUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  flux skills install [harness...] | --all [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
-  flux skills uninstall <harness...> | --all [--print] [--force] [--source DIR] [--manifest NAME]
+  flux skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+  flux skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
+  flux skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+  flux skills purge <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
   flux skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  flux skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  flux skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
 
 Harnesses:
   claude-code, codex, opencode, gemini
@@ -2794,7 +3427,7 @@ With no harnesses, install targets all supported harnesses and silently skips
 missing ones. If synced manifests are registered, skills commands use them by
 default; --source forces a local skills directory.
 
-Skills install only changes harness skill directories. Run flux onboard to
+Skill commands only refresh harness skill directories. Run flux onboard to
 regenerate workspace guidance such as AGENTS.md.`)
 }
 
@@ -2944,9 +3577,10 @@ func (a app) runSkillsInstallNamed(commandName string, args []string) error {
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	fs.StringVar(&opts.manifestName, "manifest", "", "use skills declared by a synced manifest")
+	fs.Var(&opts.skillRefs, "skill", "limit to one skill id or install slug; repeatable")
 	fs.Usage = func() {
 		fmt.Fprintf(a.stderr, `Usage of %s:
-  %s [harness...] | --all [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+  %s [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
 
 Skills install only changes harness skill directories. Run flux onboard to
 regenerate workspace guidance such as AGENTS.md.
@@ -2959,6 +3593,7 @@ Options:
 		"source":   true,
 		"home":     true,
 		"manifest": true,
+		"skill":    true,
 	})
 	if err != nil {
 		return err
@@ -2990,6 +3625,10 @@ func (a app) collectSkillInstallResults(opts skillsCommandOpts, hs []harness.Har
 		return nil, err
 	}
 	bundled, sourceRoots, manifestBacked, err := a.discoverSkills(opts)
+	if err != nil {
+		return nil, err
+	}
+	bundled, err = selectSkills(bundled, opts.skillRefs)
 	if err != nil {
 		return nil, err
 	}
@@ -3025,20 +3664,27 @@ func (a app) runSkillsUninstall(args []string) error {
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	fs.StringVar(&opts.manifestName, "manifest", "", "use skills declared by a synced manifest")
+	fs.Var(&opts.skillRefs, "skill", "limit to one skill id or install slug; repeatable")
 	rest, err := parseInterspersed(fs, args, map[string]bool{
 		"source":   true,
 		"home":     true,
 		"manifest": true,
+		"skill":    true,
 	})
 	if err != nil {
 		return err
 	}
+	opts.allowMissingToolSkills = true
 
 	hs, err := selectedHarnesses(opts.all, rest)
 	if err != nil {
 		return err
 	}
 	bundled, sourceRoots, _, err := a.discoverSkills(opts)
+	if err != nil {
+		return err
+	}
+	bundled, err = selectSkills(bundled, opts.skillRefs)
 	if err != nil {
 		return err
 	}
@@ -3058,6 +3704,166 @@ func (a app) runSkillsUninstall(args []string) error {
 		}
 	}
 	return a.printResults(results, opts.jsonOut)
+}
+
+func (a app) runSkillsSync(args []string) error {
+	var opts skillsCommandOpts
+	fs := newFlagSet("flux skills sync", a.stderr)
+	fs.BoolVar(&opts.all, "all", false, "sync every supported harness")
+	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
+	fs.BoolVar(&opts.copyMode, "copy", false, "copy skill directories instead of symlinking")
+	fs.BoolVar(&opts.linkMode, "link", false, "symlink skill directories")
+	fs.BoolVar(&opts.force, "force", false, "replace non-Flux-managed targets during install")
+	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
+	fs.BoolVar(&opts.noPrune, "no-prune", false, "skip removal of stale Flux-managed skill materializations")
+	fs.StringVar(&opts.source, "source", "", "skills source directory")
+	fs.StringVar(&opts.home, "home", "", "override home directory")
+	fs.StringVar(&opts.manifestName, "manifest", "", "use skills declared by a synced manifest")
+	fs.Var(&opts.skillRefs, "skill", "limit install/update to one skill id or install slug; repeatable")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"source":   true,
+		"home":     true,
+		"manifest": true,
+		"skill":    true,
+	})
+	if err != nil {
+		return err
+	}
+	if opts.copyMode && opts.linkMode {
+		return fmt.Errorf("--copy and --link are mutually exclusive")
+	}
+	if len(rest) == 0 && !opts.all {
+		opts.all = true
+	}
+	hs, err := selectedHarnesses(opts.all, rest)
+	if err != nil {
+		return err
+	}
+	results, err := a.collectSkillSyncResults(opts, hs)
+	if err != nil {
+		return err
+	}
+	return a.printResults(results, opts.jsonOut)
+}
+
+func (a app) collectSkillSyncResults(opts skillsCommandOpts, hs []harness.Harness) ([]skills.Result, error) {
+	if err := a.prepareManifestSkillSources(opts); err != nil {
+		return nil, err
+	}
+	bundled, sourceRoots, manifestBacked, err := a.discoverSkills(opts)
+	if err != nil {
+		return nil, err
+	}
+	selected, err := selectSkills(bundled, opts.skillRefs)
+	if err != nil {
+		return nil, err
+	}
+	a.printSkillWarnings(selected)
+	if manifestBacked {
+		a.syncSkillWorkspaces(opts.home, opts.manifestName, opts.print)
+	}
+
+	installOpts := skills.InstallOpts{
+		Link:        !opts.copyMode,
+		DryRun:      opts.print,
+		SkipMissing: opts.all,
+		Home:        opts.home,
+		Force:       opts.force,
+		SourceRoots: sourceRoots,
+	}
+	var results []skills.Result
+	for _, h := range hs {
+		for _, s := range selected {
+			results = append(results, skills.Install(s, h, installOpts))
+		}
+	}
+	if !opts.noPrune && len(opts.skillRefs) == 0 {
+		prune, err := collectStaleSkillRemovalResults(opts, hs, bundled, sourceRoots)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, prune...)
+	}
+	return results, nil
+}
+
+func (a app) runSkillsPurge(args []string) error {
+	var opts skillsCommandOpts
+	fs := newFlagSet("flux skills purge", a.stderr)
+	fs.BoolVar(&opts.all, "all", false, "purge from every supported harness")
+	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
+	fs.BoolVar(&opts.force, "force", false, "remove explicitly selected non-Flux-managed targets")
+	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
+	fs.StringVar(&opts.source, "source", "", "skills source directory")
+	fs.StringVar(&opts.home, "home", "", "override home directory")
+	fs.StringVar(&opts.manifestName, "manifest", "", "use skills declared by a synced manifest")
+	fs.Var(&opts.skillRefs, "skill", "limit to one skill id or install slug; repeatable")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"source":   true,
+		"home":     true,
+		"manifest": true,
+		"skill":    true,
+	})
+	if err != nil {
+		return err
+	}
+	opts.allowMissingToolSkills = true
+	hs, err := selectedHarnesses(opts.all, rest)
+	if err != nil {
+		return err
+	}
+	results, err := a.collectSkillPurgeResults(opts, hs)
+	if err != nil {
+		return err
+	}
+	return a.printResults(results, opts.jsonOut)
+}
+
+func (a app) collectSkillPurgeResults(opts skillsCommandOpts, hs []harness.Harness) ([]skills.Result, error) {
+	bundled, sourceRoots, _, err := a.discoverSkills(opts)
+	if err != nil {
+		return nil, err
+	}
+	a.printSkillWarnings(bundled)
+	installOpts := skills.InstallOpts{
+		DryRun:      opts.print,
+		SkipMissing: opts.all,
+		Home:        opts.home,
+		Force:       opts.force,
+		SourceRoots: sourceRoots,
+	}
+	var results []skills.Result
+	for _, h := range hs {
+		if h == harness.Gemini {
+			targets, err := geminiPurgeTargets(bundled, opts.skillRefs)
+			if err != nil {
+				return nil, err
+			}
+			for _, target := range targets {
+				res := skills.Uninstall(target.Name, h, installOpts)
+				res.CanonicalID = target.CanonicalID
+				results = append(results, res)
+			}
+			continue
+		}
+		installed, err := skills.ListInstalled(h, installOpts)
+		if err != nil {
+			results = append(results, skills.Result{Harness: h, Skill: "*", Status: skills.StatusFailed, Err: err})
+			continue
+		}
+		targets, err := filesystemPurgeTargets(bundled, installed, opts.skillRefs)
+		if err != nil {
+			return nil, err
+		}
+		for _, target := range targets {
+			res := skills.Uninstall(target.Name, h, installOpts)
+			if target.CanonicalID != "" {
+				res.CanonicalID = target.CanonicalID
+			}
+			results = append(results, res)
+		}
+	}
+	return results, nil
 }
 
 func (a app) runSkillsList(args []string) error {
@@ -3082,7 +3888,9 @@ func (a app) runSkillsList(args []string) error {
 		return fmt.Errorf("skills list does not accept positional arguments")
 	}
 
-	bundled, _, _, err := a.discoverSkills(skillsCommandOpts{source: source, manifestName: manifestName, home: home, quietSource: true})
+	bundled, _, _, err := a.discoverSkills(skillsCommandOpts{
+		source: source, manifestName: manifestName, home: home, quietSource: true, allowMissingToolSkills: true,
+	})
 	if err != nil {
 		return err
 	}
@@ -3095,6 +3903,245 @@ func (a app) runSkillsList(args []string) error {
 	}
 	a.printSkillsList(bundled)
 	return nil
+}
+
+func (a app) runSkillsShow(args []string) error {
+	var opts skillsCommandOpts
+	fs := newFlagSet("flux skills show", a.stderr)
+	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	fs.StringVar(&opts.source, "source", "", "skills source directory")
+	fs.StringVar(&opts.home, "home", "", "override home directory")
+	fs.StringVar(&opts.manifestName, "manifest", "", "use skills declared by a synced manifest")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"source":   true,
+		"home":     true,
+		"manifest": true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: flux skills show <id|slug>")
+	}
+
+	bundled, _, _, err := a.discoverSkills(skillsCommandOpts{
+		source: opts.source, manifestName: opts.manifestName, home: opts.home, quietSource: true, allowMissingToolSkills: true,
+	})
+	if err != nil {
+		return err
+	}
+	selected, err := selectSkills(bundled, []string{rest[0]})
+	if err != nil {
+		return err
+	}
+	a.printSkillWarnings(selected)
+	s := selected[0]
+
+	if opts.jsonOut {
+		return printJSON(a.stdout, s)
+	}
+	a.printSkillShow(s)
+	return nil
+}
+
+func (a app) printSkillShow(s skills.Skill) {
+	fmt.Fprintln(a.stdout, s.Name)
+	if s.CanonicalID != "" {
+		printHumanField(a.stdout, "id", s.CanonicalID)
+	}
+	if s.SkillName != "" && s.SkillName != s.Name {
+		printHumanField(a.stdout, "skill", s.SkillName)
+	}
+	if s.Description != "" {
+		printHumanField(a.stdout, "description", s.Description)
+	}
+	if s.SourcePath != "" {
+		printHumanField(a.stdout, "source", s.SourcePath)
+	}
+	if s.SourceRoot != "" {
+		printHumanField(a.stdout, "source root", s.SourceRoot)
+	}
+}
+
+type skillStatusRow struct {
+	Harness     harness.Harness `json:"harness"`
+	Skill       string          `json:"skill"`
+	CanonicalID string          `json:"canonical_id,omitempty"`
+	Status      string          `json:"status"`
+	Kind        string          `json:"kind,omitempty"`
+	TargetPath  string          `json:"target_path,omitempty"`
+	SourcePath  string          `json:"source_path,omitempty"`
+	LinkTarget  string          `json:"link_target,omitempty"`
+	Remedy      string          `json:"remedy,omitempty"`
+	Message     string          `json:"message,omitempty"`
+	Error       string          `json:"error,omitempty"`
+}
+
+func (a app) runSkillsStatus(args []string) error {
+	var opts skillsCommandOpts
+	fs := newFlagSet("flux skills status", a.stderr)
+	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	fs.StringVar(&opts.source, "source", "", "skills source directory")
+	fs.StringVar(&opts.home, "home", "", "override home directory")
+	fs.StringVar(&opts.manifestName, "manifest", "", "use skills declared by a synced manifest")
+	fs.Var(&opts.skillRefs, "skill", "limit to one skill id or install slug; repeatable")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"source":   true,
+		"home":     true,
+		"manifest": true,
+		"skill":    true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("skills status does not accept positional arguments")
+	}
+	opts.allowMissingToolSkills = true
+
+	bundled, sourceRoots, _, err := a.discoverSkills(skillsCommandOpts{
+		source: opts.source, manifestName: opts.manifestName, home: opts.home, quietSource: true, skillRefs: opts.skillRefs, allowMissingToolSkills: true,
+	})
+	if err != nil {
+		return err
+	}
+	bundled, err = selectSkills(bundled, opts.skillRefs)
+	if err != nil {
+		return err
+	}
+	a.printSkillWarnings(bundled)
+	rows, err := a.skillStatusRows(opts, bundled, sourceRoots)
+	if err != nil {
+		return err
+	}
+	if opts.jsonOut {
+		return printJSON(a.stdout, rows)
+	}
+	a.printSkillsStatus(rows)
+	return nil
+}
+
+func (a app) skillStatusRows(opts skillsCommandOpts, bundled []skills.Skill, sourceRoots []string) ([]skillStatusRow, error) {
+	home, err := resolveHome(opts.home)
+	if err != nil {
+		return nil, err
+	}
+	installOpts := skills.InstallOpts{Home: opts.home, SourceRoots: sourceRoots}
+	var rows []skillStatusRow
+	for _, h := range harness.All() {
+		for _, s := range bundled {
+			row := skillStatusRow{
+				Harness:     h,
+				Skill:       s.Name,
+				CanonicalID: s.CanonicalID,
+				SourcePath:  s.SourcePath,
+			}
+			if h.IsFilesystem() {
+				row.TargetPath = h.SkillTargetPath(home, s.Name)
+			} else {
+				row.TargetPath = "(gemini CLI)"
+			}
+			inspection, err := skills.InspectDeclared(s, h, installOpts)
+			if err != nil {
+				row.Status = "error"
+				row.Error = err.Error()
+				rows = append(rows, row)
+				continue
+			}
+			kind := inspection.Kind
+			row.Kind = kind.Kind
+			row.LinkTarget = kind.Target
+			switch kind.Kind {
+			case "absent":
+				row.Status = "absent"
+				row.Remedy = skillInstallRemedy(opts, h, s)
+			case "managed-by-gemini":
+				row.Status = "managed-by-gemini"
+			case "copy":
+				if inspection.Stale {
+					row.Status = "stale"
+					row.Remedy = skillSyncRemedy(opts, h, s)
+					row.Message = inspection.StaleReason
+				} else {
+					row.Status = "installed"
+				}
+			default:
+				row.Status = "installed"
+			}
+			rows = append(rows, row)
+		}
+	}
+	return rows, nil
+}
+
+func skillSyncRemedy(opts skillsCommandOpts, h harness.Harness, s skills.Skill) string {
+	ref := s.CanonicalID
+	if ref == "" {
+		ref = s.Name
+	}
+	parts := []string{"flux", "skills", "sync", string(h), "--skill", ref}
+	if opts.manifestName != "" {
+		parts = append(parts, "--manifest", opts.manifestName)
+	}
+	if opts.source != "" {
+		parts = append(parts, "--source", opts.source)
+	}
+	if opts.home != "" {
+		parts = append(parts, "--home", opts.home)
+	}
+	for i, part := range parts {
+		parts[i] = shellQuote(part)
+	}
+	return strings.Join(parts, " ")
+}
+
+func skillInstallRemedy(opts skillsCommandOpts, h harness.Harness, s skills.Skill) string {
+	ref := s.CanonicalID
+	if ref == "" {
+		ref = s.Name
+	}
+	parts := []string{"flux", "skills", "install", string(h), "--skill", ref}
+	if opts.manifestName != "" {
+		parts = append(parts, "--manifest", opts.manifestName)
+	}
+	if opts.source != "" {
+		parts = append(parts, "--source", opts.source)
+	}
+	if opts.home != "" {
+		parts = append(parts, "--home", opts.home)
+	}
+	for i, part := range parts {
+		parts[i] = shellQuote(part)
+	}
+	return strings.Join(parts, " ")
+}
+
+func (a app) printSkillsStatus(rows []skillStatusRow) {
+	for _, row := range rows {
+		fields := []string{string(row.Harness), row.Skill, row.Status}
+		if row.CanonicalID != "" {
+			fields = append(fields, row.CanonicalID)
+		}
+		if row.Kind != "" && row.Kind != row.Status {
+			fields = append(fields, row.Kind)
+		}
+		if row.TargetPath != "" {
+			fields = append(fields, row.TargetPath)
+		}
+		if row.LinkTarget != "" {
+			fields = append(fields, "-> "+row.LinkTarget)
+		}
+		if row.Remedy != "" {
+			fields = append(fields, row.Remedy)
+		}
+		if row.Message != "" {
+			fields = append(fields, row.Message)
+		}
+		if row.Error != "" {
+			fields = append(fields, row.Error)
+		}
+		fmt.Fprintln(a.stdout, strings.Join(fields, "\t"))
+	}
 }
 
 func (a app) printSkillsList(bundled []skills.Skill) {
@@ -3116,17 +4163,229 @@ func (a app) printSkillsList(bundled []skills.Skill) {
 }
 
 type skillsCommandOpts struct {
-	all          bool
-	print        bool
-	copyMode     bool
-	linkMode     bool
-	force        bool
-	jsonOut      bool
-	source       string
-	home         string
-	manifestName string
-	umbrellaRoot string
-	quietSource  bool
+	all                    bool
+	print                  bool
+	copyMode               bool
+	linkMode               bool
+	force                  bool
+	jsonOut                bool
+	noPrune                bool
+	source                 string
+	home                   string
+	manifestName           string
+	umbrellaRoot           string
+	quietSource            bool
+	skillRefs              stringListFlag
+	allowMissingToolSkills bool
+}
+
+func selectSkills(all []skills.Skill, refs []string) ([]skills.Skill, error) {
+	if len(refs) == 0 {
+		return all, nil
+	}
+	var out []skills.Skill
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			continue
+		}
+		var matches []skills.Skill
+		for _, s := range all {
+			if skillMatchesRef(s, ref) {
+				matches = append(matches, s)
+			}
+		}
+		if len(matches) == 0 {
+			return nil, fmt.Errorf("skill %q is not available from the selected source", ref)
+		}
+		if len(matches) > 1 {
+			return nil, fmt.Errorf("skill %q is ambiguous; matches %s; use a canonical id", ref, skillMatchNames(matches))
+		}
+		key := skillSelectionKey(matches[0])
+		if !seen[key] {
+			out = append(out, matches[0])
+			seen[key] = true
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no skills selected")
+	}
+	return out, nil
+}
+
+func skillMatchesRef(s skills.Skill, ref string) bool {
+	return s.Name == ref || s.SkillName == ref || s.CanonicalID == ref
+}
+
+func skillSelectionKey(s skills.Skill) string {
+	return s.CanonicalID + "\x00" + s.Name + "\x00" + s.SourcePath
+}
+
+func skillMatchNames(matches []skills.Skill) string {
+	var names []string
+	for _, s := range matches {
+		name := s.Name
+		if s.CanonicalID != "" {
+			name = s.CanonicalID + " (" + s.Name + ")"
+		}
+		names = append(names, name)
+	}
+	return strings.Join(names, ", ")
+}
+
+type skillRemovalTarget struct {
+	Name        string
+	CanonicalID string
+}
+
+func collectStaleSkillRemovalResults(opts skillsCommandOpts, hs []harness.Harness, declared []skills.Skill, sourceRoots []string) ([]skills.Result, error) {
+	declaredNames := map[string]bool{}
+	for _, s := range declared {
+		declaredNames[s.Name] = true
+	}
+	installOpts := skills.InstallOpts{
+		DryRun:      opts.print,
+		SkipMissing: opts.all,
+		Home:        opts.home,
+		Force:       opts.force,
+		SourceRoots: sourceRoots,
+	}
+	var results []skills.Result
+	for _, h := range hs {
+		if !h.IsFilesystem() {
+			continue
+		}
+		installed, err := skills.ListInstalled(h, installOpts)
+		if err != nil {
+			results = append(results, skills.Result{Harness: h, Skill: "*", Status: skills.StatusFailed, Err: err})
+			continue
+		}
+		for _, existing := range installed {
+			if declaredNames[existing.Skill] || !existing.Managed {
+				continue
+			}
+			res := skills.Uninstall(existing.Skill, h, installOpts)
+			res.CanonicalID = existing.CanonicalID
+			res.Message = staleRemovalMessage(res.Message)
+			results = append(results, res)
+		}
+	}
+	return results, nil
+}
+
+func staleRemovalMessage(message string) string {
+	if message == "" {
+		return "stale Flux-managed skill not declared by selected source"
+	}
+	return "stale Flux-managed skill not declared by selected source; " + message
+}
+
+func geminiPurgeTargets(declared []skills.Skill, refs []string) ([]skillRemovalTarget, error) {
+	if len(refs) == 0 {
+		targets := make([]skillRemovalTarget, 0, len(declared))
+		for _, s := range declared {
+			targets = append(targets, skillRemovalTarget{Name: s.Name, CanonicalID: s.CanonicalID})
+		}
+		return targets, nil
+	}
+	return declaredOrRawRemovalTargets(declared, refs), nil
+}
+
+func filesystemPurgeTargets(declared []skills.Skill, installed []skills.InstalledSkill, refs []string) ([]skillRemovalTarget, error) {
+	if len(refs) == 0 {
+		var targets []skillRemovalTarget
+		for _, existing := range installed {
+			if existing.Managed {
+				targets = append(targets, skillRemovalTarget{Name: existing.Skill, CanonicalID: existing.CanonicalID})
+			}
+		}
+		return dedupeRemovalTargets(targets), nil
+	}
+
+	var targets []skillRemovalTarget
+	for _, ref := range refs {
+		declaredMatches := declaredMatchesRef(declared, ref)
+		if len(declaredMatches) > 1 {
+			return nil, fmt.Errorf("skill %q is ambiguous; matches %s; use a canonical id", ref, skillMatchNames(declaredMatches))
+		}
+		installedMatches := installedMatchesRef(installed, ref)
+		if len(installedMatches) > 1 {
+			return nil, fmt.Errorf("skill %q is ambiguous; matches installed %s", ref, installedMatchNames(installedMatches))
+		}
+		for _, s := range declaredMatches {
+			targets = append(targets, skillRemovalTarget{Name: s.Name, CanonicalID: s.CanonicalID})
+		}
+		for _, existing := range installedMatches {
+			targets = append(targets, skillRemovalTarget{Name: existing.Skill, CanonicalID: existing.CanonicalID})
+		}
+		if len(declaredMatches) == 0 && len(installedMatches) == 0 {
+			targets = append(targets, skillRemovalTarget{Name: ref})
+		}
+	}
+	return dedupeRemovalTargets(targets), nil
+}
+
+func declaredOrRawRemovalTargets(declared []skills.Skill, refs []string) []skillRemovalTarget {
+	var targets []skillRemovalTarget
+	for _, ref := range refs {
+		matches := declaredMatchesRef(declared, ref)
+		if len(matches) == 0 {
+			targets = append(targets, skillRemovalTarget{Name: ref})
+			continue
+		}
+		for _, s := range matches {
+			targets = append(targets, skillRemovalTarget{Name: s.Name, CanonicalID: s.CanonicalID})
+		}
+	}
+	return dedupeRemovalTargets(targets)
+}
+
+func declaredMatchesRef(declared []skills.Skill, ref string) []skills.Skill {
+	ref = strings.TrimSpace(ref)
+	var matches []skills.Skill
+	for _, s := range declared {
+		if skillMatchesRef(s, ref) {
+			matches = append(matches, s)
+		}
+	}
+	return matches
+}
+
+func installedMatchesRef(installed []skills.InstalledSkill, ref string) []skills.InstalledSkill {
+	ref = strings.TrimSpace(ref)
+	var matches []skills.InstalledSkill
+	for _, s := range installed {
+		if s.Skill == ref || s.CanonicalID == ref {
+			matches = append(matches, s)
+		}
+	}
+	return matches
+}
+
+func installedMatchNames(matches []skills.InstalledSkill) string {
+	var names []string
+	for _, s := range matches {
+		name := s.Skill
+		if s.CanonicalID != "" {
+			name = s.CanonicalID + " (" + s.Skill + ")"
+		}
+		names = append(names, name)
+	}
+	return strings.Join(names, ", ")
+}
+
+func dedupeRemovalTargets(targets []skillRemovalTarget) []skillRemovalTarget {
+	var out []skillRemovalTarget
+	seen := map[string]bool{}
+	for _, target := range targets {
+		if target.Name == "" || seen[target.Name] {
+			continue
+		}
+		out = append(out, target)
+		seen[target.Name] = true
+	}
+	return out
 }
 
 func selectedHarnesses(all bool, names []string) ([]harness.Harness, error) {
@@ -3167,12 +4426,13 @@ func (a app) discoverSkills(opts skillsCommandOpts) ([]skills.Skill, []string, b
 	if opts.source != "" && opts.manifestName != "" {
 		return nil, nil, false, fmt.Errorf("--source and --manifest are mutually exclusive")
 	}
+	allowMissingToolSkills := opts.print || opts.allowMissingToolSkills
 	if opts.manifestName != "" {
-		found, sourceRoots, err := a.discoverManifestSkills(opts.home, opts.manifestName, opts.print, !opts.quietSource)
+		found, sourceRoots, err := a.discoverManifestSkills(opts.home, opts.manifestName, allowMissingToolSkills, !opts.quietSource, opts.skillRefs)
 		return found, sourceRoots, true, err
 	}
 	if opts.source == "" {
-		if found, sourceRoots, ok, err := a.discoverDefaultManifestSkills(opts.home, opts.print, !opts.quietSource); err != nil {
+		if found, sourceRoots, ok, err := a.discoverDefaultManifestSkills(opts.home, allowMissingToolSkills, !opts.quietSource, opts.skillRefs); err != nil {
 			return nil, nil, false, err
 		} else if ok {
 			return found, sourceRoots, true, nil
@@ -3197,7 +4457,7 @@ func (a app) prepareManifestSkillSources(opts skillsCommandOpts) error {
 	if err != nil || !ok {
 		return err
 	}
-	return a.installToolSkills(opts.home, docs, opts.print)
+	return a.installToolSkills(opts.home, docs, opts.print, opts.skillRefs)
 }
 
 func (a app) skillManifestDocs(home, manifestName string) ([]registeredDoc, bool, error) {
@@ -3216,8 +4476,8 @@ func (a app) skillManifestDocs(home, manifestName string) ([]registeredDoc, bool
 	return docs, true, err
 }
 
-func (a app) installToolSkills(home string, docs []registeredDoc, dryRun bool) error {
-	needed := manifestToolSkillIDs(docs)
+func (a app) installToolSkills(home string, docs []registeredDoc, dryRun bool, refs []string) error {
+	needed := manifestToolSkillIDs(docs, refs)
 	if len(needed) == 0 {
 		return nil
 	}
@@ -3272,16 +4532,32 @@ func (a app) installToolSkills(home string, docs []registeredDoc, dryRun bool) e
 	return nil
 }
 
-func manifestToolSkillIDs(docs []registeredDoc) map[string]bool {
+func manifestToolSkillIDs(docs []registeredDoc, refs []string) map[string]bool {
 	needed := map[string]bool{}
 	for _, doc := range docs {
 		for _, skill := range doc.doc.Skills {
+			if len(refs) != 0 && !manifestSkillMatchesRefs(skill, refs) {
+				continue
+			}
 			if skill.Source.Type == "tool" && skill.Source.Tool != "" {
 				needed[skill.Source.Tool] = true
 			}
 		}
 	}
 	return needed
+}
+
+func manifestSkillMatchesRefs(skill manifest.Skill, refs []string) bool {
+	for _, ref := range refs {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			continue
+		}
+		if skill.ID == ref || skill.InstallSlug == ref {
+			return true
+		}
+	}
+	return false
 }
 
 func skillInstallArgs(args []string, skillsRoot string) []string {
@@ -3298,15 +4574,15 @@ func commandLine(command string, args []string) string {
 	return strings.Join(parts, " ")
 }
 
-func (a app) discoverManifestSkills(home, manifestName string, allowMissingToolSkills, showSource bool) ([]skills.Skill, []string, error) {
+func (a app) discoverManifestSkills(home, manifestName string, allowMissingToolSkills, showSource bool, refs []string) ([]skills.Skill, []string, error) {
 	docs, err := loadRegisteredDocs(home, manifestName)
 	if err != nil {
 		return nil, nil, err
 	}
-	return a.discoverManifestSkillDocs(home, docs, allowMissingToolSkills, showSource)
+	return a.discoverManifestSkillDocs(home, docs, allowMissingToolSkills, showSource, refs)
 }
 
-func (a app) discoverDefaultManifestSkills(home string, allowMissingToolSkills, showSource bool) ([]skills.Skill, []string, bool, error) {
+func (a app) discoverDefaultManifestSkills(home string, allowMissingToolSkills, showSource bool, refs []string) ([]skills.Skill, []string, bool, error) {
 	reg, err := manifest.LoadRegistry(home)
 	if err != nil {
 		return nil, nil, false, err
@@ -3318,14 +4594,14 @@ func (a app) discoverDefaultManifestSkills(home string, allowMissingToolSkills, 
 	if err != nil {
 		return nil, nil, false, err
 	}
-	found, sourceRoots, err := a.discoverManifestSkillDocs(home, docs, allowMissingToolSkills, showSource)
+	found, sourceRoots, err := a.discoverManifestSkillDocs(home, docs, allowMissingToolSkills, showSource, refs)
 	if err != nil {
 		return nil, nil, false, err
 	}
 	return found, sourceRoots, true, nil
 }
 
-func (a app) discoverManifestSkillDocs(home string, docs []registeredDoc, allowMissingToolSkills, showSource bool) ([]skills.Skill, []string, error) {
+func (a app) discoverManifestSkillDocs(home string, docs []registeredDoc, allowMissingToolSkills, showSource bool, refs []string) ([]skills.Skill, []string, error) {
 	var out []skills.Skill
 	var sourceRoots []string
 	materializedRoot, err := bundle.SkillsRoot(home)
@@ -3336,6 +4612,9 @@ func (a app) discoverManifestSkillDocs(home string, docs []registeredDoc, allowM
 		toolsByID := manifestToolsByID(doc.doc.Tools)
 		declared := make([]skills.DeclaredSkill, 0, len(doc.doc.Skills))
 		for _, skill := range doc.doc.Skills {
+			if len(refs) != 0 && !manifestSkillMatchesRefs(skill, refs) {
+				continue
+			}
 			sourceType := skill.Source.Type
 			if sourceType == "" {
 				sourceType = "static"
@@ -3380,7 +4659,7 @@ func (a app) discoverManifestSkillDocs(home string, docs []registeredDoc, allowM
 		out = append(out, found...)
 		sourceRoots = append(sourceRoots, doc.ref.LocalPath)
 	}
-	if len(manifestToolSkillIDs(docs)) != 0 {
+	if len(manifestToolSkillIDs(docs, refs)) != 0 {
 		sourceRoots = append(sourceRoots, materializedRoot)
 	}
 	return out, sourceRoots, nil

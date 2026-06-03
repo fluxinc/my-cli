@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="flux">
+  <defs>
+    <linearGradient id="flux-a" x1="40" y1="28" x2="220" y2="228" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14b8a6"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="#071412"/>
+  <path d="M70 66h118v39H113v31h63v38h-63v58H70V66Z" fill="url(#flux-a)"/>
+  <path d="M113 105h75v39h-75v-39Zm0 69h63v38h-63v-38Z" fill="#0f172a" opacity=".18"/>
+</svg>

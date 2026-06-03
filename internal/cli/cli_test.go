@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"flag"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fluxinc/flux/internal/manifest"
 	"github.com/fluxinc/flux/internal/meetings"
 	"github.com/fluxinc/flux/internal/umbrella"
 )
@@ -174,6 +176,255 @@ func TestSkillsInstallFromManifestRecordsCanonicalID(t *testing.T) {
 	}
 }
 
+func TestSkillsShowFromManifest(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"flux", "skills", "show", "acme:handbook", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"acme-handbook\n",
+		"  id: acme:handbook\n",
+		"  description: Acme handbook",
+		"  source: ",
+		"skills/acme-handbook",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("skills show stdout = %q, missing %q", out, want)
+		}
+	}
+	if strings.Contains(out, "acme-calendar") {
+		t.Fatalf("skills show stdout included the wrong skill: %q", out)
+	}
+}
+
+func TestSkillsInstallAndUninstallSkillFilter(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"flux", "skills", "install", "claude-code",
+		"--copy", "--manifest", "acme", "--home", home, "--skill", "acme:calendar",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "acme-calendar")); err != nil {
+		t.Fatalf("filtered skill was not installed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("unselected skill was installed, err=%v", err)
+	}
+	if strings.Contains(stdout.String(), "acme:handbook") {
+		t.Fatalf("install stdout included unselected skill: %q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"flux", "skills", "uninstall", "claude-code",
+		"--manifest", "acme", "--home", home, "--skill", "acme-calendar",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "acme-calendar")); !os.IsNotExist(err) {
+		t.Fatalf("filtered skill was not removed, err=%v", err)
+	}
+}
+
+func TestSkillsStatusJSON(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"flux", "skills", "install", "claude-code",
+		"--copy", "--manifest", "acme", "--home", home, "--skill", "acme:handbook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"flux", "skills", "status",
+		"--json", "--manifest", "acme", "--home", home, "--skill", "acme:handbook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		`"harness": "claude-code"`,
+		`"skill": "acme-handbook"`,
+		`"canonical_id": "acme:handbook"`,
+		`"status": "installed"`,
+		`"kind": "copy"`,
+		`"harness": "codex"`,
+		`"status": "absent"`,
+		`"remedy": "flux skills install codex --skill acme:handbook --manifest acme --home `,
+		`"harness": "gemini"`,
+		`"status": "managed-by-gemini"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("skills status json = %q, missing %q", out, want)
+		}
+	}
+	if strings.Contains(out, "acme-calendar") {
+		t.Fatalf("skills status json included unselected skill: %q", out)
+	}
+}
+
+func TestSkillsStatusReportsStaleCopy(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+
+	if err := a.run([]string{
+		"flux", "skills", "install", "claude-code",
+		"--copy", "--manifest", "acme", "--home", home, "--skill", "acme:handbook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(home, ".local", "share", "flux", "manifests", "acme", "skills", "acme-handbook", "SKILL.md"), `---
+name: acme-handbook
+description: Changed handbook
+---
+`)
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"flux", "skills", "status",
+		"--json", "--manifest", "acme", "--home", home, "--skill", "acme:handbook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		`"status": "stale"`,
+		`"remedy": "flux skills sync claude-code --skill acme:handbook --manifest acme --home `,
+		`"message": "copy differs from source"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("skills status json = %q, missing %q", out, want)
+		}
+	}
+}
+
+func TestSkillsSyncPrunesStaleManagedSkill(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCLIManagedSkill(t, filepath.Join(home, ".claude", "skills", "old-skill"), "acme:old-skill")
+	writeCLITestFile(t, filepath.Join(home, ".claude", "skills", "user-skill", "SKILL.md"), "---\nname: user-skill\n---\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"flux", "skills", "sync", "claude-code",
+		"--copy", "--manifest", "acme", "--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "old-skill")); !os.IsNotExist(err) {
+		t.Fatalf("stale managed skill still exists, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "user-skill")); err != nil {
+		t.Fatalf("unmanaged skill was removed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "acme-handbook")); err != nil {
+		t.Fatalf("declared skill was not installed: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "claude-code\told-skill\tremoved") {
+		t.Fatalf("sync stdout = %q, want stale removal", out)
+	}
+	if strings.Contains(out, "user-skill\tremoved") {
+		t.Fatalf("sync stdout removed unmanaged skill: %q", out)
+	}
+}
+
+func TestSkillsSyncNoPruneKeepsStaleManagedSkill(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCLIManagedSkill(t, filepath.Join(home, ".claude", "skills", "old-skill"), "acme:old-skill")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"flux", "skills", "sync", "claude-code",
+		"--copy", "--no-prune", "--manifest", "acme", "--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "old-skill")); err != nil {
+		t.Fatalf("stale managed skill was pruned despite --no-prune: %v", err)
+	}
+	if strings.Contains(stdout.String(), "old-skill\tremoved") {
+		t.Fatalf("sync stdout pruned despite --no-prune: %q", stdout.String())
+	}
+}
+
+func TestSkillsPurgeSkillFilterRemovesStaleManagedSkill(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCLIManagedSkill(t, filepath.Join(home, ".claude", "skills", "old-skill"), "acme:old-skill")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"flux", "skills", "purge", "claude-code",
+		"--manifest", "acme", "--home", home, "--skill", "acme:old-skill",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "old-skill")); !os.IsNotExist(err) {
+		t.Fatalf("stale managed skill was not purged, err=%v", err)
+	}
+	if !strings.Contains(stdout.String(), "claude-code\told-skill\tremoved\tacme:old-skill") {
+		t.Fatalf("purge stdout = %q, want stale canonical removal", stdout.String())
+	}
+}
+
 func TestSkillsInstallSelectionErrors(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
@@ -185,6 +436,158 @@ func TestSkillsInstallSelectionErrors(t *testing.T) {
 	}
 	if err := a.run([]string{"flux", "skills", "list", "extra"}); err == nil || !strings.Contains(err.Error(), "positional") {
 		t.Fatalf("list positional err = %v", err)
+	}
+}
+
+func TestAdminSkillsAddCopiesAndDeclares(t *testing.T) {
+	manifestDir := t.TempDir()
+	writeAdminManifest(t, manifestDir, "")
+	sourceRoot := makeCLISkill(t, "demo-skill")
+	skillDir := filepath.Join(sourceRoot, "demo-skill")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"flux", "admin", "skills", "add", skillDir,
+		"--id", "acme:demo-skill",
+		"--manifest-dir", manifestDir,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "added\tacme:demo-skill\tdemo-skill") {
+		t.Fatalf("admin add stdout = %q", stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join(manifestDir, "skills", "demo-skill", "SKILL.md")); err != nil {
+		t.Fatalf("skill was not copied into manifest: %v", err)
+	}
+	doc, _, err := manifest.LoadDocument(manifestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Skills) != 1 || doc.Skills[0].ID != "acme:demo-skill" || doc.Skills[0].Path != "skills/demo-skill" {
+		t.Fatalf("manifest skills = %#v", doc.Skills)
+	}
+	if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err != nil {
+		t.Fatalf("original skill should remain by default: %v", err)
+	}
+}
+
+func TestAdminSkillsAddHarnessVisibleSourceRequiresChoice(t *testing.T) {
+	manifestDir := t.TempDir()
+	writeAdminManifest(t, manifestDir, "")
+	skillDir := filepath.Join(t.TempDir(), ".claude", "skills", "demo-skill")
+	writeCLITestFile(t, filepath.Join(skillDir, "SKILL.md"), "---\nname: demo-skill\n---\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{
+		"flux", "admin", "skills", "add", skillDir,
+		"--id", "acme:demo-skill",
+		"--manifest-dir", manifestDir,
+	})
+	if err == nil || !strings.Contains(err.Error(), "--keep-original") {
+		t.Fatalf("admin add err = %v, want explicit keep/remove-original choice", err)
+	}
+
+	if err := a.run([]string{
+		"flux", "admin", "skills", "add", skillDir,
+		"--id", "acme:demo-skill",
+		"--manifest-dir", manifestDir,
+		"--remove-original",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+		t.Fatalf("source skill still exists after --remove-original, err=%v", err)
+	}
+}
+
+func TestAdminSkillsRemoveBlocksThenPrunesRelatedProducts(t *testing.T) {
+	manifestDir := t.TempDir()
+	writeAdminManifest(t, manifestDir, `,
+  "skills": [
+    { "id": "acme:demo-skill", "install_slug": "demo-skill", "path": "skills/demo-skill" }
+  ]`)
+	writeCLITestFile(t, filepath.Join(manifestDir, "skills", "demo-skill", "SKILL.md"), "---\nname: demo-skill\n---\n")
+	writeCLITestFile(t, filepath.Join(manifestDir, "catalog", "products.json"), `[
+  {
+    "id": "demo-product",
+    "name": "Demo Product",
+    "git_url": "https://github.com/acme/demo-product.git",
+    "description": "Demo",
+    "related_skills": ["acme:demo-skill", "acme:other-skill"]
+  }
+]`)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{
+		"flux", "admin", "skills", "remove", "acme:demo-skill",
+		"--manifest-dir", manifestDir,
+	})
+	if err == nil || !strings.Contains(err.Error(), "related_skills") {
+		t.Fatalf("remove err = %v, want related_skills blocker", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"flux", "admin", "skills", "remove", "demo-skill",
+		"--manifest-dir", manifestDir,
+		"--prune-related",
+		"--delete-source",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	doc, _, err := manifest.LoadDocument(manifestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Skills) != 0 {
+		t.Fatalf("manifest skills after remove = %#v", doc.Skills)
+	}
+	if _, err := os.Stat(filepath.Join(manifestDir, "skills", "demo-skill")); !os.IsNotExist(err) {
+		t.Fatalf("skill source still exists after --delete-source, err=%v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(manifestDir, "catalog", "products.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var products []manifest.Product
+	if err := json.Unmarshal(data, &products); err != nil {
+		t.Fatal(err)
+	}
+	if len(products) != 1 || strings.Join(products[0].RelatedSkills, ",") != "acme:other-skill" {
+		t.Fatalf("products after prune = %#v", products)
+	}
+}
+
+func TestAdminSkillsDirtyCheckoutRequiresForce(t *testing.T) {
+	manifestDir := t.TempDir()
+	writeAdminManifest(t, manifestDir, "")
+	initCLIGitRepo(t, manifestDir)
+	writeCLITestFile(t, filepath.Join(manifestDir, "dirty.txt"), "dirty\n")
+	sourceRoot := makeCLISkill(t, "demo-skill")
+	skillDir := filepath.Join(sourceRoot, "demo-skill")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{
+		"flux", "admin", "skills", "add", skillDir,
+		"--id", "acme:demo-skill",
+		"--manifest-dir", manifestDir,
+	})
+	if err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
+		t.Fatalf("dirty add err = %v, want dirty checkout refusal", err)
+	}
+
+	if err := a.run([]string{
+		"flux", "admin", "skills", "add", skillDir,
+		"--id", "acme:demo-skill",
+		"--manifest-dir", manifestDir,
+		"--force",
+	}); err != nil {
+		t.Fatalf("force add failed: %v", err)
 	}
 }
 
@@ -1141,6 +1544,7 @@ func TestTopLevelHelp(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "flux onboard") ||
 		!strings.Contains(stdout.String(), "flux skills install") ||
+		!strings.Contains(stdout.String(), "flux admin manifest add|sync|validate") ||
 		!strings.Contains(stdout.String(), "flux version") {
 		t.Fatalf("help output = %q", stdout.String())
 	}
@@ -1189,6 +1593,62 @@ func writeCLITestFile(t *testing.T, path, body string) {
 	}
 }
 
+func writeCLIManagedSkill(t *testing.T, dir, canonicalID string) {
+	t.Helper()
+	writeCLITestFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: "+filepath.Base(dir)+"\n---\n")
+	writeCLITestFile(t, filepath.Join(dir, ".flux-managed.json"), `{
+  "installer": "flux",
+  "version": "test",
+  "mode": "copy",
+  "source": "/tmp/flux-test-source",
+  "canonical_id": "`+canonicalID+`"
+}`)
+}
+
+func writeAdminManifest(t *testing.T, dir, extra string) {
+	t.Helper()
+	writeCLITestFile(t, filepath.Join(dir, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" }`+extra+`
+}`)
+}
+
+func setupCLISkillsManifestFixture(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" },
+    { "id": "acme:calendar", "install_slug": "acme-calendar", "path": "skills/acme-calendar" }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-handbook", "SKILL.md"), `---
+name: acme-handbook
+description: Acme handbook
+---
+`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-calendar", "SKILL.md"), `---
+name: acme-calendar
+description: Acme calendar
+---
+`)
+	return home
+}
+
+func registerCLIManifest(t *testing.T, a app, home string) {
+	t.Helper()
+	if err := a.run([]string{
+		"flux", "manifest", "add", "acme",
+		"https://github.com/acme/acme-ai-manifest.git",
+		"--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func setupCLILaunchFixture(t *testing.T) (string, string) {
 	t.Helper()
 	home := t.TempDir()
@@ -1224,4 +1684,144 @@ func runCLIGit(t *testing.T, dir string, args ...string) {
 	if err != nil {
 		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, out)
 	}
+}
+
+func TestAdminRoutingDelegatesToTopLevelHandlers(t *testing.T) {
+	home := t.TempDir()
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    {
+      "id": "leadership",
+      "kind": "meetings",
+      "git_url": "https://github.com/acme/leadership.git",
+      "mode": "optional"
+    }
+  ],
+  "workspaces": [
+    {
+      "id": "handbook",
+      "git_url": "https://github.com/acme/acme-handbook.git",
+      "local_path": "~/.flux/workspaces/handbook"
+    }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(home, ".flux", "workspaces", "handbook", "meetings", ".keep"), "")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+
+	t.Run("manifest add alias", func(t *testing.T) {
+		stdout.Reset()
+		if err := a.run([]string{
+			"flux", "admin", "manifest", "add", "extra",
+			"https://github.com/acme/extra-manifest.git",
+			"--home", home,
+		}); err != nil {
+			t.Fatalf("flux admin manifest add err = %v", err)
+		}
+		stdout.Reset()
+		if err := a.run([]string{"flux", "manifest", "list", "--home", home}); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(stdout.String(), "extra-manifest") {
+			t.Fatalf("manifest list stdout = %q", stdout.String())
+		}
+	})
+
+	t.Run("mount add alias", func(t *testing.T) {
+		stdout.Reset()
+		if err := a.run([]string{"flux", "admin", "mount", "add", "meetings:leadership", "--manifest", "acme", "--home", home, "--print"}); err != nil {
+			t.Fatalf("flux admin mount add err = %v", err)
+		}
+		if !strings.Contains(stdout.String(), "leadership\tdry-run") {
+			t.Fatalf("mount add stdout = %q", stdout.String())
+		}
+	})
+
+	t.Run("meetings add alias", func(t *testing.T) {
+		stdout.Reset()
+		if err := a.run([]string{
+			"flux", "admin", "meetings", "add", "sampleco-followup",
+			"--manifest", "acme",
+			"--workspace", "handbook",
+			"--home", home,
+			"--date", "2026-05-13",
+			"--customer", "sampleco",
+			"--print",
+		}); err != nil {
+			t.Fatalf("flux admin meetings add err = %v", err)
+		}
+		if !strings.Contains(stdout.String(), "2026-05-13-sampleco-followup") {
+			t.Fatalf("meetings add stdout = %q", stdout.String())
+		}
+	})
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"flux", "admin", "skills", "list"}, "use flux skills list"},
+		{[]string{"flux", "admin", "manifest", "list"}, "use flux manifest list"},
+		{[]string{"flux", "admin", "mount", "list"}, "use flux mount list"},
+		{[]string{"flux", "admin", "meetings", "search", "cleanup"}, "use flux meetings search"},
+	} {
+		t.Run(strings.Join(tc.args[2:], " "), func(t *testing.T) {
+			err := a.run(tc.args)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("%s err = %v, want %q", strings.Join(tc.args, " "), err, tc.want)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"flux", "admin", "manifest"}, "missing admin manifest subcommand"},
+		{[]string{"flux", "admin", "mount"}, "missing admin mount subcommand"},
+		{[]string{"flux", "admin", "meetings"}, "missing admin meetings subcommand"},
+	} {
+		t.Run(strings.Join(tc.args[2:], " "), func(t *testing.T) {
+			err := a.run(tc.args)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("%s err = %v, want %q", strings.Join(tc.args, " "), err, tc.want)
+			}
+		})
+	}
+
+	t.Run("onboard", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		err := a.run([]string{"flux", "admin", "onboard", "--home", t.TempDir()})
+		if err == nil || !strings.Contains(err.Error(), "manifest") {
+			t.Fatalf("flux admin onboard err = %v, want a manifest-related error", err)
+		}
+	})
+
+	t.Run("unknown", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		err := a.run([]string{"flux", "admin", "bogus"})
+		if err == nil || !strings.Contains(err.Error(), "unknown admin subcommand") {
+			t.Fatalf("flux admin bogus err = %v, want unknown admin subcommand", err)
+		}
+	})
+
+	t.Run("help", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		if err := a.run([]string{"flux", "admin", "--help"}); err != nil {
+			t.Fatalf("flux admin --help err = %v", err)
+		}
+		for _, want := range []string{"flux admin onboard", "flux admin manifest", "flux admin mount", "flux admin meetings"} {
+			if !strings.Contains(stdout.String(), want) {
+				t.Fatalf("flux admin --help missing %q in:\n%s", want, stdout.String())
+			}
+		}
+	})
 }

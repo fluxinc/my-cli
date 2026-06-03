@@ -279,6 +279,18 @@ func ValidateFile(path string) ValidationResult {
 	return result
 }
 
+// ValidateDocument validates an in-memory manifest document against the same
+// schema rules as ValidateFile. Catalog checks run when root is not empty.
+func ValidateDocument(root string, doc Document) ValidationResult {
+	result := ValidationResult{Path: root}
+	validateOrgManifest(doc, &result)
+	if root != "" {
+		validateProductCatalog(root, doc, &result)
+		validateCustomerCatalog(root, &result)
+	}
+	return result
+}
+
 // LoadDocument reads a manifest JSON file or directory containing manifest.json.
 func LoadDocument(path string) (Document, string, error) {
 	info, err := os.Stat(path)
@@ -297,6 +309,27 @@ func LoadDocument(path string) (Document, string, error) {
 		return Document{}, path, fmt.Errorf("invalid JSON: %w", err)
 	}
 	return doc, path, nil
+}
+
+// SaveDocument writes manifest.json using the canonical JSON formatting.
+func SaveDocument(path string, doc Document) error {
+	info, err := os.Stat(path)
+	if err == nil && info.IsDir() {
+		path = filepath.Join(path, manifestFile)
+	} else if errors.Is(err, os.ErrNotExist) && filepath.Base(path) != manifestFile {
+		path = filepath.Join(path, manifestFile)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	data, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 // LoadCatalog reads catalog/products.json from a registered manifest repo.

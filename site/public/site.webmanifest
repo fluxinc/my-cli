@@ -1,0 +1,14 @@
+{
+  "name": "flux",
+  "short_name": "flux",
+  "icons": [
+    {
+      "src": "/flux/favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml"
+    }
+  ],
+  "theme_color": "#0f766e",
+  "background_color": "#071412",
+  "display": "standalone"
+}
