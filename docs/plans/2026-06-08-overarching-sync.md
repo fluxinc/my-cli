@@ -144,14 +144,15 @@ repos can create split local state.
 
 Recommended direction:
 
-1. Short term (v1): detect duplicate remotes and refuse to auto-publish a remote
-   while any other checkout of it has pending (uncommitted or unpushed) changes.
-   The hazard is base-staleness, not change class -- pushing one checkout
-   advances the shared remote and strands the sibling on a stale base. This bites
-   on day one: the handbook mount is ahead one commit with 129 unpushed meeting
-   files while the manifest cache of the same remote has a dirty
-   catalog/customers.json, so the very first real sync must detect and reconcile
-   rather than push blindly.
+1. Short term (v1): detect duplicate remotes and publish only through the
+   canonical Nit member when every sibling checkout of that remote is clean. A
+   clean sibling is allowed and can be fast-forwarded after publish; a sibling
+   with uncommitted or unpushed changes blocks that remote. The hazard is
+   base-staleness, not change class -- pushing one checkout advances the shared
+   remote and strands a dirty sibling on a stale base. This bites on day one:
+   the handbook mount was ahead one commit with 129 unpushed meeting files while
+   the manifest cache of the same remote had a dirty catalog/customers.json, so
+   the first real sync had to detect and reconcile rather than push blindly.
 2. Medium term: make one canonical local repository for each remote, then expose
    scoped mounts as sparse worktrees or synchronized views of that canonical
    clone.
@@ -230,8 +231,10 @@ flux sync --backend nit --print
 3. Add PR mode:
    create draft PRs with `gh` for held-back reviewable changes.
 4. Add same-remote canonicalization:
-   use a canonical clone plus sparse worktrees or an equivalent reconciliation
-   layer.
+   tolerate clean duplicate siblings while routing publish through the canonical
+   Nit member, and hold the remote whenever a duplicate sibling has pending
+   changes. Longer term, use a canonical clone plus sparse worktrees or an
+   equivalent reconciliation layer.
 5. Stand up Nit for the umbrella:
    initialize `~/flux` as a Nit control workspace, adopt one canonical checkout
    per remote, and make `flux sync --backend auto` choose Nit.

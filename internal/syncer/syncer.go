@@ -145,16 +145,20 @@ func runNit(entries []Entry, opts Options) Report {
 	for _, entry := range entries {
 		inspections = append(inspections, inspect(entry, opts, runner))
 	}
-	duplicateRemotes := duplicateRemoteKeys(inspections)
-	if len(duplicateRemotes) != 0 {
+
+	for i := range inspections {
+		reconcileInbound(&inspections[i], opts, runner)
+	}
+
+	unsafeDuplicateRemotes := unsafeDuplicateRemoteReasons(inspections, opts.NitRoot)
+	if len(unsafeDuplicateRemotes) != 0 {
 		for i := range inspections {
-			if duplicateRemotes[inspections[i].remoteKey] && inspections[i].result.Status == "pending" {
-				hold(&inspections[i], "same remote has multiple Flux checkouts; collapse to one canonical checkout before Nit publish")
+			reason, ok := unsafeDuplicateRemotes[inspections[i].remoteKey]
+			if ok && inspections[i].result.Status == "pending" {
+				hold(&inspections[i], reason)
 			}
 		}
-		report.BackendMessage = "Flux must canonicalize duplicate checkouts before delegating to Nit"
-		report.Results = collectResults(inspections)
-		return report
+		report.BackendMessage = "Flux must reconcile unsafe duplicate checkouts before delegating those remotes to Nit"
 	}
 
 	var stagePaths []string
@@ -190,15 +194,17 @@ func runNit(entries []Entry, opts Options) Report {
 			hold(in, "checkout is outside the Nit workspace; canonicalize or adopt it before Nit publish")
 			continue
 		}
+		var entryStagePaths []string
 		for _, path := range in.dirty {
 			rel, err := filepath.Rel(opts.NitRoot, filepath.Join(in.entry.LocalPath, filepath.FromSlash(path)))
 			if err != nil || strings.HasPrefix(filepath.ToSlash(rel), "../") || filepath.IsAbs(rel) {
 				hold(in, "dirty path is outside the Nit workspace")
 				continue
 			}
-			stagePaths = append(stagePaths, filepath.ToSlash(rel))
+			entryStagePaths = append(entryStagePaths, filepath.ToSlash(rel))
 		}
 		if in.result.Status == "pending" {
+			stagePaths = append(stagePaths, entryStagePaths...)
 			publishable = append(publishable, in)
 		}
 	}
@@ -237,6 +243,7 @@ func runNit(entries []Entry, opts Options) Report {
 		if msg != "" {
 			in.result.Message += ": " + msg
 		}
+		pullCleanSiblings(in, inspections, runner)
 	}
 	report.Results = collectResults(inspections)
 	return report
@@ -328,22 +335,7 @@ func reconcile(in *inspection, all []inspection, opts Options, runner Runner) {
 	if in.result.Status != "pending" {
 		return
 	}
-	if in.result.Behind > 0 && in.result.Ahead == 0 && len(in.dirty) == 0 {
-		if opts.DryRun {
-			in.result.Status = "dry-run"
-			in.result.Direction = "inbound"
-			in.result.Message = "would pull --ff-only"
-			return
-		}
-		out, err := git(runner, in.entry.LocalPath, "pull", "--ff-only")
-		if err != nil {
-			in.result.Status = "failed"
-			in.result.Error = commandError(out, err)
-			return
-		}
-		in.result.Status = "pulled"
-		in.result.Direction = "inbound"
-		in.result.Message = strings.TrimSpace(string(out))
+	if reconcileInbound(in, opts, runner) {
 		return
 	}
 	if in.result.Behind > 0 {
@@ -418,6 +410,31 @@ func reconcile(in *inspection, all []inspection, opts Options, runner Runner) {
 	pullCleanSiblings(in, all, runner)
 }
 
+func reconcileInbound(in *inspection, opts Options, runner Runner) bool {
+	if in.result.Status != "pending" {
+		return false
+	}
+	if in.result.Behind == 0 || in.result.Ahead != 0 || len(in.dirty) != 0 {
+		return false
+	}
+	if opts.DryRun {
+		in.result.Status = "dry-run"
+		in.result.Direction = "inbound"
+		in.result.Message = "would pull --ff-only"
+		return true
+	}
+	out, err := git(runner, in.entry.LocalPath, "pull", "--ff-only")
+	if err != nil {
+		in.result.Status = "failed"
+		in.result.Error = commandError(out, err)
+		return true
+	}
+	in.result.Status = "pulled"
+	in.result.Direction = "inbound"
+	in.result.Message = strings.TrimSpace(string(out))
+	return true
+}
+
 func hold(in *inspection, reason string) {
 	in.result.Status = "held back"
 	in.result.Message = reason
@@ -452,6 +469,52 @@ func hasDuplicatePendingSibling(in *inspection, all []inspection) bool {
 		}
 	}
 	return false
+}
+
+func unsafeDuplicateRemoteReasons(inspections []inspection, nitRoot string) map[string]string {
+	groups := map[string][]int{}
+	for i, in := range inspections {
+		if in.remoteKey == "" {
+			continue
+		}
+		groups[in.remoteKey] = append(groups[in.remoteKey], i)
+	}
+	out := map[string]string{}
+	for remote, indexes := range groups {
+		if len(indexes) < 2 {
+			continue
+		}
+		inNit := 0
+		for _, idx := range indexes {
+			if pathWithin(inspections[idx].entry.LocalPath, nitRoot) {
+				inNit++
+			}
+		}
+		switch {
+		case inNit > 1:
+			out[remote] = "same remote has multiple Nit workspace checkouts; collapse to one canonical checkout before Nit publish"
+			continue
+		case inNit == 0:
+			out[remote] = "same remote has multiple checkouts but no canonical Nit workspace checkout"
+			continue
+		}
+		for _, idx := range indexes {
+			in := inspections[idx]
+			if pathWithin(in.entry.LocalPath, nitRoot) {
+				continue
+			}
+			switch {
+			case in.result.Status == "failed":
+				out[remote] = "same remote sibling failed sync inspection"
+			case in.result.Ahead != 0 || len(in.dirty) != 0:
+				out[remote] = "same remote sibling has pending changes; reconcile or move them into the canonical checkout before Nit publish"
+			}
+			if out[remote] != "" {
+				break
+			}
+		}
+	}
+	return out
 }
 
 func pullCleanSiblings(in *inspection, all []inspection, runner Runner) {

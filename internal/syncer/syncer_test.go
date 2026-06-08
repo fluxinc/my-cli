@@ -94,9 +94,7 @@ func TestRunNitDryRunPlansApprovedContentThroughNit(t *testing.T) {
 }
 
 func TestRunNitPublishesWithWorkspaceRelativePathsAndCommit(t *testing.T) {
-	remote, content, _ := setupTwoCheckoutRemote(t)
-	nitRoot := filepath.Dir(content)
-	writeFile(t, filepath.Join(nitRoot, ".nit", "roster.yaml"), "version: 1\nmode: shared\nmembers:\n- id: handbook\n  path: content\n")
+	remote, nitRoot, content, _ := setupNitWorkspaceWithDuplicateRemote(t)
 	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
 	var calls []string
 
@@ -121,7 +119,7 @@ func TestRunNitPublishesWithWorkspaceRelativePathsAndCommit(t *testing.T) {
 	if len(calls) != 3 {
 		t.Fatalf("calls = %#v, want add/commit/push", calls)
 	}
-	if !strings.Contains(calls[0], " nit add content/meetings") || strings.Contains(calls[0], content) {
+	if !strings.Contains(calls[0], " nit add handbook/meetings") || strings.Contains(calls[0], content) {
 		t.Fatalf("add call = %q, want workspace-relative path", calls[0])
 	}
 	if !strings.Contains(calls[1], " nit commit -m Add meeting note") {
@@ -167,10 +165,8 @@ func TestRunNitHoldsWhenWorkspaceIsNotInitialized(t *testing.T) {
 	}
 }
 
-func TestRunNitHoldsDuplicateRemoteBeforeDelegation(t *testing.T) {
-	remote, content, manifest := setupTwoCheckoutRemote(t)
-	nitRoot := filepath.Dir(content)
-	writeFile(t, filepath.Join(nitRoot, ".nit", "roster.yaml"), "version: 1\nmode: shared\nmembers:\n- id: handbook\n  path: content\n")
+func TestRunNitAllowsCanonicalContentWithCleanDuplicateSibling(t *testing.T) {
+	remote, nitRoot, content, manifest := setupNitWorkspaceWithDuplicateRemote(t)
 	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
 
 	report := Run([]Entry{
@@ -184,12 +180,69 @@ func TestRunNitHoldsDuplicateRemoteBeforeDelegation(t *testing.T) {
 		Visibility: privateVisibility,
 	})
 
-	if !strings.Contains(report.BackendMessage, "canonicalize duplicate checkouts") {
-		t.Fatalf("backend message = %q, want duplicate canonicalization hold", report.BackendMessage)
+	if report.BackendMessage != "" {
+		t.Fatalf("backend message = %q, want clean duplicate to be tolerated", report.BackendMessage)
 	}
 	result := findResult(t, report, "handbook")
-	if result.Status != "held back" || !strings.Contains(result.Message, "collapse to one canonical checkout") {
-		t.Fatalf("result = %#v, want duplicate-remote hold", result)
+	if result.Status != "dry-run" || result.Direction != "outbound" || !strings.Contains(result.Message, "nit commit") {
+		t.Fatalf("result = %#v, want canonical outbound dry-run", result)
+	}
+	sibling := findResult(t, report, "manifest")
+	if sibling.Status != "already landed" {
+		t.Fatalf("sibling = %#v, want already landed", sibling)
+	}
+}
+
+func TestRunNitHoldsWhenDuplicateSiblingHasPendingChanges(t *testing.T) {
+	remote, nitRoot, content, manifest := setupNitWorkspaceWithDuplicateRemote(t)
+	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
+	writeFile(t, filepath.Join(manifest, "catalog", "customers.json"), "[]\n")
+
+	report := Run([]Entry{
+		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
+		{ID: "manifest", Role: "manifest", Kind: "manifest", GitURL: remote, LocalPath: manifest},
+	}, Options{
+		Backend:    "nit",
+		NitRoot:    nitRoot,
+		Publish:    "auto",
+		DryRun:     true,
+		Visibility: privateVisibility,
+	})
+
+	if !strings.Contains(report.BackendMessage, "unsafe duplicate checkouts") {
+		t.Fatalf("backend message = %q, want unsafe duplicate warning", report.BackendMessage)
+	}
+	for _, id := range []string{"handbook", "manifest"} {
+		result := findResult(t, report, id)
+		if result.Status != "held back" || !strings.Contains(result.Message, "same remote sibling has pending changes") {
+			t.Fatalf("%s result = %#v, want unsafe duplicate hold", id, result)
+		}
+	}
+}
+
+func TestRunNitPullsCleanBehindRepo(t *testing.T) {
+	remote, content, writer := setupTwoCheckoutRemote(t)
+	nitRoot := filepath.Dir(content)
+	writeFile(t, filepath.Join(nitRoot, ".nit", "roster.yaml"), "version: 1\nmode: shared\nmembers:\n- id: handbook\n  path: content\n")
+	writeFile(t, filepath.Join(writer, "meetings", "2026-06-09-remote.md"), "remote\n")
+	runGit(t, writer, "add", ".")
+	runGit(t, writer, "commit", "-q", "-m", "remote meeting")
+	runGit(t, writer, "push", "-q", "origin", "HEAD:master")
+
+	report := Run([]Entry{
+		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
+	}, Options{
+		Backend: "nit",
+		NitRoot: nitRoot,
+		Publish: "auto",
+	})
+
+	result := findResult(t, report, "handbook")
+	if result.Status != "pulled" || result.Direction != "inbound" {
+		t.Fatalf("result = %#v, want inbound pull", result)
+	}
+	if got := gitOut(t, content, "rev-parse", "HEAD"); got != gitOut(t, writer, "rev-parse", "HEAD") {
+		t.Fatalf("content did not fast-forward: content %s writer %s", got, gitOut(t, writer, "rev-parse", "HEAD"))
 	}
 }
 
@@ -216,6 +269,22 @@ func setupTwoCheckoutRemote(t *testing.T) (string, string, string) {
 	configGitUser(t, content)
 	configGitUser(t, manifest)
 	return remote, content, manifest
+}
+
+func setupNitWorkspaceWithDuplicateRemote(t *testing.T) (string, string, string, string) {
+	t.Helper()
+	remote, content, manifest := setupTwoCheckoutRemote(t)
+	root := filepath.Dir(content)
+	nitRoot := filepath.Join(root, "umbrella")
+	nitContent := filepath.Join(nitRoot, "handbook")
+	if err := os.MkdirAll(nitRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(content, nitContent); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(nitRoot, ".nit", "roster.yaml"), "version: 1\nmode: shared\nmembers:\n- id: handbook\n  path: handbook\n")
+	return remote, nitRoot, nitContent, manifest
 }
 
 func privateVisibility(string) (string, error) {
