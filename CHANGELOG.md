@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 - 2026-06-08
+
+### Added
+
+- Added `flux sync`: nit-first bidirectional umbrella reconciliation. It pulls
+  inbound updates and publishes safe local changes outbound, with a
+  conservative auto policy that direct-pushes only private, content-only changes
+  and holds admin/manifest, public, mixed, divergent, and duplicate-remote
+  checkouts.
+- Nit is the multi-repo publish backend when the umbrella is a Nit control
+  workspace; a guarded Flux Git path is the fallback. Same-remote duplicate
+  checkouts are detected, tolerated when clean, and held when a sibling has
+  pending changes.
+
 ## 0.2.0 - 2026-06-03
 
 ### Added
