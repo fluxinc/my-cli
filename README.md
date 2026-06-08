@@ -27,6 +27,8 @@ the generated workspace context; `flux launch --manifest acme codex` performs
 the same root resolution and verifies the generated guidance before starting.
 Re-run `install.sh` to update to the latest GitHub release. Developers can
 still install from source with `go install github.com/fluxinc/flux/cmd/flux@latest`.
+The installer also installs Flux's bundled `flux` skill into existing harnesses
+so agents know how to use the CLI itself.
 
 ## The Model
 
@@ -79,6 +81,8 @@ flux manifest validate <name|path>          # schema + reference checks
 ### Skills
 
 ```sh
+flux skills self status [--json]            # installed/absent status for the bundled flux skill
+flux skills self install [harness...] | --all
 flux skills list [--json]                   # manifest/source skills available to install
 flux skills show <id|slug> [--json]         # one skill's metadata and source path
 flux skills status [--skill ID_OR_SLUG]     # installed/absent status across harnesses
@@ -88,13 +92,18 @@ flux skills sync [harness...] | --all       # install/update and prune stale Flu
 flux skills purge <harness...> | --all      # remove Flux-managed materializations
 ```
 
-Use `--skill ID_OR_SLUG` on `install`, `uninstall`, `sync`, `purge`, or
-`status` to target a single declared skill. Skills install as symlinks by
-default (`--copy` to vendor a copy). `flux` records provenance and refuses to
-clobber a directory it did not place. `skills sync` prunes stale Flux-managed
-skills by default; pass `--no-prune` to only install/update. Skill commands only
-refresh harness skill directories; rerun `flux onboard` when manifest guidance
-or the generated umbrella `AGENTS.md` should change too.
+`flux skills self ...` manages the bundled, public-safe `flux` CLI skill. It is
+installed by `install.sh`, refreshed during `flux onboard`, and quietly kept
+current for already-installed file-based harness copies when a newer binary
+runs.
+
+Use `--skill ID_OR_SLUG` on manifest skill `install`, `uninstall`, `sync`,
+`purge`, or `status` to target a single declared skill. Manifest skills install
+as symlinks by default (`--copy` to vendor a copy). `flux` records provenance
+and refuses to clobber a directory it did not place. `skills sync` prunes stale
+Flux-managed skills by default; pass `--no-prune` to only install/update. Skill
+commands only refresh harness skill directories; rerun `flux onboard` when
+manifest guidance or the generated umbrella `AGENTS.md` should change too.
 
 Manifest authoring is explicit admin work:
 

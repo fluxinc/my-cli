@@ -105,6 +105,16 @@ func SkillsRoot(homeOverride string) (string, error) {
 	return filepath.Join(home, ".local", "share", "flux", skillsDir), nil
 }
 
+// MaterializeEmbedded writes the embedded public skill bundle to the stable
+// Flux-managed skill source directory.
+func MaterializeEmbedded(homeOverride string) (Source, error) {
+	dir, err := materializeEmbedded(homeOverride)
+	if err != nil {
+		return Source{}, err
+	}
+	return Source{Kind: sourceEmbed, SkillsDir: dir, Materialized: true}, nil
+}
+
 func materializeEmbedded(homeOverride string) (string, error) {
 	dst, err := SkillsRoot(homeOverride)
 	if err != nil {

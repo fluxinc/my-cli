@@ -17,6 +17,10 @@ flux version
 ## Skills
 
 ```sh
+flux skills self install [harness...] | --all [--copy] [--link] [--force] [--json]
+flux skills self uninstall [harness...] | --all [--force] [--json]
+flux skills self status [harness...] | --all [--json]
+
 flux skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
 flux skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
 flux skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]

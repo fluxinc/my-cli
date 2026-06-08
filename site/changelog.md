@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added the bundled `flux` CLI self-skill and `flux skills self
+  install|uninstall|status`.
+
+### Changed
+
+- The installer and `flux onboard` now install the bundled Flux self-skill into
+  existing harnesses, and human CLI runs quietly refresh already-installed
+  file-based copies.
+
 ## 0.3.0 - 2026-06-08
 
 ### Added

@@ -67,4 +67,5 @@ curl -sSL https://raw.githubusercontent.com/fluxinc/flux/master/install.sh | sh
 ```
 
 The installer downloads the latest GitHub release, verifies the checksum, and
-replaces the local binary.
+replaces the local binary. It also refreshes the bundled `flux` self-skill in
+existing harnesses so agents keep current CLI guidance.

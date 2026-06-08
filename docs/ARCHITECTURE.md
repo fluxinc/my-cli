@@ -47,6 +47,10 @@ org expects. Validated by a schema (`manifest validate`).
   skill installer to materialize the skill, then installs the result. This
   keeps tool-owned skills authoritative to the tool, not vendored copies.
 
+Flux also ships one public, organization-neutral self-skill named `flux`. It
+teaches harnesses how to use the CLI and is managed by `flux skills self ...`,
+not by organization manifests.
+
 **Umbrella** — a per-user operating envelope (default `~/<org>`). It contains
 Flux state, generated guidance, version-controlled mounts, product repositories,
 and local-only scratch. When sync publishing is enabled, the umbrella can also
@@ -132,9 +136,10 @@ outside its own tree.
 
 1. Resolve the registered manifest; ensure the local cache is synced.
 2. Validate the manifest (schema + cross-references).
-3. Install declared skills into every present harness (static ones from the
-   cache; tool-provided ones via the tool's installer). Provenance is recorded;
-   a directory `flux` did not place is never overwritten.
+3. Install the bundled `flux` self-skill and declared organization skills into
+   every present harness (static ones from the cache; tool-provided ones via
+   the tool's installer). Provenance is recorded; a directory `flux` did not
+   place is never overwritten.
 4. Create/repair the umbrella: `.flux/workspace.json`, `.flux/state.json`,
    `personal/`, `products/`.
 5. Generate root `AGENTS.md` from the embedded public baseline plus
@@ -181,7 +186,7 @@ are the only external executables, invoked as subprocesses, never linked.
   mount kind, not CLI commands.
 - **No silent tool installation.** Hints only.
 - **No bundled org content.** The public repo never carries a real manifest,
-  real skills, or real knowledge.
+  organization-specific skills, or real knowledge.
 - **No MCP/daemon surface.** A single CLI is the whole interface for both
   humans and agents; no second integration surface to keep in sync.
 

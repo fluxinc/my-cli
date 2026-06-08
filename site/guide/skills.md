@@ -2,6 +2,19 @@
 
 Skill commands answer what capabilities an agent can use locally.
 
+## Flux self-skill
+
+```sh
+flux skills self status --all
+flux skills self install --all
+flux skills self uninstall codex
+```
+
+The `flux` self-skill is bundled with the CLI and teaches harnesses how to use
+Flux itself. `install.sh` installs it into existing harnesses, `flux onboard`
+refreshes it with the selected harnesses, and normal human CLI runs quietly
+align already-installed file-based copies with the running binary.
+
 ## Inspect declared skills
 
 ```sh
@@ -21,7 +34,7 @@ flux skills sync --all --manifest acme
 flux skills purge --all --manifest acme
 ```
 
-`install`, `uninstall`, `sync`, and `purge` operate on local harness
+Manifest `install`, `uninstall`, `sync`, and `purge` operate on local harness
 materializations. They do not edit the manifest.
 
 `sync` installs or updates declared skills and prunes stale Flux-managed

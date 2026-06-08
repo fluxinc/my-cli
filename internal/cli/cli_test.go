@@ -59,6 +59,41 @@ func TestSkillsInstallConflictingModes(t *testing.T) {
 	}
 }
 
+func TestSkillsSelfInstallAndStatus(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"flux", "skills", "self", "install", "codex", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "codex\tflux\tinstalled") {
+		t.Fatalf("install stdout = %q", stdout.String())
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".codex", "skills", "flux")); err != nil {
+		t.Fatalf("self skill was not installed: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"flux", "skills", "self", "status", "codex", "--json", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`"harness": "codex"`,
+		`"skill": "flux"`,
+		`"canonical_id": "flux:self"`,
+		`"status": "installed"`,
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("status stdout = %q, missing %q", stdout.String(), want)
+		}
+	}
+}
+
 func TestSkillsListJSON(t *testing.T) {
 	source := makeCLISkill(t, "demo-skill")
 	var stdout, stderr bytes.Buffer

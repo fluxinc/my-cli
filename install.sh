@@ -83,6 +83,17 @@ chmod +x "${INSTALL_DIR}/flux"
 
 info "Installed flux to ${INSTALL_DIR}/flux"
 
+# --- Install bundled self-skill ---
+info "Installing bundled Flux skill into existing harnesses..."
+if SELF_SKILL_OUT="$("${INSTALL_DIR}/flux" skills self install --all 2>&1)"; then
+  if [ -n "$SELF_SKILL_OUT" ]; then
+    printf '%s\n' "$SELF_SKILL_OUT" | sed 's/^/  /'
+  fi
+else
+  info "Bundled Flux skill install skipped:"
+  printf '%s\n' "$SELF_SKILL_OUT" | sed 's/^/  /'
+fi
+
 # --- Check PATH ---
 case ":$PATH:" in
   *":${INSTALL_DIR}:"*) ;;

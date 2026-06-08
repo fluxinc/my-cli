@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added a bundled `flux` CLI self-skill and `flux skills self
+  install|uninstall|status` so installs can teach agent harnesses how to use
+  Flux itself, separate from organization manifest skills.
+
+### Changed
+
+- `install.sh` now runs the installed binary to install the bundled Flux
+  self-skill into existing harness skill directories, and normal human CLI runs
+  quietly refresh already-installed file-based copies.
+
 ## 0.3.0 - 2026-06-08
 
 ### Added

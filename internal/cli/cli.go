@@ -18,6 +18,7 @@ import (
 	"github.com/fluxinc/flux/internal/harness"
 	"github.com/fluxinc/flux/internal/manifest"
 	"github.com/fluxinc/flux/internal/meetings"
+	"github.com/fluxinc/flux/internal/selfskill"
 	"github.com/fluxinc/flux/internal/skills"
 	"github.com/fluxinc/flux/internal/syncer"
 	"github.com/fluxinc/flux/internal/umbrella"
@@ -54,6 +55,45 @@ type app struct {
 	execHarness func(path string, args []string, dir string) error
 }
 
+func (a app) runStartupMaintenance(args []string) {
+	if !shouldAutoSyncSelfSkill(args) {
+		return
+	}
+	_, _ = selfskill.SyncExisting(selfskill.Options{Link: true, SkipMissing: true})
+}
+
+func shouldAutoSyncSelfSkill(args []string) bool {
+	if os.Getenv("FLUX_DISABLE_SELF_SKILL_SYNC") != "" {
+		return false
+	}
+	if strings.HasSuffix(filepath.Base(os.Args[0]), ".test") {
+		return false
+	}
+	if isKnownHarnessEnv() {
+		return false
+	}
+	if len(args) < 2 {
+		return false
+	}
+	switch args[1] {
+	case "-h", "--help", "help", "-v", "--version", "version":
+		return false
+	case "skills":
+		return len(args) < 3 || args[2] != "self"
+	default:
+		return true
+	}
+}
+
+func isKnownHarnessEnv() bool {
+	for _, key := range []string{"CLAUDECODE", "CODEX_THREAD_ID", "GEMINI_CLI", "OPENCODE"} {
+		if os.Getenv(key) != "" {
+			return true
+		}
+	}
+	return os.Getenv("CMUX_AGENT_LAUNCH_KIND") != ""
+}
+
 var errAlreadyPrinted = errors.New("error already printed")
 
 type exitCodeError struct {
@@ -69,6 +109,8 @@ func (a app) run(args []string) error {
 		a.printUsage()
 		return nil
 	}
+
+	a.runStartupMaintenance(args)
 
 	switch args[1] {
 	case "-h", "--help", "help":
@@ -117,6 +159,7 @@ Usage:
   flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR]
   flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [harness] [-- harness args...]
   flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
+  flux skills self install|uninstall|status ...
   flux skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
   flux skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
   flux skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
@@ -3731,6 +3774,8 @@ func (a app) runSkills(args []string) error {
 	}
 
 	switch args[0] {
+	case "self":
+		return a.runSkillsSelf(args[1:])
 	case "install":
 		return a.runSkillsInstall(args[1:])
 	case "uninstall":
@@ -3755,6 +3800,9 @@ func (a app) runSkills(args []string) error {
 
 func (a app) printSkillsUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
+  flux skills self install [harness...] | --all [--print] [--copy] [--link] [--force] [--json] [--home DIR]
+  flux skills self uninstall [harness...] | --all [--print] [--force] [--json] [--home DIR]
+  flux skills self status [harness...] | --all [--json] [--home DIR]
   flux skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
   flux skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
   flux skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
@@ -3770,8 +3818,165 @@ With no harnesses, install targets all supported harnesses and silently skips
 missing ones. If synced manifests are registered, skills commands use them by
 default; --source forces a local skills directory.
 
-Skill commands only refresh harness skill directories. Run flux onboard to
-regenerate workspace guidance such as AGENTS.md.`)
+Manifest skill commands only refresh harness skill directories. Run flux
+onboard to regenerate workspace guidance such as AGENTS.md. Self-skill commands
+install Flux's bundled CLI guidance into harness skill directories.`)
+}
+
+func (a app) runSkillsSelf(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing skills self subcommand")
+	}
+	switch args[0] {
+	case "install":
+		return a.runSkillsSelfInstall(args[1:])
+	case "uninstall":
+		return a.runSkillsSelfUninstall(args[1:])
+	case "status":
+		return a.runSkillsSelfStatus(args[1:])
+	case "-h", "--help", "help":
+		a.printSkillsSelfUsage()
+		return nil
+	default:
+		return fmt.Errorf("unknown skills self subcommand %q", args[0])
+	}
+}
+
+func (a app) printSkillsSelfUsage() {
+	fmt.Fprintln(a.stdout, `Usage:
+  flux skills self install [harness...] | --all [--print] [--copy] [--link] [--force] [--json] [--home DIR]
+  flux skills self uninstall [harness...] | --all [--print] [--force] [--json] [--home DIR]
+  flux skills self status [harness...] | --all [--json] [--home DIR]
+
+Installs Flux's bundled CLI self-skill. This is separate from manifest-backed
+organization skills.`)
+}
+
+func (a app) runSkillsSelfInstall(args []string) error {
+	var opts skillsCommandOpts
+	fs := newFlagSet("flux skills self install", a.stderr)
+	fs.BoolVar(&opts.all, "all", false, "install into every supported harness")
+	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
+	fs.BoolVar(&opts.copyMode, "copy", false, "copy skill directories instead of symlinking")
+	fs.BoolVar(&opts.linkMode, "link", false, "symlink skill directories")
+	fs.BoolVar(&opts.force, "force", false, "replace non-Flux-managed targets")
+	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
+	fs.StringVar(&opts.home, "home", "", "override home directory")
+	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
+	if err != nil {
+		return err
+	}
+	if opts.copyMode && opts.linkMode {
+		return fmt.Errorf("--copy and --link are mutually exclusive")
+	}
+	if len(rest) == 0 && !opts.all {
+		opts.all = true
+	}
+	hs, err := selectedHarnesses(opts.all, rest)
+	if err != nil {
+		return err
+	}
+	results, err := selfskill.Install(hs, selfskill.Options{
+		Home:        opts.home,
+		Link:        !opts.copyMode,
+		DryRun:      opts.print,
+		SkipMissing: opts.all,
+		Force:       opts.force,
+	})
+	if err != nil {
+		return err
+	}
+	return a.printResults(results, opts.jsonOut)
+}
+
+func (a app) runSkillsSelfUninstall(args []string) error {
+	var opts skillsCommandOpts
+	fs := newFlagSet("flux skills self uninstall", a.stderr)
+	fs.BoolVar(&opts.all, "all", false, "uninstall from every supported harness")
+	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
+	fs.BoolVar(&opts.force, "force", false, "remove non-Flux-managed targets")
+	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
+	fs.StringVar(&opts.home, "home", "", "override home directory")
+	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
+	if err != nil {
+		return err
+	}
+	if len(rest) == 0 && !opts.all {
+		opts.all = true
+	}
+	hs, err := selectedHarnesses(opts.all, rest)
+	if err != nil {
+		return err
+	}
+	results, err := selfskill.Uninstall(hs, selfskill.Options{
+		Home:        opts.home,
+		DryRun:      opts.print,
+		SkipMissing: opts.all,
+		Force:       opts.force,
+	})
+	if err != nil {
+		return err
+	}
+	return a.printResults(results, opts.jsonOut)
+}
+
+func (a app) runSkillsSelfStatus(args []string) error {
+	var opts skillsCommandOpts
+	fs := newFlagSet("flux skills self status", a.stderr)
+	fs.BoolVar(&opts.all, "all", false, "inspect every supported harness")
+	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
+	fs.StringVar(&opts.home, "home", "", "override home directory")
+	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
+	if err != nil {
+		return err
+	}
+	if len(rest) == 0 && !opts.all {
+		opts.all = true
+	}
+	hs, err := selectedHarnesses(opts.all, rest)
+	if err != nil {
+		return err
+	}
+	rows, err := selfskill.Inspect(hs, selfskill.Options{Home: opts.home})
+	if err != nil {
+		return err
+	}
+	if opts.jsonOut {
+		return printJSON(a.stdout, rows)
+	}
+	a.printSelfSkillStatus(rows)
+	if selfSkillStatusFailed(rows) {
+		return fmt.Errorf("one or more operations failed")
+	}
+	return nil
+}
+
+func (a app) printSelfSkillStatus(rows []selfskill.Status) {
+	for _, row := range rows {
+		line := fmt.Sprintf("%s\t%s\t%s", row.Harness, row.Skill, row.Status)
+		if row.Kind != "" {
+			line += "\t" + row.Kind
+		}
+		if row.TargetPath != "" {
+			line += "\t" + row.TargetPath
+		}
+		if row.Message != "" {
+			line += "\t" + row.Message
+		}
+		if row.Remedy != "" {
+			line += "\t" + row.Remedy
+		}
+		fmt.Fprintln(a.stdout, line)
+	}
+}
+
+func selfSkillStatusFailed(rows []selfskill.Status) bool {
+	for _, row := range rows {
+		if row.Status == skills.StatusFailed {
+			return true
+		}
+	}
+	return false
 }
 
 func (a app) runOnboard(args []string) error {
@@ -3865,6 +4070,17 @@ func (a app) runOnboard(args []string) error {
 	if err != nil {
 		return err
 	}
+	selfSkillResults, err := selfskill.Install(hs, selfskill.Options{
+		Home:        opts.home,
+		Link:        !opts.copyMode,
+		DryRun:      opts.print,
+		SkipMissing: opts.all,
+		Force:       opts.force,
+	})
+	if err != nil {
+		return err
+	}
+	skillResults = append(skillResults, selfSkillResults...)
 	if opts.jsonOut {
 		if err := printJSON(a.stdout, struct {
 			Umbrella umbrella.Workspace     `json:"umbrella"`
