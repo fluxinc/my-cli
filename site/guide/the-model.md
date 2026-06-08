@@ -23,9 +23,12 @@ tool, then installed by `flux`.
 
 ## Umbrella
 
-A per-user workspace envelope, normally `~/<org>`. It is not a Git repo. It
-contains local state, generated guidance, content mounts, product repos, and
-local scratch.
+A per-user workspace envelope, normally `~/<org>`. It contains local state,
+generated guidance, content mounts, product repos, and local scratch. When
+sync publishing is enabled, it can also be a Nit control workspace so multi-repo
+Change creation, ordered push, and resume use Nit instead of Flux
+reimplementing that transaction layer. Pins remain available for deliberate
+recorded workspace states.
 
 ## Mount
 

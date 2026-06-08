@@ -9,6 +9,7 @@ commands by job.
 flux onboard [harness...] | --all [--manifest NAME] [--home DIR] [--umbrella DIR]
 flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR]
 flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [harness] [-- harness args...]
+flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--print] [--json]
 flux doctor
 flux version
 ```
@@ -65,3 +66,9 @@ flux customers list
 flux catalog list products
 flux tools info <name>
 ```
+
+`flux sync` is the routine reconciliation command. `--backend auto` prefers Nit
+when the umbrella is initialized as a Nit control workspace; Flux keeps the
+bootstrap, policy, duplicate-remote, and PR layers. `--publish direct` can
+publish existing local commits directly, but dirty non-content/admin files are
+still held back for explicit admin or review handling.

@@ -47,15 +47,18 @@ org expects. Validated by a schema (`manifest validate`).
   skill installer to materialize the skill, then installs the result. This
   keeps tool-owned skills authoritative to the tool, not vendored copies.
 
-**Umbrella** — a per-user, non-Git directory (default `~/<org>`), the operating
-envelope. It is not itself version-controlled; it *contains* version-controlled
-mounts plus local-only scratch:
+**Umbrella** — a per-user operating envelope (default `~/<org>`). It contains
+Flux state, generated guidance, version-controlled mounts, product repositories,
+and local-only scratch. When sync publishing is enabled, the umbrella can also
+be a Nit control workspace: the root records workspace metadata and pins, while
+the member repositories remain ordinary Git checkouts.
 
 ```
 ~/<org>/
 ├── .flux/
 │   ├── workspace.json   identity: schema version, org, manifest ref, created_at
 │   └── state.json       dynamic: selected products, per-mount sync status
+├── .nit/                optional Nit control metadata for multi-repo sync
 ├── <handbook mount>/    manifest-declared content
 ├── <other mounts>/
 ├── products/            opted-in catalog products (detached clones)

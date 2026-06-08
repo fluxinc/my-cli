@@ -36,7 +36,7 @@ still install from source with `go install github.com/fluxinc/flux/cmd/flux@late
 |---|---|
 | **Manifest** | An organization's configuration, stored in a Git repo. Declares skills, mounts, catalog, and tool hints. The single source of truth. |
 | **Skill** | A capability installed into harness skill directories. Either *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer). |
-| **Umbrella** | A per-user, non-Git directory (e.g. `~/acme`) that is the operating envelope: a `.flux/` identity namespace plus mounts and local scratch as peers. |
+| **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.flux/` identity namespace plus mounts and local scratch as peers. When sync publishing is enabled, this becomes a Nit control workspace so multi-repo commits and pushes have one substrate. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
 | **Catalog** | JSON inventories for products and canonical customers. Users opt specific products into their umbrella on demand. |
 | **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared fragments. `CLAUDE.md` points to the same file. |
@@ -133,6 +133,24 @@ flux mount add <kind:id|id>                 # opt a catalog product / mount in
 flux mount sync <mount...> | --all          # clone or fast-forward mounts
 flux mount remove <mount...> [--force]
 ```
+
+### Sync
+
+```sh
+flux sync --print                           # plan inbound refresh and outbound publish
+flux sync [--backend auto|nit|flux]         # auto prefers Nit once the umbrella is initialized
+flux sync --publish auto|never|direct|pr    # auto is private content-only
+```
+
+`flux sync` is the routine reconciliation command. Flux classifies changes,
+handles private/public and content/admin policy, and blocks duplicate checkouts
+of the same remote until they are collapsed to one canonical checkout. Nit is
+the intended backend for real multi-repo Change creation, ordered push, and
+resume; Pins are reserved for intentional recorded workspace states. The Flux
+backend is a guarded bootstrap fallback while a workspace is not yet a Nit
+control workspace. `--publish direct` can publish existing local commits
+directly, but dirty non-content/admin files are still held back instead of being
+quietly committed.
 
 ### Catalog
 

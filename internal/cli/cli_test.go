@@ -790,6 +790,49 @@ func TestMountCommands(t *testing.T) {
 	}
 }
 
+func TestSyncExplicitNitBackendReportsMissingWorkspace(t *testing.T) {
+	home := t.TempDir()
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": "https://github.com/acme/acme-handbook.git",
+      "mode": "required"
+    }
+  ]
+}`)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"flux", "manifest", "add", "acme",
+		"https://github.com/acme/acme-ai-manifest.git",
+		"--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	if err := a.run([]string{"flux", "sync", "--backend", "nit", "--manifest", "acme", "--home", home, "--print", "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		`"backend": "nit"`,
+		"Nit workspace not initialized",
+		`"status": "held back"`,
+		`"id": "handbook"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("sync stdout = %q, missing %q", out, want)
+		}
+	}
+}
+
 func TestMountAddProductRecordsState(t *testing.T) {
 	home := t.TempDir()
 	productSource := filepath.Join(home, "product-source")

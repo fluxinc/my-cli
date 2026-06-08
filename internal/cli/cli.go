@@ -19,6 +19,7 @@ import (
 	"github.com/fluxinc/flux/internal/manifest"
 	"github.com/fluxinc/flux/internal/meetings"
 	"github.com/fluxinc/flux/internal/skills"
+	"github.com/fluxinc/flux/internal/syncer"
 	"github.com/fluxinc/flux/internal/umbrella"
 	"github.com/fluxinc/flux/internal/workspace"
 )
@@ -83,6 +84,8 @@ func (a app) run(args []string) error {
 		return a.runRoot(args[2:])
 	case "launch":
 		return a.runLaunch(args[2:])
+	case "sync":
+		return a.runSync(args[2:])
 	case "manifest":
 		return a.runManifest(args[2:])
 	case "workspace":
@@ -113,6 +116,7 @@ Usage:
   flux onboard [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR]
   flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR]
   flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [harness] [-- harness args...]
+  flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
   flux skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
   flux skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
   flux skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
@@ -452,6 +456,345 @@ func (a app) runVersion(args []string) error {
 	}
 	fmt.Fprintln(a.stdout, bundle.Version())
 	return nil
+}
+
+func (a app) runSync(args []string) error {
+	var home string
+	var manifestName string
+	var umbrellaRoot string
+	var backend string
+	var publish string
+	var scope string
+	var message string
+	var printOnly bool
+	var jsonOut bool
+	fs := newFlagSet("flux sync", a.stderr)
+	fs.StringVar(&home, "home", "", "override home directory")
+	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
+	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
+	fs.StringVar(&backend, "backend", "auto", "sync backend: auto, nit, or flux")
+	fs.StringVar(&publish, "publish", "auto", "publish mode: auto, never, direct, or pr")
+	fs.StringVar(&scope, "scope", "all", "sync scope: all, local, content, manifest, or products")
+	fs.StringVar(&message, "message", "", "commit message for newly committed content")
+	fs.BoolVar(&printOnly, "print", false, "print planned actions without changing files or remotes")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	fs.Usage = func() {
+		a.printSyncUsage()
+		fs.PrintDefaults()
+	}
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home":     true,
+		"manifest": true,
+		"umbrella": true,
+		"backend":  true,
+		"publish":  true,
+		"scope":    true,
+		"message":  true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("sync does not accept positional arguments")
+	}
+	if !validSyncBackend(backend) {
+		return fmt.Errorf("--backend must be one of auto, nit, or flux")
+	}
+	if !validSyncPublish(publish) {
+		return fmt.Errorf("--publish must be one of auto, never, direct, or pr")
+	}
+	if !validSyncScope(scope) {
+		return fmt.Errorf("--scope must be one of all, local, content, manifest, or products")
+	}
+	entries, err := a.collectSyncEntries(home, manifestName, umbrellaRoot, scope)
+	if err != nil {
+		return a.maybeJSONError(jsonOut, err)
+	}
+	nitRoot := ""
+	if root, err := resolveFluxRoot(home, manifestName, umbrellaRoot); err == nil {
+		nitRoot = findNitWorkspaceRoot(root)
+	}
+	effectiveBackend := backend
+	backendMessage := ""
+	if effectiveBackend == "auto" {
+		if publish != "pr" && nitRoot != "" {
+			effectiveBackend = "nit"
+		} else {
+			effectiveBackend = "flux"
+			if publish == "pr" {
+				backendMessage = "PR mode is handled by Flux/gh; Nit remains the publish substrate after PR support lands"
+			} else {
+				backendMessage = "Nit workspace not initialized; using Flux guard backend"
+			}
+		}
+	}
+	report := syncer.Run(entries, syncer.Options{
+		Backend:    effectiveBackend,
+		NitRoot:    nitRoot,
+		Publish:    publish,
+		DryRun:     printOnly,
+		Message:    message,
+		Visibility: a.githubRepoVisibility,
+	})
+	if backendMessage != "" && report.BackendMessage == "" {
+		report.BackendMessage = backendMessage
+	}
+	if jsonOut {
+		if err := printJSON(a.stdout, report); err != nil {
+			return err
+		}
+	} else {
+		a.printSyncReport(report)
+	}
+	if syncReportFailed(report) {
+		return a.maybeJSONError(jsonOut, fmt.Errorf("one or more sync operations failed"))
+	}
+	return nil
+}
+
+func (a app) printSyncUsage() {
+	fmt.Fprintln(a.stderr, `Usage of flux sync:
+  flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--print] [--json]
+
+Synchronizes registered Flux repositories in both directions. The default
+backend uses Nit when the umbrella is a Nit workspace; otherwise Flux uses a
+guarded Git fallback until bootstrap/canonicalization is complete. The default
+publish mode only pushes private content-only changes when sibling checkouts of
+the same remote are clean. Direct mode can push existing commits, but dirty
+non-content changes still require an explicit admin or review workflow.`)
+}
+
+func validSyncBackend(value string) bool {
+	switch value {
+	case "auto", "nit", "flux":
+		return true
+	default:
+		return false
+	}
+}
+
+func validSyncPublish(value string) bool {
+	switch value {
+	case "auto", "never", "direct", "pr":
+		return true
+	default:
+		return false
+	}
+}
+
+func validSyncScope(value string) bool {
+	switch value {
+	case "all", "local", "content", "manifest", "products":
+		return true
+	default:
+		return false
+	}
+}
+
+func (a app) collectSyncEntries(home, manifestName, umbrellaRoot, scope string) ([]syncer.Entry, error) {
+	docs, err := loadRegisteredDocs(home, manifestName)
+	if err != nil {
+		return nil, err
+	}
+	var entries []syncer.Entry
+	for _, doc := range docs {
+		if scope == "all" || scope == "local" || scope == "manifest" {
+			entries = append(entries, syncer.Entry{
+				Manifest:  doc.ref.Name,
+				ID:        doc.ref.Name,
+				Role:      "manifest",
+				Kind:      "manifest",
+				GitURL:    doc.ref.GitURL,
+				LocalPath: doc.ref.LocalPath,
+			})
+		}
+		if scope == "all" || scope == "local" || scope == "content" {
+			mounts, err := workspace.ListMounts(home, doc.ref.Name, umbrellaRoot)
+			if err != nil {
+				return nil, err
+			}
+			for _, mount := range mounts {
+				entries = append(entries, syncer.Entry{
+					Manifest:     mount.Manifest,
+					ID:           mount.ID,
+					Role:         "content",
+					Kind:         mount.Kind,
+					GitURL:       mount.GitURL,
+					LocalPath:    mount.LocalPath,
+					ContentPaths: syncContentPaths(mount),
+				})
+			}
+		}
+		if scope == "all" || scope == "local" || scope == "products" {
+			productEntries, err := a.collectSyncProductEntries(home, doc, umbrellaRoot)
+			if err != nil {
+				return nil, err
+			}
+			entries = append(entries, productEntries...)
+		}
+	}
+	entries = dedupeSyncEntries(entries)
+	if scope == "local" {
+		entries = existingSyncEntries(entries)
+	}
+	return entries, nil
+}
+
+func (a app) collectSyncProductEntries(home string, doc registeredDoc, umbrellaRoot string) ([]syncer.Entry, error) {
+	root, err := umbrella.ResolveRoot(home, "", umbrellaRoot, doc.doc)
+	if err != nil {
+		return nil, err
+	}
+	state, err := umbrella.LoadState(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var entries []syncer.Entry
+	for _, id := range state.SelectedProducts {
+		product, ok, err := manifest.FindProduct(home, doc.ref.Name, id)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		entry := productEntry(doc, root, product)
+		entries = append(entries, syncer.Entry{
+			Manifest:  entry.Manifest,
+			ID:        entry.ID,
+			Role:      "product",
+			Kind:      entry.Kind,
+			GitURL:    entry.GitURL,
+			LocalPath: entry.LocalPath,
+		})
+	}
+	return entries, nil
+}
+
+func syncContentPaths(entry workspace.Entry) []string {
+	if len(entry.IncludePaths) != 0 {
+		return append([]string(nil), entry.IncludePaths...)
+	}
+	switch entry.Kind {
+	case "handbook":
+		return []string{"meetings", "decisions", "projects", "policy", "people"}
+	case "meetings":
+		return []string{"meetings"}
+	case "policy":
+		return []string{"policy"}
+	case "docs":
+		return []string{"docs"}
+	default:
+		return nil
+	}
+}
+
+func dedupeSyncEntries(entries []syncer.Entry) []syncer.Entry {
+	seen := map[string]bool{}
+	var out []syncer.Entry
+	for _, entry := range entries {
+		key := entry.Role + "\x00" + entry.LocalPath
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, entry)
+	}
+	return out
+}
+
+func existingSyncEntries(entries []syncer.Entry) []syncer.Entry {
+	var out []syncer.Entry
+	for _, entry := range entries {
+		if _, err := os.Stat(entry.LocalPath); err == nil {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+func (a app) githubRepoVisibility(gitURL string) (string, error) {
+	slug, ok := githubRepoSlug(gitURL)
+	if !ok {
+		return "", fmt.Errorf("not a GitHub repository")
+	}
+	cmd := exec.Command("gh", "repo", "view", slug, "--json", "visibility", "--jq", ".visibility")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func githubRepoSlug(gitURL string) (string, bool) {
+	value := strings.TrimSpace(gitURL)
+	value = strings.TrimSuffix(value, ".git")
+	switch {
+	case strings.HasPrefix(value, "https://github.com/"):
+		return strings.TrimPrefix(value, "https://github.com/"), true
+	case strings.HasPrefix(value, "git@github.com:"):
+		return strings.TrimPrefix(value, "git@github.com:"), true
+	case strings.HasPrefix(value, "ssh://git@github.com/"):
+		return strings.TrimPrefix(value, "ssh://git@github.com/"), true
+	default:
+		return "", false
+	}
+}
+
+func (a app) printSyncReport(report syncer.Report) {
+	if report.Backend != "" {
+		line := "# backend: " + report.Backend
+		if report.NitRoot != "" {
+			line += "\tnit_root=" + report.NitRoot
+		}
+		if report.BackendMessage != "" {
+			line += "\t" + report.BackendMessage
+		}
+		fmt.Fprintln(a.stdout, line)
+	}
+	for _, result := range report.Results {
+		line := fmt.Sprintf("%s\t%s\t%s\t%s\t%s", result.Manifest, result.ID, result.Role, result.Status, result.LocalPath)
+		if result.Ahead != 0 || result.Behind != 0 {
+			line += fmt.Sprintf("\tahead=%d behind=%d", result.Ahead, result.Behind)
+		}
+		if len(result.Dirty) != 0 {
+			line += "\tdirty=" + strings.Join(result.Dirty, ",")
+		}
+		if len(result.Changed) != 0 {
+			line += "\tchanged=" + strings.Join(result.Changed, ",")
+		}
+		if result.Message != "" {
+			line += "\t" + strings.ReplaceAll(result.Message, "\n", " ")
+		}
+		if result.Error != "" {
+			line += "\t" + result.Error
+		}
+		fmt.Fprintln(a.stdout, line)
+	}
+}
+
+func syncReportFailed(report syncer.Report) bool {
+	for _, result := range report.Results {
+		if result.Status == "failed" {
+			return true
+		}
+	}
+	return false
+}
+
+func findNitWorkspaceRoot(start string) string {
+	for dir := filepath.Clean(start); ; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, ".nit", "roster.yaml")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+	}
 }
 
 func (a app) runMeetings(args []string) error {
