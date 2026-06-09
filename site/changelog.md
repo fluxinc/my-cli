@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added `flux update` for checksum-verified self-updates from GitHub release
+  tarballs, with `--check`, `--version`, `--json`, and managed-install guidance.
+- `flux root`, `flux launch`, and `flux onboard` emit a non-blocking stderr
+  notice when a newer Flux release is available, with `--no-update-check`,
+  `FLUX_NO_UPDATE_CHECK`, and `FLUX_UPDATE_CHECK_TTL` controls.
+- `flux doctor` reports the running Flux version and latest known release.
+
 ## 0.5.0 - 2026-06-08
 
 ### Added

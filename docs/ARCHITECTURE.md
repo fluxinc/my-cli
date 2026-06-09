@@ -169,6 +169,12 @@ dirty checkouts, diverged branches, or remote-unknown repos. Operators can use
 `--no-refresh`, `FLUX_NO_AUTO_REFRESH=1`, or `FLUX_REFRESH_TTL` when they need
 fully offline or deterministic reads.
 
+The same startup commands also perform a user-level, TTL-gated release check
+using `~/.local/share/flux/update-check.json`. The notice is stderr-only so
+stdout remains machine-safe. Operators can use `--no-update-check`,
+`FLUX_NO_UPDATE_CHECK=1`, or `FLUX_UPDATE_CHECK_TTL` when release checks should
+be suppressed or tuned separately from workspace refreshes.
+
 ## 6. Authentication contract
 
 Private manifests and mounts live in private Git repos. `flux` does not invent

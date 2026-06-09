@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -21,6 +22,7 @@ import (
 	"github.com/fluxinc/flux/internal/manifest"
 	"github.com/fluxinc/flux/internal/meetings"
 	"github.com/fluxinc/flux/internal/selfskill"
+	"github.com/fluxinc/flux/internal/selfupdate"
 	"github.com/fluxinc/flux/internal/skills"
 	"github.com/fluxinc/flux/internal/syncer"
 	"github.com/fluxinc/flux/internal/umbrella"
@@ -51,10 +53,14 @@ func Run(args []string) int {
 }
 
 type app struct {
-	stdout      io.Writer
-	stderr      io.Writer
-	lookPath    func(string) (string, error)
-	execHarness func(path string, args []string, dir string) error
+	stdout               io.Writer
+	stderr               io.Writer
+	lookPath             func(string) (string, error)
+	execHarness          func(path string, args []string, dir string) error
+	updateSource         selfupdate.Source
+	updateNow            func() time.Time
+	updateCurrentVersion string
+	updateTargetPath     string
 }
 
 func (a app) runStartupMaintenance(args []string) {
@@ -120,6 +126,8 @@ func (a app) run(args []string) error {
 		return nil
 	case "-v", "--version", "version":
 		return a.runVersion(args[2:])
+	case "update":
+		return a.runUpdate(args[2:])
 	case "skills":
 		return a.runSkills(args[2:])
 	case "onboard":
@@ -157,9 +165,10 @@ func (a app) printUsage() {
 	fmt.Fprintln(a.stdout, `flux installs and manages manifest-backed AI workspace tooling.
 
 Usage:
-  flux onboard [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh]
-  flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh]
-  flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [harness] [-- harness args...]
+  flux onboard [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+  flux update [--check] [--version X.Y.Z] [--json] [--yes]
   flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
   flux skills self install|uninstall|status ...
   flux skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
@@ -202,12 +211,14 @@ func (a app) runRoot(args []string) error {
 	var umbrellaRoot string
 	var productID string
 	var noRefresh bool
+	var noUpdateCheck bool
 	fs := newFlagSet("flux root", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "use a registered manifest when no umbrella is found")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
 	fs.StringVar(&productID, "product", "", "print this product's path under the umbrella")
 	fs.BoolVar(&noRefresh, "no-refresh", false, "skip best-effort auto-refresh")
+	fs.BoolVar(&noUpdateCheck, "no-update-check", false, "skip best-effort update notice")
 	fs.Usage = func() {
 		a.printRootUsage()
 		fs.PrintDefaults()
@@ -229,6 +240,7 @@ func (a app) runRoot(args []string) error {
 		return err
 	}
 	a.maybeAutoRefresh(home, manifestName, root, root, noRefresh)
+	a.maybeUpdateNotice(home, noUpdateCheck)
 	target := root
 	if productID != "" {
 		target = umbrella.ProductPath(root, productID)
@@ -239,7 +251,7 @@ func (a app) runRoot(args []string) error {
 
 func (a app) printRootUsage() {
 	fmt.Fprintln(a.stderr, `Usage of flux root:
-  flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh]
+  flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 
 Examples:
   cd "$(flux root)" && claude
@@ -249,13 +261,14 @@ Options:`)
 }
 
 type launchCommandOpts struct {
-	home         string
-	manifestName string
-	umbrellaRoot string
-	productID    string
-	onboard      bool
-	printOnly    bool
-	noRefresh    bool
+	home          string
+	manifestName  string
+	umbrellaRoot  string
+	productID     string
+	onboard       bool
+	printOnly     bool
+	noRefresh     bool
+	noUpdateCheck bool
 }
 
 func (a app) runLaunch(args []string) error {
@@ -286,6 +299,7 @@ func (a app) runLaunch(args []string) error {
 		return nil
 	}
 	a.maybeAutoRefresh(opts.home, opts.manifestName, root, root, opts.noRefresh)
+	a.maybeUpdateNotice(opts.home, opts.noUpdateCheck)
 
 	doc, err := launchGuidanceDoc(opts.home, opts.manifestName, root)
 	if err != nil {
@@ -300,7 +314,7 @@ func (a app) runLaunch(args []string) error {
 			a.printLaunchGuidanceBlock(check)
 			return errAlreadyPrinted
 		}
-		if err := a.runOnboard(onboardArgsForLaunch(opts.home, doc.ref.Name, root, opts.noRefresh)); err != nil {
+		if err := a.runOnboard(onboardArgsForLaunch(opts.home, doc.ref.Name, root, opts.noRefresh, opts.noUpdateCheck)); err != nil {
 			return err
 		}
 		doc, err = loadSingleRegisteredDoc(opts.home, doc.ref.Name)
@@ -327,7 +341,7 @@ func (a app) runLaunch(args []string) error {
 
 func (a app) printLaunchUsage() {
 	fmt.Fprintln(a.stderr, `Usage of flux launch:
-  flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [harness] [-- harness args...]
+  flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 
 Harness defaults to claude-code. Harness flags go after the harness name.
 
@@ -344,6 +358,7 @@ Options:
   --product ID      run from products/<id> under the umbrella
   --onboard         reconcile the umbrella first if guidance is stale or missing
   --no-refresh      skip best-effort auto-refresh
+  --no-update-check skip best-effort update notice
   --print           print the resolved launch command without checking or execing`)
 }
 
@@ -366,6 +381,8 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			opts.printOnly = true
 		case arg == "--no-refresh":
 			opts.noRefresh = true
+		case arg == "--no-update-check":
+			opts.noUpdateCheck = true
 		case arg == "--home" || arg == "--manifest" || arg == "--umbrella" || arg == "--product":
 			i++
 			if i >= len(args) {
@@ -437,13 +454,16 @@ func launchGuidanceDoc(home, manifestName, root string) (registeredDoc, error) {
 	return loadSingleRegisteredDoc(home, manifestName)
 }
 
-func onboardArgsForLaunch(home, manifestName, root string, noRefresh bool) []string {
+func onboardArgsForLaunch(home, manifestName, root string, noRefresh, noUpdateCheck bool) []string {
 	args := []string{"--manifest", manifestName, "--umbrella", root}
 	if home != "" {
 		args = append(args, "--home", home)
 	}
 	if noRefresh {
 		args = append(args, "--no-refresh")
+	}
+	if noUpdateCheck {
+		args = append(args, "--no-update-check")
 	}
 	return args
 }
@@ -512,6 +532,76 @@ func (a app) runVersion(args []string) error {
 	}
 	fmt.Fprintln(a.stdout, bundle.Version())
 	return nil
+}
+
+func (a app) runUpdate(args []string) error {
+	var checkOnly bool
+	var jsonOut bool
+	var yes bool
+	var targetVersion string
+	fs := newFlagSet("flux update", a.stderr)
+	fs.BoolVar(&checkOnly, "check", false, "check for an update without installing it")
+	fs.StringVar(&targetVersion, "version", "", "install a specific release version")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	fs.BoolVar(&yes, "yes", false, "accept the update operation")
+	fs.Usage = func() {
+		a.printUpdateUsage()
+		fs.PrintDefaults()
+	}
+	rest, err := parseInterspersed(fs, args, map[string]bool{"version": true})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("update does not accept positional arguments")
+	}
+	_ = yes
+	result, err := selfupdate.Update(context.Background(), selfupdate.Options{
+		CurrentVersion: a.currentFluxVersion(),
+		TargetVersion:  targetVersion,
+		CheckOnly:      checkOnly,
+		TargetPath:     a.updateTargetPath,
+		Source:         a.updateSource,
+	})
+	if err != nil {
+		return err
+	}
+	if jsonOut {
+		return printJSON(a.stdout, result)
+	}
+	fmt.Fprintln(a.stdout, result.Message)
+	return nil
+}
+
+func (a app) printUpdateUsage() {
+	fmt.Fprintln(a.stderr, `Usage of flux update:
+  flux update [--check] [--version X.Y.Z] [--json] [--yes]
+
+Options:`)
+}
+
+func (a app) currentFluxVersion() string {
+	if a.updateCurrentVersion != "" {
+		return a.updateCurrentVersion
+	}
+	return bundle.Version()
+}
+
+func (a app) maybeUpdateNotice(home string, noUpdateCheck bool) {
+	if noUpdateCheck || os.Getenv("FLUX_NO_UPDATE_CHECK") != "" {
+		return
+	}
+	notice, err := selfupdate.CheckNotice(context.Background(), selfupdate.NoticeOptions{
+		CurrentVersion: a.currentFluxVersion(),
+		Home:           home,
+		Source:         a.updateSource,
+		TTL:            selfupdate.UpdateCheckTTLFromEnv(),
+		Now:            a.updateNow,
+	})
+	if err != nil || !notice.UpdateAvailable {
+		return
+	}
+	fmt.Fprintf(a.stderr, "a newer flux (v%s) is available; run `flux update`\n", notice.LatestVersion)
 }
 
 func (a app) runSync(args []string) error {
@@ -2009,6 +2099,7 @@ type doctorOptions struct {
 }
 
 type doctorReport struct {
+	Version    []doctorItem `json:"version,omitempty"`
 	Umbrella   []doctorItem `json:"umbrella,omitempty"`
 	Manifests  []doctorItem `json:"manifests"`
 	Freshness  []doctorItem `json:"freshness,omitempty"`
@@ -2029,6 +2120,7 @@ type doctorItem struct {
 
 func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doctorOptions) doctorReport {
 	var report doctorReport
+	report.Version = append(report.Version, a.doctorVersion(home))
 	var root string
 	if umbrellaRoot != "" {
 		resolved, err := resolveUmbrellaRoot(home, umbrellaRoot)
@@ -2080,6 +2172,30 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 		report.LastSync = append(report.LastSync, doctorLastSync(root))
 	}
 	return report
+}
+
+func (a app) doctorVersion(home string) doctorItem {
+	current := a.currentFluxVersion()
+	item := doctorItem{Name: "flux", Status: "ok", Message: "current=v" + strings.TrimPrefix(current, "v")}
+	notice, err := selfupdate.CheckNotice(context.Background(), selfupdate.NoticeOptions{
+		CurrentVersion: current,
+		Home:           home,
+		Source:         a.updateSource,
+		TTL:            selfupdate.UpdateCheckTTLFromEnv(),
+		Now:            a.updateNow,
+	})
+	if err != nil {
+		item.Status = "unknown"
+		item.Message = item.Message + " update_check=unavailable"
+		item.Details = append(item.Details, err.Error())
+		return item
+	}
+	item.Message = fmt.Sprintf("current=v%s latest=v%s", notice.CurrentVersion, notice.LatestVersion)
+	if notice.UpdateAvailable {
+		item.Status = "stale"
+		item.Message += " run flux update"
+	}
+	return item
 }
 
 func (a app) doctorFreshness(home, manifestName, umbrellaRoot string, fetch bool, root string) []doctorItem {
@@ -2722,6 +2838,7 @@ func (a app) printDoctorReport(report doctorReport) {
 		}
 	}
 	printItems("manifest", report.Manifests)
+	printItems("version", report.Version)
 	printItems("umbrella", report.Umbrella)
 	printItems("freshness", report.Freshness)
 	printItems("derived", report.Derived)
@@ -5324,6 +5441,7 @@ func (a app) runOnboard(args []string) error {
 	fs.BoolVar(&opts.force, "force", false, "replace non-Flux-managed targets")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.BoolVar(&opts.noRefresh, "no-refresh", false, "skip best-effort auto-refresh")
+	fs.BoolVar(&opts.noUpdateCheck, "no-update-check", false, "skip best-effort update notice")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	fs.StringVar(&opts.manifestName, "manifest", "", "use skills declared by a synced manifest")
 	fs.StringVar(&opts.umbrellaRoot, "umbrella", "", "override umbrella root")
@@ -5376,6 +5494,7 @@ func (a app) runOnboard(args []string) error {
 		}
 		ws = ensured
 		a.maybeAutoRefresh(opts.home, doc.ref.Name, root, root, opts.noRefresh)
+		a.maybeUpdateNotice(opts.home, opts.noUpdateCheck)
 		refreshed, err := loadSingleRegisteredDoc(opts.home, doc.ref.Name)
 		if err != nil {
 			return err
@@ -6072,6 +6191,7 @@ type skillsCommandOpts struct {
 	jsonOut                bool
 	noPrune                bool
 	noRefresh              bool
+	noUpdateCheck          bool
 	source                 string
 	home                   string
 	manifestName           string

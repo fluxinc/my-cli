@@ -54,6 +54,8 @@ Run `flux --help` (or `flux <command> --help`) for the authoritative surface.
   `flux meetings list/search/get`, `flux customers list`,
   `flux catalog list products`, `flux root`, `flux launch`, `flux doctor`,
   `flux manifest list`, `flux mount list`, and `flux sync --print`.
+  `flux update --check` is also safe for inspection. Run `flux update` itself
+  only when the user explicitly asks to update the local CLI binary.
 - **Admin** commands mutate the shared source of truth (the manifest, catalog,
   guidance, skills declarations). They live under `flux admin ...`
   (`flux admin skills add/remove`, `flux admin customers add/edit`,
@@ -69,11 +71,11 @@ state.
 Bootstrap / refresh the workspace:
 
 ```sh
-flux onboard [--manifest NAME] [--no-refresh]
+flux onboard [--manifest NAME] [--no-refresh] [--no-update-check]
                                     # create umbrella, write guidance, install skills, sync mounts
-flux root [--product ID] [--no-refresh]
+flux root [--product ID] [--no-refresh] [--no-update-check]
                                     # print the umbrella (or product) path
-flux launch [--no-refresh] [harness]
+flux launch [--no-refresh] [--no-update-check] [harness]
                                     # verify guidance is current, then start a harness
 flux doctor [--no-fetch] [--fix]   # git freshness, derived drift, last sync, manifests, tools
 ```
@@ -83,6 +85,24 @@ manifest/content checkouts before reading workspace context. They do not touch
 dirty, diverged, product, or remote-unknown repositories. Use `--no-refresh`
 for one command, `FLUX_NO_AUTO_REFRESH=1` globally, or `FLUX_REFRESH_TTL=30m`
 to tune the default six-hour window.
+
+These startup commands also make a best-effort, stderr-only check for a newer
+Flux release. The notice never changes stdout, so `cd "$(flux root)"` remains
+safe. Use `--no-update-check`, `FLUX_NO_UPDATE_CHECK=1`, or
+`FLUX_UPDATE_CHECK_TTL=12h` when the user needs deterministic/offline startup.
+
+Update Flux when explicitly requested:
+
+```sh
+flux update --check                 # compare this binary with the latest release
+flux update                         # download, checksum-verify, and replace it
+flux update --version 0.5.0         # install a specific release
+```
+
+`flux update` refuses package-managed or non-writable installs and prints the
+right follow-up command, such as `brew upgrade flux`,
+`go install github.com/fluxinc/flux/cmd/flux@latest`, or re-running
+`install.sh`.
 
 Find and record knowledge:
 

@@ -43,7 +43,8 @@ features:
 curl -sSL https://raw.githubusercontent.com/fluxinc/flux/master/install.sh | sh
 ```
 
-Re-run the installer to update to the latest release.
+Run `flux update` to update to the latest release; re-running the installer also
+works.
 
 ## First Run
 

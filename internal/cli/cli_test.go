@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +17,7 @@ import (
 
 	"github.com/fluxinc/flux/internal/manifest"
 	"github.com/fluxinc/flux/internal/meetings"
+	"github.com/fluxinc/flux/internal/selfupdate"
 	"github.com/fluxinc/flux/internal/umbrella"
 )
 
@@ -1943,7 +1947,7 @@ func TestSyncUsesManifestPRPublishPolicy(t *testing.T) {
 }
 
 func TestOnboardArgsForLaunchCarriesNoRefresh(t *testing.T) {
-	args := onboardArgsForLaunch("/home/example", "acme", "/home/example/acme", true)
+	args := onboardArgsForLaunch("/home/example", "acme", "/home/example/acme", true, false)
 	if !strings.Contains(strings.Join(args, " "), "--no-refresh") {
 		t.Fatalf("onboard args = %#v, want --no-refresh", args)
 	}
@@ -2567,6 +2571,128 @@ func TestVersionCommand(t *testing.T) {
 	}
 }
 
+func TestUpdateCheckJSON(t *testing.T) {
+	server := newCLILatestServer(t, "0.2.0")
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout:               &stdout,
+		stderr:               &stderr,
+		updateCurrentVersion: "0.1.0",
+		updateSource:         server.source(),
+	}
+	if err := a.run([]string{"flux", "update", "--check", "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	var result selfupdate.Result
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("parse update JSON: %v\n%s", err, stdout.String())
+	}
+	if !result.UpdateAvailable || result.TargetVersion != "0.2.0" || !result.CheckOnly {
+		t.Fatalf("result = %#v", result)
+	}
+	if server.assetRequests != 0 {
+		t.Fatalf("asset requests = %d, want 0 for --check", server.assetRequests)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRootUpdateNoticeKeepsStdoutPure(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(t.TempDir(), "umbrella")
+	server := newCLILatestServer(t, "0.2.0")
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout:               &stdout,
+		stderr:               &stderr,
+		updateCurrentVersion: "0.1.0",
+		updateSource:         server.source(),
+		updateNow:            func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) },
+	}
+	if err := a.run([]string{"flux", "root", "--home", home, "--umbrella", root}); err != nil {
+		t.Fatal(err)
+	}
+	if got := stdout.String(); got != root+"\n" {
+		t.Fatalf("root stdout = %q, want only root path", got)
+	}
+	if got := stderr.String(); !strings.Contains(got, "a newer flux (v0.2.0) is available") ||
+		!strings.Contains(got, "flux update") {
+		t.Fatalf("stderr = %q, want update notice", got)
+	}
+}
+
+func TestRootUpdateNoticeOptOutSkipsNetwork(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(t.TempDir(), "umbrella")
+	server := newCLILatestServer(t, "0.2.0")
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout:               &stdout,
+		stderr:               &stderr,
+		updateCurrentVersion: "0.1.0",
+		updateSource:         server.source(),
+	}
+	if err := a.run([]string{"flux", "root", "--home", home, "--umbrella", root, "--no-update-check"}); err != nil {
+		t.Fatal(err)
+	}
+	if stdout.String() != root+"\n" {
+		t.Fatalf("root stdout = %q", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+	if server.latestRequests != 0 {
+		t.Fatalf("latest requests = %d, want 0", server.latestRequests)
+	}
+}
+
+func TestRootUpdateNoticeBestEffortOnNetworkError(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(t.TempDir(), "umbrella")
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout:               &stdout,
+		stderr:               &stderr,
+		updateCurrentVersion: "0.1.0",
+		updateSource: selfupdate.Source{Client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("offline")
+		})}},
+	}
+	if err := a.run([]string{"flux", "root", "--home", home, "--umbrella", root}); err != nil {
+		t.Fatal(err)
+	}
+	if stdout.String() != root+"\n" {
+		t.Fatalf("root stdout = %q", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want silent best-effort failure", stderr.String())
+	}
+}
+
+func TestDoctorIncludesVersionItem(t *testing.T) {
+	home := t.TempDir()
+	server := newCLILatestServer(t, "0.2.0")
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout:               &stdout,
+		stderr:               &stderr,
+		updateCurrentVersion: "0.1.0",
+		updateSource:         server.source(),
+	}
+	if err := a.run([]string{"flux", "doctor", "--home", home, "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	var report doctorReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("parse doctor JSON: %v\n%s", err, stdout.String())
+	}
+	if len(report.Version) != 1 || report.Version[0].Status != "stale" ||
+		!strings.Contains(report.Version[0].Message, "run flux update") {
+		t.Fatalf("version report = %#v", report.Version)
+	}
+}
+
 func makeCLISkill(t *testing.T, name string) string {
 	t.Helper()
 	root := t.TempDir()
@@ -2579,6 +2705,43 @@ func makeCLISkill(t *testing.T, name string) string {
 		t.Fatal(err)
 	}
 	return root
+}
+
+type cliLatestServer struct {
+	server         *httptest.Server
+	version        string
+	latestRequests int
+	assetRequests  int
+}
+
+func newCLILatestServer(t *testing.T, version string) *cliLatestServer {
+	t.Helper()
+	s := &cliLatestServer{version: version}
+	s.server = httptest.NewServer(http.HandlerFunc(s.handle))
+	t.Cleanup(s.server.Close)
+	return s
+}
+
+func (s *cliLatestServer) source() selfupdate.Source {
+	return selfupdate.Source{Client: s.server.Client(), APIBaseURL: s.server.URL, DownloadBaseURL: s.server.URL}
+}
+
+func (s *cliLatestServer) handle(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/releases/latest" {
+		s.latestRequests++
+		fmt.Fprintf(w, `{"tag_name":"v%s"}`, s.version)
+		return
+	}
+	if strings.Contains(r.URL.Path, "/releases/download/") {
+		s.assetRequests++
+	}
+	http.NotFound(w, r)
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func writeCLITestFile(t *testing.T, path, body string) {

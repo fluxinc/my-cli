@@ -6,11 +6,12 @@ commands by job.
 ## Setup and launch
 
 ```sh
-flux onboard [harness...] | --all [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh]
-flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh]
-flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--no-refresh] [harness] [-- harness args...]
+flux onboard [harness...] | --all [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--no-derived] [--print] [--json]
 flux doctor [--no-fetch] [--fix] [--json]
+flux update [--check] [--version X.Y.Z] [--json] [--yes]
 flux version
 ```
 
@@ -91,3 +92,14 @@ refresh for clean manifest/content checkouts before using workspace context.
 They leave dirty, diverged, product, and remote-unknown repositories untouched.
 Use `--no-refresh` for one command, `FLUX_NO_AUTO_REFRESH=1` globally, or
 `FLUX_REFRESH_TTL=30m` to tune the default six-hour window.
+
+Those startup commands also emit a stderr-only notice when a newer Flux release
+is available. Stdout remains clean for command substitutions such as
+`cd "$(flux root)"`. Use `--no-update-check`, `FLUX_NO_UPDATE_CHECK=1`, or
+`FLUX_UPDATE_CHECK_TTL=12h` to suppress or tune that check.
+
+`flux update` downloads the selected GitHub release tarball, verifies it against
+`checksums.txt`, and atomically replaces the running binary when the install is
+writable and not package-managed. Use `flux update --check` for a read-only
+version comparison, or `flux update --version X.Y.Z` to install a specific
+release.

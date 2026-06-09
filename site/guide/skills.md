@@ -11,7 +11,8 @@ boundary:
   organization-neutral — it only teaches harnesses how to drive `flux` itself —
   so it is safe to install anywhere and carries no company content. The binary
   owns its lifecycle (`install.sh`, `flux onboard`, and a quiet refresh on human
-  CLI runs); manage it explicitly with `flux skills self ...`.
+  CLI runs, including after `flux update`); manage it explicitly with
+  `flux skills self ...`.
 - **Organization skills** are declared in an org's *manifest repo* and land only
   once you `flux manifest add` / `flux manifest sync` that manifest. Because they
   live in a repo you control — typically private — they can carry

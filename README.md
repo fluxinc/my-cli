@@ -25,9 +25,10 @@ cd "$(flux root --manifest acme)" && claude
 That's the whole setup. Launch AI harnesses from the umbrella root so they see
 the generated workspace context; `flux launch --manifest acme codex` performs
 the same root resolution and verifies the generated guidance before starting.
-Re-run `install.sh` to update to the latest GitHub release. Developers can
-still install from source with `go install github.com/fluxinc/flux/cmd/flux@latest`.
-The installer also installs Flux's bundled `flux` skill into existing harnesses
+Run `flux update` to update an install from the latest GitHub release; re-running
+`install.sh` still works as a fallback. Developers can still install from source
+with `go install github.com/fluxinc/flux/cmd/flux@latest`. The installer also
+installs Flux's bundled `flux` skill into existing harnesses
 so agents know how to use the CLI itself.
 
 ## The Model
@@ -60,7 +61,8 @@ Run `flux --help` for the authoritative surface. The essentials:
 
 ```sh
 flux onboard [harness...] | --all   # create umbrella, write guidance, install skills, sync mounts
-                                    # [--manifest NAME] [--umbrella DIR] [--copy] [--link] [--print] [--no-refresh]
+                                    # [--manifest NAME] [--umbrella DIR] [--copy] [--link] [--print]
+                                    # [--no-refresh] [--no-update-check]
 ```
 
 `onboard` is the normal path: idempotent, non-interactive, safe to re-run.
@@ -68,8 +70,9 @@ flux onboard [harness...] | --all   # create umbrella, write guidance, install s
 ### Startup
 
 ```sh
-flux root [--product ID] [--no-refresh]      # print the umbrella or product path
-flux launch [--product ID] [--no-refresh] [harness]
+flux root [--product ID] [--no-refresh] [--no-update-check]
+                                             # print the umbrella or product path
+flux launch [--product ID] [--no-refresh] [--no-update-check] [harness]
                                              # verify guidance, then start a harness
 flux launch codex --model gpt-5              # pass harness flags after the harness name
 flux launch --print codex                    # print cd <umbrella> && codex
@@ -82,6 +85,25 @@ clean manifest/content checkouts so startup sees current context without
 touching dirty, diverged, product, or remote-unknown repositories. Use
 `--no-refresh` for one command, `FLUX_NO_AUTO_REFRESH=1` globally, or
 `FLUX_REFRESH_TTL=30m` to tune the default six-hour refresh window.
+
+These startup commands also check, at most once per day, whether a newer Flux
+release exists. Notices are stderr-only so `cd "$(flux root)"` stays path-pure.
+Use `--no-update-check` for one command, `FLUX_NO_UPDATE_CHECK=1` globally, or
+`FLUX_UPDATE_CHECK_TTL=12h` to tune the check window.
+
+### Updating Flux
+
+```sh
+flux update --check                  # compare this binary with the latest release
+flux update                          # download, verify, and replace this binary
+flux update --version 0.5.0          # install a specific release
+```
+
+`flux update` verifies the release tarball against `checksums.txt` before
+replacing the binary. It refuses package-managed or non-writable installs and
+prints the matching follow-up, such as `brew upgrade flux`,
+`go install github.com/fluxinc/flux/cmd/flux@latest`, or re-running
+`install.sh`.
 
 ### Manifests
 

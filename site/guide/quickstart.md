@@ -66,12 +66,22 @@ flux launch --manifest acme --print codex
 
 ## Update flux
 
-Re-run the installer:
+Use the self-update command:
+
+```sh
+flux update --check
+flux update
+```
+
+`flux update` downloads the latest GitHub release, verifies the checksum, and
+replaces the local binary. It refuses package-managed or non-writable installs
+and prints the right follow-up command.
+
+Re-running the installer still works as a fallback:
 
 ```sh
 curl -sSL https://raw.githubusercontent.com/fluxinc/flux/master/install.sh | sh
 ```
 
-The installer downloads the latest GitHub release, verifies the checksum, and
-replaces the local binary. It also refreshes the bundled `flux` self-skill in
-existing harnesses so agents keep current CLI guidance.
+The installer also refreshes the bundled `flux` self-skill in existing harnesses
+so agents keep current CLI guidance.
