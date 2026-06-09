@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -191,7 +192,7 @@ Usage:
   flux meetings add <slug>
   flux customers list
   flux catalog list products
-  flux doctor
+  flux doctor [--no-fetch] [--json]
   flux version`)
 }
 
@@ -583,6 +584,11 @@ func (a app) runSync(args []string) error {
 	if backendMessage != "" && report.BackendMessage == "" {
 		report.BackendMessage = backendMessage
 	}
+	if !printOnly {
+		if err := a.saveLastSyncReport(home, manifestName, umbrellaRoot, report); err != nil {
+			return a.maybeJSONError(jsonOut, err)
+		}
+	}
 	if jsonOut {
 		if err := printJSON(a.stdout, report); err != nil {
 			return err
@@ -605,7 +611,8 @@ backend uses Nit when the umbrella is a Nit workspace; otherwise Flux uses a
 guarded Git fallback until bootstrap/canonicalization is complete. The default
 publish mode only pushes private content-only changes when sibling checkouts of
 the same remote are clean. Direct mode can push existing commits, but dirty
-non-content changes still require an explicit admin or review workflow.`)
+non-content changes still require an explicit admin or review workflow.
+Non-print runs write .flux/last-sync.json when an umbrella is present.`)
 }
 
 func validSyncBackend(value string) bool {
@@ -827,6 +834,71 @@ func syncReportFailed(report syncer.Report) bool {
 		}
 	}
 	return false
+}
+
+const lastSyncFile = "last-sync.json"
+
+type lastSyncAudit struct {
+	SchemaVersion int           `json:"schema_version"`
+	SavedAt       string        `json:"saved_at"`
+	Report        syncer.Report `json:"report"`
+}
+
+func (a app) saveLastSyncReport(home, manifestName, umbrellaRoot string, report syncer.Report) error {
+	root, ok, err := existingUmbrellaRoot(home, manifestName, umbrellaRoot)
+	if err != nil || !ok {
+		return err
+	}
+	audit := lastSyncAudit{
+		SchemaVersion: 1,
+		SavedAt:       time.Now().UTC().Format(time.RFC3339),
+		Report:        report,
+	}
+	data, err := json.MarshalIndent(audit, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return os.WriteFile(filepath.Join(root, umbrella.DirName, lastSyncFile), data, 0o644)
+}
+
+func existingUmbrellaRoot(home, manifestName, explicit string) (string, bool, error) {
+	if explicit != "" {
+		root, err := resolveUmbrellaRoot(home, explicit)
+		if err != nil {
+			return "", false, err
+		}
+		return root, hasFluxDir(root), nil
+	}
+	if root, ok := umbrella.FindRoot("."); ok {
+		return root, true, nil
+	}
+	root, err := resolveFluxRoot(home, manifestName, "")
+	if err != nil {
+		return "", false, nil
+	}
+	return root, hasFluxDir(root), nil
+}
+
+func hasFluxDir(root string) bool {
+	info, err := os.Stat(filepath.Join(root, umbrella.DirName))
+	return err == nil && info.IsDir()
+}
+
+func loadLastSyncAudit(root string) (lastSyncAudit, bool, error) {
+	path := filepath.Join(root, umbrella.DirName, lastSyncFile)
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return lastSyncAudit{}, false, nil
+	}
+	if err != nil {
+		return lastSyncAudit{}, false, err
+	}
+	var audit lastSyncAudit
+	if err := json.Unmarshal(data, &audit); err != nil {
+		return lastSyncAudit{}, false, fmt.Errorf("read %s: %w", path, err)
+	}
+	return audit, true, nil
 }
 
 func findNitWorkspaceRoot(start string) string {
@@ -1656,11 +1728,13 @@ func (a app) runDoctor(args []string) error {
 	var home string
 	var manifestName string
 	var umbrellaRoot string
+	var noFetch bool
 	var jsonOut bool
 	fs := newFlagSet("flux doctor", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
+	fs.BoolVar(&noFetch, "no-fetch", false, "use local tracking refs without fetching remotes")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
 	rest, err := parseInterspersed(fs, args, map[string]bool{
 		"home":     true,
@@ -1673,7 +1747,7 @@ func (a app) runDoctor(args []string) error {
 	if len(rest) != 0 {
 		return fmt.Errorf("doctor does not accept positional arguments")
 	}
-	report := a.buildDoctorReport(home, manifestName, umbrellaRoot)
+	report := a.buildDoctorReport(home, manifestName, umbrellaRoot, doctorOptions{NoFetch: noFetch})
 	if jsonOut {
 		return printJSON(a.stdout, report)
 	}
@@ -1681,9 +1755,16 @@ func (a app) runDoctor(args []string) error {
 	return nil
 }
 
+type doctorOptions struct {
+	NoFetch bool
+}
+
 type doctorReport struct {
 	Umbrella   []doctorItem `json:"umbrella,omitempty"`
 	Manifests  []doctorItem `json:"manifests"`
+	Freshness  []doctorItem `json:"freshness,omitempty"`
+	Derived    []doctorItem `json:"derived,omitempty"`
+	LastSync   []doctorItem `json:"last_sync,omitempty"`
 	Workspaces []doctorItem `json:"workspaces"`
 	Tools      []doctorItem `json:"tools"`
 }
@@ -1696,16 +1777,19 @@ type doctorItem struct {
 	Details []string `json:"details,omitempty"`
 }
 
-func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string) doctorReport {
+func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doctorOptions) doctorReport {
 	var report doctorReport
+	var root string
 	if umbrellaRoot != "" {
-		root, err := resolveUmbrellaRoot(home, umbrellaRoot)
+		resolved, err := resolveUmbrellaRoot(home, umbrellaRoot)
 		if err != nil {
 			report.Umbrella = append(report.Umbrella, doctorItem{Name: umbrellaRoot, Status: "error", Message: err.Error()})
 		} else {
+			root = resolved
 			report.Umbrella = append(report.Umbrella, doctorUmbrella(home, root)...)
 		}
-	} else if root, ok := umbrella.FindRoot("."); ok {
+	} else if found, ok := umbrella.FindRoot("."); ok {
+		root = found
 		report.Umbrella = append(report.Umbrella, doctorUmbrella(home, root)...)
 	}
 	refs, err := manifestRefs(home, manifestName)
@@ -1737,7 +1821,333 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string) doctorRe
 		report.Workspaces = append(report.Workspaces, doctorWorkspaces(home, ref.Name, doc.Workspaces)...)
 		report.Tools = append(report.Tools, doctorTools(ref.Name, doc.Tools)...)
 	}
+	report.Freshness = append(report.Freshness, a.doctorFreshness(home, manifestName, umbrellaRoot, !opts.NoFetch, root)...)
+	report.Derived = append(report.Derived, a.doctorDerived(home, manifestName, root)...)
+	if root != "" {
+		report.LastSync = append(report.LastSync, doctorLastSync(root))
+	}
 	return report
+}
+
+func (a app) doctorFreshness(home, manifestName, umbrellaRoot string, fetch bool, root string) []doctorItem {
+	entries, err := a.collectSyncEntries(home, manifestName, umbrellaRoot, "local")
+	if err != nil {
+		return []doctorItem{{Name: "git", Status: "error", Message: err.Error()}}
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	refreshes := doctorMountRefreshes(root)
+	results := syncer.Inspect(entries, syncer.InspectOptions{Fetch: fetch})
+	items := make([]doctorItem, 0, len(results))
+	for _, result := range results {
+		items = append(items, doctorFreshnessItem(result, fetch, refreshes))
+	}
+	return items
+}
+
+func doctorMountRefreshes(root string) map[string]string {
+	if root == "" {
+		return nil
+	}
+	state, err := umbrella.LoadState(root)
+	if err != nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, mount := range state.Mounts {
+		if mount.LastSync == "" {
+			continue
+		}
+		out["content\x00"+mount.ID] = mount.LastSync
+		out["product\x00"+mount.ID] = mount.LastSync
+	}
+	return out
+}
+
+func doctorFreshnessItem(result syncer.Result, fetch bool, refreshes map[string]string) doctorItem {
+	item := doctorItem{
+		Name: doctorFreshnessName(result),
+		Path: result.LocalPath,
+	}
+	switch result.Status {
+	case "already landed":
+		item.Status = "ok"
+	case "pending":
+		item.Status = doctorPendingFreshnessStatus(result)
+	case "held back":
+		if strings.Contains(result.Message, "not cloned") {
+			item.Status = "missing"
+		} else {
+			item.Status = "held back"
+		}
+	case "unknown":
+		item.Status = "unknown"
+	case "failed":
+		item.Status = "error"
+	default:
+		item.Status = result.Status
+	}
+	item.Message = doctorFreshnessMessage(result, fetch)
+	if result.Branch != "" {
+		item.Details = append(item.Details, "branch="+result.Branch)
+	}
+	if result.Head != "" {
+		item.Details = append(item.Details, "head="+result.Head)
+	}
+	if lastRefresh := refreshes[result.Role+"\x00"+result.ID]; lastRefresh != "" {
+		item.Details = append(item.Details, "last_refresh="+lastRefresh)
+	}
+	if len(result.Dirty) != 0 {
+		item.Details = append(item.Details, "dirty="+strings.Join(result.Dirty, ","))
+	}
+	if len(result.Changed) != 0 {
+		item.Details = append(item.Details, "changed="+strings.Join(result.Changed, ","))
+	}
+	if result.FetchError != "" {
+		item.Details = append(item.Details, "fetch_error="+result.FetchError)
+	}
+	if result.Error != "" {
+		item.Details = append(item.Details, result.Error)
+	}
+	return item
+}
+
+func doctorFreshnessName(result syncer.Result) string {
+	name := result.Role + ":" + result.ID
+	if result.Manifest != "" && result.Role != "manifest" {
+		return result.Manifest + ":" + name
+	}
+	return name
+}
+
+func doctorPendingFreshnessStatus(result syncer.Result) string {
+	if result.BehindUnknown {
+		return "unknown"
+	}
+	if len(result.Dirty) != 0 {
+		return "dirty"
+	}
+	if result.Ahead != 0 && result.Behind != 0 {
+		return "diverged"
+	}
+	if result.Ahead != 0 {
+		return "ahead"
+	}
+	if result.Behind != 0 {
+		return "stale"
+	}
+	return "warning"
+}
+
+func doctorFreshnessMessage(result syncer.Result, fetch bool) string {
+	if result.Status == "held back" || result.Status == "failed" {
+		if result.Message != "" {
+			return result.Message
+		}
+		return result.Error
+	}
+	if result.Status == "already landed" {
+		if fetch {
+			return "up to date"
+		}
+		return "up to date (as of last fetch)"
+	}
+	parts := []string{}
+	if result.BehindUnknown {
+		parts = append(parts, "behind=unknown (remote unreachable)")
+	} else {
+		parts = append(parts, fmt.Sprintf("behind=%d", result.Behind))
+	}
+	parts = append(parts, fmt.Sprintf("ahead=%d", result.Ahead))
+	if len(result.Dirty) != 0 {
+		parts = append(parts, fmt.Sprintf("dirty=%d", len(result.Dirty)))
+	}
+	if !fetch {
+		parts = append(parts, "as of last fetch")
+	}
+	if result.Message != "" {
+		parts = append(parts, result.Message)
+	}
+	return strings.Join(parts, " ")
+}
+
+func (a app) doctorDerived(home, manifestName, root string) []doctorItem {
+	var items []doctorItem
+	items = append(items, a.doctorSkillDrift(home, manifestName)...)
+	if root != "" {
+		items = append(items, doctorDerivedGuidance(home, root, manifestName))
+	}
+	if len(items) == 0 {
+		items = append(items, doctorItem{Name: "derived", Status: "ok", Message: "no derived drift detected"})
+	}
+	return items
+}
+
+func (a app) doctorSkillDrift(home, manifestName string) []doctorItem {
+	opts := skillsCommandOpts{home: home, manifestName: manifestName, quietSource: true, allowMissingToolSkills: true}
+	bundled, sourceRoots, _, err := a.discoverSkills(opts)
+	if err != nil {
+		return []doctorItem{{Name: "skills", Status: "error", Message: err.Error()}}
+	}
+	if len(bundled) == 0 {
+		return nil
+	}
+	rows, err := a.skillStatusRows(opts, bundled, sourceRoots)
+	if err != nil {
+		return []doctorItem{{Name: "skills", Status: "error", Message: err.Error()}}
+	}
+	var items []doctorItem
+	for _, row := range rows {
+		if !doctorSkillHarnessPresent(row) {
+			continue
+		}
+		if doctorSkillStatusOK(row.Status) {
+			continue
+		}
+		item := doctorItem{
+			Name:   "skill:" + string(row.Harness) + ":" + row.Skill,
+			Status: row.Status,
+			Path:   row.TargetPath,
+		}
+		if row.Message != "" {
+			item.Message = row.Message
+		} else {
+			item.Message = row.Remedy
+		}
+		if row.CanonicalID != "" {
+			item.Details = append(item.Details, "canonical_id="+row.CanonicalID)
+		}
+		if row.SourcePath != "" {
+			item.Details = append(item.Details, "source="+row.SourcePath)
+		}
+		if row.LinkTarget != "" {
+			item.Details = append(item.Details, "link_target="+row.LinkTarget)
+		}
+		if row.Remedy != "" && row.Remedy != item.Message {
+			item.Details = append(item.Details, "remedy="+row.Remedy)
+		}
+		if row.Error != "" {
+			item.Details = append(item.Details, row.Error)
+		}
+		items = append(items, item)
+	}
+	if len(items) == 0 {
+		items = append(items, doctorItem{Name: "skills", Status: "ok", Message: "no present harness skill drift detected"})
+	}
+	return items
+}
+
+func doctorSkillHarnessPresent(row skillStatusRow) bool {
+	if !row.Harness.IsFilesystem() {
+		return true
+	}
+	if row.TargetPath == "" {
+		return false
+	}
+	info, err := os.Stat(filepath.Dir(row.TargetPath))
+	return err == nil && info.IsDir()
+}
+
+func doctorSkillStatusOK(status string) bool {
+	return status == "installed" || status == "managed-by-gemini"
+}
+
+func doctorDerivedGuidance(home, root, manifestName string) doctorItem {
+	if manifestName == "" {
+		if ws, err := umbrella.LoadWorkspace(root); err == nil {
+			manifestName = ws.ManifestRef
+		}
+	}
+	item := doctorGuidance(home, root, manifestName)
+	item.Name = "guidance"
+	if item.Status == "ok" && item.Message == "" {
+		item.Message = "workspace guidance matches current manifest"
+	}
+	return item
+}
+
+func doctorLastSync(root string) doctorItem {
+	path := filepath.Join(root, umbrella.DirName, lastSyncFile)
+	audit, ok, err := loadLastSyncAudit(root)
+	if err != nil {
+		return doctorItem{Name: "last publish", Status: "error", Path: path, Message: err.Error()}
+	}
+	if !ok {
+		return doctorItem{Name: "last publish", Status: "missing", Path: path, Message: "run flux sync to record an audit"}
+	}
+	item := doctorItem{
+		Name:    "last publish",
+		Status:  "ok",
+		Path:    path,
+		Message: lastSyncSummary(audit),
+	}
+	if syncReportFailed(audit.Report) {
+		item.Status = "warning"
+	}
+	for _, result := range audit.Report.Results {
+		item.Details = append(item.Details, lastSyncResultDetail(result))
+	}
+	return item
+}
+
+func lastSyncSummary(audit lastSyncAudit) string {
+	parts := []string{"saved_at=" + audit.SavedAt}
+	if audit.Report.Publish != "" {
+		parts = append(parts, "publish="+audit.Report.Publish)
+	}
+	if audit.Report.Backend != "" {
+		parts = append(parts, "backend="+audit.Report.Backend)
+	}
+	for _, part := range syncStatusCounts(audit.Report.Results) {
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, " ")
+}
+
+func syncStatusCounts(results []syncer.Result) []string {
+	order := []string{"pushed", "pulled", "held back", "dry-run", "already landed", "failed"}
+	counts := map[string]int{}
+	for _, result := range results {
+		counts[result.Status]++
+	}
+	var out []string
+	for _, status := range order {
+		if counts[status] == 0 {
+			continue
+		}
+		out = append(out, strings.ReplaceAll(status, " ", "_")+"="+strconv.Itoa(counts[status]))
+		delete(counts, status)
+	}
+	var rest []string
+	for status := range counts {
+		rest = append(rest, status)
+	}
+	sort.Strings(rest)
+	for _, status := range rest {
+		out = append(out, strings.ReplaceAll(status, " ", "_")+"="+strconv.Itoa(counts[status]))
+	}
+	return out
+}
+
+func lastSyncResultDetail(result syncer.Result) string {
+	parts := []string{result.Role + ":" + result.ID, "status=" + strings.ReplaceAll(result.Status, " ", "_")}
+	if result.Manifest != "" {
+		parts = append(parts, "manifest="+result.Manifest)
+	}
+	if result.GitURL != "" {
+		parts = append(parts, "remote="+result.GitURL)
+	}
+	if result.Branch != "" {
+		parts = append(parts, "branch="+result.Branch)
+	}
+	if result.Head != "" {
+		parts = append(parts, "head="+result.Head)
+	}
+	if result.Direction != "" {
+		parts = append(parts, "direction="+result.Direction)
+	}
+	return strings.Join(parts, " ")
 }
 
 func doctorWorkspaces(home, manifestName string, declared []manifest.Workspace) []doctorItem {
@@ -1810,6 +2220,9 @@ func (a app) printDoctorReport(report doctorReport) {
 	}
 	printItems("manifest", report.Manifests)
 	printItems("umbrella", report.Umbrella)
+	printItems("freshness", report.Freshness)
+	printItems("derived", report.Derived)
+	printItems("last-sync", report.LastSync)
 	printItems("workspace", report.Workspaces)
 	printItems("tool", report.Tools)
 }

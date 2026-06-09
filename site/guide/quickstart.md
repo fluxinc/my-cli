@@ -19,6 +19,10 @@ flux version
 flux doctor
 ```
 
+`flux doctor` reports manifest validity, generated guidance/skill drift, local
+Git freshness, and the last `.flux/last-sync.json` audit when an umbrella is
+present. Add `--no-fetch` for an offline freshness check.
+
 ## Register a manifest
 
 ```sh

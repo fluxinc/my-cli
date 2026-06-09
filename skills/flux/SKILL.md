@@ -72,7 +72,7 @@ Bootstrap / refresh the workspace:
 flux onboard [--manifest NAME]     # create umbrella, write guidance, install skills, sync mounts
 flux root [--product ID]           # print the umbrella (or product) path
 flux launch [harness]              # verify guidance is current, then start a harness
-flux doctor                        # guidance freshness, manifest validity, mounts, tools
+flux doctor [--no-fetch]           # git freshness, derived drift, last sync, manifests, tools
 ```
 
 Find and record knowledge:
@@ -114,7 +114,10 @@ flux sync --publish pr             # currently holds changes and reports PR-mode
 a Nit control workspace; otherwise it uses a guarded built-in Git path. Run
 `flux sync --print` first to see the plan before publishing. GitHub PR creation
 is a Flux policy layer planned on top of Nit and `gh`; it is not implemented in
-the current CLI yet.
+the current CLI yet. A non-print sync writes `.flux/last-sync.json`; use
+`flux doctor` to review the last publish/sync audit. `flux doctor` fetches refs
+before reporting behind/ahead counts by default; pass `--no-fetch` for an
+offline view labeled as of the last fetch.
 
 ## Tips
 

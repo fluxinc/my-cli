@@ -4,6 +4,10 @@
 
 ### Added
 
+- `flux doctor` reports per-checkout Git freshness, derived skill/guidance
+  drift, and the last sync/publish audit.
+- `flux sync` records non-print runs to `.flux/last-sync.json`; doctor fetches
+  refs by default and supports `--no-fetch` for offline freshness checks.
 - Added `flux admin customers add` and `flux admin customers edit` for customer
   catalog writes.
 - `flux admin skills remove` reports orphaned tools and allowed skill namespaces,

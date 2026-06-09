@@ -43,6 +43,12 @@ type Options struct {
 	Visibility VisibilityFunc
 }
 
+// InspectOptions controls report-only repository inspection.
+type InspectOptions struct {
+	Fetch  bool
+	Runner Runner
+}
+
 // Report is a machine-readable sync report.
 type Report struct {
 	Publish        string   `json:"publish"`
@@ -55,21 +61,26 @@ type Report struct {
 
 // Result describes one repository's sync state or action.
 type Result struct {
-	Manifest  string   `json:"manifest,omitempty"`
-	ID        string   `json:"id"`
-	Role      string   `json:"role"`
-	Kind      string   `json:"kind,omitempty"`
-	GitURL    string   `json:"git_url"`
-	LocalPath string   `json:"local_path"`
-	Branch    string   `json:"branch,omitempty"`
-	Status    string   `json:"status"`
-	Direction string   `json:"direction,omitempty"`
-	Ahead     int      `json:"ahead,omitempty"`
-	Behind    int      `json:"behind,omitempty"`
-	Dirty     []string `json:"dirty,omitempty"`
-	Changed   []string `json:"changed,omitempty"`
-	Message   string   `json:"message,omitempty"`
-	Error     string   `json:"error,omitempty"`
+	Manifest  string `json:"manifest,omitempty"`
+	ID        string `json:"id"`
+	Role      string `json:"role"`
+	Kind      string `json:"kind,omitempty"`
+	GitURL    string `json:"git_url"`
+	LocalPath string `json:"local_path"`
+	Branch    string `json:"branch,omitempty"`
+	Head      string `json:"head,omitempty"`
+	Status    string `json:"status"`
+	Direction string `json:"direction,omitempty"`
+	Ahead     int    `json:"ahead,omitempty"`
+	Behind    int    `json:"behind,omitempty"`
+	// BehindUnknown means the remote ref could not be refreshed, so Behind is
+	// intentionally omitted instead of reporting a stale tracking-ref count.
+	BehindUnknown bool     `json:"behind_unknown,omitempty"`
+	FetchError    string   `json:"fetch_error,omitempty"`
+	Dirty         []string `json:"dirty,omitempty"`
+	Changed       []string `json:"changed,omitempty"`
+	Message       string   `json:"message,omitempty"`
+	Error         string   `json:"error,omitempty"`
 }
 
 type inspection struct {
@@ -84,6 +95,11 @@ type inspection struct {
 	visibilityOK bool
 }
 
+type inspectMode struct {
+	fetch      bool
+	fetchFatal bool
+}
+
 // Run inspects and optionally reconciles repositories.
 func Run(entries []Entry, opts Options) Report {
 	if opts.Backend == "nit" {
@@ -93,6 +109,22 @@ func Run(entries []Entry, opts Options) Report {
 		opts.Backend = "flux"
 	}
 	return runFlux(entries, opts)
+}
+
+// Inspect returns current repository state without publishing or pulling.
+func Inspect(entries []Entry, opts InspectOptions) []Result {
+	runner := opts.Runner
+	if runner == nil {
+		runner = execCommand
+	}
+	inspections := make([]inspection, 0, len(entries))
+	for _, entry := range entries {
+		inspections = append(inspections, inspectWithMode(entry, Options{}, runner, inspectMode{
+			fetch:      opts.Fetch,
+			fetchFatal: false,
+		}))
+	}
+	return collectResults(inspections)
 }
 
 func runFlux(entries []Entry, opts Options) Report {
@@ -250,6 +282,10 @@ func runNit(entries []Entry, opts Options) Report {
 }
 
 func inspect(entry Entry, opts Options, runner Runner) inspection {
+	return inspectWithMode(entry, opts, runner, inspectMode{fetch: !opts.DryRun, fetchFatal: true})
+}
+
+func inspectWithMode(entry Entry, opts Options, runner Runner, mode inspectMode) inspection {
 	res := Result{
 		Manifest:  entry.Manifest,
 		ID:        entry.ID,
@@ -264,11 +300,18 @@ func inspect(entry Entry, opts Options, runner Runner) inspection {
 		in.result.Message = "not cloned; run flux mount sync or flux onboard first"
 		return in
 	}
-	if !opts.DryRun {
+	fetchFailed := false
+	if mode.fetch {
 		if out, err := git(runner, entry.LocalPath, "fetch", "origin"); err != nil {
-			in.result.Status = "failed"
-			in.result.Error = commandError(out, err)
-			return in
+			msg := commandError(out, err)
+			if mode.fetchFatal {
+				in.result.Status = "failed"
+				in.result.Error = msg
+				return in
+			}
+			fetchFailed = true
+			in.result.BehindUnknown = true
+			in.result.FetchError = msg
 		}
 	}
 	branch, out, err := gitTrim(runner, entry.LocalPath, "rev-parse", "--abbrev-ref", "HEAD")
@@ -278,6 +321,13 @@ func inspect(entry Entry, opts Options, runner Runner) inspection {
 		return in
 	}
 	in.result.Branch = branch
+	head, out, err := gitTrim(runner, entry.LocalPath, "rev-parse", "HEAD")
+	if err != nil {
+		in.result.Status = "failed"
+		in.result.Error = commandError(out, err)
+		return in
+	}
+	in.result.Head = head
 	if branch == "HEAD" {
 		in.result.Status = "held back"
 		in.result.Message = "detached HEAD"
@@ -290,11 +340,18 @@ func inspect(entry Entry, opts Options, runner Runner) inspection {
 	in.upstream = upstream
 	behind, ahead, err := aheadBehind(entry.LocalPath, upstream, runner)
 	if err != nil {
+		if fetchFailed {
+			in.result.Status = "unknown"
+			in.result.Message = "remote freshness unknown"
+			return in
+		}
 		in.result.Status = "failed"
 		in.result.Error = err.Error()
 		return in
 	}
-	in.result.Behind = behind
+	if !fetchFailed {
+		in.result.Behind = behind
+	}
 	in.result.Ahead = ahead
 	dirty, err := dirtyFiles(entry.LocalPath, runner)
 	if err != nil {
@@ -322,6 +379,15 @@ func inspect(entry Entry, opts Options, runner Runner) inspection {
 			in.visibilityOK = true
 			in.private = strings.EqualFold(visibility, "PRIVATE")
 		}
+	}
+	if fetchFailed {
+		if ahead != 0 || len(dirty) != 0 {
+			in.result.Status = "pending"
+			return in
+		}
+		in.result.Status = "unknown"
+		in.result.Message = "remote freshness unknown"
+		return in
 	}
 	if behind == 0 && ahead == 0 && len(dirty) == 0 {
 		in.result.Status = "already landed"

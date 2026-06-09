@@ -1265,6 +1265,119 @@ func TestDoctorReportsGuidanceDrift(t *testing.T) {
 	}
 }
 
+func TestDoctorReportsFreshnessNoFetch(t *testing.T) {
+	home, _, _, _ := setupCLITrackedManifest(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+
+	if err := a.run([]string{"flux", "doctor", "--manifest", "acme", "--home", home, "--no-fetch"}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "freshness\tmanifest:acme\tok") ||
+		!strings.Contains(out, "up to date (as of last fetch)") {
+		t.Fatalf("doctor stdout = %q", out)
+	}
+}
+
+func TestDoctorReportsRemoteFreshnessUnknown(t *testing.T) {
+	home, _, manifestCache, _ := setupCLITrackedManifest(t)
+	runCLIGit(t, manifestCache, "remote", "set-url", "origin", filepath.Join(home, "missing.git"))
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+
+	if err := a.run([]string{"flux", "doctor", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "freshness\tmanifest:acme\tunknown") ||
+		!strings.Contains(out, "behind=unknown (remote unreachable)") {
+		t.Fatalf("doctor stdout = %q", out)
+	}
+}
+
+func TestDoctorSkipsSkillDriftForMissingHarnessDirs(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+
+	stdout.Reset()
+	if err := a.run([]string{"flux", "doctor", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if strings.Contains(out, "derived\tskill:claude-code:acme-handbook\tabsent") {
+		t.Fatalf("doctor stdout = %q, want missing harness dir skipped", out)
+	}
+	if !strings.Contains(out, "derived\tskills\tok") ||
+		!strings.Contains(out, "no present harness skill drift detected") {
+		t.Fatalf("doctor stdout = %q, want no present harness drift", out)
+	}
+}
+
+func TestDoctorReportsDerivedSkillDriftForPresentHarness(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	writeCLITestFile(t, filepath.Join(home, ".claude", "skills", ".keep"), "")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+
+	stdout.Reset()
+	if err := a.run([]string{"flux", "doctor", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "derived\tskill:claude-code:acme-handbook\tabsent") ||
+		!strings.Contains(out, "flux skills install claude-code --skill acme:handbook") {
+		t.Fatalf("doctor stdout = %q", out)
+	}
+}
+
+func TestSyncPersistsLastSyncAuditAndDoctorReportsIt(t *testing.T) {
+	home, umbrellaRoot, _, _ := setupCLITrackedManifest(t)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+
+	if err := a.run([]string{
+		"flux", "sync",
+		"--backend", "flux",
+		"--publish", "never",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	auditPath := filepath.Join(umbrellaRoot, ".flux", "last-sync.json")
+	data, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var audit lastSyncAudit
+	if err := json.Unmarshal(data, &audit); err != nil {
+		t.Fatal(err)
+	}
+	if audit.Report.Publish != "never" || len(audit.Report.Results) != 1 || audit.Report.Results[0].Head == "" {
+		t.Fatalf("audit = %#v, want publish/report/head", audit)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"flux", "doctor", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "last-sync\tlast publish\tok") ||
+		!strings.Contains(out, "publish=never") ||
+		!strings.Contains(out, "already_landed=1") {
+		t.Fatalf("doctor stdout = %q", out)
+	}
+}
+
 func TestLaunchPrintsResolvedCommandWithoutCheckingGuidance(t *testing.T) {
 	home, _ := setupCLILaunchFixture(t)
 	var stdout, stderr bytes.Buffer
@@ -2007,6 +2120,33 @@ func setupCLILaunchFixture(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	return home, filepath.Join(home, "acme")
+}
+
+func setupCLITrackedManifest(t *testing.T) (string, string, string, string) {
+	t.Helper()
+	home := t.TempDir()
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	initCLIGitRepo(t, manifestCache)
+	remote := filepath.Join(home, "manifest.git")
+	runCLIGit(t, home, "init", "--bare", "-q", remote)
+	runCLIGit(t, manifestCache, "remote", "add", "origin", remote)
+	runCLIGit(t, manifestCache, "branch", "-M", "master")
+	runCLIGit(t, manifestCache, "push", "-q", "-u", "origin", "master")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"flux", "manifest", "add", "acme",
+		remote,
+		"--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return home, filepath.Join(home, "acme"), manifestCache, remote
 }
 
 func initCLIGitRepo(t *testing.T, dir string) {

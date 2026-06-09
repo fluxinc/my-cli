@@ -169,7 +169,8 @@ resume; Pins are reserved for intentional recorded workspace states. The Flux
 backend is a guarded bootstrap fallback when a workspace has not been
 initialized as a Nit control workspace. `--publish direct` can publish existing
 local commits directly, but dirty non-content/admin files are still held back
-instead of being quietly committed.
+instead of being quietly committed. Non-print syncs write `.flux/last-sync.json`
+so `flux doctor` can show the last sync/publish audit.
 
 ### Catalog
 
@@ -197,12 +198,14 @@ is present and falls back to built-in token-AND markdown search.
 
 ```sh
 flux tools info <name>                      # install hints for a declared tool
-flux doctor                                 # guidance freshness, manifest validity, mounts, tools
+flux doctor [--no-fetch]                    # git freshness, derived drift, last sync, manifests, tools
 ```
 
 Data-returning commands expose `--json` where shown. Structured errors use a
 machine-readable `{error, message, remediation}` with a concrete next command,
 so an agent that hits a wall can recover without a human.
+`flux doctor` fetches refs before reporting behind/ahead counts by default; use
+`--no-fetch` for an offline view labeled as of the last fetch.
 
 ## Supported Harnesses
 

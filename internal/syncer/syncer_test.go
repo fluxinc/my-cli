@@ -1,6 +1,7 @@
 package syncer
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -246,6 +247,48 @@ func TestRunNitPullsCleanBehindRepo(t *testing.T) {
 	}
 }
 
+func TestInspectNoFetchUsesLocalTrackingRefs(t *testing.T) {
+	remote, content, writer := setupTwoCheckoutRemote(t)
+	writeFile(t, filepath.Join(writer, "meetings", "2026-06-09-remote.md"), "remote\n")
+	runGit(t, writer, "add", ".")
+	runGit(t, writer, "commit", "-q", "-m", "remote meeting")
+	runGit(t, writer, "push", "-q", "origin", "HEAD:master")
+
+	entries := []Entry{{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content}}
+	local := Inspect(entries, InspectOptions{Fetch: false})
+	localResult := local[0]
+	if localResult.Status != "already landed" || localResult.Behind != 0 {
+		t.Fatalf("local result = %#v, want stale local tracking ref to look landed", localResult)
+	}
+
+	fetched := Inspect(entries, InspectOptions{Fetch: true})
+	fetchedResult := fetched[0]
+	if fetchedResult.Status != "pending" || fetchedResult.Behind != 1 {
+		t.Fatalf("fetched result = %#v, want behind=1 pending", fetchedResult)
+	}
+}
+
+func TestInspectReportsUnknownWhenFetchFails(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	results := Inspect([]Entry{
+		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content},
+	}, InspectOptions{
+		Fetch:  true,
+		Runner: fetchFailingRunner,
+	})
+
+	result := results[0]
+	if result.Status != "unknown" || !result.BehindUnknown {
+		t.Fatalf("result = %#v, want unknown with behind_unknown", result)
+	}
+	if !strings.Contains(result.FetchError, "offline") || result.Error != "" {
+		t.Fatalf("result = %#v, want fetch_error only", result)
+	}
+	if result.Branch == "" || result.Head == "" {
+		t.Fatalf("result = %#v, want branch and head preserved", result)
+	}
+}
+
 func setupTwoCheckoutRemote(t *testing.T) (string, string, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -269,6 +312,13 @@ func setupTwoCheckoutRemote(t *testing.T) (string, string, string) {
 	configGitUser(t, content)
 	configGitUser(t, manifest)
 	return remote, content, manifest
+}
+
+func fetchFailingRunner(name string, args ...string) ([]byte, error) {
+	if name == "git" && len(args) >= 3 && args[2] == "fetch" {
+		return []byte("offline\n"), errors.New("offline")
+	}
+	return exec.Command(name, args...).CombinedOutput()
 }
 
 func setupNitWorkspaceWithDuplicateRemote(t *testing.T) (string, string, string, string) {

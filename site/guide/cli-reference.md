@@ -9,8 +9,8 @@ commands by job.
 flux onboard [harness...] | --all [--manifest NAME] [--home DIR] [--umbrella DIR]
 flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR]
 flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [harness] [-- harness args...]
-flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--print] [--json]
-flux doctor
+flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--print] [--json]
+flux doctor [--no-fetch] [--json]
 flux version
 ```
 
@@ -76,4 +76,7 @@ flux tools info <name>
 when the umbrella is initialized as a Nit control workspace; Flux keeps the
 bootstrap, policy, duplicate-remote, and PR layers. `--publish direct` can
 publish existing local commits directly, but dirty non-content/admin files are
-still held back for explicit admin or review handling.
+still held back for explicit admin or review handling. Non-print syncs write
+`.flux/last-sync.json`; `flux doctor` reports that audit, per-checkout Git
+freshness, and derived skill/guidance drift. Doctor fetches refs before
+behind/ahead checks unless `--no-fetch` is passed for an offline view.
