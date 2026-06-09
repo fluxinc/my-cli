@@ -1,4 +1,4 @@
-// Package cli implements the flux command-line surface.
+// Package cli implements the our command-line surface.
 package cli
 
 import (
@@ -16,17 +16,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fluxinc/flux/internal/bundle"
-	"github.com/fluxinc/flux/internal/guidance"
-	"github.com/fluxinc/flux/internal/harness"
-	"github.com/fluxinc/flux/internal/manifest"
-	"github.com/fluxinc/flux/internal/meetings"
-	"github.com/fluxinc/flux/internal/selfskill"
-	"github.com/fluxinc/flux/internal/selfupdate"
-	"github.com/fluxinc/flux/internal/skills"
-	"github.com/fluxinc/flux/internal/syncer"
-	"github.com/fluxinc/flux/internal/umbrella"
-	"github.com/fluxinc/flux/internal/workspace"
+	"github.com/fluxinc/our-ai/internal/bundle"
+	"github.com/fluxinc/our-ai/internal/guidance"
+	"github.com/fluxinc/our-ai/internal/harness"
+	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/our-ai/internal/meetings"
+	"github.com/fluxinc/our-ai/internal/selfskill"
+	"github.com/fluxinc/our-ai/internal/selfupdate"
+	"github.com/fluxinc/our-ai/internal/skills"
+	"github.com/fluxinc/our-ai/internal/syncer"
+	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/our-ai/internal/workspace"
 )
 
 // Run executes the CLI and returns a process exit code.
@@ -46,7 +46,7 @@ func Run(args []string) int {
 		if errors.As(err, &exitErr) {
 			return exitErr.code
 		}
-		fmt.Fprintf(a.stderr, "flux: %v\n", err)
+		fmt.Fprintf(a.stderr, "our: %v\n", err)
 		return 1
 	}
 	return 0
@@ -71,7 +71,7 @@ func (a app) runStartupMaintenance(args []string) {
 }
 
 func shouldAutoSyncSelfSkill(args []string) bool {
-	if os.Getenv("FLUX_DISABLE_SELF_SKILL_SYNC") != "" {
+	if os.Getenv("OUR_DISABLE_SELF_SKILL_SYNC") != "" {
 		return false
 	}
 	if strings.HasSuffix(filepath.Base(os.Args[0]), ".test") {
@@ -130,19 +130,25 @@ func (a app) run(args []string) error {
 		return a.runUpdate(args[2:])
 	case "skills":
 		return a.runSkills(args[2:])
+	case "setup":
+		return a.runOnboard(args[2:])
 	case "onboard":
+		a.warnDeprecated("our onboard", "our setup")
 		return a.runOnboard(args[2:])
 	case "root":
 		return a.runRoot(args[2:])
+	case "ai":
+		return a.runLaunch(args[2:])
 	case "launch":
+		a.warnDeprecated("our launch", "our ai")
 		return a.runLaunch(args[2:])
 	case "sync":
 		return a.runSync(args[2:])
-	case "manifest":
+	case "manifests":
 		return a.runManifest(args[2:])
-	case "workspace":
+	case "workspaces":
 		return a.runWorkspace(args[2:])
-	case "mount":
+	case "mounts":
 		return a.runMount(args[2:])
 	case "tools":
 		return a.runTools(args[2:])
@@ -152,8 +158,8 @@ func (a app) run(args []string) error {
 		return a.runMeetings(args[2:])
 	case "customers":
 		return a.runCustomers(args[2:])
-	case "catalog":
-		return a.runCatalog(args[2:])
+	case "products":
+		return a.runProducts(args[2:])
 	case "admin":
 		return a.runAdmin(args[2:])
 	default:
@@ -161,51 +167,55 @@ func (a app) run(args []string) error {
 	}
 }
 
+func (a app) warnDeprecated(old, replacement string) {
+	fmt.Fprintf(a.stderr, "warning: `%s` is deprecated; use `%s`\n", old, replacement)
+}
+
 func (a app) printUsage() {
-	fmt.Fprintln(a.stdout, `flux installs and manages manifest-backed AI workspace tooling.
+	fmt.Fprintln(a.stdout, `our installs and manages manifest-backed AI workspace tooling.
 
 Usage:
-  flux onboard [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-  flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-  flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
-  flux update [--check] [--version X.Y.Z] [--json] [--yes]
-  flux sync [--backend auto|gnit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
-  flux skills self install|uninstall|status ...
-  flux skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
-  flux skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
-  flux skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
-  flux skills purge <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
-  flux skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
-  flux skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
-  flux skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
-  flux admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
-  flux admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
-  flux admin onboard ...                      (alias of flux onboard)
-  flux admin manifest add|sync|validate ...   (alias of flux manifest ...)
-  flux admin mount add|remove|sync ...        (alias of flux mount ...)
-  flux admin meetings add ...                 (alias of flux meetings add)
-  flux admin customers add|edit ...           (edit manifest customer catalog)
-  flux admin tools add|edit|remove ...        (edit manifest tool hints)
-  flux manifest add <name> <git-url>
-  flux manifest list
-  flux manifest sync <name...> | --all [--print]
-  flux manifest validate <name|path>
-  flux mount list [--manifest NAME]
-  flux mount add <kind:id|id> [--manifest NAME]
-  flux mount sync <mount...> | --all [--manifest NAME] [--print]
-  flux mount remove <mount...> [--print] [--force]
-  flux workspace list [--manifest NAME]
-  flux workspace sync <workspace...> | --all [--manifest NAME] [--print]
-  flux tools list
-  flux tools info <name>
-  flux meetings list
-  flux meetings search <text>
-  flux meetings get <id|path>
-  flux meetings add <slug>
-  flux customers list
-  flux catalog list products
-  flux doctor [--no-fetch] [--fix] [--json]
-  flux version`)
+  our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  our root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  our ai [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+  our update [--check] [--version X.Y.Z] [--json] [--yes]
+  our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
+  our skills self install|uninstall|status ...
+  our skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+  our skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
+  our skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+  our skills purge <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
+  our skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  our skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  our skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  our admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
+  our admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
+  our admin setup ...                      (alias of our setup)
+  our admin manifests add|sync|validate ...   (alias of our manifests ...)
+  our admin mounts add|remove|sync ...        (alias of our mounts ...)
+  our admin meetings add ...                 (alias of our meetings add)
+  our admin customers add|edit ...           (edit manifest customer catalog)
+  our admin tools add|edit|remove ...        (edit manifest tool hints)
+  our manifests add <name> <git-url>
+  our manifests list
+  our manifests sync <name...> | --all [--print]
+  our manifests validate <name|path>
+  our mounts list [--manifest NAME]
+  our mounts add <kind:id|id> [--manifest NAME]
+  our mounts sync <mount...> | --all [--manifest NAME] [--print]
+  our mounts remove <mount...> [--print] [--force]
+  our workspaces list [--manifest NAME]
+  our workspaces sync <workspace...> | --all [--manifest NAME] [--print]
+  our tools list
+  our tools info <name>
+  our meetings list
+  our meetings search <text>
+  our meetings get <id|path>
+  our meetings add <slug>
+  our customers list
+  our products list
+  our doctor [--no-fetch] [--fix] [--json]
+  our version`)
 }
 
 func (a app) runRoot(args []string) error {
@@ -215,7 +225,7 @@ func (a app) runRoot(args []string) error {
 	var productID string
 	var noRefresh bool
 	var noUpdateCheck bool
-	fs := newFlagSet("flux root", a.stderr)
+	fs := newFlagSet("our root", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "use a registered manifest when no umbrella is found")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
@@ -238,7 +248,7 @@ func (a app) runRoot(args []string) error {
 	if len(rest) != 0 {
 		return fmt.Errorf("root does not accept positional arguments")
 	}
-	root, err := resolveFluxRoot(home, manifestName, umbrellaRoot)
+	root, err := resolveOurRoot(home, manifestName, umbrellaRoot)
 	if err != nil {
 		return err
 	}
@@ -253,12 +263,12 @@ func (a app) runRoot(args []string) error {
 }
 
 func (a app) printRootUsage() {
-	fmt.Fprintln(a.stderr, `Usage of flux root:
-  flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+	fmt.Fprintln(a.stderr, `Usage of our root:
+  our root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 
 Examples:
-  cd "$(flux root)" && claude
-  cd "$(flux root --product sample-product)" && codex
+  cd "$(our root)" && claude
+  cd "$(our root --product sample-product)" && codex
 
 Options:`)
 }
@@ -288,7 +298,7 @@ func (a app) runLaunch(args []string) error {
 		return err
 	}
 	commandName := h.CommandName()
-	root, err := resolveFluxRoot(opts.home, opts.manifestName, opts.umbrellaRoot)
+	root, err := resolveOurRoot(opts.home, opts.manifestName, opts.umbrellaRoot)
 	if err != nil {
 		return err
 	}
@@ -343,23 +353,23 @@ func (a app) runLaunch(args []string) error {
 }
 
 func (a app) printLaunchUsage() {
-	fmt.Fprintln(a.stderr, `Usage of flux launch:
-  flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+	fmt.Fprintln(a.stderr, `Usage of our ai:
+  our ai [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 
 Harness defaults to claude-code. Harness flags go after the harness name.
 
 Examples:
-  flux launch claude-code
-  flux launch codex --model gpt-5
-  flux launch --product sample-product codex
-  flux launch --print codex
+  our ai claude-code
+  our ai codex --model gpt-5
+  our ai --product sample-product codex
+  our ai --print codex
 
 Options:
   --home DIR        override home directory
   --manifest NAME   use a registered manifest when no umbrella is found
   --umbrella DIR    override umbrella root
   --product ID      run from products/<id> under the umbrella
-  --onboard         reconcile the umbrella first if guidance is stale or missing
+  --setup           reconcile the umbrella first if guidance is stale or missing
   --no-refresh      skip best-effort auto-refresh
   --no-update-check skip best-effort update notice
   --print           print the resolved launch command without checking or execing`)
@@ -375,9 +385,11 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			return opts, "", nil, true, nil
 		case arg == "--":
 			if i+1 >= len(args) {
-				return opts, "", nil, false, fmt.Errorf("usage: flux launch [harness]")
+				return opts, "", nil, false, fmt.Errorf("usage: our ai [harness]")
 			}
 			return opts, args[i+1], args[i+2:], false, nil
+		case arg == "--setup":
+			opts.onboard = true
 		case arg == "--onboard":
 			opts.onboard = true
 		case arg == "--print":
@@ -401,7 +413,7 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 		case strings.HasPrefix(arg, "--product="):
 			opts.productID = strings.TrimPrefix(arg, "--product=")
 		case isFlagArg(arg):
-			return opts, "", nil, false, fmt.Errorf("unknown flux launch flag %q; put harness flags after the harness name", arg)
+			return opts, "", nil, false, fmt.Errorf("unknown our ai flag %q; put harness flags after the harness name", arg)
 		default:
 			return opts, arg, args[i+1:], false, nil
 		}
@@ -422,7 +434,7 @@ func setLaunchValue(opts *launchCommandOpts, name, value string) {
 	}
 }
 
-func resolveFluxRoot(home, manifestName, explicit string) (string, error) {
+func resolveOurRoot(home, manifestName, explicit string) (string, error) {
 	if manifestName != "" {
 		doc, err := loadSingleRegisteredDoc(home, manifestName)
 		if err != nil {
@@ -542,7 +554,7 @@ func (a app) runUpdate(args []string) error {
 	var jsonOut bool
 	var yes bool
 	var targetVersion string
-	fs := newFlagSet("flux update", a.stderr)
+	fs := newFlagSet("our update", a.stderr)
 	fs.BoolVar(&checkOnly, "check", false, "check for an update without installing it")
 	fs.StringVar(&targetVersion, "version", "", "install a specific release version")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -560,7 +572,7 @@ func (a app) runUpdate(args []string) error {
 	}
 	_ = yes
 	result, err := selfupdate.Update(context.Background(), selfupdate.Options{
-		CurrentVersion: a.currentFluxVersion(),
+		CurrentVersion: a.currentOurVersion(),
 		TargetVersion:  targetVersion,
 		CheckOnly:      checkOnly,
 		TargetPath:     a.updateTargetPath,
@@ -577,13 +589,13 @@ func (a app) runUpdate(args []string) error {
 }
 
 func (a app) printUpdateUsage() {
-	fmt.Fprintln(a.stderr, `Usage of flux update:
-  flux update [--check] [--version X.Y.Z] [--json] [--yes]
+	fmt.Fprintln(a.stderr, `Usage of our update:
+  our update [--check] [--version X.Y.Z] [--json] [--yes]
 
 Options:`)
 }
 
-func (a app) currentFluxVersion() string {
+func (a app) currentOurVersion() string {
 	if a.updateCurrentVersion != "" {
 		return a.updateCurrentVersion
 	}
@@ -591,11 +603,11 @@ func (a app) currentFluxVersion() string {
 }
 
 func (a app) maybeUpdateNotice(home string, noUpdateCheck bool) {
-	if noUpdateCheck || os.Getenv("FLUX_NO_UPDATE_CHECK") != "" {
+	if noUpdateCheck || os.Getenv("OUR_NO_UPDATE_CHECK") != "" {
 		return
 	}
 	notice, err := selfupdate.CheckNotice(context.Background(), selfupdate.NoticeOptions{
-		CurrentVersion: a.currentFluxVersion(),
+		CurrentVersion: a.currentOurVersion(),
 		Home:           home,
 		Source:         a.updateSource,
 		TTL:            selfupdate.UpdateCheckTTLFromEnv(),
@@ -604,7 +616,7 @@ func (a app) maybeUpdateNotice(home string, noUpdateCheck bool) {
 	if err != nil || !notice.UpdateAvailable {
 		return
 	}
-	fmt.Fprintf(a.stderr, "a newer flux (v%s) is available; run `flux update`\n", notice.LatestVersion)
+	fmt.Fprintf(a.stderr, "a newer our (v%s) is available; run `our update`\n", notice.LatestVersion)
 }
 
 func (a app) runSync(args []string) error {
@@ -618,11 +630,11 @@ func (a app) runSync(args []string) error {
 	var printOnly bool
 	var noDerived bool
 	var jsonOut bool
-	fs := newFlagSet("flux sync", a.stderr)
+	fs := newFlagSet("our sync", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
-	fs.StringVar(&backend, "backend", "auto", "sync backend: auto, gnit, or flux")
+	fs.StringVar(&backend, "backend", "auto", "sync backend: auto, gnit, or builtin")
 	fs.StringVar(&publish, "publish", "auto", "publish mode: auto, never, direct, or pr")
 	fs.StringVar(&scope, "scope", "all", "sync scope: all, local, content, manifest, or products")
 	fs.StringVar(&message, "message", "", "commit message for newly committed content")
@@ -649,7 +661,7 @@ func (a app) runSync(args []string) error {
 		return fmt.Errorf("sync does not accept positional arguments")
 	}
 	if !validSyncBackend(backend) {
-		return fmt.Errorf("--backend must be one of auto, gnit, or flux")
+		return fmt.Errorf("--backend must be one of auto, gnit, or builtin")
 	}
 	if !validSyncPublish(publish) {
 		return fmt.Errorf("--publish must be one of auto, never, direct, or pr")
@@ -670,7 +682,7 @@ func (a app) runSync(args []string) error {
 		return a.maybeJSONError(jsonOut, err)
 	}
 	gnitRoot := ""
-	if root, err := resolveFluxRoot(home, manifestName, umbrellaRoot); err == nil {
+	if root, err := resolveOurRoot(home, manifestName, umbrellaRoot); err == nil {
 		gnitRoot = findGnitWorkspaceRoot(root)
 	}
 	effectiveBackend := backend
@@ -679,11 +691,11 @@ func (a app) runSync(args []string) error {
 		if publish != "pr" && gnitRoot != "" {
 			effectiveBackend = "gnit"
 		} else {
-			effectiveBackend = "flux"
+			effectiveBackend = "builtin"
 			if publish == "pr" {
-				backendMessage = "PR mode is handled by Flux/gh; Gnit remains the publish substrate after PR support lands"
+				backendMessage = "PR mode is handled by Our AI/gh; Gnit remains the publish substrate after PR support lands"
 			} else {
-				backendMessage = "Gnit workspace not initialized; using Flux guard backend"
+				backendMessage = "Gnit workspace not initialized; using Our AI guard backend"
 			}
 		}
 	}
@@ -742,16 +754,16 @@ type syncCommandReport struct {
 }
 
 func (a app) printSyncUsage() {
-	fmt.Fprintln(a.stderr, `Usage of flux sync:
-  flux sync [--backend auto|gnit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
+	fmt.Fprintln(a.stderr, `Usage of our sync:
+  our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
 
-Synchronizes registered Flux repositories in both directions. The default
-backend uses Gnit when the umbrella is a Gnit workspace; otherwise Flux uses a
+Synchronizes registered Our AI repositories in both directions. The default
+backend uses Gnit when the umbrella is a Gnit workspace; otherwise Our AI uses a
 guarded Git fallback until bootstrap/canonicalization is complete. The default
 publish mode only pushes private content-only changes when sibling checkouts of
 the same remote are clean. Direct mode can push existing commits, but dirty
 non-content changes still require an explicit admin or review workflow.
-Non-print runs write .flux/last-sync.json when an umbrella is present. When a
+Non-print runs write .our/last-sync.json when an umbrella is present. When a
 manifest checkout changes, sync also reconciles generated guidance and
 manifest skills unless --no-derived is passed.`)
 }
@@ -821,7 +833,7 @@ func (a app) defaultSyncPublish(home, manifestName, fallback string) (string, er
 
 func validSyncBackend(value string) bool {
 	switch value {
-	case "auto", "gnit", "flux":
+	case "auto", "gnit", "builtin":
 		return true
 	default:
 		return false
@@ -1083,19 +1095,19 @@ func existingUmbrellaRoot(home, manifestName, explicit string) (string, bool, er
 		if err != nil {
 			return "", false, err
 		}
-		return root, hasFluxDir(root), nil
+		return root, hasOurDir(root), nil
 	}
 	if root, ok := umbrella.FindRoot("."); ok {
 		return root, true, nil
 	}
-	root, err := resolveFluxRoot(home, manifestName, "")
+	root, err := resolveOurRoot(home, manifestName, "")
 	if err != nil {
 		return "", false, nil
 	}
-	return root, hasFluxDir(root), nil
+	return root, hasOurDir(root), nil
 }
 
-func hasFluxDir(root string) bool {
+func hasOurDir(root string) bool {
 	info, err := os.Stat(filepath.Join(root, umbrella.DirName))
 	return err == nil && info.IsDir()
 }
@@ -1117,7 +1129,7 @@ func loadLastSyncAudit(root string) (lastSyncAudit, bool, error) {
 }
 
 func (a app) maybeAutoRefresh(home, manifestName, umbrellaRoot, root string, noRefresh bool) {
-	if noRefresh || os.Getenv("FLUX_NO_AUTO_REFRESH") != "" || root == "" || !hasFluxDir(root) {
+	if noRefresh || os.Getenv("OUR_NO_AUTO_REFRESH") != "" || root == "" || !hasOurDir(root) {
 		return
 	}
 	ttl := autoRefreshTTL()
@@ -1159,7 +1171,7 @@ func (a app) maybeAutoRefresh(home, manifestName, umbrellaRoot, root string, noR
 }
 
 func autoRefreshTTL() time.Duration {
-	value := strings.TrimSpace(os.Getenv("FLUX_REFRESH_TTL"))
+	value := strings.TrimSpace(os.Getenv("OUR_REFRESH_TTL"))
 	if value == "" {
 		return defaultRefreshTTL
 	}
@@ -1266,16 +1278,16 @@ func (a app) runMeetings(args []string) error {
 
 func (a app) printMeetingsUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  flux meetings list [--manifest NAME] [--workspace ID] [--since DATE] [--customer ID] [--partner ID] [--product ID] [--json]
-  flux meetings search <text> [--manifest NAME] [--workspace ID] [--customer ID] [--partner ID] [--product ID] [--json]
-  flux meetings get <id|path> [--manifest NAME] [--workspace ID] [--json]
-  flux meetings add <slug> [--manifest NAME] [--workspace ID] [--date DATE] [--title TEXT] [--customer ID] [--attendees NAME] [--partner ID] [--product ID] [--source-id ID] [--print] [--json]
+  our meetings list [--manifest NAME] [--workspace ID] [--since DATE] [--customer ID] [--partner ID] [--product ID] [--json]
+  our meetings search <text> [--manifest NAME] [--workspace ID] [--customer ID] [--partner ID] [--product ID] [--json]
+  our meetings get <id|path> [--manifest NAME] [--workspace ID] [--json]
+  our meetings add <slug> [--manifest NAME] [--workspace ID] [--date DATE] [--title TEXT] [--customer ID] [--attendees NAME] [--partner ID] [--product ID] [--source-id ID] [--print] [--json]
 
 Meeting commands use local markdown files under workspace meetings/ directories.`)
 }
 
 func (a app) runMeetingsList(args []string) error {
-	opts, rest, err := parseMeetingReadOpts("flux meetings list", a.stderr, args)
+	opts, rest, err := parseMeetingReadOpts("our meetings list", a.stderr, args)
 	if err != nil {
 		return err
 	}
@@ -1295,12 +1307,12 @@ func (a app) runMeetingsList(args []string) error {
 }
 
 func (a app) runMeetingsSearch(args []string) error {
-	opts, rest, err := parseMeetingReadOpts("flux meetings search", a.stderr, args)
+	opts, rest, err := parseMeetingReadOpts("our meetings search", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: flux meetings search <text>")
+		return fmt.Errorf("usage: our meetings search <text>")
 	}
 	roots, err := meetingRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
 	if err != nil {
@@ -1316,14 +1328,14 @@ func (a app) runMeetingsSearch(args []string) error {
 
 func (a app) runMeetingsGet(args []string) error {
 	var opts meetingCommonOpts
-	fs := newFlagSet("flux meetings get", a.stderr)
+	fs := newFlagSet("our meetings get", a.stderr)
 	bindMeetingCommonFlags(fs, &opts)
 	rest, err := parseInterspersed(fs, args, meetingValueFlags())
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: flux meetings get <id|path>")
+		return fmt.Errorf("usage: our meetings get <id|path>")
 	}
 	roots, err := meetingRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
 	if err != nil {
@@ -1345,7 +1357,7 @@ func (a app) runMeetingsGet(args []string) error {
 
 func (a app) runMeetingsAdd(args []string) error {
 	var opts meetingAddOpts
-	fs := newFlagSet("flux meetings add", a.stderr)
+	fs := newFlagSet("our meetings add", a.stderr)
 	bindMeetingCommonFlags(fs, &opts.meetingCommonOpts)
 	fs.StringVar(&opts.date, "date", "", "meeting date, YYYY-MM-DD")
 	fs.StringVar(&opts.title, "title", "", "meeting title")
@@ -1374,7 +1386,7 @@ func (a app) runMeetingsAdd(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: flux meetings add <slug>")
+		return fmt.Errorf("usage: our meetings add <slug>")
 	}
 	roots, err := meetingRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
 	if err != nil {
@@ -1513,7 +1525,7 @@ func meetingRoots(home, manifestName, workspaceID, umbrellaRoot string) ([]meeti
 		return roots, err
 	}
 	if manifestName == "" {
-		return nil, noUmbrellaError("no flux umbrella found; run flux onboard or pass --umbrella", "run flux onboard or pass --umbrella <path>")
+		return nil, noUmbrellaError("no our umbrella found; run our setup or pass --umbrella", "run our setup or pass --umbrella <path>")
 	}
 	entries, err := workspace.List(home, manifestName)
 	if err != nil {
@@ -1567,12 +1579,12 @@ func configuredUmbrellaMeetingRoots(home, manifestName, workspaceID string) ([]m
 		return roots, true, err
 	}
 	if len(candidates) > 1 {
-		return nil, true, fmt.Errorf("multiple flux umbrellas configured; pass --manifest or --umbrella")
+		return nil, true, fmt.Errorf("multiple our umbrellas configured; pass --manifest or --umbrella")
 	}
 	if manifestName == "" && len(configured) == 1 {
 		return nil, true, noUmbrellaError(
-			fmt.Sprintf("no flux umbrella found; configured umbrella is %s", configured[0].root),
-			fmt.Sprintf("run flux onboard --manifest %s or pass --umbrella %s", configured[0].ref, configured[0].root),
+			fmt.Sprintf("no our umbrella found; configured umbrella is %s", configured[0].root),
+			fmt.Sprintf("run our setup --manifest %s or pass --umbrella %s", configured[0].ref, configured[0].root),
 		)
 	}
 	return nil, false, nil
@@ -1815,7 +1827,7 @@ func (a app) resolveCustomerForWrite(home, manifestName, umbrellaRoot, value str
 	}
 	customers, loadErr := a.loadCustomers(home, manifestName, umbrellaRoot)
 	if loadErr == nil && len(customers) != 0 {
-		fmt.Fprintf(a.stderr, "warning: unknown customer %q; keeping literal value; add it with flux admin customers add %s --manifest-dir <checkout>\n", value, shellQuote(value))
+		fmt.Fprintf(a.stderr, "warning: unknown customer %q; keeping literal value; add it with our admin customers add %s --manifest-dir <checkout>\n", value, shellQuote(value))
 	}
 	return value
 }
@@ -2061,7 +2073,7 @@ func (a app) runDoctor(args []string) error {
 	var noFetch bool
 	var fix bool
 	var jsonOut bool
-	fs := newFlagSet("flux doctor", a.stderr)
+	fs := newFlagSet("our doctor", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
@@ -2103,6 +2115,7 @@ type doctorOptions struct {
 
 type doctorReport struct {
 	Version    []doctorItem `json:"version,omitempty"`
+	Legacy     []doctorItem `json:"legacy,omitempty"`
 	Umbrella   []doctorItem `json:"umbrella,omitempty"`
 	Manifests  []doctorItem `json:"manifests"`
 	Freshness  []doctorItem `json:"freshness,omitempty"`
@@ -2137,6 +2150,7 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 		root = found
 		report.Umbrella = append(report.Umbrella, doctorUmbrella(home, root)...)
 	}
+	report.Legacy = append(report.Legacy, doctorLegacy(home, root)...)
 	refs, err := manifestRefs(home, manifestName)
 	if err != nil {
 		report.Manifests = append(report.Manifests, doctorItem{Name: manifestName, Status: "error", Message: err.Error()})
@@ -2178,8 +2192,8 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 }
 
 func (a app) doctorVersion(home string) doctorItem {
-	current := a.currentFluxVersion()
-	item := doctorItem{Name: "flux", Status: "ok", Message: "current=v" + strings.TrimPrefix(current, "v")}
+	current := a.currentOurVersion()
+	item := doctorItem{Name: "our", Status: "ok", Message: "current=v" + strings.TrimPrefix(current, "v")}
 	notice, err := selfupdate.CheckNotice(context.Background(), selfupdate.NoticeOptions{
 		CurrentVersion: current,
 		Home:           home,
@@ -2196,9 +2210,82 @@ func (a app) doctorVersion(home string) doctorItem {
 	item.Message = fmt.Sprintf("current=v%s latest=v%s", notice.CurrentVersion, notice.LatestVersion)
 	if notice.UpdateAvailable {
 		item.Status = "stale"
-		item.Message += " run flux update"
+		item.Message += " run our update"
 	}
 	return item
+}
+
+func doctorLegacy(home, root string) []doctorItem {
+	homeDir, err := resolveHome(home)
+	if err != nil {
+		return []doctorItem{{Name: "legacy", Status: "error", Message: err.Error()}}
+	}
+	var items []doctorItem
+	if root != "" {
+		legacyUmbrella := filepath.Join(root, ".flux")
+		if info, err := os.Stat(legacyUmbrella); err == nil && info.IsDir() {
+			items = append(items, doctorItem{
+				Name:    ".flux",
+				Status:  "warning",
+				Path:    legacyUmbrella,
+				Message: "legacy Flux workspace marker found; migrate state to .our or re-run our setup in the intended umbrella",
+			})
+		}
+	}
+	legacyShare := filepath.Join(homeDir, ".local", "share", "flux")
+	if info, err := os.Stat(legacyShare); err == nil && info.IsDir() {
+		items = append(items, doctorItem{
+			Name:    "flux data",
+			Status:  "warning",
+			Path:    legacyShare,
+			Message: "legacy Flux data directory found; Our AI uses ~/.local/share/our",
+		})
+	}
+	legacyManifestRegistry := filepath.Join(homeDir, ".config", "flux", "manifests.json")
+	if info, err := os.Stat(legacyManifestRegistry); err == nil && !info.IsDir() {
+		items = append(items, doctorItem{
+			Name:    "flux manifest registry",
+			Status:  "warning",
+			Path:    legacyManifestRegistry,
+			Message: "legacy Flux manifest registry found; Our AI uses ~/.config/our/manifests.json",
+		})
+	}
+	var legacyEnv []string
+	for _, pair := range os.Environ() {
+		key, _, _ := strings.Cut(pair, "=")
+		if strings.HasPrefix(key, "FLUX_") {
+			legacyEnv = append(legacyEnv, key)
+		}
+	}
+	if len(legacyEnv) != 0 {
+		sort.Strings(legacyEnv)
+		items = append(items, doctorItem{
+			Name:    "FLUX_* env",
+			Status:  "warning",
+			Message: "legacy Flux environment variables are set; rename them to OUR_*",
+			Details: legacyEnv,
+		})
+	}
+	if path, err := exec.LookPath("flux"); err == nil {
+		items = append(items, doctorItem{
+			Name:    "flux binary",
+			Status:  "warning",
+			Path:    path,
+			Message: "legacy flux binary is still on PATH; remove it or replace workflows with our",
+		})
+	}
+	for _, h := range []harness.Harness{harness.ClaudeCode, harness.Codex, harness.OpenCode} {
+		target := h.SkillTargetPath(homeDir, "flux")
+		if _, err := os.Lstat(target); err == nil {
+			items = append(items, doctorItem{
+				Name:    string(h) + ":flux skill",
+				Status:  "warning",
+				Path:    target,
+				Message: "legacy flux self-skill is installed; run our skills self install " + string(h),
+			})
+		}
+	}
+	return items
 }
 
 func (a app) doctorFreshness(home, manifestName, umbrellaRoot string, fetch bool, root string) []doctorItem {
@@ -2448,7 +2535,7 @@ func doctorDerivedHasDrift(items []doctorItem) bool {
 
 func (a app) doctorFixDerived(home, manifestName, root string) []doctorItem {
 	if root == "" {
-		return []doctorItem{{Name: "derived", Status: "skipped", Message: "no flux umbrella found; run flux onboard or pass --umbrella"}}
+		return []doctorItem{{Name: "derived", Status: "skipped", Message: "no our umbrella found; run our setup or pass --umbrella"}}
 	}
 	report, err := a.reconcileDerived(home, manifestName, root)
 	if err != nil {
@@ -2625,7 +2712,7 @@ func (a app) reconcileDerived(home, manifestName, root string) (derivedReconcile
 		}
 	}
 	if root == "" {
-		return derivedReconcileReport{}, fmt.Errorf("no flux umbrella found; run flux onboard or pass --umbrella")
+		return derivedReconcileReport{}, fmt.Errorf("no our umbrella found; run our setup or pass --umbrella")
 	}
 	doc, err := loadSingleRegisteredDoc(home, manifestName)
 	if err != nil {
@@ -2696,7 +2783,7 @@ func doctorLastSync(root string) doctorItem {
 		return doctorItem{Name: "last publish", Status: "error", Path: path, Message: err.Error()}
 	}
 	if !ok {
-		return doctorItem{Name: "last publish", Status: "missing", Path: path, Message: "run flux sync to record an audit"}
+		return doctorItem{Name: "last publish", Status: "missing", Path: path, Message: "run our sync to record an audit"}
 	}
 	item := doctorItem{
 		Name:    "last publish",
@@ -2789,7 +2876,7 @@ func doctorWorkspaces(home, manifestName string, declared []manifest.Workspace) 
 		}
 		if info, err := os.Stat(path); err != nil {
 			item.Status = "missing"
-			item.Message = "run flux workspace sync " + w.ID + " --manifest " + manifestName
+			item.Message = "run our workspaces sync " + w.ID + " --manifest " + manifestName
 		} else if !info.IsDir() {
 			item.Status = "error"
 			item.Message = "target exists and is not a directory"
@@ -2842,6 +2929,7 @@ func (a app) printDoctorReport(report doctorReport) {
 	}
 	printItems("manifest", report.Manifests)
 	printItems("version", report.Version)
+	printItems("legacy", report.Legacy)
 	printItems("umbrella", report.Umbrella)
 	printItems("freshness", report.Freshness)
 	printItems("derived", report.Derived)
@@ -2926,8 +3014,8 @@ func (a app) runTools(args []string) error {
 
 func (a app) printToolsUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  flux tools list [--manifest NAME] [--home DIR] [--json]
-  flux tools info <name> [--manifest NAME] [--home DIR] [--json]
+  our tools list [--manifest NAME] [--home DIR] [--json]
+  our tools info <name> [--manifest NAME] [--home DIR] [--json]
 
 Tool entries are operator-facing hints from synced organization manifests.`)
 }
@@ -2941,7 +3029,7 @@ func (a app) runToolsList(args []string) error {
 	var home string
 	var manifestName string
 	var jsonOut bool
-	fs := newFlagSet("flux tools list", a.stderr)
+	fs := newFlagSet("our tools list", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -2972,7 +3060,7 @@ func (a app) runToolsInfo(args []string) error {
 	var home string
 	var manifestName string
 	var jsonOut bool
-	fs := newFlagSet("flux tools info", a.stderr)
+	fs := newFlagSet("our tools info", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -2984,7 +3072,7 @@ func (a app) runToolsInfo(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: flux tools info <name>")
+		return fmt.Errorf("usage: our tools info <name>")
 	}
 	infos, err := a.findToolInfo(home, manifestName, rest[0])
 	if err != nil {
@@ -3022,7 +3110,7 @@ func (a app) runCustomers(args []string) error {
 
 func (a app) printCustomersUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  flux customers list [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  our customers list [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
 
 Customer data comes from catalog/customers.json and mounted handbook customers/registry.md files.`)
 }
@@ -3032,7 +3120,7 @@ func (a app) runCustomersList(args []string) error {
 	var manifestName string
 	var umbrellaRoot string
 	var jsonOut bool
-	fs := newFlagSet("flux customers list", a.stderr)
+	fs := newFlagSet("our customers list", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
@@ -3068,33 +3156,33 @@ func (a app) runCustomersList(args []string) error {
 	return nil
 }
 
-func (a app) runCatalog(args []string) error {
+func (a app) runProducts(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("missing catalog subcommand")
+		return fmt.Errorf("missing products subcommand")
 	}
 	switch args[0] {
 	case "list":
-		return a.runCatalogList(args[1:])
+		return a.runProductsList(args[1:])
 	case "-h", "--help", "help":
-		a.printCatalogUsage()
+		a.printProductsUsage()
 		return nil
 	default:
-		return fmt.Errorf("unknown catalog subcommand %q", args[0])
+		return fmt.Errorf("unknown products subcommand %q", args[0])
 	}
 }
 
-func (a app) printCatalogUsage() {
+func (a app) printProductsUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  flux catalog list products [--manifest NAME] [--home DIR] [--json]
+  our products list [--manifest NAME] [--home DIR] [--json]
 
 Catalog data comes from synced organization manifests.`)
 }
 
-func (a app) runCatalogList(args []string) error {
+func (a app) runProductsList(args []string) error {
 	var home string
 	var manifestName string
 	var jsonOut bool
-	fs := newFlagSet("flux catalog list", a.stderr)
+	fs := newFlagSet("our products list", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -3105,8 +3193,8 @@ func (a app) runCatalogList(args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(rest) != 1 || rest[0] != "products" {
-		return fmt.Errorf("usage: flux catalog list products")
+	if len(rest) != 0 {
+		return fmt.Errorf("usage: our products list")
 	}
 	products, err := manifest.LoadCatalog(home, manifestName)
 	if err != nil {
@@ -3207,7 +3295,7 @@ func loadRegisteredDocs(home, manifestName string) ([]registeredDoc, error) {
 	for _, ref := range refs {
 		doc, _, err := manifest.LoadDocument(ref.LocalPath)
 		if err != nil {
-			return nil, fmt.Errorf("manifest %q is not synced; run flux manifest sync %s: %w", ref.Name, ref.Name, err)
+			return nil, fmt.Errorf("manifest %q is not synced; run our manifests sync %s: %w", ref.Name, ref.Name, err)
 		}
 		result := manifest.ValidateFile(ref.LocalPath)
 		if len(result.Errors) != 0 {
@@ -3224,10 +3312,10 @@ func loadSingleRegisteredDoc(home, manifestName string) (registeredDoc, error) {
 		return registeredDoc{}, err
 	}
 	if len(docs) == 0 {
-		return registeredDoc{}, fmt.Errorf("flux requires a registered manifest")
+		return registeredDoc{}, fmt.Errorf("our requires a registered manifest")
 	}
 	if len(docs) != 1 {
-		return registeredDoc{}, fmt.Errorf("flux requires exactly one manifest; pass --manifest")
+		return registeredDoc{}, fmt.Errorf("our requires exactly one manifest; pass --manifest")
 	}
 	return docs[0], nil
 }
@@ -3287,8 +3375,8 @@ func (a app) runWorkspace(args []string) error {
 
 func (a app) printWorkspaceUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  flux workspace list [--manifest NAME] [--home DIR] [--json]
-  flux workspace sync <workspace...> | --all [--manifest NAME] [--home DIR] [--print] [--json]
+  our workspaces list [--manifest NAME] [--home DIR] [--json]
+  our workspaces sync <workspace...> | --all [--manifest NAME] [--home DIR] [--print] [--json]
 
 Workspace data comes from synced organization manifests. Use manifest:workspace
 to disambiguate duplicate workspace IDs across manifests.`)
@@ -3298,7 +3386,7 @@ func (a app) runWorkspaceList(args []string) error {
 	var home string
 	var manifestName string
 	var jsonOut bool
-	fs := newFlagSet("flux workspace list", a.stderr)
+	fs := newFlagSet("our workspaces list", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -3331,7 +3419,7 @@ func (a app) runWorkspaceSync(args []string) error {
 	var all bool
 	var printOnly bool
 	var jsonOut bool
-	fs := newFlagSet("flux workspace sync", a.stderr)
+	fs := newFlagSet("our workspaces sync", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&all, "all", false, "sync every selected workspace")
@@ -3472,7 +3560,7 @@ func removeMountsFromState(root string, mountIDs []string, productIDs []string) 
 func addStateMountEntries(home, manifestName, umbrellaRoot string, entries []workspace.Entry) ([]workspace.Entry, error) {
 	root, err := resolveUmbrellaRoot(home, umbrellaRoot)
 	if err != nil {
-		if strings.Contains(err.Error(), "no flux umbrella found") {
+		if strings.Contains(err.Error(), "no our umbrella found") {
 			return entries, nil
 		}
 		return nil, err
@@ -3551,10 +3639,10 @@ func (a app) runMount(args []string) error {
 
 func (a app) printMountUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  flux mount list [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
-  flux mount add <kind:id|id> [--manifest NAME] [--home DIR] [--umbrella DIR] [--print] [--json]
-  flux mount sync <mount...> | --all [--manifest NAME] [--home DIR] [--umbrella DIR] [--print] [--json]
-  flux mount remove <mount...> [--home DIR] [--umbrella DIR] [--print] [--force] [--json]
+  our mounts list [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  our mounts add <kind:id|id> [--manifest NAME] [--home DIR] [--umbrella DIR] [--print] [--json]
+  our mounts sync <mount...> | --all [--manifest NAME] [--home DIR] [--umbrella DIR] [--print] [--json]
+  our mounts remove <mount...> [--home DIR] [--umbrella DIR] [--print] [--force] [--json]
 
 Mounts are detached content sources inside the local organization umbrella.`)
 }
@@ -3564,7 +3652,7 @@ func (a app) runMountList(args []string) error {
 	var manifestName string
 	var umbrellaRoot string
 	var jsonOut bool
-	fs := newFlagSet("flux mount list", a.stderr)
+	fs := newFlagSet("our mounts list", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
@@ -3603,7 +3691,7 @@ func (a app) runMountAdd(args []string) error {
 	var umbrellaRoot string
 	var printOnly bool
 	var jsonOut bool
-	fs := newFlagSet("flux mount add", a.stderr)
+	fs := newFlagSet("our mounts add", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
@@ -3618,7 +3706,7 @@ func (a app) runMountAdd(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: flux mount add <kind:id|id>")
+		return fmt.Errorf("usage: our mounts add <kind:id|id>")
 	}
 	kind, id := splitMountRef(rest[0])
 	if kind == "product" {
@@ -3674,7 +3762,7 @@ func (a app) runMountAddProduct(home, manifestName, umbrellaRoot, id string, pri
 		return a.maybeJSONError(jsonOut, structuredCommandError{
 			code:        "unknown_product",
 			message:     fmt.Sprintf("product %q is not in catalog for manifest %q", id, doc.ref.Name),
-			remediation: "flux catalog list products --manifest " + doc.ref.Name,
+			remediation: "our products list --manifest " + doc.ref.Name,
 		})
 	}
 	if !printOnly {
@@ -3709,7 +3797,7 @@ func (a app) runMountSync(args []string) error {
 	var all bool
 	var printOnly bool
 	var jsonOut bool
-	fs := newFlagSet("flux mount sync", a.stderr)
+	fs := newFlagSet("our mounts sync", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
@@ -3766,7 +3854,7 @@ func (a app) syncProductMounts(home, manifestName, umbrellaRoot string, productI
 	}
 	root, err := resolveUmbrellaRoot(home, umbrellaRoot)
 	if err != nil {
-		if all && strings.Contains(err.Error(), "no flux umbrella found") {
+		if all && strings.Contains(err.Error(), "no our umbrella found") {
 			return nil, nil
 		}
 		return nil, err
@@ -3827,7 +3915,7 @@ func (a app) syncSelectedProducts(home string, doc registeredDoc, root string, p
 			return nil, structuredCommandError{
 				code:        "unknown_product",
 				message:     fmt.Sprintf("product %q is not in catalog for manifest %q", id, doc.ref.Name),
-				remediation: "flux catalog list products --manifest " + doc.ref.Name,
+				remediation: "our products list --manifest " + doc.ref.Name,
 			}
 		}
 		entries = append(entries, productEntry(doc, root, product))
@@ -3866,7 +3954,7 @@ func productEntryFromState(home, manifestName, root string, state umbrella.State
 		return workspace.Entry{}, structuredCommandError{
 			code:        "unknown_product",
 			message:     fmt.Sprintf("product %q is not in catalog for manifest %q", id, manifestName),
-			remediation: "flux catalog list products --manifest " + manifestName,
+			remediation: "our products list --manifest " + manifestName,
 		}
 	}
 	return workspace.Entry{
@@ -3887,7 +3975,7 @@ func (a app) runMountRemove(args []string) error {
 	var printOnly bool
 	var force bool
 	var jsonOut bool
-	fs := newFlagSet("flux mount remove", a.stderr)
+	fs := newFlagSet("our mounts remove", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
 	fs.BoolVar(&printOnly, "print", false, "print planned removals without changing files")
@@ -3901,7 +3989,7 @@ func (a app) runMountRemove(args []string) error {
 		return err
 	}
 	if len(rest) == 0 {
-		return fmt.Errorf("usage: flux mount remove <mount...>")
+		return fmt.Errorf("usage: our mounts remove <mount...>")
 	}
 	if !force && !printOnly {
 		return fmt.Errorf("mount remove requires --force or --print")
@@ -4077,7 +4165,7 @@ func resolveUmbrellaRoot(home, explicit string) (string, error) {
 	if root, ok := umbrella.FindRoot("."); ok {
 		return root, nil
 	}
-	return "", fmt.Errorf("no flux umbrella found; run flux onboard or pass --umbrella")
+	return "", fmt.Errorf("no our umbrella found; run our setup or pass --umbrella")
 }
 
 func (a app) runAdmin(args []string) error {
@@ -4087,11 +4175,11 @@ func (a app) runAdmin(args []string) error {
 	switch args[0] {
 	case "skills":
 		return a.runAdminSkills(args[1:])
-	case "onboard":
+	case "setup":
 		return a.runOnboard(args[1:])
-	case "manifest":
+	case "manifests":
 		return a.runAdminManifest(args[1:])
-	case "mount":
+	case "mounts":
 		return a.runAdminMount(args[1:])
 	case "meetings":
 		return a.runAdminMeetings(args[1:])
@@ -4109,58 +4197,58 @@ func (a app) runAdmin(args []string) error {
 
 func (a app) printAdminUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  flux admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
-  flux admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
-  flux admin onboard ...                      (alias of flux onboard)
-  flux admin manifest add|sync|validate ...   (alias of flux manifest ...)
-  flux admin mount add|remove|sync ...        (alias of flux mount ...)
-  flux admin meetings add ...                 (alias of flux meetings add)
-  flux admin customers add|edit ...           (edit manifest customer catalog)
-  flux admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
-  flux admin tools edit <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--clear-install-commands] [--docs-url URL|--clear-docs-url] [--skill-install-command CMD] [--skill-install-arg ARG] [--clear-skill-install] [--force] [--json]
-  flux admin tools remove <id> --manifest-dir DIR [--force] [--json]
+  our admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
+  our admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
+  our admin setup ...                      (alias of our setup)
+  our admin manifests add|sync|validate ...   (alias of our manifests ...)
+  our admin mounts add|remove|sync ...        (alias of our mounts ...)
+  our admin meetings add ...                 (alias of our meetings add)
+  our admin customers add|edit ...           (edit manifest customer catalog)
+  our admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
+  our admin tools edit <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--clear-install-commands] [--docs-url URL|--clear-docs-url] [--skill-install-command CMD] [--skill-install-arg ARG] [--clear-skill-install] [--force] [--json]
+  our admin tools remove <id> --manifest-dir DIR [--force] [--json]
 
 admin groups shared/workspace configuration. The top-level command forms remain
 as compatibility aliases. Admin aliases are limited to mutating/configuration
-subcommands; operational reads (skills list/show/status, manifest list, mount
+subcommands; operational reads (skills list/show/status, manifests list, mounts
 list, tools list/info, meetings list/search/get) stay under their top-level commands.`)
 }
 
 func adminOperationalReadError(group, subcommand string) error {
-	return fmt.Errorf("flux admin %s %s is operational; use flux %s %s", group, subcommand, group, subcommand)
+	return fmt.Errorf("our admin %s %s is operational; use our %s %s", group, subcommand, group, subcommand)
 }
 
 func (a app) runAdminManifest(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("missing admin manifest subcommand")
+		return fmt.Errorf("missing admin manifests subcommand")
 	}
 	switch args[0] {
 	case "add", "sync", "validate":
 		return a.runManifest(args)
 	case "list":
-		return adminOperationalReadError("manifest", args[0])
+		return adminOperationalReadError("manifests", args[0])
 	case "-h", "--help", "help":
 		a.printAdminUsage()
 		return nil
 	default:
-		return fmt.Errorf("unknown admin manifest subcommand %q", args[0])
+		return fmt.Errorf("unknown admin manifests subcommand %q", args[0])
 	}
 }
 
 func (a app) runAdminMount(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("missing admin mount subcommand")
+		return fmt.Errorf("missing admin mounts subcommand")
 	}
 	switch args[0] {
 	case "add", "sync", "remove":
 		return a.runMount(args)
 	case "list":
-		return adminOperationalReadError("mount", args[0])
+		return adminOperationalReadError("mounts", args[0])
 	case "-h", "--help", "help":
 		a.printAdminUsage()
 		return nil
 	default:
-		return fmt.Errorf("unknown admin mount subcommand %q", args[0])
+		return fmt.Errorf("unknown admin mounts subcommand %q", args[0])
 	}
 }
 
@@ -4340,12 +4428,12 @@ func (f *optionalBoolFlag) IsBoolFlag() bool {
 }
 
 func (a app) runAdminCustomersAdd(args []string) error {
-	opts, rest, err := parseAdminCustomerOpts("flux admin customers add", a.stderr, args)
+	opts, rest, err := parseAdminCustomerOpts("our admin customers add", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 || opts.manifestDir == "" {
-		return fmt.Errorf("usage: flux admin customers add <id> --manifest-dir DIR")
+		return fmt.Errorf("usage: our admin customers add <id> --manifest-dir DIR")
 	}
 	result, err := a.adminCustomersAdd(rest[0], opts)
 	if err != nil {
@@ -4355,12 +4443,12 @@ func (a app) runAdminCustomersAdd(args []string) error {
 }
 
 func (a app) runAdminCustomersEdit(args []string) error {
-	opts, rest, err := parseAdminCustomerOpts("flux admin customers edit", a.stderr, args)
+	opts, rest, err := parseAdminCustomerOpts("our admin customers edit", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 || opts.manifestDir == "" {
-		return fmt.Errorf("usage: flux admin customers edit <id> --manifest-dir DIR")
+		return fmt.Errorf("usage: our admin customers edit <id> --manifest-dir DIR")
 	}
 	result, err := a.adminCustomersEdit(rest[0], opts)
 	if err != nil {
@@ -4403,12 +4491,12 @@ func (a app) printAdminCustomerResult(result adminCustomerResult, jsonOut bool) 
 }
 
 func (a app) runAdminToolsAdd(args []string) error {
-	opts, rest, err := parseAdminToolOpts("flux admin tools add", a.stderr, args)
+	opts, rest, err := parseAdminToolOpts("our admin tools add", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 || opts.manifestDir == "" || !opts.mode.set || !opts.purpose.set {
-		return fmt.Errorf("usage: flux admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT")
+		return fmt.Errorf("usage: our admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT")
 	}
 	result, err := a.adminToolsAdd(rest[0], opts)
 	if err != nil {
@@ -4418,12 +4506,12 @@ func (a app) runAdminToolsAdd(args []string) error {
 }
 
 func (a app) runAdminToolsEdit(args []string) error {
-	opts, rest, err := parseAdminToolOpts("flux admin tools edit", a.stderr, args)
+	opts, rest, err := parseAdminToolOpts("our admin tools edit", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 || opts.manifestDir == "" {
-		return fmt.Errorf("usage: flux admin tools edit <id> --manifest-dir DIR")
+		return fmt.Errorf("usage: our admin tools edit <id> --manifest-dir DIR")
 	}
 	result, err := a.adminToolsEdit(rest[0], opts)
 	if err != nil {
@@ -4436,7 +4524,7 @@ func (a app) runAdminToolsRemove(args []string) error {
 	var manifestDir string
 	var force bool
 	var jsonOut bool
-	fs := newFlagSet("flux admin tools remove", a.stderr)
+	fs := newFlagSet("our admin tools remove", a.stderr)
 	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
 	fs.BoolVar(&force, "force", false, "allow dirty checkout")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON result")
@@ -4445,7 +4533,7 @@ func (a app) runAdminToolsRemove(args []string) error {
 		return err
 	}
 	if len(rest) != 1 || manifestDir == "" {
-		return fmt.Errorf("usage: flux admin tools remove <id> --manifest-dir DIR")
+		return fmt.Errorf("usage: our admin tools remove <id> --manifest-dir DIR")
 	}
 	result, err := a.adminToolsRemove(rest[0], manifestDir, force)
 	if err != nil {
@@ -4779,7 +4867,7 @@ func (a app) runAdminSkillsAdd(args []string) error {
 	var removeOriginal bool
 	var force bool
 	var jsonOut bool
-	fs := newFlagSet("flux admin skills add", a.stderr)
+	fs := newFlagSet("our admin skills add", a.stderr)
 	fs.StringVar(&id, "id", "", "canonical skill id namespace:name")
 	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
 	fs.StringVar(&installSlug, "install-slug", "", "portable harness install slug")
@@ -4796,7 +4884,7 @@ func (a app) runAdminSkillsAdd(args []string) error {
 		return err
 	}
 	if len(rest) != 1 || id == "" || manifestDir == "" {
-		return fmt.Errorf("usage: flux admin skills add <skill-dir> --id namespace:name --manifest-dir DIR")
+		return fmt.Errorf("usage: our admin skills add <skill-dir> --id namespace:name --manifest-dir DIR")
 	}
 	if keepOriginal && removeOriginal {
 		return fmt.Errorf("--keep-original and --remove-original are mutually exclusive")
@@ -4933,7 +5021,7 @@ func (a app) runAdminSkillsRemove(args []string) error {
 	var pruneOrphans bool
 	var force bool
 	var jsonOut bool
-	fs := newFlagSet("flux admin skills remove", a.stderr)
+	fs := newFlagSet("our admin skills remove", a.stderr)
 	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
 	fs.BoolVar(&deleteSource, "delete-source", false, "delete the static manifest source directory")
 	fs.BoolVar(&pruneRelated, "prune-related", false, "remove product catalog related_skills references")
@@ -4945,7 +5033,7 @@ func (a app) runAdminSkillsRemove(args []string) error {
 		return err
 	}
 	if len(rest) != 1 || manifestDir == "" {
-		return fmt.Errorf("usage: flux admin skills remove <id|slug> --manifest-dir DIR")
+		return fmt.Errorf("usage: our admin skills remove <id|slug> --manifest-dir DIR")
 	}
 	result, err := a.adminSkillsRemove(rest[0], manifestDir, deleteSource, pruneRelated, pruneOrphans, force)
 	if err != nil {
@@ -5456,16 +5544,16 @@ func (a app) runManifest(args []string) error {
 
 func (a app) printManifestUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  flux manifest add <name> <git-url> [--home DIR] [--json]
-  flux manifest list [--home DIR] [--json]
-  flux manifest sync <name...> | --all [--home DIR] [--print] [--json]
-  flux manifest validate <name|path> [--home DIR] [--json]`)
+  our manifests add <name> <git-url> [--home DIR] [--json]
+  our manifests list [--home DIR] [--json]
+  our manifests sync <name...> | --all [--home DIR] [--print] [--json]
+  our manifests validate <name|path> [--home DIR] [--json]`)
 }
 
 func (a app) runManifestAdd(args []string) error {
 	var home string
 	var jsonOut bool
-	fs := newFlagSet("flux manifest add", a.stderr)
+	fs := newFlagSet("our manifests add", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
 	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
@@ -5473,7 +5561,7 @@ func (a app) runManifestAdd(args []string) error {
 		return err
 	}
 	if len(rest) != 2 {
-		return fmt.Errorf("usage: flux manifest add <name> <git-url>")
+		return fmt.Errorf("usage: our manifests add <name> <git-url>")
 	}
 	ref, err := manifest.Add(home, rest[0], rest[1])
 	if err != nil {
@@ -5489,7 +5577,7 @@ func (a app) runManifestAdd(args []string) error {
 func (a app) runManifestList(args []string) error {
 	var home string
 	var jsonOut bool
-	fs := newFlagSet("flux manifest list", a.stderr)
+	fs := newFlagSet("our manifests list", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
 	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
@@ -5517,7 +5605,7 @@ func (a app) runManifestSync(args []string) error {
 	var all bool
 	var printOnly bool
 	var jsonOut bool
-	fs := newFlagSet("flux manifest sync", a.stderr)
+	fs := newFlagSet("our manifests sync", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.BoolVar(&all, "all", false, "sync every registered manifest")
 	fs.BoolVar(&printOnly, "print", false, "print planned git commands without changing files")
@@ -5555,7 +5643,7 @@ func (a app) runManifestSync(args []string) error {
 func (a app) runManifestValidate(args []string) error {
 	var home string
 	var jsonOut bool
-	fs := newFlagSet("flux manifest validate", a.stderr)
+	fs := newFlagSet("our manifests validate", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
 	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
@@ -5563,7 +5651,7 @@ func (a app) runManifestValidate(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: flux manifest validate <name|path>")
+		return fmt.Errorf("usage: our manifests validate <name|path>")
 	}
 	path := rest[0]
 	if ref, ok, err := manifest.Find(home, rest[0]); err != nil {
@@ -5626,16 +5714,16 @@ func (a app) runSkills(args []string) error {
 
 func (a app) printSkillsUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  flux skills self install [harness...] | --all [--print] [--copy] [--link] [--force] [--json] [--home DIR]
-  flux skills self uninstall [harness...] | --all [--print] [--force] [--json] [--home DIR]
-  flux skills self status [harness...] | --all [--json] [--home DIR]
-  flux skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
-  flux skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
-  flux skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
-  flux skills purge <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
-  flux skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
-  flux skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
-  flux skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  our skills self install [harness...] | --all [--print] [--copy] [--link] [--force] [--json] [--home DIR]
+  our skills self uninstall [harness...] | --all [--print] [--force] [--json] [--home DIR]
+  our skills self status [harness...] | --all [--json] [--home DIR]
+  our skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+  our skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
+  our skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+  our skills purge <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
+  our skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  our skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  our skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
 
 Harnesses:
   claude-code, codex, opencode, gemini
@@ -5644,9 +5732,9 @@ With no harnesses, install targets all supported harnesses and silently skips
 missing ones. If synced manifests are registered, skills commands use them by
 default; --source forces a local skills directory.
 
-Manifest skill commands only refresh harness skill directories. Run flux
+Manifest skill commands only refresh harness skill directories. Run our
 onboard to regenerate workspace guidance such as AGENTS.md. Self-skill commands
-install Flux's bundled CLI guidance into harness skill directories.`)
+install Our AI's bundled CLI guidance into harness skill directories.`)
 }
 
 func (a app) runSkillsSelf(args []string) error {
@@ -5670,22 +5758,22 @@ func (a app) runSkillsSelf(args []string) error {
 
 func (a app) printSkillsSelfUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  flux skills self install [harness...] | --all [--print] [--copy] [--link] [--force] [--json] [--home DIR]
-  flux skills self uninstall [harness...] | --all [--print] [--force] [--json] [--home DIR]
-  flux skills self status [harness...] | --all [--json] [--home DIR]
+  our skills self install [harness...] | --all [--print] [--copy] [--link] [--force] [--json] [--home DIR]
+  our skills self uninstall [harness...] | --all [--print] [--force] [--json] [--home DIR]
+  our skills self status [harness...] | --all [--json] [--home DIR]
 
-Installs Flux's bundled CLI self-skill. This is separate from manifest-backed
+Installs Our AI's bundled CLI self-skill. This is separate from manifest-backed
 organization skills.`)
 }
 
 func (a app) runSkillsSelfInstall(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("flux skills self install", a.stderr)
+	fs := newFlagSet("our skills self install", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "install into every supported harness")
 	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
 	fs.BoolVar(&opts.copyMode, "copy", false, "copy skill directories instead of symlinking")
 	fs.BoolVar(&opts.linkMode, "link", false, "symlink skill directories")
-	fs.BoolVar(&opts.force, "force", false, "replace non-Flux-managed targets")
+	fs.BoolVar(&opts.force, "force", false, "replace non-Our AI-managed targets")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
@@ -5717,10 +5805,10 @@ func (a app) runSkillsSelfInstall(args []string) error {
 
 func (a app) runSkillsSelfUninstall(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("flux skills self uninstall", a.stderr)
+	fs := newFlagSet("our skills self uninstall", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "uninstall from every supported harness")
 	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
-	fs.BoolVar(&opts.force, "force", false, "remove non-Flux-managed targets")
+	fs.BoolVar(&opts.force, "force", false, "remove non-Our AI-managed targets")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
@@ -5748,7 +5836,7 @@ func (a app) runSkillsSelfUninstall(args []string) error {
 
 func (a app) runSkillsSelfStatus(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("flux skills self status", a.stderr)
+	fs := newFlagSet("our skills self status", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "inspect every supported harness")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
@@ -5807,12 +5895,12 @@ func selfSkillStatusFailed(rows []selfskill.Status) bool {
 
 func (a app) runOnboard(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("flux onboard", a.stderr)
+	fs := newFlagSet("our setup", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "install into every supported harness")
 	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
 	fs.BoolVar(&opts.copyMode, "copy", false, "copy skill directories instead of symlinking")
 	fs.BoolVar(&opts.linkMode, "link", false, "symlink skill directories")
-	fs.BoolVar(&opts.force, "force", false, "replace non-Flux-managed targets")
+	fs.BoolVar(&opts.force, "force", false, "replace non-Our AI-managed targets")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.BoolVar(&opts.noRefresh, "no-refresh", false, "skip best-effort auto-refresh")
 	fs.BoolVar(&opts.noUpdateCheck, "no-update-check", false, "skip best-effort update notice")
@@ -5842,10 +5930,10 @@ func (a app) runOnboard(args []string) error {
 		return err
 	}
 	if !ok || len(docs) == 0 {
-		return fmt.Errorf("flux onboard requires a registered manifest")
+		return fmt.Errorf("our setup requires a registered manifest")
 	}
 	if len(docs) != 1 {
-		return fmt.Errorf("flux onboard requires exactly one manifest; pass --manifest")
+		return fmt.Errorf("our setup requires exactly one manifest; pass --manifest")
 	}
 	doc := docs[0]
 	root, err := umbrella.ResolveRoot(opts.home, ".", opts.umbrellaRoot, doc.doc)
@@ -5956,7 +6044,7 @@ func (a app) printLaunchHints(root string) {
 }
 
 func (a app) runSkillsInstall(args []string) error {
-	return a.runSkillsInstallNamed("flux skills install", args)
+	return a.runSkillsInstallNamed("our skills install", args)
 }
 
 func (a app) runSkillsInstallNamed(commandName string, args []string) error {
@@ -5966,7 +6054,7 @@ func (a app) runSkillsInstallNamed(commandName string, args []string) error {
 	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
 	fs.BoolVar(&opts.copyMode, "copy", false, "copy skill directories instead of symlinking")
 	fs.BoolVar(&opts.linkMode, "link", false, "symlink skill directories")
-	fs.BoolVar(&opts.force, "force", false, "replace non-Flux-managed targets")
+	fs.BoolVar(&opts.force, "force", false, "replace non-Our AI-managed targets")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
@@ -5976,7 +6064,7 @@ func (a app) runSkillsInstallNamed(commandName string, args []string) error {
 		fmt.Fprintf(a.stderr, `Usage of %s:
   %s [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
 
-Skills install only changes harness skill directories. Run flux onboard to
+Skills install only changes harness skill directories. Run our setup to
 regenerate workspace guidance such as AGENTS.md.
 
 Options:
@@ -6050,10 +6138,10 @@ func (a app) collectSkillInstallResults(opts skillsCommandOpts, hs []harness.Har
 
 func (a app) runSkillsUninstall(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("flux skills uninstall", a.stderr)
+	fs := newFlagSet("our skills uninstall", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "uninstall from every supported harness")
 	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
-	fs.BoolVar(&opts.force, "force", false, "remove non-Flux-managed targets")
+	fs.BoolVar(&opts.force, "force", false, "remove non-Our AI-managed targets")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
@@ -6102,14 +6190,14 @@ func (a app) runSkillsUninstall(args []string) error {
 
 func (a app) runSkillsSync(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("flux skills sync", a.stderr)
+	fs := newFlagSet("our skills sync", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "sync every supported harness")
 	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
 	fs.BoolVar(&opts.copyMode, "copy", false, "copy skill directories instead of symlinking")
 	fs.BoolVar(&opts.linkMode, "link", false, "symlink skill directories")
-	fs.BoolVar(&opts.force, "force", false, "replace non-Flux-managed targets during install")
+	fs.BoolVar(&opts.force, "force", false, "replace non-Our AI-managed targets during install")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
-	fs.BoolVar(&opts.noPrune, "no-prune", false, "skip removal of stale Flux-managed skill materializations")
+	fs.BoolVar(&opts.noPrune, "no-prune", false, "skip removal of stale Our AI-managed skill materializations")
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	fs.StringVar(&opts.manifestName, "manifest", "", "use skills declared by a synced manifest")
@@ -6183,10 +6271,10 @@ func (a app) collectSkillSyncResults(opts skillsCommandOpts, hs []harness.Harnes
 
 func (a app) runSkillsPurge(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("flux skills purge", a.stderr)
+	fs := newFlagSet("our skills purge", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "purge from every supported harness")
 	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
-	fs.BoolVar(&opts.force, "force", false, "remove explicitly selected non-Flux-managed targets")
+	fs.BoolVar(&opts.force, "force", false, "remove explicitly selected non-Our AI-managed targets")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
@@ -6265,7 +6353,7 @@ func (a app) runSkillsList(args []string) error {
 	var manifestName string
 	var home string
 	var jsonOut bool
-	fs := newFlagSet("flux skills list", a.stderr)
+	fs := newFlagSet("our skills list", a.stderr)
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
 	fs.StringVar(&source, "source", "", "skills source directory")
 	fs.StringVar(&manifestName, "manifest", "", "use skills declared by a synced manifest")
@@ -6301,7 +6389,7 @@ func (a app) runSkillsList(args []string) error {
 
 func (a app) runSkillsShow(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("flux skills show", a.stderr)
+	fs := newFlagSet("our skills show", a.stderr)
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
@@ -6315,7 +6403,7 @@ func (a app) runSkillsShow(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: flux skills show <id|slug>")
+		return fmt.Errorf("usage: our skills show <id|slug>")
 	}
 
 	bundled, _, _, err := a.discoverSkills(skillsCommandOpts{
@@ -6373,7 +6461,7 @@ type skillStatusRow struct {
 
 func (a app) runSkillsStatus(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("flux skills status", a.stderr)
+	fs := newFlagSet("our skills status", a.stderr)
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
@@ -6473,7 +6561,7 @@ func skillSyncRemedy(opts skillsCommandOpts, h harness.Harness, s skills.Skill) 
 	if ref == "" {
 		ref = s.Name
 	}
-	parts := []string{"flux", "skills", "sync", string(h), "--skill", ref}
+	parts := []string{"our", "skills", "sync", string(h), "--skill", ref}
 	if opts.manifestName != "" {
 		parts = append(parts, "--manifest", opts.manifestName)
 	}
@@ -6494,7 +6582,7 @@ func skillInstallRemedy(opts skillsCommandOpts, h harness.Harness, s skills.Skil
 	if ref == "" {
 		ref = s.Name
 	}
-	parts := []string{"flux", "skills", "install", string(h), "--skill", ref}
+	parts := []string{"our", "skills", "install", string(h), "--skill", ref}
 	if opts.manifestName != "" {
 		parts = append(parts, "--manifest", opts.manifestName)
 	}
@@ -6672,9 +6760,9 @@ func collectStaleSkillRemovalResults(opts skillsCommandOpts, hs []harness.Harnes
 
 func staleRemovalMessage(message string) string {
 	if message == "" {
-		return "stale Flux-managed skill not declared by selected source"
+		return "stale Our AI-managed skill not declared by selected source"
 	}
-	return "stale Flux-managed skill not declared by selected source; " + message
+	return "stale Our AI-managed skill not declared by selected source; " + message
 }
 
 func geminiPurgeTargets(declared []skills.Skill, refs []string) ([]skillRemovalTarget, error) {
@@ -7195,9 +7283,9 @@ func (a app) maybeJSONError(jsonOut bool, err error) error {
 		payload.Error = structured.code
 		payload.Message = structured.message
 		payload.Remediation = structured.remediation
-	} else if strings.Contains(err.Error(), "no flux umbrella found") {
+	} else if strings.Contains(err.Error(), "no our umbrella found") {
 		payload.Error = "no_umbrella"
-		payload.Remediation = "run flux onboard or pass --umbrella <path>"
+		payload.Remediation = "run our setup or pass --umbrella <path>"
 	}
 	if printErr := printJSON(a.stdout, payload); printErr != nil {
 		return printErr

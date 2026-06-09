@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/flux/internal/manifest"
+	"github.com/fluxinc/our-ai/internal/manifest"
 )
 
 func TestCheckStatuses(t *testing.T) {
@@ -24,7 +24,7 @@ func TestCheckStatuses(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if res.Status != "missing" || res.Message != "run flux onboard" {
+		if res.Status != "missing" || res.Message != "run our setup" {
 			t.Fatalf("Check() = %#v", res)
 		}
 	})
@@ -48,7 +48,7 @@ func TestCheckStatuses(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if res.Status != "stale" || res.Message != "run flux onboard" {
+		if res.Status != "stale" || res.Message != "run our setup" {
 			t.Fatalf("Check() = %#v", res)
 		}
 	})
@@ -60,7 +60,7 @@ func TestCheckStatuses(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if res.Status != "alias-broken" || res.Message != "run flux onboard" {
+		if res.Status != "alias-broken" || res.Message != "run our setup" {
 			t.Fatalf("Check() = %#v", res)
 		}
 	})

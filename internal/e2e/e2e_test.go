@@ -11,15 +11,15 @@ import (
 
 func TestRegisteredManifestAdoptionSmoke(t *testing.T) {
 	root := repoRoot(t)
-	bin := filepath.Join(t.TempDir(), "flux")
-	build := exec.Command("go", "build", "-o", bin, "./cmd/flux")
+	bin := filepath.Join(t.TempDir(), "our")
+	build := exec.Command("go", "build", "-o", bin, "./cmd/our")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("go build failed: %v\n%s", err, out)
 	}
 
 	home := t.TempDir()
-	manifestRoot := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
+	manifestRoot := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
 	umbrellaRoot := filepath.Join(home, "acme")
 	workspaceRoot := filepath.Join(umbrellaRoot, "handbook")
 	workspaceSource := filepath.Join(home, "workspace-source")
@@ -118,8 +118,8 @@ status: finalized
 		t.Fatal(err)
 	}
 
-	runFlux(t, bin, home, "manifest", "add", "acme", "https://github.com/acme/acme-ai-manifest.git", "--home", home)
-	installOut := runFlux(t, bin, home, "onboard", "--home", home)
+	runOur(t, bin, home, "manifests", "add", "acme", "https://github.com/acme/acme-ai-manifest.git", "--home", home)
+	installOut := runOur(t, bin, home, "setup", "--home", home)
 	for _, want := range []string{"acme-handbook", "acme:handbook", "mock-mail", "mock:mail", "installed"} {
 		if !strings.Contains(installOut, want) {
 			t.Fatalf("skills install output = %q, missing %q", installOut, want)
@@ -148,8 +148,8 @@ status: finalized
 		}
 	}
 	for _, path := range []string{
-		filepath.Join(umbrellaRoot, ".flux", "workspace.json"),
-		filepath.Join(umbrellaRoot, ".flux", "state.json"),
+		filepath.Join(umbrellaRoot, ".our", "workspace.json"),
+		filepath.Join(umbrellaRoot, ".our", "state.json"),
 		filepath.Join(umbrellaRoot, "personal"),
 		filepath.Join(umbrellaRoot, "products"),
 		filepath.Join(umbrellaRoot, "AGENTS.md"),
@@ -162,7 +162,7 @@ status: finalized
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Flux Workspace", "Acme Agent Defaults", "flux customers list", "flux meetings search <text>"} {
+	for _, want := range []string{"Our AI Workspace", "Acme Agent Defaults", "our customers list", "our meetings search <text>"} {
 		if !strings.Contains(string(agents), want) {
 			t.Fatalf("AGENTS.md = %s, missing %q", agents, want)
 		}
@@ -171,20 +171,20 @@ status: finalized
 		t.Fatalf("CLAUDE.md is not a symlink to AGENTS.md: target=%q err=%v", target, err)
 	}
 
-	searchOut := runFluxDir(t, bin, home, umbrellaRoot, "meetings", "search", "SampleCo", "--home", home, "--json")
+	searchOut := runOurDir(t, bin, home, umbrellaRoot, "meetings", "search", "SampleCo", "--home", home, "--json")
 	for _, want := range []string{"2026-03-12-sampleco-implementation", "# SampleCo implementation"} {
 		if !strings.Contains(searchOut, want) {
 			t.Fatalf("meetings search output = %q, missing %q", searchOut, want)
 		}
 	}
-	getOut := runFluxDir(t, bin, home, umbrellaRoot, "meetings", "get", "2026-03-12-sampleco-implementation", "--home", home, "--json")
+	getOut := runOurDir(t, bin, home, umbrellaRoot, "meetings", "get", "2026-03-12-sampleco-implementation", "--home", home, "--json")
 	for _, want := range []string{"June 1 review", "data cleanup commitment"} {
 		if !strings.Contains(getOut, want) {
 			t.Fatalf("meetings get output = %q, missing %q", getOut, want)
 		}
 	}
 
-	addProductOut := runFluxDir(t, bin, home, umbrellaRoot, "mount", "add", "product:sample-product", "--home", home, "--json")
+	addProductOut := runOurDir(t, bin, home, umbrellaRoot, "mounts", "add", "product:sample-product", "--home", home, "--json")
 	for _, want := range []string{"product:sample-product", "synced"} {
 		if !strings.Contains(addProductOut, want) {
 			t.Fatalf("mount add product output = %q, missing %q", addProductOut, want)
@@ -193,11 +193,11 @@ status: finalized
 	if _, err := os.Stat(filepath.Join(umbrellaRoot, "products", "sample-product", ".git")); err != nil {
 		t.Fatalf("product was not cloned: %v", err)
 	}
-	mountListOut := runFluxDir(t, bin, home, umbrellaRoot, "mount", "list", "--home", home, "--json")
+	mountListOut := runOurDir(t, bin, home, umbrellaRoot, "mounts", "list", "--home", home, "--json")
 	if !strings.Contains(mountListOut, "product:sample-product") || !strings.Contains(mountListOut, `"kind": "product"`) {
 		t.Fatalf("mount list output = %q", mountListOut)
 	}
-	state, err := os.ReadFile(filepath.Join(umbrellaRoot, ".flux", "state.json"))
+	state, err := os.ReadFile(filepath.Join(umbrellaRoot, ".our", "state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,15 +206,15 @@ status: finalized
 			t.Fatalf("state = %s, missing %q", state, want)
 		}
 	}
-	runFluxDir(t, bin, home, umbrellaRoot, "mount", "add", "product:sample-product", "--home", home)
-	runFluxDir(t, bin, home, umbrellaRoot, "mount", "sync", "product:sample-product", "--home", home)
+	runOurDir(t, bin, home, umbrellaRoot, "mounts", "add", "product:sample-product", "--home", home)
+	runOurDir(t, bin, home, umbrellaRoot, "mounts", "sync", "product:sample-product", "--home", home)
 }
 
-func runFlux(t *testing.T, bin, home string, args ...string) string {
-	return runFluxDir(t, bin, home, "", args...)
+func runOur(t *testing.T, bin, home string, args ...string) string {
+	return runOurDir(t, bin, home, "", args...)
 }
 
-func runFluxDir(t *testing.T, bin, home, dir string, args ...string) string {
+func runOurDir(t *testing.T, bin, home, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	if dir != "" {
@@ -223,7 +223,7 @@ func runFluxDir(t *testing.T, bin, home, dir string, args ...string) string {
 	cmd.Env = append(os.Environ(), "HOME="+home, "PATH="+isolatedPathWithGit(t, home))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("flux %s failed: %v\n%s", strings.Join(args, " "), err, out)
+		t.Fatalf("our %s failed: %v\n%s", strings.Join(args, " "), err, out)
 	}
 	return string(out)
 }
@@ -232,7 +232,7 @@ func initGitRepo(t *testing.T, dir string) {
 	t.Helper()
 	runGit(t, dir, "init", "-q")
 	runGit(t, dir, "add", ".")
-	runGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=flux-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed workspace")
+	runGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=our-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed workspace")
 }
 
 func runGit(t *testing.T, dir string, args ...string) {
@@ -268,7 +268,7 @@ func repoRoot(t *testing.T) string {
 		t.Fatal(err)
 	}
 	for {
-		if data, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil && strings.Contains(string(data), "module github.com/fluxinc/flux") {
+		if data, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil && strings.Contains(string(data), "module github.com/fluxinc/our-ai") {
 			return dir
 		}
 		parent := filepath.Dir(dir)

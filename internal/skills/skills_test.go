@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/flux/internal/harness"
+	"github.com/fluxinc/our-ai/internal/harness"
 )
 
 func TestDiscoverFrontmatterAndWarnings(t *testing.T) {
@@ -102,7 +102,7 @@ func TestInstallUninstallSymlinkRoundTrip(t *testing.T) {
 func TestInstallUninstallCopyRoundTrip(t *testing.T) {
 	source := t.TempDir()
 	skill := writeSkill(t, source, "demo-skill", "demo-skill", "Demo")
-	skill.CanonicalID = "flux:demo-skill"
+	skill.CanonicalID = "our:demo-skill"
 	mustMkdir(t, filepath.Join(skill.SourcePath, "references"))
 	if err := os.WriteFile(filepath.Join(skill.SourcePath, "references", "note.md"), []byte("nested"), 0o644); err != nil {
 		t.Fatal(err)
@@ -119,14 +119,14 @@ func TestInstallUninstallCopyRoundTrip(t *testing.T) {
 		t.Fatalf("install status = %s, want installed (%v)", res.Status, res.Err)
 	}
 	target := filepath.Join(home, ".claude", "skills", "demo-skill")
-	if _, err := os.Stat(filepath.Join(target, ".flux-managed.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(target, ".our-managed.json")); err != nil {
 		t.Fatalf("managed marker missing: %v", err)
 	}
-	marker, err := os.ReadFile(filepath.Join(target, ".flux-managed.json"))
+	marker, err := os.ReadFile(filepath.Join(target, ".our-managed.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(marker), `"canonical_id": "flux:demo-skill"`) {
+	if !strings.Contains(string(marker), `"canonical_id": "our:demo-skill"`) {
 		t.Fatalf("marker = %s", marker)
 	}
 	if _, err := os.Stat(filepath.Join(target, "references", "note.md")); err != nil {
@@ -255,7 +255,7 @@ func TestProvenanceAcceptsManagedSymlinks(t *testing.T) {
 	if err := os.Remove(filepath.Join(targetDir, "demo-skill")); err != nil {
 		t.Fatal(err)
 	}
-	materialized := filepath.Join(home, ".local", "share", "flux", "skills", "demo-skill")
+	materialized := filepath.Join(home, ".local", "share", "our", "skills", "demo-skill")
 	mustMkdir(t, materialized)
 	if err := os.Symlink(materialized, filepath.Join(targetDir, "demo-skill")); err != nil {
 		t.Fatal(err)
@@ -282,7 +282,7 @@ func TestListInstalledReportsManagedEntries(t *testing.T) {
 	}
 	copyDir := filepath.Join(targetDir, "copy-skill")
 	mustMkdir(t, copyDir)
-	if err := writeManagedMarker(copyDir, "copy", source, "flux:copy-skill"); err != nil {
+	if err := writeManagedMarker(copyDir, "copy", source, "our:copy-skill"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -297,7 +297,7 @@ func TestListInstalledReportsManagedEntries(t *testing.T) {
 	if !byName["demo-skill"].Managed || byName["demo-skill"].Kind != "symlink" {
 		t.Fatalf("demo-skill entry = %#v, want managed symlink", byName["demo-skill"])
 	}
-	if !byName["copy-skill"].Managed || byName["copy-skill"].CanonicalID != "flux:copy-skill" {
+	if !byName["copy-skill"].Managed || byName["copy-skill"].CanonicalID != "our:copy-skill" {
 		t.Fatalf("copy-skill entry = %#v, want managed marker with canonical id", byName["copy-skill"])
 	}
 	if byName["user-skill"].Managed {

@@ -6,10 +6,10 @@ inside the umbrella.
 ## Manifest lifecycle
 
 ```sh
-flux manifest add acme https://github.com/example/acme-workspace.git
-flux manifest list
-flux manifest sync acme
-flux manifest validate acme
+our manifests add acme https://github.com/example/acme-workspace.git
+our manifests list
+our manifests sync acme
+our manifests validate acme
 ```
 
 The synced cache is disposable derived state. Admin authoring commands should
@@ -26,16 +26,16 @@ Manifests can also set the default sync publish policy:
 ```
 
 Allowed values are `auto`, `never`, and `pr`. The setting applies when
-`flux sync` is run without `--publish`; an explicit CLI flag overrides it.
+`our sync` is run without `--publish`; an explicit CLI flag overrides it.
 
 ## Mount lifecycle
 
 ```sh
-flux mount list --manifest acme
-flux mount add handbook --manifest acme
-flux mount add product:sample-product --manifest acme
-flux mount sync --all --manifest acme
-flux mount remove handbook --print
+our mounts list --manifest acme
+our mounts add handbook --manifest acme
+our mounts add product:sample-product --manifest acme
+our mounts sync --all --manifest acme
+our mounts remove handbook --print
 ```
 
 Required and default mounts are synced during onboarding. Optional mounts are
@@ -50,8 +50,8 @@ Sparse include paths prevent manifest internals such as `manifest.json` and
 ## Catalog commands
 
 ```sh
-flux catalog list products --manifest acme
-flux customers list --manifest acme
+our products list --manifest acme
+our customers list --manifest acme
 ```
 
 Product catalog entries can reference related manifest skills. Mounting a

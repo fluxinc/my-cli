@@ -1,4 +1,4 @@
-// Package syncer reconciles local Flux-managed Git repositories with remotes.
+// Package syncer reconciles local Our AI-managed Git repositories with remotes.
 package syncer
 
 import (
@@ -20,7 +20,7 @@ type DirRunner func(dir, name string, args ...string) ([]byte, error)
 // VisibilityFunc returns a repository visibility string such as PRIVATE.
 type VisibilityFunc func(gitURL string) (string, error)
 
-// Entry is one local repository Flux knows how to sync.
+// Entry is one local repository Our AI knows how to sync.
 type Entry struct {
 	Manifest     string   `json:"manifest,omitempty"`
 	ID           string   `json:"id"`
@@ -112,9 +112,9 @@ func Run(entries []Entry, opts Options) Report {
 		return runGnit(entries, opts)
 	}
 	if opts.Backend == "" || opts.Backend == "auto" {
-		opts.Backend = "flux"
+		opts.Backend = "builtin"
 	}
-	return runFlux(entries, opts)
+	return runBuiltin(entries, opts)
 }
 
 // Inspect returns current repository state without publishing or pulling.
@@ -158,12 +158,12 @@ func FastForward(entry Entry, opts FastForwardOptions) Result {
 	return in.result
 }
 
-func runFlux(entries []Entry, opts Options) Report {
+func runBuiltin(entries []Entry, opts Options) Report {
 	if opts.Publish == "" {
 		opts.Publish = "auto"
 	}
 	if opts.Message == "" {
-		opts.Message = "Sync Flux content"
+		opts.Message = "Sync Our AI content"
 	}
 	runner := opts.Runner
 	if runner == nil {
@@ -178,7 +178,7 @@ func runFlux(entries []Entry, opts Options) Report {
 	for i := range inspections {
 		reconcile(&inspections[i], inspections, opts, runner)
 	}
-	return Report{Publish: opts.Publish, Backend: "flux", DryRun: opts.DryRun, Results: collectResults(inspections)}
+	return Report{Publish: opts.Publish, Backend: "builtin", DryRun: opts.DryRun, Results: collectResults(inspections)}
 }
 
 func runGnit(entries []Entry, opts Options) Report {
@@ -186,7 +186,7 @@ func runGnit(entries []Entry, opts Options) Report {
 		opts.Publish = "auto"
 	}
 	if opts.Message == "" {
-		opts.Message = "Sync Flux content"
+		opts.Message = "Sync Our AI content"
 	}
 	runner := opts.Runner
 	if runner == nil {
@@ -194,12 +194,12 @@ func runGnit(entries []Entry, opts Options) Report {
 	}
 	report := Report{Publish: opts.Publish, Backend: "gnit", GnitRoot: opts.GnitRoot, DryRun: opts.DryRun}
 	if opts.GnitRoot == "" || !hasGnitWorkspace(opts.GnitRoot) {
-		report.BackendMessage = "Gnit workspace not initialized; run gnit init --control for the Flux umbrella before using the Gnit backend"
+		report.BackendMessage = "Gnit workspace not initialized; run gnit init --control for the Our AI umbrella before using the Gnit backend"
 		report.Results = heldResults(entries, "Gnit workspace not initialized")
 		return report
 	}
 	if opts.Publish == "pr" {
-		report.BackendMessage = "PR mode belongs to Flux's gh policy layer; Gnit handles branch publishing, not PR creation"
+		report.BackendMessage = "PR mode belongs to Our AI's gh policy layer; Gnit handles branch publishing, not PR creation"
 		report.Results = heldResults(entries, "PR mode is not implemented yet")
 		return report
 	}
@@ -221,7 +221,7 @@ func runGnit(entries []Entry, opts Options) Report {
 				hold(&inspections[i], reason)
 			}
 		}
-		report.BackendMessage = "Flux must reconcile unsafe duplicate checkouts before delegating those remotes to Gnit"
+		report.BackendMessage = "Our AI must reconcile unsafe duplicate checkouts before delegating those remotes to Gnit"
 	}
 
 	var stagePaths []string
@@ -328,7 +328,7 @@ func inspectWithMode(entry Entry, opts Options, runner Runner, mode inspectMode)
 	in := inspection{entry: entry, result: res, remoteKey: normalizeRemote(entry.GitURL)}
 	if !isGitRepo(entry.LocalPath, runner) {
 		in.result.Status = "held back"
-		in.result.Message = "not cloned; run flux mount sync or flux onboard first"
+		in.result.Message = "not cloned; run our mounts sync or our setup first"
 		return in
 	}
 	fetchFailed := false
@@ -841,7 +841,7 @@ func duplicateRemoteKeys(inspections []inspection) map[string]bool {
 func gnitDryRunMessage(hasDirty bool) string {
 	var steps []string
 	if hasDirty {
-		steps = append(steps, "would run gnit add for Flux-approved content paths")
+		steps = append(steps, "would run gnit add for Our AI-approved content paths")
 		steps = append(steps, "would run gnit commit -m")
 	}
 	steps = append(steps, "would run gnit push")

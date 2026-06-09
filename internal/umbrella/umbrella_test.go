@@ -5,13 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fluxinc/flux/internal/manifest"
+	"github.com/fluxinc/our-ai/internal/manifest"
 )
 
 func TestResolveRootUsesManifestRecommendation(t *testing.T) {
 	home := t.TempDir()
 	root, err := ResolveRoot(home, "", "", manifest.Document{
-		Organization: manifest.Organization{ID: "flux"},
+		Organization: manifest.Organization{ID: "our"},
 		Umbrella:     manifest.Umbrella{RecommendedPath: "~/acme"},
 	})
 	if err != nil {
@@ -23,12 +23,12 @@ func TestResolveRootUsesManifestRecommendation(t *testing.T) {
 }
 
 func TestEnsureWritesWorkspaceAndState(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "flux")
-	ws, state, err := Ensure(root, "flux", "acme")
+	root := filepath.Join(t.TempDir(), "our")
+	ws, state, err := Ensure(root, "our", "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ws.Organization != "flux" || ws.ManifestRef != "acme" {
+	if ws.Organization != "our" || ws.ManifestRef != "acme" {
 		t.Fatalf("workspace = %#v", ws)
 	}
 	if state.SchemaVersion != SchemaVersion || len(state.Mounts) != 0 {

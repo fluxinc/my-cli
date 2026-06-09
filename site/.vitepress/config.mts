@@ -1,36 +1,36 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
-  base: '/flux/',
+  base: '/our-ai/',
   lang: 'en-US',
-  title: 'flux',
+  title: 'Our AI',
   description: 'Manifest-backed AI workspace tooling',
   lastUpdated: true,
   head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/flux/favicon.svg' }],
-    ['link', { rel: 'manifest', href: '/flux/site.webmanifest' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/our-ai/favicon.svg' }],
+    ['link', { rel: 'manifest', href: '/our-ai/site.webmanifest' }],
     ['meta', { name: 'theme-color', content: '#0f766e' }],
     ['meta', { property: 'og:type', content: 'website' }],
-    ['meta', { property: 'og:site_name', content: 'flux' }],
-    ['meta', { property: 'og:title', content: 'flux - Manifest-backed AI workspace tooling' }],
+    ['meta', { property: 'og:site_name', content: 'Our AI' }],
+    ['meta', { property: 'og:title', content: 'Our AI - Manifest-backed AI workspace tooling' }],
     ['meta', { property: 'og:description', content: 'Install skills, generated guidance, mounts, and local context for every AI harness from one manifest.' }],
-    ['meta', { property: 'og:url', content: 'https://fluxinc.github.io/flux/' }],
-    ['meta', { property: 'og:image', content: 'https://fluxinc.github.io/flux/flux-glyph.svg' }],
+    ['meta', { property: 'og:url', content: 'https://fluxinc.github.io/our-ai/' }],
+    ['meta', { property: 'og:image', content: 'https://fluxinc.github.io/our-ai/our-ai-glyph.svg' }],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
-    ['meta', { name: 'twitter:title', content: 'flux - Manifest-backed AI workspace tooling' }],
+    ['meta', { name: 'twitter:title', content: 'Our AI - Manifest-backed AI workspace tooling' }],
     ['meta', { name: 'twitter:description', content: 'One command gives every installed AI harness the same skills, context, and local tooling.' }],
-    ['meta', { name: 'twitter:image', content: 'https://fluxinc.github.io/flux/flux-glyph.svg' }],
+    ['meta', { name: 'twitter:image', content: 'https://fluxinc.github.io/our-ai/our-ai-glyph.svg' }],
   ],
   themeConfig: {
-    logo: '/flux-glyph.svg',
+    logo: '/our-ai-glyph.svg',
     nav: [
-      { text: 'Guide', link: '/guide/what-is-flux' },
+      { text: 'Guide', link: '/guide/what-is-our-ai' },
       { text: 'CLI', link: '/guide/cli-reference' },
       {
         text: 'v0.7.0',
         items: [
           { text: 'Changelog', link: '/changelog' },
-          { text: 'GitHub', link: 'https://github.com/fluxinc/flux' },
+          { text: 'GitHub', link: 'https://github.com/fluxinc/our-ai' },
         ],
       },
     ],
@@ -38,7 +38,7 @@ export default defineConfig({
       {
         text: 'Start',
         items: [
-          { text: 'What is flux?', link: '/guide/what-is-flux' },
+          { text: 'What is Our AI?', link: '/guide/what-is-our-ai' },
           { text: 'Quickstart', link: '/guide/quickstart' },
           { text: 'The Model', link: '/guide/the-model' },
         ],
@@ -60,7 +60,7 @@ export default defineConfig({
       },
     ],
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/fluxinc/flux' },
+      { icon: 'github', link: 'https://github.com/fluxinc/our-ai' },
     ],
     footer: {
       message: 'Released under the MIT License.',

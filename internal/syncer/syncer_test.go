@@ -364,8 +364,8 @@ func writeFile(t *testing.T, path, body string) {
 
 func configGitUser(t *testing.T, dir string) {
 	t.Helper()
-	runGit(t, dir, "config", "user.name", "Flux Test")
-	runGit(t, dir, "config", "user.email", "flux-test@example.com")
+	runGit(t, dir, "config", "user.name", "Our AI Test")
+	runGit(t, dir, "config", "user.email", "our-test@example.com")
 	runGit(t, dir, "config", "commit.gpgsign", "false")
 }
 

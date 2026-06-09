@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Renamed the CLI from `flux` to `our` and the project to Our AI
+  (`github.com/fluxinc/our-ai`); commands read as possessive English.
+- `flux launch` is now `our ai`; `flux onboard` is now `our setup`
+  (deprecated aliases warn on stderr).
+- Pluralized noun command groups (`manifests`, `mounts`, `workspaces`);
+  `catalog list products` is now `products list`.
+- Built-in sync backend renamed from `flux` to `builtin`.
+- `.flux/` is now `.our/`, `~/.local/share/flux` is now `~/.local/share/our`,
+  `~/.config/flux/manifests.json` is now `~/.config/our/manifests.json`, and
+  `FLUX_*` environment variables are now `OUR_*`.
+- Release archives are `our-ai_<version>_<os>_<arch>.tar.gz` with the `our`
+  binary inside; the bundled self-skill is `our` (id `our:self`).
+- `our doctor` detects legacy Flux state and prints migration remediation.
+
 ## 0.7.0 - 2026-06-09
 
 ### Added

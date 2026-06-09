@@ -3,7 +3,7 @@
     "id": "sample-product",
     "name": "Sample Product",
     "git_url": "https://github.com/example/sample-product.git",
-    "description": "Example product used by public flux fixtures.",
+    "description": "Example product used by public our fixtures.",
     "purpose": "Synthetic product source for exercising opt-in product clones.",
     "related_skills": [
       "acme:handbook"

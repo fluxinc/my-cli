@@ -1,5 +1,5 @@
 {
-  "name": "flux-site",
+  "name": "our-ai-site",
   "private": true,
   "scripts": {
     "dev": "vitepress dev",

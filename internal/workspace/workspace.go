@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fluxinc/flux/internal/ghauth"
-	"github.com/fluxinc/flux/internal/manifest"
-	"github.com/fluxinc/flux/internal/umbrella"
+	"github.com/fluxinc/our-ai/internal/ghauth"
+	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/our-ai/internal/umbrella"
 )
 
 // Runner executes external commands. Tests can replace it.
@@ -208,7 +208,7 @@ func selectedManifestRefs(home, manifestName string) ([]manifest.Ref, error) {
 func loadManifest(ref manifest.Ref) (manifest.Document, error) {
 	doc, _, err := manifest.LoadDocument(ref.LocalPath)
 	if err != nil {
-		return manifest.Document{}, fmt.Errorf("manifest %q is not synced; run flux manifest sync %s: %w", ref.Name, ref.Name, err)
+		return manifest.Document{}, fmt.Errorf("manifest %q is not synced; run our manifests sync %s: %w", ref.Name, ref.Name, err)
 	}
 	result := manifest.ValidateFile(ref.LocalPath)
 	if len(result.Errors) != 0 {

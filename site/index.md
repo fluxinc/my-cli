@@ -2,19 +2,19 @@
 layout: home
 
 hero:
-  name: flux
+  name: Our AI
   text: Manifest-backed AI workspace tooling
   tagline: One command gives every installed AI harness the same skills, generated guidance, mounts, and local operating context.
   image:
-    src: /flux-glyph.svg
-    alt: flux
+    src: /our-ai-glyph.svg
+    alt: Our AI
   actions:
     - theme: brand
       text: Install
       link: /guide/quickstart
     - theme: alt
       text: View on GitHub
-      link: https://github.com/fluxinc/flux
+      link: https://github.com/fluxinc/our-ai
 
 features:
   - icon: "01"
@@ -40,29 +40,29 @@ features:
 ## Install
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/fluxinc/flux/master/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/fluxinc/our-ai/master/install.sh | sh
 ```
 
-Run `flux update` to update to the latest release; re-running the installer also
+Run `our update` to update to the latest release; re-running the installer also
 works.
 
 ## First Run
 
 ```sh
-flux manifest add acme https://github.com/example/acme-workspace.git
-flux manifest sync acme
-flux onboard --manifest acme
-cd "$(flux root --manifest acme)" && claude
+our manifests add acme https://github.com/example/acme-workspace.git
+our manifests sync acme
+our setup --manifest acme
+cd "$(our root --manifest acme)" && claude
 ```
 
-`flux launch --manifest acme codex` performs the same root resolution and
+`our ai --manifest acme codex` performs the same root resolution and
 guidance freshness check before starting a harness.
 
 ## The Operating Shape
 
 ```
 ~/acme/
-├── .flux/          # workspace identity and local state
+├── .our/          # workspace identity and local state
 ├── handbook/       # manifest-declared content mount
 ├── products/       # opted-in product repos
 ├── personal/       # local-only scratch

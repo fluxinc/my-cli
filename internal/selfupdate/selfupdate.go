@@ -1,4 +1,4 @@
-// Package selfupdate implements release-backed flux binary updates.
+// Package selfupdate implements release-backed our binary updates.
 package selfupdate
 
 import (
@@ -24,14 +24,14 @@ import (
 )
 
 const (
-	defaultAPIBaseURL      = "https://api.github.com/repos/fluxinc/flux"
-	defaultDownloadBaseURL = "https://github.com/fluxinc/flux"
+	defaultAPIBaseURL      = "https://api.github.com/repos/fluxinc/our-ai"
+	defaultDownloadBaseURL = "https://github.com/fluxinc/our-ai"
 	DefaultCheckTTL        = 24 * time.Hour
 	cacheSchemaVersion     = 1
 	cacheFileName          = "update-check.json"
 )
 
-// Source fetches Flux GitHub release metadata and assets.
+// Source fetches Our AI GitHub release metadata and assets.
 type Source struct {
 	Client          *http.Client
 	APIBaseURL      string
@@ -97,7 +97,7 @@ type semver struct {
 	pre   string
 }
 
-// RefusalError is returned when flux detects an install it should not replace.
+// RefusalError is returned when our detects an install it should not replace.
 type RefusalError struct {
 	Reason string
 	Remedy string
@@ -150,7 +150,7 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 	return res, nil
 }
 
-// Update replaces the flux binary with the requested release, unless CheckOnly is set.
+// Update replaces the our binary with the requested release, unless CheckOnly is set.
 func Update(ctx context.Context, opts Options) (Result, error) {
 	res, err := Check(ctx, opts)
 	if err != nil {
@@ -188,7 +188,7 @@ func Update(ctx context.Context, opts Options) (Result, error) {
 	if err := verifyChecksum(asset, archiveData, checksumData); err != nil {
 		return Result{}, err
 	}
-	binary, err := extractFluxBinary(archiveData)
+	binary, err := extractOurAIBinary(archiveData)
 	if err != nil {
 		return Result{}, err
 	}
@@ -196,7 +196,7 @@ func Update(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, err
 	}
 	res.Updated = true
-	res.Message = fmt.Sprintf("updated flux %s -> %s", res.CurrentVersion, res.TargetVersion)
+	res.Message = fmt.Sprintf("updated our %s -> %s", res.CurrentVersion, res.TargetVersion)
 	return res, nil
 }
 
@@ -235,12 +235,12 @@ func CachePath(homeOverride string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local", "share", "flux", cacheFileName), nil
+	return filepath.Join(home, ".local", "share", "our", cacheFileName), nil
 }
 
-// UpdateCheckTTLFromEnv parses FLUX_UPDATE_CHECK_TTL.
+// UpdateCheckTTLFromEnv parses OUR_UPDATE_CHECK_TTL.
 func UpdateCheckTTLFromEnv() time.Duration {
-	value := strings.TrimSpace(os.Getenv("FLUX_UPDATE_CHECK_TTL"))
+	value := strings.TrimSpace(os.Getenv("OUR_UPDATE_CHECK_TTL"))
 	if value == "" {
 		return DefaultCheckTTL
 	}
@@ -329,7 +329,7 @@ func (s Source) get(ctx context.Context, rawURL string, timeout time.Duration) (
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "flux-self-update")
+	req.Header.Set("User-Agent", "our-self-update")
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -394,17 +394,17 @@ func parseSemver(value string) (semver, error) {
 func checkMessage(current, target, latest string, pinned, updateAvailable bool) string {
 	if !updateAvailable {
 		if pinned {
-			return fmt.Sprintf("already at requested flux version %s", current)
+			return fmt.Sprintf("already at requested our version %s", current)
 		}
 		return fmt.Sprintf("already up to date (%s)", current)
 	}
 	if pinned {
-		return fmt.Sprintf("flux %s can be replaced with requested version %s", current, target)
+		return fmt.Sprintf("our %s can be replaced with requested version %s", current, target)
 	}
 	if latest == "" {
 		latest = target
 	}
-	return fmt.Sprintf("newer flux %s is available (current %s)", latest, current)
+	return fmt.Sprintf("newer our %s is available (current %s)", latest, current)
 }
 
 func executableTarget(explicit string) (string, error) {
@@ -433,13 +433,13 @@ func GuardInstallTarget(target, home string) error {
 	switch method {
 	case "homebrew":
 		return RefusalError{
-			Reason: "flux appears to be managed by Homebrew",
-			Remedy: "update with your package manager: brew upgrade flux",
+			Reason: "our appears to be managed by Homebrew",
+			Remedy: "update with your package manager: brew upgrade our",
 		}
 	case "go":
 		return RefusalError{
-			Reason: "flux appears to be installed by go install",
-			Remedy: "update with: go install github.com/fluxinc/flux/cmd/flux@latest",
+			Reason: "our appears to be installed by go install",
+			Remedy: "update with: go install github.com/fluxinc/our-ai/cmd/our@latest",
 		}
 	}
 	info, err := os.Stat(target)
@@ -448,14 +448,14 @@ func GuardInstallTarget(target, home string) error {
 	}
 	if info.Mode().Perm()&0o222 == 0 {
 		return RefusalError{
-			Reason: "flux binary is not writable",
-			Remedy: "re-run install.sh or set FLUX_INSTALL_DIR to a writable directory",
+			Reason: "our binary is not writable",
+			Remedy: "re-run install.sh or set OUR_INSTALL_DIR to a writable directory",
 		}
 	}
 	if err := checkDirWritable(filepath.Dir(target)); err != nil {
 		return RefusalError{
-			Reason: "flux install directory is not writable",
-			Remedy: "re-run install.sh or set FLUX_INSTALL_DIR to a writable directory",
+			Reason: "our install directory is not writable",
+			Remedy: "re-run install.sh or set OUR_INSTALL_DIR to a writable directory",
 		}
 	}
 	return nil
@@ -565,7 +565,7 @@ func pathWithin(path, root string) bool {
 }
 
 func checkDirWritable(dir string) error {
-	tmp, err := os.CreateTemp(dir, ".flux-write-check-*")
+	tmp, err := os.CreateTemp(dir, ".our-write-check-*")
 	if err != nil {
 		return err
 	}
@@ -579,7 +579,7 @@ func checkDirWritable(dir string) error {
 }
 
 func assetName(version, goos, goarch string) string {
-	return fmt.Sprintf("flux_%s_%s_%s.tar.gz", version, goos, goarch)
+	return fmt.Sprintf("our-ai_%s_%s_%s.tar.gz", version, goos, goarch)
 }
 
 func releaseTag(version string) string {
@@ -628,7 +628,7 @@ func checksumForAsset(asset string, data []byte) (string, error) {
 	return "", fmt.Errorf("checksums.txt does not contain %s", asset)
 }
 
-func extractFluxBinary(data []byte) ([]byte, error) {
+func extractOurAIBinary(data []byte) ([]byte, error) {
 	gz, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
@@ -638,7 +638,7 @@ func extractFluxBinary(data []byte) ([]byte, error) {
 	for {
 		header, err := tr.Next()
 		if errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("archive does not contain flux binary")
+			return nil, fmt.Errorf("archive does not contain our binary")
 		}
 		if err != nil {
 			return nil, err
@@ -646,7 +646,7 @@ func extractFluxBinary(data []byte) ([]byte, error) {
 		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
 			continue
 		}
-		if filepath.Base(header.Name) != "flux" {
+		if filepath.Base(header.Name) != "our" {
 			continue
 		}
 		var out bytes.Buffer
@@ -659,7 +659,7 @@ func extractFluxBinary(data []byte) ([]byte, error) {
 
 func replaceTarget(target string, binary []byte) error {
 	dir := filepath.Dir(target)
-	tmp, err := os.CreateTemp(dir, ".flux-update-*")
+	tmp, err := os.CreateTemp(dir, ".our-update-*")
 	if err != nil {
 		return err
 	}

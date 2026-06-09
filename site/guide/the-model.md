@@ -1,6 +1,6 @@
 # The Model
 
-`flux` has seven concepts. Every command works against one of them.
+`our` has seven concepts. Every command works against one of them.
 
 ## Manifest
 
@@ -10,18 +10,18 @@ catalog entries, tool hints, umbrella defaults, and generated guidance inputs.
 Register and refresh it:
 
 ```sh
-flux manifest add acme https://github.com/example/acme-workspace.git
-flux manifest sync acme
-flux manifest validate acme
+our manifests add acme https://github.com/example/acme-workspace.git
+our manifests sync acme
+our manifests validate acme
 ```
 
 ## Skill
 
 A capability installed into harness skill directories. Static skills live
 inside the manifest repo. Tool-provided skills are materialized by their owning
-tool, then installed by `flux`. The public CLI also ships one bundled
-organization-neutral self-skill named `flux`, managed by
-`flux skills self ...`, so harnesses know how to use Flux itself.
+tool, then installed by `our`. The public CLI also ships one bundled
+organization-neutral self-skill named `our`, managed by
+`our skills self ...`, so harnesses know how to use Our AI itself.
 These are the two skill sources, split by a public/private line: the self-skill
 is public and ships in the binary; organization skills are private to a manifest
 you control and appear only once that manifest is synced. Nothing
@@ -32,7 +32,7 @@ organization-specific is baked into the public CLI.
 A per-user workspace envelope, normally `~/<org>`. It contains local state,
 generated guidance, content mounts, product repos, and local scratch. When
 initialized as a Gnit control workspace, multi-repo Change creation, ordered
-push, and resume use Gnit instead of Flux reimplementing that transaction layer.
+push, and resume use Gnit instead of Our AI reimplementing that transaction layer.
 Pins remain available for deliberate recorded workspace states.
 
 ## Mount
@@ -44,7 +44,7 @@ of the operating workspace.
 ## Catalog
 
 JSON inventories for products and canonical customers. Product repos are
-opted in on demand with `flux mount add product:<id>`.
+opted in on demand with `our mounts add product:<id>`.
 
 ## Guidance
 
@@ -53,7 +53,7 @@ points to the same file where supported.
 
 ## Tool
 
-An external executable the organization depends on. `flux` reports presence and
+An external executable the organization depends on. `our` reports presence and
 install hints; it does not silently install tools.
 
 ## Public and private repos

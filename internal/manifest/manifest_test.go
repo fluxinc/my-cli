@@ -115,7 +115,7 @@ func TestValidateManifest(t *testing.T) {
     {
       "id": "handbook",
       "git_url": "https://github.com/acme/acme-handbook.git",
-      "local_path": "~/.flux/workspaces/handbook"
+      "local_path": "~/.our/workspaces/handbook"
     }
   ],
   "tools": [
@@ -148,8 +148,8 @@ func TestValidateManifestCatchesNamespaceAndSSHWarnings(t *testing.T) {
       "requires": ["workspace:missing", "tool:missing", "service:spark", "bad requirement"]
     },
     {
-      "id": "flux:mail",
-      "install_slug": "flux-mail",
+      "id": "our:mail",
+      "install_slug": "our-mail",
       "source": { "type": "tool", "tool": "spark" }
     }
   ],
@@ -157,7 +157,7 @@ func TestValidateManifestCatchesNamespaceAndSSHWarnings(t *testing.T) {
     {
       "id": "handbook",
       "git_url": "git@github.com:acme/acme-handbook.git",
-      "local_path": "~/.flux/workspaces/handbook"
+      "local_path": "~/.our/workspaces/handbook"
     }
   ],
   "tools": [

@@ -17,6 +17,6 @@ Git repo and update `manifest.json` to point its `handbook` mount at that repo.
 Useful checks:
 
 ```sh
-flux manifest validate examples/acme-workspace
-flux skills list --source examples/acme-workspace/skills
+our manifests validate examples/acme-workspace
+our skills list --source examples/acme-workspace/skills
 ```

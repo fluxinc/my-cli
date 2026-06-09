@@ -11,22 +11,22 @@ import (
 	"runtime/debug"
 	"strings"
 
-	flux "github.com/fluxinc/flux"
-	"github.com/fluxinc/flux/internal/version"
+	ourai "github.com/fluxinc/our-ai"
+	"github.com/fluxinc/our-ai/internal/version"
 )
 
 const (
-	modulePath  = "github.com/fluxinc/flux"
-	installer   = "flux"
+	modulePath  = "github.com/fluxinc/our-ai"
+	installer   = "our"
 	skillsDir   = "skills"
 	sourceFlag  = "--source flag"
-	sourceEnv   = "$FLUX_HOME"
+	sourceEnv   = "$OUR_HOME"
 	sourceRepo  = "repo walk-up"
 	sourceEmbed = "embedded"
 )
 
-// MarkerName is the filename used to identify flux-managed directories.
-const MarkerName = ".flux-managed.json"
+// MarkerName is the filename used to identify our-managed directories.
+const MarkerName = ".our-managed.json"
 
 // ResolveOptions controls skill source selection.
 type ResolveOptions struct {
@@ -43,7 +43,7 @@ type Source struct {
 	Materialized bool
 }
 
-// Marker is written to flux-managed materialized and copy-mode directories.
+// Marker is written to our-managed materialized and copy-mode directories.
 type Marker struct {
 	Installer   string `json:"installer"`
 	Version     string `json:"version"`
@@ -53,7 +53,7 @@ type Marker struct {
 }
 
 // ResolveSkillsSource returns a filesystem skills directory using the R1
-// source-selection order: explicit flag, FLUX_HOME, repo walk-up, embedded.
+// source-selection order: explicit flag, OUR_HOME, repo walk-up, embedded.
 func ResolveSkillsSource(opts ResolveOptions) (Source, error) {
 	cwd := opts.Cwd
 	if cwd == "" {
@@ -68,7 +68,7 @@ func ResolveSkillsSource(opts ResolveOptions) (Source, error) {
 		return Source{Kind: sourceFlag, SkillsDir: dir}, nil
 	}
 
-	if root := lookupEnv(opts.Env, "FLUX_HOME"); root != "" {
+	if root := lookupEnv(opts.Env, "OUR_HOME"); root != "" {
 		dir, err := requireDir(filepath.Join(root, skillsDir))
 		if err != nil {
 			return Source{}, fmt.Errorf("%s: %w", sourceEnv, err)
@@ -102,11 +102,11 @@ func SkillsRoot(homeOverride string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local", "share", "flux", skillsDir), nil
+	return filepath.Join(home, ".local", "share", "our", skillsDir), nil
 }
 
 // MaterializeEmbedded writes the embedded public skill bundle to the stable
-// Flux-managed skill source directory.
+// Our AI-managed skill source directory.
 func MaterializeEmbedded(homeOverride string) (Source, error) {
 	dir, err := materializeEmbedded(homeOverride)
 	if err != nil {
@@ -124,7 +124,7 @@ func materializeEmbedded(homeOverride string) (string, error) {
 		return "", err
 	}
 
-	if err := fs.WalkDir(flux.Embedded, skillsDir, func(path string, d fs.DirEntry, err error) error {
+	if err := fs.WalkDir(ourai.Embedded, skillsDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -136,7 +136,7 @@ func materializeEmbedded(homeOverride string) (string, error) {
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
-		data, err := flux.Embedded.ReadFile(path)
+		data, err := ourai.Embedded.ReadFile(path)
 		if err != nil {
 			return err
 		}

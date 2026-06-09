@@ -1,9 +1,9 @@
 {
-  "name": "flux",
-  "short_name": "flux",
+  "name": "Our AI",
+  "short_name": "Our AI",
   "icons": [
     {
-      "src": "/flux/favicon.svg",
+      "src": "/our-ai/favicon.svg",
       "sizes": "64x64",
       "type": "image/svg+xml"
     }

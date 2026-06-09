@@ -1,4 +1,4 @@
-// Package selfskill installs and refreshes Flux's bundled CLI skill.
+// Package selfskill installs and refreshes Our AI's bundled CLI skill.
 package selfskill
 
 import (
@@ -8,14 +8,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fluxinc/flux/internal/bundle"
-	"github.com/fluxinc/flux/internal/harness"
-	"github.com/fluxinc/flux/internal/skills"
+	"github.com/fluxinc/our-ai/internal/bundle"
+	"github.com/fluxinc/our-ai/internal/harness"
+	"github.com/fluxinc/our-ai/internal/skills"
 )
 
 const (
-	Name        = "flux"
-	CanonicalID = "flux:self"
+	Name        = "our"
+	CanonicalID = "our:self"
 )
 
 // Options controls bundled self-skill operations.
@@ -40,7 +40,7 @@ type Status struct {
 	Remedy      string          `json:"remedy,omitempty"`
 }
 
-// Materialize writes the embedded skills tree and returns the bundled Flux
+// Materialize writes the embedded skills tree and returns the bundled Our AI
 // skill as an installable skill source.
 func Materialize(home string) (skills.Skill, string, error) {
 	source, err := bundle.MaterializeEmbedded(home)
@@ -53,14 +53,14 @@ func Materialize(home string) (skills.Skill, string, error) {
 			InstallSlug: Name,
 			Path:        Name,
 			SourceRoot:  source.SkillsDir,
-			SourceLabel: "embedded Flux skill bundle",
+			SourceLabel: "embedded Our AI skill bundle",
 		},
 	})
 	if err != nil {
 		return skills.Skill{}, "", err
 	}
 	if len(found) != 1 {
-		return skills.Skill{}, "", fmt.Errorf("embedded Flux self-skill not found")
+		return skills.Skill{}, "", fmt.Errorf("embedded Our AI self-skill not found")
 	}
 	return found[0], source.SkillsDir, nil
 }
@@ -107,7 +107,7 @@ func resolveSource(home string, dryRun bool) (skills.Skill, string, error) {
 		SourcePath:  filepath.Join(sourceRoot, Name),
 		SourceRoot:  sourceRoot,
 		CanonicalID: CanonicalID,
-		Description: "Flux CLI self-skill",
+		Description: "Our AI CLI self-skill",
 	}, sourceRoot, nil
 }
 
@@ -281,7 +281,7 @@ func samePath(a, b string) bool {
 }
 
 func installRemedy(h harness.Harness, home string) string {
-	parts := []string{"flux", "skills", "self", "install", string(h)}
+	parts := []string{"our", "skills", "self", "install", string(h)}
 	if home != "" {
 		parts = append(parts, "--home", home)
 	}

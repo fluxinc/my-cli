@@ -7,8 +7,8 @@ before:
     - go test ./...
 
 builds:
-  - main: ./cmd/flux
-    binary: flux
+  - main: ./cmd/our
+    binary: our
     env:
       - CGO_ENABLED=0
     goos:
@@ -20,11 +20,11 @@ builds:
     ldflags:
       - >-
         -s -w
-        -X github.com/fluxinc/flux/internal/version.Version={{.Version}}
+        -X github.com/fluxinc/our-ai/internal/version.Version={{.Version}}
 
 archives:
   - format: tar.gz
-    name_template: "flux_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "our-ai_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: checksums.txt
@@ -32,4 +32,4 @@ checksum:
 release:
   github:
     owner: fluxinc
-    name: flux
+    name: our-ai

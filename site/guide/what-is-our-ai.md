@@ -1,6 +1,6 @@
-# What is flux?
+# What is our?
 
-`flux` is a small Go CLI for bootstrapping AI agent workspaces from an
+`our` is a small Go CLI for bootstrapping AI agent workspaces from an
 organization manifest.
 
 It installs declared skills into supported AI harnesses, creates a local
@@ -15,15 +15,15 @@ but each surface has its own skill location, project context rules, and local
 setup habits. Without one source of truth, agents see different knowledge and
 different capabilities.
 
-`flux` makes the setup deterministic:
+`our` makes the setup deterministic:
 
 ```sh
-flux onboard --manifest acme
+our setup --manifest acme
 ```
 
 The command converges local state. Re-run it when the manifest changes.
 
-## What flux owns
+## What our owns
 
 - Manifest registration and sync.
 - Harness skill materialization.
@@ -34,7 +34,7 @@ The command converges local state. Re-run it when the manifest changes.
 - Meeting-note operations.
 - Tool diagnostics and install hints.
 
-## What flux does not own
+## What our does not own
 
 - Private organization knowledge in this public repo.
 - Silent installation of external tools.

@@ -21,7 +21,7 @@ func TestResolveSkillsSourcePrecedence(t *testing.T) {
 		ExplicitSource: explicit,
 		Cwd:            nested,
 		Home:           t.TempDir(),
-		Env:            map[string]string{"FLUX_HOME": envRoot},
+		Env:            map[string]string{"OUR_HOME": envRoot},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -33,7 +33,7 @@ func TestResolveSkillsSourcePrecedence(t *testing.T) {
 	source, err = ResolveSkillsSource(ResolveOptions{
 		Cwd:  nested,
 		Home: t.TempDir(),
-		Env:  map[string]string{"FLUX_HOME": envRoot},
+		Env:  map[string]string{"OUR_HOME": envRoot},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -60,10 +60,10 @@ func TestResolveSkillsSourceEnvMissingDoesNotFallThrough(t *testing.T) {
 	_, err := ResolveSkillsSource(ResolveOptions{
 		Cwd:  repoRoot,
 		Home: t.TempDir(),
-		Env:  map[string]string{"FLUX_HOME": filepath.Join(t.TempDir(), "missing")},
+		Env:  map[string]string{"OUR_HOME": filepath.Join(t.TempDir(), "missing")},
 	})
 	if err == nil {
-		t.Fatal("missing FLUX_HOME returned nil error")
+		t.Fatal("missing OUR_HOME returned nil error")
 	}
 }
 

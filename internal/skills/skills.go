@@ -16,15 +16,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fluxinc/flux/internal/bundle"
-	"github.com/fluxinc/flux/internal/harness"
+	"github.com/fluxinc/our-ai/internal/bundle"
+	"github.com/fluxinc/our-ai/internal/harness"
 )
 
 type Skill struct {
 	Name        string // portable install slug / directory name
 	SkillName   string // SKILL.md `name:` field
 	SourcePath  string // absolute path to the skill directory
-	SourceRoot  string // root considered Flux-managed for provenance
+	SourceRoot  string // root considered Our AI-managed for provenance
 	CanonicalID string // manifest namespace:name identity, when known
 	Description string // first line / folded scalar from SKILL.md
 	Warnings    []string
@@ -201,7 +201,7 @@ type InstallOpts struct {
 	DryRun      bool     // print plan only
 	SkipMissing bool     // skip harnesses whose config dir doesn't exist
 	Home        string   // override; defaults to os.UserHomeDir()
-	Force       bool     // replace/remove non-Flux-managed targets
+	Force       bool     // replace/remove non-Our AI-managed targets
 	SourceRoot  string   // resolved skills source root for provenance checks
 	SourceRoots []string // additional managed source roots
 }
@@ -294,9 +294,9 @@ func Install(s Skill, h harness.Harness, opts InstallOpts) Result {
 	info, err := os.Lstat(target)
 	if err == nil {
 		updated = true
-		if !opts.Force && !isFluxManagedTarget(target, info, managedSourceRoots(sourceRootFor(s, opts), opts.SourceRoots, home)) {
+		if !opts.Force && !isOurManagedTarget(target, info, managedSourceRoots(sourceRootFor(s, opts), opts.SourceRoots, home)) {
 			res.Status = StatusBlocked
-			res.Message = "target exists and is not Flux-managed; re-run with --force to replace it"
+			res.Message = "target exists and is not Our AI-managed; re-run with --force to replace it"
 			return res
 		}
 	} else if !errors.Is(err, fs.ErrNotExist) {
@@ -407,9 +407,9 @@ func Uninstall(skillName string, h harness.Harness, opts InstallOpts) Result {
 		return res
 	}
 
-	if !opts.Force && !isFluxManagedTarget(target, info, managedSourceRoots(opts.SourceRoot, opts.SourceRoots, home)) {
+	if !opts.Force && !isOurManagedTarget(target, info, managedSourceRoots(opts.SourceRoot, opts.SourceRoots, home)) {
 		res.Status = StatusBlocked
-		res.Message = "target exists and is not Flux-managed; re-run with --force to remove it"
+		res.Message = "target exists and is not Our AI-managed; re-run with --force to remove it"
 		return res
 	}
 
@@ -549,7 +549,7 @@ func ListInstalled(h harness.Harness, opts InstallOpts) ([]InstalledSkill, error
 			installed.CanonicalID = marker.CanonicalID
 			installed.Source = marker.Source
 		}
-		installed.Managed = isFluxManagedTarget(target, info, sourceRoots)
+		installed.Managed = isOurManagedTarget(target, info, sourceRoots)
 		out = append(out, installed)
 	}
 	return out, nil
@@ -567,8 +567,8 @@ func sourceRootFor(s Skill, opts InstallOpts) string {
 
 func managedSourceRoots(sourceRoot string, sourceRoots []string, home string) []string {
 	roots := []string{
-		filepath.Join(home, ".local", "share", "flux", "skills"),
-		filepath.Join(home, ".local", "share", "flux-ai", "skills"),
+		filepath.Join(home, ".local", "share", "our", "skills"),
+		filepath.Join(home, ".local", "share", "our-ai", "skills"),
 	}
 	if sourceRoot != "" {
 		roots = append(roots, sourceRoot)
@@ -577,7 +577,7 @@ func managedSourceRoots(sourceRoot string, sourceRoots []string, home string) []
 	return roots
 }
 
-func isFluxManagedTarget(target string, info fs.FileInfo, sourceRoots []string) bool {
+func isOurManagedTarget(target string, info fs.FileInfo, sourceRoots []string) bool {
 	if info.Mode()&os.ModeSymlink != 0 {
 		link, err := os.Readlink(target)
 		if err != nil {
@@ -610,7 +610,7 @@ func readManagedMarker(dir string) (bundle.Marker, bool) {
 	if err := json.Unmarshal(data, &marker); err != nil {
 		return bundle.Marker{}, false
 	}
-	if marker.Installer != "flux" && marker.Installer != "flux-ai" {
+	if marker.Installer != "our" && marker.Installer != "our-ai" {
 		return bundle.Marker{}, false
 	}
 	return marker, true
@@ -658,7 +658,7 @@ func sameFilesystemPath(a, b string) bool {
 
 func writeManagedMarker(dir, mode, source, canonicalID string) error {
 	marker := bundle.Marker{
-		Installer:   "flux",
+		Installer:   "our",
 		Version:     bundle.Version(),
 		Mode:        mode,
 		Source:      source,

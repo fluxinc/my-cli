@@ -1,6 +1,6 @@
 # Built binaries
-/flux
-/flux-cli
+/our
+/our-cli
 /dist/
 
 # Go

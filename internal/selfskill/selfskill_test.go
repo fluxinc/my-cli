@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/flux/internal/harness"
-	"github.com/fluxinc/flux/internal/skills"
+	"github.com/fluxinc/our-ai/internal/harness"
+	"github.com/fluxinc/our-ai/internal/skills"
 )
 
-func TestMaterializeBundledFluxSkill(t *testing.T) {
+func TestMaterializeBundledOurSkill(t *testing.T) {
 	home := t.TempDir()
 
 	self, sourceRoot, err := Materialize(home)
@@ -21,17 +21,17 @@ func TestMaterializeBundledFluxSkill(t *testing.T) {
 	if self.Name != Name || self.CanonicalID != CanonicalID {
 		t.Fatalf("self skill = %#v", self)
 	}
-	if sourceRoot != filepath.Join(home, ".local", "share", "flux", "skills") {
+	if sourceRoot != filepath.Join(home, ".local", "share", "our", "skills") {
 		t.Fatalf("sourceRoot = %q", sourceRoot)
 	}
-	data, err := os.ReadFile(filepath.Join(sourceRoot, "flux", "SKILL.md"))
+	data, err := os.ReadFile(filepath.Join(sourceRoot, "our", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "This skill teaches a harness how to operate inside a Flux workspace.") {
+	if !strings.Contains(string(data), "This skill teaches a harness how to operate inside an Our AI workspace.") {
 		t.Fatalf("materialized skill content = %q", string(data))
 	}
-	if _, err := os.Stat(filepath.Join(sourceRoot, ".flux-managed.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(sourceRoot, ".our-managed.json")); err != nil {
 		t.Fatalf("managed marker missing: %v", err)
 	}
 }
@@ -50,7 +50,7 @@ func TestInstallAndInspectSelfSkill(t *testing.T) {
 		t.Fatalf("install results = %#v", results)
 	}
 
-	target := filepath.Join(home, ".codex", "skills", "flux")
+	target := filepath.Join(home, ".codex", "skills", "our")
 	if info, err := os.Lstat(target); err != nil || info.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("target is not a symlink: info=%v err=%v", info, err)
 	}
@@ -78,8 +78,8 @@ func TestSyncExistingRefreshesCopiesOnlyWhenInstalled(t *testing.T) {
 		t.Fatalf("install results = %#v", results)
 	}
 
-	target := filepath.Join(home, ".codex", "skills", "flux")
-	if err := os.WriteFile(filepath.Join(target, "SKILL.md"), []byte("---\nname: flux\n---\nstale\n"), 0o644); err != nil {
+	target := filepath.Join(home, ".codex", "skills", "our")
+	if err := os.WriteFile(filepath.Join(target, "SKILL.md"), []byte("---\nname: our\n---\nstale\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -97,7 +97,7 @@ func TestSyncExistingRefreshesCopiesOnlyWhenInstalled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(data), "---\nname: flux\n---\nstale\n") || !strings.Contains(string(data), "flux sync --print") {
+	if strings.Contains(string(data), "---\nname: our\n---\nstale\n") || !strings.Contains(string(data), "our sync --print") {
 		t.Fatalf("synced skill content = %q", string(data))
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude")); !os.IsNotExist(err) {

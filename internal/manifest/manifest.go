@@ -1,4 +1,4 @@
-// Package manifest manages organization manifests used by the flux CLI.
+// Package manifest manages organization manifests used by the our CLI.
 package manifest
 
 import (
@@ -11,12 +11,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fluxinc/flux/internal/ghauth"
+	"github.com/fluxinc/our-ai/internal/ghauth"
 )
 
 const (
 	registryVersion = 1
-	appDir          = "flux"
+	appDir          = "our"
 	manifestFile    = "manifest.json"
 )
 
