@@ -69,11 +69,20 @@ state.
 Bootstrap / refresh the workspace:
 
 ```sh
-flux onboard [--manifest NAME]     # create umbrella, write guidance, install skills, sync mounts
-flux root [--product ID]           # print the umbrella (or product) path
-flux launch [harness]              # verify guidance is current, then start a harness
+flux onboard [--manifest NAME] [--no-refresh]
+                                    # create umbrella, write guidance, install skills, sync mounts
+flux root [--product ID] [--no-refresh]
+                                    # print the umbrella (or product) path
+flux launch [--no-refresh] [harness]
+                                    # verify guidance is current, then start a harness
 flux doctor [--no-fetch] [--fix]   # git freshness, derived drift, last sync, manifests, tools
 ```
+
+`root`, `launch`, and `onboard` make a best-effort, TTL-gated refresh of clean
+manifest/content checkouts before reading workspace context. They do not touch
+dirty, diverged, product, or remote-unknown repositories. Use `--no-refresh`
+for one command, `FLUX_NO_AUTO_REFRESH=1` globally, or `FLUX_REFRESH_TTL=30m`
+to tune the default six-hour window.
 
 Find and record knowledge:
 
@@ -108,6 +117,7 @@ unsafe duplicate-remote checkouts are held back.
 flux sync --print                  # plan only: show what would pull/push/hold (always safe)
 flux sync                          # reconcile + publish per the auto policy
 flux sync --no-derived             # skip skill/guidance reconcile after manifest changes
+flux sync --publish never          # explicit local-only reconcile
 flux sync --publish pr             # currently holds changes and reports PR-mode follow-up
 ```
 
@@ -115,9 +125,11 @@ flux sync --publish pr             # currently holds changes and reports PR-mode
 a Nit control workspace; otherwise it uses a guarded built-in Git path. Run
 `flux sync --print` first to see the plan before publishing. GitHub PR creation
 is a Flux policy layer planned on top of Nit and `gh`; it is not implemented in
-the current CLI yet. A non-print sync writes `.flux/last-sync.json`; use
-`flux doctor` to review the last publish/sync audit. `flux doctor` fetches refs
-before reporting behind/ahead counts by default; pass `--no-fetch` for an
+the current CLI yet. A manifest can set top-level `sync.publish_policy` to
+`auto`, `never`, or `pr` as the default when `--publish` is omitted; an
+explicit CLI flag always wins. A non-print sync writes `.flux/last-sync.json`;
+use `flux doctor` to review the last publish/sync audit. `flux doctor` fetches
+refs before reporting behind/ahead counts by default; pass `--no-fetch` for an
 offline view labeled as of the last fetch. `flux doctor --fix` only
 fast-forwards clean stale manifest/content checkouts and reconciles generated
 guidance plus manifest skills; it reports dirty, diverged, product, and

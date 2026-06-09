@@ -157,9 +157,9 @@ func (a app) printUsage() {
 	fmt.Fprintln(a.stdout, `flux installs and manages manifest-backed AI workspace tooling.
 
 Usage:
-  flux onboard [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR]
-  flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR]
-  flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [harness] [-- harness args...]
+  flux onboard [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh]
+  flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh]
+  flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [harness] [-- harness args...]
   flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
   flux skills self install|uninstall|status ...
   flux skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
@@ -201,11 +201,13 @@ func (a app) runRoot(args []string) error {
 	var manifestName string
 	var umbrellaRoot string
 	var productID string
+	var noRefresh bool
 	fs := newFlagSet("flux root", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "use a registered manifest when no umbrella is found")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
 	fs.StringVar(&productID, "product", "", "print this product's path under the umbrella")
+	fs.BoolVar(&noRefresh, "no-refresh", false, "skip best-effort auto-refresh")
 	fs.Usage = func() {
 		a.printRootUsage()
 		fs.PrintDefaults()
@@ -226,6 +228,7 @@ func (a app) runRoot(args []string) error {
 	if err != nil {
 		return err
 	}
+	a.maybeAutoRefresh(home, manifestName, root, root, noRefresh)
 	target := root
 	if productID != "" {
 		target = umbrella.ProductPath(root, productID)
@@ -236,7 +239,7 @@ func (a app) runRoot(args []string) error {
 
 func (a app) printRootUsage() {
 	fmt.Fprintln(a.stderr, `Usage of flux root:
-  flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR]
+  flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh]
 
 Examples:
   cd "$(flux root)" && claude
@@ -252,6 +255,7 @@ type launchCommandOpts struct {
 	productID    string
 	onboard      bool
 	printOnly    bool
+	noRefresh    bool
 }
 
 func (a app) runLaunch(args []string) error {
@@ -281,6 +285,7 @@ func (a app) runLaunch(args []string) error {
 		fmt.Fprintln(a.stdout, line)
 		return nil
 	}
+	a.maybeAutoRefresh(opts.home, opts.manifestName, root, root, opts.noRefresh)
 
 	doc, err := launchGuidanceDoc(opts.home, opts.manifestName, root)
 	if err != nil {
@@ -295,7 +300,7 @@ func (a app) runLaunch(args []string) error {
 			a.printLaunchGuidanceBlock(check)
 			return errAlreadyPrinted
 		}
-		if err := a.runOnboard(onboardArgsForLaunch(opts.home, doc.ref.Name, root)); err != nil {
+		if err := a.runOnboard(onboardArgsForLaunch(opts.home, doc.ref.Name, root, opts.noRefresh)); err != nil {
 			return err
 		}
 		doc, err = loadSingleRegisteredDoc(opts.home, doc.ref.Name)
@@ -322,7 +327,7 @@ func (a app) runLaunch(args []string) error {
 
 func (a app) printLaunchUsage() {
 	fmt.Fprintln(a.stderr, `Usage of flux launch:
-  flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [harness] [-- harness args...]
+  flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [harness] [-- harness args...]
 
 Harness defaults to claude-code. Harness flags go after the harness name.
 
@@ -338,6 +343,7 @@ Options:
   --umbrella DIR    override umbrella root
   --product ID      run from products/<id> under the umbrella
   --onboard         reconcile the umbrella first if guidance is stale or missing
+  --no-refresh      skip best-effort auto-refresh
   --print           print the resolved launch command without checking or execing`)
 }
 
@@ -358,6 +364,8 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			opts.onboard = true
 		case arg == "--print":
 			opts.printOnly = true
+		case arg == "--no-refresh":
+			opts.noRefresh = true
 		case arg == "--home" || arg == "--manifest" || arg == "--umbrella" || arg == "--product":
 			i++
 			if i >= len(args) {
@@ -429,10 +437,13 @@ func launchGuidanceDoc(home, manifestName, root string) (registeredDoc, error) {
 	return loadSingleRegisteredDoc(home, manifestName)
 }
 
-func onboardArgsForLaunch(home, manifestName, root string) []string {
+func onboardArgsForLaunch(home, manifestName, root string, noRefresh bool) []string {
 	args := []string{"--manifest", manifestName, "--umbrella", root}
 	if home != "" {
 		args = append(args, "--home", home)
+	}
+	if noRefresh {
+		args = append(args, "--no-refresh")
 	}
 	return args
 }
@@ -552,6 +563,14 @@ func (a app) runSync(args []string) error {
 	}
 	if !validSyncScope(scope) {
 		return fmt.Errorf("--scope must be one of all, local, content, manifest, or products")
+	}
+	publishExplicit := flagWasSet(fs, "publish")
+	if !publishExplicit {
+		var err error
+		publish, err = a.defaultSyncPublish(home, manifestName, publish)
+		if err != nil {
+			return a.maybeJSONError(jsonOut, err)
+		}
 	}
 	entries, err := a.collectSyncEntries(home, manifestName, umbrellaRoot, scope)
 	if err != nil {
@@ -684,6 +703,27 @@ func syncManifestResultChanged(result syncer.Result) bool {
 		return true
 	}
 	return len(result.Changed) != 0 && result.Status != "dry-run"
+}
+
+func flagWasSet(fs *flag.FlagSet, name string) bool {
+	found := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
+}
+
+func (a app) defaultSyncPublish(home, manifestName, fallback string) (string, error) {
+	doc, err := loadSingleRegisteredDoc(home, manifestName)
+	if err != nil {
+		return fallback, nil
+	}
+	if doc.doc.Sync.PublishPolicy == "" {
+		return fallback, nil
+	}
+	return doc.doc.Sync.PublishPolicy, nil
 }
 
 func validSyncBackend(value string) bool {
@@ -908,11 +948,22 @@ func syncReportFailed(report syncer.Report) bool {
 }
 
 const lastSyncFile = "last-sync.json"
+const autoRefreshFile = "auto-refresh.json"
+const defaultRefreshTTL = 6 * time.Hour
 
 type lastSyncAudit struct {
 	SchemaVersion int           `json:"schema_version"`
 	SavedAt       string        `json:"saved_at"`
 	Report        syncer.Report `json:"report"`
+}
+
+type autoRefreshState struct {
+	SchemaVersion int                          `json:"schema_version"`
+	Repos         map[string]autoRefreshRecord `json:"repos,omitempty"`
+}
+
+type autoRefreshRecord struct {
+	LastAutoRefresh string `json:"last_auto_refresh"`
 }
 
 func (a app) saveLastSyncReport(home, manifestName, umbrellaRoot string, report syncer.Report) error {
@@ -970,6 +1021,121 @@ func loadLastSyncAudit(root string) (lastSyncAudit, bool, error) {
 		return lastSyncAudit{}, false, fmt.Errorf("read %s: %w", path, err)
 	}
 	return audit, true, nil
+}
+
+func (a app) maybeAutoRefresh(home, manifestName, umbrellaRoot, root string, noRefresh bool) {
+	if noRefresh || os.Getenv("FLUX_NO_AUTO_REFRESH") != "" || root == "" || !hasFluxDir(root) {
+		return
+	}
+	ttl := autoRefreshTTL()
+	state, err := loadAutoRefreshState(root)
+	if err != nil {
+		fmt.Fprintf(a.stderr, "warning: auto-refresh skipped: %v\n", err)
+		return
+	}
+	entries, err := a.collectSyncEntries(home, manifestName, umbrellaRoot, "local")
+	if err != nil {
+		fmt.Fprintf(a.stderr, "warning: auto-refresh skipped: %v\n", err)
+		return
+	}
+	now := time.Now().UTC()
+	changed := false
+	for _, entry := range entries {
+		if !autoRefreshEntryAllowed(entry) {
+			continue
+		}
+		key := autoRefreshKey(entry)
+		if !autoRefreshDue(state, key, now, ttl) {
+			continue
+		}
+		result := syncer.Inspect([]syncer.Entry{entry}, syncer.InspectOptions{Fetch: true})[0]
+		item, _, include := doctorFixFreshnessItem(entry, result)
+		state.Repos[key] = autoRefreshRecord{LastAutoRefresh: now.Format(time.RFC3339)}
+		changed = true
+		if include && item.Status == "fixed" {
+			fmt.Fprintf(a.stderr, "refresh\t%s\tfixed\t%s\n", item.Name, item.Message)
+		} else if include && item.Status == "error" {
+			fmt.Fprintf(a.stderr, "warning: auto-refresh %s failed: %s\n", item.Name, item.Message)
+		}
+	}
+	if changed {
+		if err := saveAutoRefreshState(root, state); err != nil {
+			fmt.Fprintf(a.stderr, "warning: auto-refresh state not saved: %v\n", err)
+		}
+	}
+}
+
+func autoRefreshTTL() time.Duration {
+	value := strings.TrimSpace(os.Getenv("FLUX_REFRESH_TTL"))
+	if value == "" {
+		return defaultRefreshTTL
+	}
+	ttl, err := time.ParseDuration(value)
+	if err != nil {
+		return defaultRefreshTTL
+	}
+	return ttl
+}
+
+func loadAutoRefreshState(root string) (autoRefreshState, error) {
+	path := filepath.Join(root, umbrella.DirName, autoRefreshFile)
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return autoRefreshState{SchemaVersion: 1, Repos: map[string]autoRefreshRecord{}}, nil
+	}
+	if err != nil {
+		return autoRefreshState{}, err
+	}
+	var state autoRefreshState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return autoRefreshState{}, fmt.Errorf("read %s: %w", path, err)
+	}
+	if state.SchemaVersion == 0 {
+		state.SchemaVersion = 1
+	}
+	if state.Repos == nil {
+		state.Repos = map[string]autoRefreshRecord{}
+	}
+	return state, nil
+}
+
+func saveAutoRefreshState(root string, state autoRefreshState) error {
+	if state.SchemaVersion == 0 {
+		state.SchemaVersion = 1
+	}
+	if state.Repos == nil {
+		state.Repos = map[string]autoRefreshRecord{}
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return os.WriteFile(filepath.Join(root, umbrella.DirName, autoRefreshFile), data, 0o644)
+}
+
+func autoRefreshEntryAllowed(entry syncer.Entry) bool {
+	return entry.Role == "manifest" || entry.Role == "content"
+}
+
+func autoRefreshKey(entry syncer.Entry) string {
+	manifestName := entry.Manifest
+	if manifestName == "" {
+		manifestName = entry.ID
+	}
+	return entry.Role + ":" + manifestName + ":" + entry.ID
+}
+
+func autoRefreshDue(state autoRefreshState, key string, now time.Time, ttl time.Duration) bool {
+	record, ok := state.Repos[key]
+	if !ok || record.LastAutoRefresh == "" {
+		return true
+	}
+	last, err := time.Parse(time.RFC3339, record.LastAutoRefresh)
+	if err != nil {
+		return true
+	}
+	return !last.Add(ttl).After(now)
 }
 
 func findNitWorkspaceRoot(start string) string {
@@ -5157,6 +5323,7 @@ func (a app) runOnboard(args []string) error {
 	fs.BoolVar(&opts.linkMode, "link", false, "symlink skill directories")
 	fs.BoolVar(&opts.force, "force", false, "replace non-Flux-managed targets")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
+	fs.BoolVar(&opts.noRefresh, "no-refresh", false, "skip best-effort auto-refresh")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	fs.StringVar(&opts.manifestName, "manifest", "", "use skills declared by a synced manifest")
 	fs.StringVar(&opts.umbrellaRoot, "umbrella", "", "override umbrella root")
@@ -5208,6 +5375,12 @@ func (a app) runOnboard(args []string) error {
 			return err
 		}
 		ws = ensured
+		a.maybeAutoRefresh(opts.home, doc.ref.Name, root, root, opts.noRefresh)
+		refreshed, err := loadSingleRegisteredDoc(opts.home, doc.ref.Name)
+		if err != nil {
+			return err
+		}
+		doc = refreshed
 	}
 	guidanceResult, err := guidance.Ensure(root, doc.ref.LocalPath, doc.doc, guidance.Options{
 		Force:  opts.force,
@@ -5898,6 +6071,7 @@ type skillsCommandOpts struct {
 	force                  bool
 	jsonOut                bool
 	noPrune                bool
+	noRefresh              bool
 	source                 string
 	home                   string
 	manifestName           string

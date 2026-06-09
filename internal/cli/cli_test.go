@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fluxinc/flux/internal/manifest"
 	"github.com/fluxinc/flux/internal/meetings"
@@ -1678,6 +1679,276 @@ description: Acme handbook
 	}
 }
 
+func TestRootAutoRefreshFastForwardsCleanStaleMountAndKeepsStdoutPure(t *testing.T) {
+	remote, clone, writer := setupCLIRemoteRepo(t, t.TempDir(), "handbook", map[string]string{"README.md": "seed\n"})
+	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": "`+remote+`", "mode": "required" }
+  ]
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	mountPath := filepath.Join(umbrellaRoot, "handbook")
+	if err := os.Rename(clone, mountPath); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "meetings", "2026-06-09-remote.md"), "remote\n")
+	commitAndPushCLIGit(t, writer, "remote meeting")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"flux", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+		t.Fatal(err)
+	}
+	if got := stdout.String(); got != umbrellaRoot+"\n" {
+		t.Fatalf("root stdout = %q, want only root path", got)
+	}
+	if !strings.Contains(stderr.String(), "refresh\tacme:content:handbook\tfixed") {
+		t.Fatalf("root stderr = %q, want refresh note", stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(mountPath, "meetings", "2026-06-09-remote.md")); err != nil {
+		t.Fatalf("mount did not auto-refresh: %v", err)
+	}
+}
+
+func TestRootAutoRefreshSkipsRecentlyRefreshedMount(t *testing.T) {
+	remote, clone, writer := setupCLIRemoteRepo(t, t.TempDir(), "handbook", map[string]string{"README.md": "seed\n"})
+	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": "`+remote+`", "mode": "required" }
+  ]
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	mountPath := filepath.Join(umbrellaRoot, "handbook")
+	if err := os.Rename(clone, mountPath); err != nil {
+		t.Fatal(err)
+	}
+	state := autoRefreshState{SchemaVersion: 1, Repos: map[string]autoRefreshRecord{
+		"content:acme:handbook": {LastAutoRefresh: time.Now().UTC().Format(time.RFC3339)},
+	}}
+	if err := saveAutoRefreshState(umbrellaRoot, state); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "remote.md"), "remote\n")
+	commitAndPushCLIGit(t, writer, "remote meeting")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"flux", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(mountPath, "remote.md")); !os.IsNotExist(err) {
+		t.Fatalf("mount refreshed despite recent TTL state: %v", err)
+	}
+	if strings.Contains(stderr.String(), "handbook\tfixed") {
+		t.Fatalf("root stderr = %q, want no fixed refresh", stderr.String())
+	}
+}
+
+func TestRootAutoRefreshOptOutsSkipRefresh(t *testing.T) {
+	remote, clone, writer := setupCLIRemoteRepo(t, t.TempDir(), "handbook", map[string]string{"README.md": "seed\n"})
+	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": "`+remote+`", "mode": "required" }
+  ]
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	mountPath := filepath.Join(umbrellaRoot, "handbook")
+	if err := os.Rename(clone, mountPath); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "remote.md"), "remote\n")
+	commitAndPushCLIGit(t, writer, "remote meeting")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	t.Setenv("FLUX_NO_AUTO_REFRESH", "1")
+	if err := a.run([]string{"flux", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(mountPath, "remote.md")); !os.IsNotExist(err) {
+		t.Fatalf("mount refreshed despite FLUX_NO_AUTO_REFRESH: %v", err)
+	}
+	t.Setenv("FLUX_NO_AUTO_REFRESH", "")
+	if err := a.run([]string{"flux", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(mountPath, "remote.md")); !os.IsNotExist(err) {
+		t.Fatalf("mount refreshed despite --no-refresh: %v", err)
+	}
+}
+
+func TestOnboardAutoRefreshesManifestBeforeGuidance(t *testing.T) {
+	run := func(t *testing.T, noRefresh bool, wantFresh bool) {
+		t.Helper()
+		home, umbrellaRoot, _, _, writer := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+		writeCLITestFile(t, filepath.Join(writer, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "agent_guidance": { "paths": ["guidance/fresh.md"] }
+}`)
+		writeCLITestFile(t, filepath.Join(writer, "guidance", "fresh.md"), "fresh guidance from manifest\n")
+		commitAndPushCLIGit(t, writer, "add guidance")
+
+		args := []string{"flux", "onboard", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}
+		if noRefresh {
+			args = append(args, "--no-refresh")
+		}
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		if err := a.run(args); err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(filepath.Join(umbrellaRoot, "AGENTS.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotFresh := strings.Contains(string(data), "fresh guidance from manifest"); gotFresh != wantFresh {
+			t.Fatalf("AGENTS.md fresh=%v, want %v\n%s", gotFresh, wantFresh, data)
+		}
+	}
+
+	t.Run("refreshes", func(t *testing.T) {
+		run(t, false, true)
+	})
+	t.Run("opt out", func(t *testing.T) {
+		run(t, true, false)
+	})
+}
+
+func TestRootAutoRefreshSkipsDirtyDivergedAndProductRepos(t *testing.T) {
+	dirtyRemote, dirtyClone, dirtyWriter := setupCLIRemoteRepo(t, t.TempDir(), "dirty", map[string]string{"README.md": "seed\n"})
+	divergedRemote, divergedClone, divergedWriter := setupCLIRemoteRepo(t, t.TempDir(), "diverged", map[string]string{"README.md": "seed\n"})
+	productRemote, productClone, productWriter := setupCLIRemoteRepo(t, t.TempDir(), "product", map[string]string{"README.md": "seed\n"})
+	home, umbrellaRoot, manifestCache, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "dirty", "kind": "handbook", "git_url": "`+dirtyRemote+`", "mode": "required" },
+    { "id": "diverged", "kind": "handbook", "git_url": "`+divergedRemote+`", "mode": "required" }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "products.json"), `[
+  { "id": "sample-product", "name": "Sample Product", "git_url": "`+productRemote+`" }
+]`)
+	_, state, err := umbrella.Ensure(umbrellaRoot, "acme", "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state = umbrella.AddSelectedProduct(state, "sample-product")
+	if err := umbrella.SaveState(umbrellaRoot, state); err != nil {
+		t.Fatal(err)
+	}
+	dirtyPath := filepath.Join(umbrellaRoot, "dirty")
+	divergedPath := filepath.Join(umbrellaRoot, "diverged")
+	productPath := filepath.Join(umbrellaRoot, "products", "sample-product")
+	if err := os.Rename(dirtyClone, dirtyPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(divergedClone, divergedPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(productPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(productClone, productPath); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(dirtyWriter, "remote.md"), "remote\n")
+	commitAndPushCLIGit(t, dirtyWriter, "remote dirty")
+	writeCLITestFile(t, filepath.Join(dirtyPath, "local.md"), "dirty\n")
+	writeCLITestFile(t, filepath.Join(divergedPath, "local.md"), "local\n")
+	commitCLIGit(t, divergedPath, "local diverged")
+	writeCLITestFile(t, filepath.Join(divergedWriter, "remote.md"), "remote\n")
+	commitAndPushCLIGit(t, divergedWriter, "remote diverged")
+	writeCLITestFile(t, filepath.Join(productWriter, "remote.md"), "remote\n")
+	commitAndPushCLIGit(t, productWriter, "remote product")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"flux", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(dirtyPath, "remote.md"),
+		filepath.Join(divergedPath, "remote.md"),
+		filepath.Join(productPath, "remote.md"),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("%s refreshed despite guard: %v", path, err)
+		}
+	}
+}
+
+func TestSyncUsesManifestPublishPolicyAndCLIOverride(t *testing.T) {
+	home, _, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "sync": { "publish_policy": "never" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"flux", "sync", "--backend", "flux", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), `"publish": "never"`) {
+		t.Fatalf("sync stdout = %q, want manifest publish policy", stdout.String())
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"flux", "sync", "--backend", "flux", "--publish", "direct", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), `"publish": "direct"`) {
+		t.Fatalf("sync stdout = %q, want CLI override", stdout.String())
+	}
+}
+
+func TestSyncUsesManifestPRPublishPolicy(t *testing.T) {
+	home, _, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "sync": { "publish_policy": "pr" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"flux", "sync", "--backend", "flux", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), `"publish": "pr"`) {
+		t.Fatalf("sync stdout = %q, want manifest PR policy", stdout.String())
+	}
+}
+
+func TestOnboardArgsForLaunchCarriesNoRefresh(t *testing.T) {
+	args := onboardArgsForLaunch("/home/example", "acme", "/home/example/acme", true)
+	if !strings.Contains(strings.Join(args, " "), "--no-refresh") {
+		t.Fatalf("onboard args = %#v, want --no-refresh", args)
+	}
+}
+
 func TestLaunchPrintsResolvedCommandWithoutCheckingGuidance(t *testing.T) {
 	home, _ := setupCLILaunchFixture(t)
 	var stdout, stderr bytes.Buffer
@@ -2488,6 +2759,12 @@ func commitAndPushCLIGit(t *testing.T, dir, message string) {
 	runCLIGit(t, dir, "add", ".")
 	runCLIGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=flux-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", message)
 	runCLIGit(t, dir, "push", "-q", "origin", "HEAD:master")
+}
+
+func commitCLIGit(t *testing.T, dir, message string) {
+	t.Helper()
+	runCLIGit(t, dir, "add", ".")
+	runCLIGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=flux-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", message)
 }
 
 func runCLIGit(t *testing.T, dir string, args ...string) {

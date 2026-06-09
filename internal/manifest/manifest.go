@@ -57,6 +57,7 @@ type Document struct {
 	AllowedExternalNamespaces []string      `json:"allowed_external_namespaces,omitempty"`
 	Umbrella                  Umbrella      `json:"umbrella,omitzero"`
 	AgentGuidance             AgentGuidance `json:"agent_guidance,omitzero"`
+	Sync                      SyncPolicy    `json:"sync,omitzero"`
 	Skills                    []Skill       `json:"skills,omitempty"`
 	Mounts                    []Mount       `json:"mounts,omitempty"`
 	Workspaces                []Workspace   `json:"workspaces,omitempty"`
@@ -94,6 +95,11 @@ type Umbrella struct {
 // AGENTS.md files.
 type AgentGuidance struct {
 	Paths []string `json:"paths,omitempty"`
+}
+
+// SyncPolicy controls workspace-wide sync behavior.
+type SyncPolicy struct {
+	PublishPolicy string `json:"publish_policy,omitempty"`
 }
 
 // Mount describes one content source that can be cloned into an umbrella.
@@ -641,6 +647,7 @@ func validateOrgManifest(doc Document, result *ValidationResult) {
 	}
 	validateUmbrella(doc.Umbrella, result)
 	validateAgentGuidance(doc.AgentGuidance, result)
+	validateSyncPolicy(doc.Sync, result)
 	for _, m := range doc.Mounts {
 		validateMount(m, result)
 	}
@@ -649,6 +656,24 @@ func validateOrgManifest(doc Document, result *ValidationResult) {
 	}
 	for _, t := range doc.Tools {
 		validateTool(t, result)
+	}
+}
+
+func validateSyncPolicy(policy SyncPolicy, result *ValidationResult) {
+	if policy.PublishPolicy == "" {
+		return
+	}
+	if !validPublishPolicy(policy.PublishPolicy) {
+		result.Errors = append(result.Errors, fmt.Sprintf("sync.publish_policy %q is unsupported", policy.PublishPolicy))
+	}
+}
+
+func validPublishPolicy(value string) bool {
+	switch value {
+	case "auto", "never", "pr":
+		return true
+	default:
+		return false
 	}
 }
 

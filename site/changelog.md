@@ -12,6 +12,11 @@
   refs by default and supports `--no-fetch` for offline freshness checks.
 - `flux sync` reconciles generated guidance and manifest skills after manifest
   checkout changes, with `--no-derived` as an escape hatch.
+- `flux root`, `flux launch`, and `flux onboard` perform a best-effort,
+  TTL-gated refresh for clean manifest/content checkouts, with `--no-refresh`,
+  `FLUX_NO_AUTO_REFRESH`, and `FLUX_REFRESH_TTL` controls.
+- Manifests can set `sync.publish_policy` to `auto`, `never`, or `pr` as the
+  default for `flux sync` when `--publish` is omitted.
 - Added `flux admin customers add` and `flux admin customers edit` for customer
   catalog writes.
 - `flux admin skills remove` reports orphaned tools and allowed skill namespaces,

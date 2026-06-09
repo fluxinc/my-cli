@@ -230,6 +230,19 @@ func TestValidateManifestCatchesInvalidAgentGuidancePaths(t *testing.T) {
 	}
 }
 
+func TestValidateManifestCatchesInvalidSyncPolicy(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "sync": { "publish_policy": "direct" }
+}`)
+	result := ValidateFile(dir)
+	if len(result.Errors) != 1 || !strings.Contains(result.Errors[0], "sync.publish_policy") {
+		t.Fatalf("errors = %#v", result.Errors)
+	}
+}
+
 func TestValidateManifestAllowsWorkspaceRequirementFromMount(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `{

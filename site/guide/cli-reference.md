@@ -6,9 +6,9 @@ commands by job.
 ## Setup and launch
 
 ```sh
-flux onboard [harness...] | --all [--manifest NAME] [--home DIR] [--umbrella DIR]
-flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR]
-flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [harness] [-- harness args...]
+flux onboard [harness...] | --all [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh]
+flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh]
+flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--no-refresh] [harness] [-- harness args...]
 flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--no-derived] [--print] [--json]
 flux doctor [--no-fetch] [--fix] [--json]
 flux version
@@ -76,10 +76,18 @@ flux tools info <name>
 when the umbrella is initialized as a Nit control workspace; Flux keeps the
 bootstrap, policy, duplicate-remote, and PR layers. `--publish direct` can
 publish existing local commits directly, but dirty non-content/admin files are
-still held back for explicit admin or review handling. Non-print syncs write
+still held back for explicit admin or review handling. A manifest can set
+top-level `sync.publish_policy` to `auto`, `never`, or `pr` as the default when
+`--publish` is omitted; an explicit CLI flag always wins. Non-print syncs write
 `.flux/last-sync.json`; `flux doctor` reports that audit, per-checkout Git
 freshness, and derived skill/guidance drift. Doctor fetches refs before
 behind/ahead checks unless `--no-fetch` is passed for an offline view. `doctor
 --fix` fast-forwards only clean stale manifest/content checkouts and reconciles
 derived guidance plus manifest skills. Sync performs the same derived reconcile
 after manifest checkout changes unless `--no-derived` is passed.
+
+`flux root`, `flux launch`, and `flux onboard` run a best-effort, TTL-gated
+refresh for clean manifest/content checkouts before using workspace context.
+They leave dirty, diverged, product, and remote-unknown repositories untouched.
+Use `--no-refresh` for one command, `FLUX_NO_AUTO_REFRESH=1` globally, or
+`FLUX_REFRESH_TTL=30m` to tune the default six-hour window.

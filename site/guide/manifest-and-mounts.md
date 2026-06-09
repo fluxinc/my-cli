@@ -15,6 +15,19 @@ flux manifest validate acme
 The synced cache is disposable derived state. Admin authoring commands should
 write a maintainer checkout through `--manifest-dir`.
 
+Manifests can also set the default sync publish policy:
+
+```json
+{
+  "sync": {
+    "publish_policy": "auto"
+  }
+}
+```
+
+Allowed values are `auto`, `never`, and `pr`. The setting applies when
+`flux sync` is run without `--publish`; an explicit CLI flag overrides it.
+
 ## Mount lifecycle
 
 ```sh

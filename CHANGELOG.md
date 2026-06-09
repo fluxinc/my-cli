@@ -16,6 +16,11 @@
   `flux doctor` surfaces the last sync/publish audit.
 - `flux sync` now reconciles generated guidance and manifest skills after
   manifest checkout changes; pass `--no-derived` to skip that step.
+- `flux root`, `flux launch`, and `flux onboard` now run a best-effort,
+  TTL-gated refresh for clean manifest/content checkouts, with `--no-refresh`,
+  `FLUX_NO_AUTO_REFRESH`, and `FLUX_REFRESH_TTL` controls.
+- Manifests can set `sync.publish_policy` to `auto`, `never`, or `pr` as the
+  default for `flux sync` when `--publish` is omitted.
 - Added `flux admin customers add` and `flux admin customers edit` for explicit
   maintainer writes to `catalog/customers.json`.
 - `flux admin skills remove` now reports orphaned tool declarations and allowed

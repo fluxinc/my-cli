@@ -36,8 +36,9 @@ CLI deliberately does not grow human-workflow verbs; it grows content kinds.
 
 **Manifest** — an org's configuration in a Git repo, cached locally on
 `manifest add` + `manifest sync`. The single source of truth for what skills
-exist, what mounts exist, what products are in the catalog, and what tools the
-org expects. Validated by a schema (`manifest validate`).
+exist, what mounts exist, what products are in the catalog, what tools the org
+expects, and the default `flux sync` publish policy. Validated by a schema
+(`manifest validate`).
 
 **Skill** — a capability installed into harness skill directories. Two kinds:
 
@@ -142,7 +143,9 @@ outside its own tree.
 
 `flux onboard --manifest <name>`:
 
-1. Resolve the registered manifest; ensure the local cache is synced.
+1. Resolve the registered manifest; ensure the local cache exists and, when the
+   TTL allows it, best-effort fast-forward clean stale manifest/content
+   checkouts.
 2. Validate the manifest (schema + cross-references).
 3. Install the bundled `flux` self-skill and declared organization skills into
    every present harness (static ones from the cache; tool-provided ones via
@@ -158,6 +161,13 @@ outside its own tree.
 
 Every step is convergent: re-running `onboard` reconciles rather than
 duplicates.
+
+Startup commands (`flux root`, `flux launch`, and `flux onboard`) use the same
+best-effort refresh path. The guard is deliberately narrow: fast-forward only,
+clean manifest/content checkouts only, TTL-gated, and never product repos,
+dirty checkouts, diverged branches, or remote-unknown repos. Operators can use
+`--no-refresh`, `FLUX_NO_AUTO_REFRESH=1`, or `FLUX_REFRESH_TTL` when they need
+fully offline or deterministic reads.
 
 ## 6. Authentication contract
 

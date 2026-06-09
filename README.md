@@ -60,7 +60,7 @@ Run `flux --help` for the authoritative surface. The essentials:
 
 ```sh
 flux onboard [harness...] | --all   # create umbrella, write guidance, install skills, sync mounts
-                                    # [--manifest NAME] [--umbrella DIR] [--copy] [--link] [--print]
+                                    # [--manifest NAME] [--umbrella DIR] [--copy] [--link] [--print] [--no-refresh]
 ```
 
 `onboard` is the normal path: idempotent, non-interactive, safe to re-run.
@@ -68,14 +68,20 @@ flux onboard [harness...] | --all   # create umbrella, write guidance, install s
 ### Startup
 
 ```sh
-flux root [--product ID]                     # print the umbrella or product path
-flux launch [--product ID] [harness]         # verify guidance, then start a harness
+flux root [--product ID] [--no-refresh]      # print the umbrella or product path
+flux launch [--product ID] [--no-refresh] [harness]
+                                             # verify guidance, then start a harness
 flux launch codex --model gpt-5              # pass harness flags after the harness name
 flux launch --print codex                    # print cd <umbrella> && codex
 ```
 
 `launch` refuses to start against missing or stale generated guidance. Pass
 `--onboard` to reconcile first, or run `flux onboard` directly.
+`root`, `launch`, and `onboard` also run a best-effort, TTL-gated refresh of
+clean manifest/content checkouts so startup sees current context without
+touching dirty, diverged, product, or remote-unknown repositories. Use
+`--no-refresh` for one command, `FLUX_NO_AUTO_REFRESH=1` globally, or
+`FLUX_REFRESH_TTL=30m` to tune the default six-hour refresh window.
 
 ### Manifests
 
@@ -158,7 +164,7 @@ flux mount remove <mount...> [--force]
 ```sh
 flux sync --print                           # plan inbound refresh and outbound publish
 flux sync [--backend auto|nit|flux]         # auto prefers Nit once the umbrella is initialized
-flux sync --publish auto|never|direct|pr    # auto is private content-only
+flux sync --publish auto|never|direct|pr    # explicit override; direct is CLI-only
 flux sync --no-derived                      # skip skill/guidance reconcile after manifest changes
 ```
 
@@ -170,10 +176,12 @@ resume; Pins are reserved for intentional recorded workspace states. The Flux
 backend is a guarded bootstrap fallback when a workspace has not been
 initialized as a Nit control workspace. `--publish direct` can publish existing
 local commits directly, but dirty non-content/admin files are still held back
-instead of being quietly committed. Non-print syncs write `.flux/last-sync.json`
-so `flux doctor` can show the last sync/publish audit. When sync pulls or
-publishes a manifest checkout, it reconciles generated guidance and manifest
-skills unless `--no-derived` is passed.
+instead of being quietly committed. A manifest can set top-level
+`sync.publish_policy` to `auto`, `never`, or `pr` as the default when
+`--publish` is omitted; an explicit CLI flag always wins. Non-print syncs write
+`.flux/last-sync.json` so `flux doctor` can show the last sync/publish audit.
+When sync pulls or publishes a manifest checkout, it reconciles generated
+guidance and manifest skills unless `--no-derived` is passed.
 
 ### Catalog
 
