@@ -160,7 +160,7 @@ Usage:
   flux onboard [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR]
   flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR]
   flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [harness] [-- harness args...]
-  flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
+  flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
   flux skills self install|uninstall|status ...
   flux skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
   flux skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
@@ -192,7 +192,7 @@ Usage:
   flux meetings add <slug>
   flux customers list
   flux catalog list products
-  flux doctor [--no-fetch] [--json]
+  flux doctor [--no-fetch] [--fix] [--json]
   flux version`)
 }
 
@@ -512,6 +512,7 @@ func (a app) runSync(args []string) error {
 	var scope string
 	var message string
 	var printOnly bool
+	var noDerived bool
 	var jsonOut bool
 	fs := newFlagSet("flux sync", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
@@ -522,6 +523,7 @@ func (a app) runSync(args []string) error {
 	fs.StringVar(&scope, "scope", "all", "sync scope: all, local, content, manifest, or products")
 	fs.StringVar(&message, "message", "", "commit message for newly committed content")
 	fs.BoolVar(&printOnly, "print", false, "print planned actions without changing files or remotes")
+	fs.BoolVar(&noDerived, "no-derived", false, "skip derived skill/guidance reconciliation after manifest changes")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
 	fs.Usage = func() {
 		a.printSyncUsage()
@@ -584,27 +586,52 @@ func (a app) runSync(args []string) error {
 	if backendMessage != "" && report.BackendMessage == "" {
 		report.BackendMessage = backendMessage
 	}
+	var derived *derivedReconcileReport
+	if !printOnly && !noDerived && syncScopeAllowsDerived(scope) {
+		if changedManifest, ok := changedManifestForDerived(report); ok {
+			if root, hasRoot, err := existingUmbrellaRoot(home, changedManifest, umbrellaRoot); err != nil {
+				return a.maybeJSONError(jsonOut, err)
+			} else if hasRoot {
+				derivedReport, err := a.reconcileDerived(home, changedManifest, root)
+				if err != nil {
+					return a.maybeJSONError(jsonOut, err)
+				}
+				derived = &derivedReport
+			}
+		}
+	}
 	if !printOnly {
 		if err := a.saveLastSyncReport(home, manifestName, umbrellaRoot, report); err != nil {
 			return a.maybeJSONError(jsonOut, err)
 		}
 	}
 	if jsonOut {
-		if err := printJSON(a.stdout, report); err != nil {
+		if err := printJSON(a.stdout, syncCommandReport{Report: report, Derived: derived}); err != nil {
 			return err
 		}
 	} else {
 		a.printSyncReport(report)
+		if derived != nil {
+			a.printDerivedReconcileReport(*derived)
+		}
 	}
 	if syncReportFailed(report) {
 		return a.maybeJSONError(jsonOut, fmt.Errorf("one or more sync operations failed"))
 	}
+	if derivedReportFailed(derived) {
+		return a.maybeJSONError(jsonOut, fmt.Errorf("one or more derived reconciliation operations failed"))
+	}
 	return nil
+}
+
+type syncCommandReport struct {
+	syncer.Report
+	Derived *derivedReconcileReport `json:"derived,omitempty"`
 }
 
 func (a app) printSyncUsage() {
 	fmt.Fprintln(a.stderr, `Usage of flux sync:
-  flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--print] [--json]
+  flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
 
 Synchronizes registered Flux repositories in both directions. The default
 backend uses Nit when the umbrella is a Nit workspace; otherwise Flux uses a
@@ -612,7 +639,51 @@ guarded Git fallback until bootstrap/canonicalization is complete. The default
 publish mode only pushes private content-only changes when sibling checkouts of
 the same remote are clean. Direct mode can push existing commits, but dirty
 non-content changes still require an explicit admin or review workflow.
-Non-print runs write .flux/last-sync.json when an umbrella is present.`)
+Non-print runs write .flux/last-sync.json when an umbrella is present. When a
+manifest checkout changes, sync also reconciles generated guidance and
+manifest skills unless --no-derived is passed.`)
+}
+
+func syncScopeAllowsDerived(scope string) bool {
+	switch scope {
+	case "all", "local", "manifest":
+		return true
+	default:
+		return false
+	}
+}
+
+func changedManifestForDerived(report syncer.Report) (string, bool) {
+	seen := map[string]bool{}
+	var names []string
+	for _, result := range report.Results {
+		if result.Role != "manifest" {
+			continue
+		}
+		if !syncManifestResultChanged(result) {
+			continue
+		}
+		name := result.Manifest
+		if name == "" {
+			name = result.ID
+		}
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	if len(names) != 1 {
+		return "", false
+	}
+	return names[0], true
+}
+
+func syncManifestResultChanged(result syncer.Result) bool {
+	if result.Status == "pulled" || result.Status == "pushed" {
+		return true
+	}
+	return len(result.Changed) != 0 && result.Status != "dry-run"
 }
 
 func validSyncBackend(value string) bool {
@@ -1729,12 +1800,14 @@ func (a app) runDoctor(args []string) error {
 	var manifestName string
 	var umbrellaRoot string
 	var noFetch bool
+	var fix bool
 	var jsonOut bool
 	fs := newFlagSet("flux doctor", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
 	fs.BoolVar(&noFetch, "no-fetch", false, "use local tracking refs without fetching remotes")
+	fs.BoolVar(&fix, "fix", false, "fast-forward safe stale checkouts and reconcile derived artifacts")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
 	rest, err := parseInterspersed(fs, args, map[string]bool{
 		"home":     true,
@@ -1747,16 +1820,26 @@ func (a app) runDoctor(args []string) error {
 	if len(rest) != 0 {
 		return fmt.Errorf("doctor does not accept positional arguments")
 	}
-	report := a.buildDoctorReport(home, manifestName, umbrellaRoot, doctorOptions{NoFetch: noFetch})
-	if jsonOut {
-		return printJSON(a.stdout, report)
+	if fix && noFetch {
+		return fmt.Errorf("--fix requires fetched freshness; omit --no-fetch")
 	}
-	a.printDoctorReport(report)
+	report := a.buildDoctorReport(home, manifestName, umbrellaRoot, doctorOptions{NoFetch: noFetch, Fix: fix})
+	if jsonOut {
+		if err := printJSON(a.stdout, report); err != nil {
+			return err
+		}
+	} else {
+		a.printDoctorReport(report)
+	}
+	if fix && doctorFixFailed(report.Fixes) {
+		return fmt.Errorf("one or more doctor fixes failed")
+	}
 	return nil
 }
 
 type doctorOptions struct {
 	NoFetch bool
+	Fix     bool
 }
 
 type doctorReport struct {
@@ -1764,6 +1847,7 @@ type doctorReport struct {
 	Manifests  []doctorItem `json:"manifests"`
 	Freshness  []doctorItem `json:"freshness,omitempty"`
 	Derived    []doctorItem `json:"derived,omitempty"`
+	Fixes      []doctorItem `json:"fixes,omitempty"`
 	LastSync   []doctorItem `json:"last_sync,omitempty"`
 	Workspaces []doctorItem `json:"workspaces"`
 	Tools      []doctorItem `json:"tools"`
@@ -1823,6 +1907,9 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 	}
 	report.Freshness = append(report.Freshness, a.doctorFreshness(home, manifestName, umbrellaRoot, !opts.NoFetch, root)...)
 	report.Derived = append(report.Derived, a.doctorDerived(home, manifestName, root)...)
+	if opts.Fix {
+		report.Fixes = append(report.Fixes, a.doctorFix(home, manifestName, umbrellaRoot, root, report.Derived)...)
+	}
 	if root != "" {
 		report.LastSync = append(report.LastSync, doctorLastSync(root))
 	}
@@ -1972,6 +2059,180 @@ func doctorFreshnessMessage(result syncer.Result, fetch bool) string {
 	return strings.Join(parts, " ")
 }
 
+func (a app) doctorFix(home, manifestName, umbrellaRoot, root string, derived []doctorItem) []doctorItem {
+	entries, err := a.collectSyncEntries(home, manifestName, umbrellaRoot, "local")
+	if err != nil {
+		return []doctorItem{{Name: "git", Status: "error", Message: err.Error()}}
+	}
+	entryByPath := map[string]syncer.Entry{}
+	for _, entry := range entries {
+		entryByPath[entry.LocalPath] = entry
+	}
+	results := syncer.Inspect(entries, syncer.InspectOptions{Fetch: true})
+	var items []doctorItem
+	manifestFixed := false
+	for _, result := range results {
+		entry, ok := entryByPath[result.LocalPath]
+		if !ok {
+			continue
+		}
+		item, fixedManifest, include := doctorFixFreshnessItem(entry, result)
+		if !include {
+			continue
+		}
+		if fixedManifest {
+			manifestFixed = true
+		}
+		items = append(items, item)
+	}
+	if manifestFixed || doctorDerivedHasDrift(derived) {
+		items = append(items, a.doctorFixDerived(home, manifestName, root)...)
+	}
+	return items
+}
+
+func doctorFixFreshnessItem(entry syncer.Entry, result syncer.Result) (doctorItem, bool, bool) {
+	item := doctorItem{Name: doctorFreshnessName(result), Path: result.LocalPath}
+	if result.BehindUnknown || result.Status == "unknown" {
+		item.Status = "skipped"
+		item.Message = "remote freshness unknown"
+		return item, false, true
+	}
+	if result.Status == "failed" {
+		item.Status = "error"
+		item.Message = result.Error
+		return item, false, true
+	}
+	if result.Role == "product" && result.Behind > 0 {
+		item.Status = "skipped"
+		item.Message = "product repositories are never fixed by doctor"
+		return item, false, true
+	}
+	if len(result.Dirty) != 0 {
+		item.Status = "skipped"
+		item.Message = "dirty checkout; commit or stash before fixing"
+		item.Details = append(item.Details, "dirty="+strings.Join(result.Dirty, ","))
+		return item, false, true
+	}
+	if result.Ahead != 0 && result.Behind != 0 {
+		item.Status = "skipped"
+		item.Message = "diverged checkout; reconcile manually"
+		return item, false, true
+	}
+	if result.Behind == 0 {
+		return doctorItem{}, false, false
+	}
+	if result.Role != "manifest" && result.Role != "content" {
+		item.Status = "skipped"
+		item.Message = "only manifest and read-mostly content checkouts are fixed"
+		return item, false, true
+	}
+	fixed := syncer.FastForward(entry, syncer.FastForwardOptions{})
+	item.Message = fixed.Message
+	switch fixed.Status {
+	case "pulled":
+		item.Status = "fixed"
+		item.Message = "pulled --ff-only"
+		if fixed.Head != "" {
+			item.Details = append(item.Details, "head="+fixed.Head)
+		}
+		return item, result.Role == "manifest", true
+	case "already landed":
+		item.Status = "skipped"
+		item.Message = "already up to date"
+	case "failed":
+		item.Status = "error"
+		item.Message = fixed.Error
+	default:
+		item.Status = "skipped"
+		if item.Message == "" {
+			item.Message = fixed.Status
+		}
+	}
+	return item, false, true
+}
+
+func doctorDerivedHasDrift(items []doctorItem) bool {
+	for _, item := range items {
+		if item.Status != "ok" {
+			return true
+		}
+	}
+	return false
+}
+
+func (a app) doctorFixDerived(home, manifestName, root string) []doctorItem {
+	if root == "" {
+		return []doctorItem{{Name: "derived", Status: "skipped", Message: "no flux umbrella found; run flux onboard or pass --umbrella"}}
+	}
+	report, err := a.reconcileDerived(home, manifestName, root)
+	if err != nil {
+		return []doctorItem{{Name: "derived", Status: "error", Message: err.Error()}}
+	}
+	return doctorDerivedFixItems(report)
+}
+
+func doctorDerivedFixItems(report derivedReconcileReport) []doctorItem {
+	items := []doctorItem{{
+		Name:    "guidance",
+		Status:  doctorFixStatusFromGuidance(report.Guidance.Status),
+		Path:    report.Guidance.TargetPath,
+		Message: report.Guidance.Message,
+	}}
+	if report.Guidance.ClaudePath != "" {
+		items[0].Details = append(items[0].Details, "claude_path="+report.Guidance.ClaudePath)
+	}
+	for _, result := range report.Skills {
+		item := doctorItem{
+			Name:    "skill:" + string(result.Harness) + ":" + result.Skill,
+			Status:  doctorFixStatusFromSkill(result.Status),
+			Path:    result.TargetPath,
+			Message: result.Message,
+		}
+		if result.CanonicalID != "" {
+			item.Details = append(item.Details, "canonical_id="+result.CanonicalID)
+		}
+		if result.Err != nil {
+			item.Details = append(item.Details, result.Err.Error())
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+func doctorFixStatusFromGuidance(status string) string {
+	switch status {
+	case "installed", "updated":
+		return "fixed"
+	case "blocked":
+		return "error"
+	default:
+		return status
+	}
+}
+
+func doctorFixStatusFromSkill(status string) string {
+	switch status {
+	case skills.StatusInstalled, skills.StatusUpdated, skills.StatusRemoved:
+		return "fixed"
+	case skills.StatusFailed, skills.StatusBlocked:
+		return "error"
+	case skills.StatusSkipped, skills.StatusDryRun, skills.StatusNotInstalled:
+		return "skipped"
+	default:
+		return status
+	}
+}
+
+func doctorFixFailed(items []doctorItem) bool {
+	for _, item := range items {
+		if item.Status == "error" {
+			return true
+		}
+	}
+	return false
+}
+
 func (a app) doctorDerived(home, manifestName, root string) []doctorItem {
 	var items []doctorItem
 	items = append(items, a.doctorSkillDrift(home, manifestName)...)
@@ -2065,6 +2326,82 @@ func doctorDerivedGuidance(home, root, manifestName string) doctorItem {
 		item.Message = "workspace guidance matches current manifest"
 	}
 	return item
+}
+
+type derivedReconcileReport struct {
+	Guidance guidance.Result `json:"guidance"`
+	Skills   []skills.Result `json:"skills,omitempty"`
+}
+
+func (a app) reconcileDerived(home, manifestName, root string) (derivedReconcileReport, error) {
+	if manifestName == "" {
+		if ws, err := umbrella.LoadWorkspace(root); err == nil {
+			manifestName = ws.ManifestRef
+		}
+	}
+	if root == "" {
+		return derivedReconcileReport{}, fmt.Errorf("no flux umbrella found; run flux onboard or pass --umbrella")
+	}
+	doc, err := loadSingleRegisteredDoc(home, manifestName)
+	if err != nil {
+		return derivedReconcileReport{}, err
+	}
+	guidanceResult, err := guidance.Ensure(root, doc.ref.LocalPath, doc.doc, guidance.Options{})
+	if err != nil {
+		return derivedReconcileReport{}, err
+	}
+	opts := skillsCommandOpts{
+		all:                    true,
+		home:                   home,
+		manifestName:           doc.ref.Name,
+		quietSource:            true,
+		allowMissingToolSkills: true,
+	}
+	skillResults, err := a.collectSkillSyncResults(opts, harness.All(), false)
+	if err != nil {
+		return derivedReconcileReport{}, err
+	}
+	return derivedReconcileReport{Guidance: guidanceResult, Skills: skillResults}, nil
+}
+
+func (a app) printDerivedReconcileReport(report derivedReconcileReport) {
+	line := fmt.Sprintf("derived\tguidance\t%s\t%s", report.Guidance.Status, report.Guidance.TargetPath)
+	if report.Guidance.Message != "" {
+		line += "\t" + report.Guidance.Message
+	}
+	fmt.Fprintln(a.stdout, line)
+	for _, result := range report.Skills {
+		line := fmt.Sprintf("derived-skill\t%s\t%s\t%s", result.Harness, result.Skill, result.Status)
+		if result.TargetPath != "" {
+			line += "\t" + result.TargetPath
+		}
+		if result.Message != "" {
+			line += "\t" + result.Message
+		}
+		if result.Err != nil {
+			line += "\t" + result.Err.Error()
+		}
+		fmt.Fprintln(a.stdout, line)
+	}
+}
+
+func derivedReportFailed(report *derivedReconcileReport) bool {
+	if report == nil {
+		return false
+	}
+	return derivedReconcileFailed(*report)
+}
+
+func derivedReconcileFailed(report derivedReconcileReport) bool {
+	if report.Guidance.Status == "blocked" {
+		return true
+	}
+	for _, result := range report.Skills {
+		if result.Status == skills.StatusFailed || result.Status == skills.StatusBlocked {
+			return true
+		}
+	}
+	return false
 }
 
 func doctorLastSync(root string) doctorItem {
@@ -2222,6 +2559,7 @@ func (a app) printDoctorReport(report doctorReport) {
 	printItems("umbrella", report.Umbrella)
 	printItems("freshness", report.Freshness)
 	printItems("derived", report.Derived)
+	printItems("fix", report.Fixes)
 	printItems("last-sync", report.LastSync)
 	printItems("workspace", report.Workspaces)
 	printItems("tool", report.Tools)
@@ -5129,14 +5467,14 @@ func (a app) runSkillsSync(args []string) error {
 	if err != nil {
 		return err
 	}
-	results, err := a.collectSkillSyncResults(opts, hs)
+	results, err := a.collectSkillSyncResults(opts, hs, true)
 	if err != nil {
 		return err
 	}
 	return a.printResults(results, opts.jsonOut)
 }
 
-func (a app) collectSkillSyncResults(opts skillsCommandOpts, hs []harness.Harness) ([]skills.Result, error) {
+func (a app) collectSkillSyncResults(opts skillsCommandOpts, hs []harness.Harness, syncLegacyWorkspaces bool) ([]skills.Result, error) {
 	if err := a.prepareManifestSkillSources(opts); err != nil {
 		return nil, err
 	}
@@ -5149,7 +5487,7 @@ func (a app) collectSkillSyncResults(opts skillsCommandOpts, hs []harness.Harnes
 		return nil, err
 	}
 	a.printSkillWarnings(selected)
-	if manifestBacked {
+	if manifestBacked && syncLegacyWorkspaces {
 		a.syncSkillWorkspaces(opts.home, opts.manifestName, opts.print)
 	}
 

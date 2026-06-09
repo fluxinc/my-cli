@@ -159,6 +159,7 @@ flux mount remove <mount...> [--force]
 flux sync --print                           # plan inbound refresh and outbound publish
 flux sync [--backend auto|nit|flux]         # auto prefers Nit once the umbrella is initialized
 flux sync --publish auto|never|direct|pr    # auto is private content-only
+flux sync --no-derived                      # skip skill/guidance reconcile after manifest changes
 ```
 
 `flux sync` is the routine reconciliation command. Flux classifies changes,
@@ -170,7 +171,9 @@ backend is a guarded bootstrap fallback when a workspace has not been
 initialized as a Nit control workspace. `--publish direct` can publish existing
 local commits directly, but dirty non-content/admin files are still held back
 instead of being quietly committed. Non-print syncs write `.flux/last-sync.json`
-so `flux doctor` can show the last sync/publish audit.
+so `flux doctor` can show the last sync/publish audit. When sync pulls or
+publishes a manifest checkout, it reconciles generated guidance and manifest
+skills unless `--no-derived` is passed.
 
 ### Catalog
 
@@ -198,14 +201,17 @@ is present and falls back to built-in token-AND markdown search.
 
 ```sh
 flux tools info <name>                      # install hints for a declared tool
-flux doctor [--no-fetch]                    # git freshness, derived drift, last sync, manifests, tools
+flux doctor [--no-fetch] [--fix]            # git freshness, derived drift, last sync, manifests, tools
 ```
 
 Data-returning commands expose `--json` where shown. Structured errors use a
 machine-readable `{error, message, remediation}` with a concrete next command,
 so an agent that hits a wall can recover without a human.
 `flux doctor` fetches refs before reporting behind/ahead counts by default; use
-`--no-fetch` for an offline view labeled as of the last fetch.
+`--no-fetch` for an offline view labeled as of the last fetch. `--fix` only
+fast-forwards clean stale manifest/content checkouts and reconciles derived
+skills/guidance; dirty, diverged, product, and remote-unknown checkouts are
+reported rather than touched.
 
 ## Supported Harnesses
 

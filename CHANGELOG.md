@@ -9,8 +9,13 @@
   local-tracking-ref checks.
 - `flux doctor` now reports derived drift for manifest skills and generated
   workspace guidance.
+- Added `flux doctor --fix` to fast-forward clean stale manifest/content
+  checkouts and reconcile generated guidance plus manifest skills while leaving
+  dirty, diverged, product, and remote-unknown checkouts untouched.
 - `flux sync` now records non-print runs to `.flux/last-sync.json`, and
   `flux doctor` surfaces the last sync/publish audit.
+- `flux sync` now reconciles generated guidance and manifest skills after
+  manifest checkout changes; pass `--no-derived` to skip that step.
 - Added `flux admin customers add` and `flux admin customers edit` for explicit
   maintainer writes to `catalog/customers.json`.
 - `flux admin skills remove` now reports orphaned tool declarations and allowed

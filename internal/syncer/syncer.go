@@ -49,6 +49,12 @@ type InspectOptions struct {
 	Runner Runner
 }
 
+// FastForwardOptions controls a single ff-only pull.
+type FastForwardOptions struct {
+	DryRun bool
+	Runner Runner
+}
+
 // Report is a machine-readable sync report.
 type Report struct {
 	Publish        string   `json:"publish"`
@@ -125,6 +131,31 @@ func Inspect(entries []Entry, opts InspectOptions) []Result {
 		}))
 	}
 	return collectResults(inspections)
+}
+
+// FastForward fetches and then pulls one clean, behind repository with --ff-only.
+func FastForward(entry Entry, opts FastForwardOptions) Result {
+	runner := opts.Runner
+	if runner == nil {
+		runner = execCommand
+	}
+	in := inspectWithMode(entry, Options{DryRun: opts.DryRun}, runner, inspectMode{
+		fetch:      !opts.DryRun,
+		fetchFatal: true,
+	})
+	if in.result.Status != "pending" {
+		return in.result
+	}
+	reconcileInbound(&in, Options{DryRun: opts.DryRun}, runner)
+	if in.result.Status == "pending" {
+		hold(&in, "not eligible for fast-forward")
+	}
+	if in.result.Status == "pulled" {
+		if head, _, err := gitTrim(runner, entry.LocalPath, "rev-parse", "HEAD"); err == nil {
+			in.result.Head = head
+		}
+	}
+	return in.result
 }
 
 func runFlux(entries []Entry, opts Options) Report {

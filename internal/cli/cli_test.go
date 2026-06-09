@@ -180,7 +180,7 @@ func TestSkillsInstallFromManifestRecordsCanonicalID(t *testing.T) {
 }`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".claude", "skills"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -241,7 +241,7 @@ func TestSkillsShowFromManifest(t *testing.T) {
 
 func TestSkillsInstallAndUninstallSkillFilter(t *testing.T) {
 	home := setupCLISkillsManifestFixture(t)
-	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".claude", "skills"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
@@ -1378,6 +1378,306 @@ func TestSyncPersistsLastSyncAuditAndDoctorReportsIt(t *testing.T) {
 	}
 }
 
+func TestDoctorFixFastForwardsCleanStaleMount(t *testing.T) {
+	remote, clone, writer := setupCLIRemoteRepo(t, t.TempDir(), "handbook", map[string]string{"README.md": "seed\n"})
+	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": "`+remote+`", "mode": "required" }
+  ]
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	mountPath := filepath.Join(umbrellaRoot, "handbook")
+	if err := os.Rename(clone, mountPath); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "meetings", "2026-06-09-remote.md"), "remote\n")
+	commitAndPushCLIGit(t, writer, "remote meeting")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"flux", "doctor", "--fix", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "fix\tacme:content:handbook\tfixed") ||
+		!strings.Contains(out, "pulled --ff-only") {
+		t.Fatalf("doctor stdout = %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(mountPath, "meetings", "2026-06-09-remote.md")); err != nil {
+		t.Fatalf("mount did not fast-forward: %v", err)
+	}
+}
+
+func TestDoctorFixSkipsDirtyAndUnknownMounts(t *testing.T) {
+	dirtyRemote, dirtyClone, dirtyWriter := setupCLIRemoteRepo(t, t.TempDir(), "dirty", map[string]string{"README.md": "seed\n"})
+	unknownRemote, unknownClone, _ := setupCLIRemoteRepo(t, t.TempDir(), "unknown", map[string]string{"README.md": "seed\n"})
+	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "dirty", "kind": "handbook", "git_url": "`+dirtyRemote+`", "mode": "required" },
+    { "id": "unknown", "kind": "handbook", "git_url": "`+unknownRemote+`", "mode": "required" }
+  ]
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	dirtyPath := filepath.Join(umbrellaRoot, "dirty")
+	unknownPath := filepath.Join(umbrellaRoot, "unknown")
+	if err := os.Rename(dirtyClone, dirtyPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(unknownClone, unknownPath); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(dirtyWriter, "meetings", "remote.md"), "remote\n")
+	commitAndPushCLIGit(t, dirtyWriter, "remote meeting")
+	writeCLITestFile(t, filepath.Join(dirtyPath, "local.md"), "dirty\n")
+	runCLIGit(t, unknownPath, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing.git"))
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"flux", "doctor", "--fix", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "fix\tacme:content:dirty\tskipped") ||
+		!strings.Contains(out, "dirty checkout") ||
+		!strings.Contains(out, "fix\tacme:content:unknown\tskipped") ||
+		!strings.Contains(out, "remote freshness unknown") {
+		t.Fatalf("doctor stdout = %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(dirtyPath, "meetings", "remote.md")); !os.IsNotExist(err) {
+		t.Fatalf("dirty mount was pulled despite skip: %v", err)
+	}
+}
+
+func TestDoctorFixSkipsStaleProduct(t *testing.T) {
+	remote, clone, writer := setupCLIRemoteRepo(t, t.TempDir(), "product", map[string]string{"README.md": "seed\n"})
+	home, umbrellaRoot, manifestCache, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "products.json"), `[
+  { "id": "sample-product", "name": "Sample Product", "git_url": "`+remote+`" }
+]`)
+	_, state, err := umbrella.Ensure(umbrellaRoot, "acme", "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state = umbrella.AddSelectedProduct(state, "sample-product")
+	if err := umbrella.SaveState(umbrellaRoot, state); err != nil {
+		t.Fatal(err)
+	}
+	productPath := filepath.Join(umbrellaRoot, "products", "sample-product")
+	if err := os.MkdirAll(filepath.Dir(productPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(clone, productPath); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "remote.md"), "remote\n")
+	commitAndPushCLIGit(t, writer, "remote product")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"flux", "doctor", "--fix", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "fix\tacme:product:product:sample-product\tskipped") ||
+		!strings.Contains(out, "product repositories are never fixed by doctor") {
+		t.Fatalf("doctor stdout = %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(productPath, "remote.md")); !os.IsNotExist(err) {
+		t.Fatalf("product was pulled despite skip: %v", err)
+	}
+}
+
+func TestDoctorFixReconcilesDerivedArtifacts(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	umbrellaRoot := filepath.Join(home, "acme")
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(umbrellaRoot, "AGENTS.md"), "<!-- flux:generated workspace-guidance v1 -->\n\nstale\n")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+
+	stdout.Reset()
+	if err := a.run([]string{"flux", "doctor", "--fix", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "fix\tguidance\tfixed") ||
+		!strings.Contains(out, "fix\tskill:claude-code:acme-handbook\tfixed") {
+		t.Fatalf("doctor stdout = %q", out)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); err != nil {
+		t.Fatalf("skill was not installed: %v", err)
+	}
+}
+
+func TestSyncReconcilesDerivedAfterManifestPull(t *testing.T) {
+	home, umbrellaRoot, _, _, writer := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(writer, "skills", "acme-handbook", "SKILL.md"), `---
+name: acme-handbook
+description: Acme handbook
+---
+`)
+	commitAndPushCLIGit(t, writer, "add handbook skill")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"flux", "sync",
+		"--backend", "flux",
+		"--publish", "never",
+		"--scope", "manifest",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "acme\tacme\tmanifest\tpulled") ||
+		!strings.Contains(out, "derived-skill\tclaude-code\tacme-handbook\tinstalled") {
+		t.Fatalf("sync stdout = %q", out)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); err != nil {
+		t.Fatalf("skill was not installed: %v", err)
+	}
+}
+
+func TestSyncNoDerivedSkipsDerivedReconcile(t *testing.T) {
+	home, umbrellaRoot, _, _, writer := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(writer, "skills", "acme-handbook", "SKILL.md"), `---
+name: acme-handbook
+description: Acme handbook
+---
+`)
+	commitAndPushCLIGit(t, writer, "add handbook skill")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"flux", "sync",
+		"--backend", "flux",
+		"--publish", "never",
+		"--scope", "manifest",
+		"--no-derived",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if strings.Contains(out, "derived-skill") {
+		t.Fatalf("sync stdout = %q, want derived reconcile skipped", out)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("skill installed despite --no-derived: %v", err)
+	}
+}
+
+func TestSyncContentScopeDoesNotReconcileDerived(t *testing.T) {
+	home, umbrellaRoot, _, _, writer := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(writer, "skills", "acme-handbook", "SKILL.md"), `---
+name: acme-handbook
+description: Acme handbook
+---
+`)
+	commitAndPushCLIGit(t, writer, "add handbook skill")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"flux", "sync",
+		"--backend", "flux",
+		"--publish", "never",
+		"--scope", "content",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if strings.Contains(out, "derived-skill") {
+		t.Fatalf("sync stdout = %q, want content scope to skip derived reconcile", out)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("skill installed despite content scope: %v", err)
+	}
+}
+
 func TestLaunchPrintsResolvedCommandWithoutCheckingGuidance(t *testing.T) {
 	home, _ := setupCLILaunchFixture(t)
 	var stdout, stderr bytes.Buffer
@@ -2124,19 +2424,27 @@ func setupCLILaunchFixture(t *testing.T) (string, string) {
 
 func setupCLITrackedManifest(t *testing.T) (string, string, string, string) {
 	t.Helper()
-	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
-	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+	home, umbrellaRoot, manifestCache, remote, _ := setupCLITrackedManifestBody(t, `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
   "umbrella": { "recommended_path": "~/acme" }
 }`)
+	return home, umbrellaRoot, manifestCache, remote
+}
+
+func setupCLITrackedManifestBody(t *testing.T, body string) (string, string, string, string, string) {
+	t.Helper()
+	home := t.TempDir()
+	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), body)
 	initCLIGitRepo(t, manifestCache)
 	remote := filepath.Join(home, "manifest.git")
 	runCLIGit(t, home, "init", "--bare", "-q", remote)
 	runCLIGit(t, manifestCache, "remote", "add", "origin", remote)
 	runCLIGit(t, manifestCache, "branch", "-M", "master")
 	runCLIGit(t, manifestCache, "push", "-q", "-u", "origin", "master")
+	writer := filepath.Join(home, "manifest-writer")
+	runCLIGit(t, home, "clone", "-q", remote, writer)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
@@ -2146,7 +2454,7 @@ func setupCLITrackedManifest(t *testing.T) (string, string, string, string) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return home, filepath.Join(home, "acme"), manifestCache, remote
+	return home, filepath.Join(home, "acme"), manifestCache, remote, writer
 }
 
 func initCLIGitRepo(t *testing.T, dir string) {
@@ -2154,6 +2462,32 @@ func initCLIGitRepo(t *testing.T, dir string) {
 	runCLIGit(t, dir, "init", "-q")
 	runCLIGit(t, dir, "add", ".")
 	runCLIGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=flux-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed repository")
+}
+
+func setupCLIRemoteRepo(t *testing.T, root, name string, files map[string]string) (string, string, string) {
+	t.Helper()
+	seed := filepath.Join(root, name+"-seed")
+	for path, body := range files {
+		writeCLITestFile(t, filepath.Join(seed, path), body)
+	}
+	initCLIGitRepo(t, seed)
+	remote := filepath.Join(root, name+".git")
+	runCLIGit(t, root, "init", "--bare", "-q", remote)
+	runCLIGit(t, seed, "remote", "add", "origin", remote)
+	runCLIGit(t, seed, "branch", "-M", "master")
+	runCLIGit(t, seed, "push", "-q", "-u", "origin", "master")
+	clone := filepath.Join(root, name)
+	writer := filepath.Join(root, name+"-writer")
+	runCLIGit(t, root, "clone", "-q", remote, clone)
+	runCLIGit(t, root, "clone", "-q", remote, writer)
+	return remote, clone, writer
+}
+
+func commitAndPushCLIGit(t *testing.T, dir, message string) {
+	t.Helper()
+	runCLIGit(t, dir, "add", ".")
+	runCLIGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=flux-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", message)
+	runCLIGit(t, dir, "push", "-q", "origin", "HEAD:master")
 }
 
 func runCLIGit(t *testing.T, dir string, args ...string) {

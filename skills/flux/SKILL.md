@@ -72,7 +72,7 @@ Bootstrap / refresh the workspace:
 flux onboard [--manifest NAME]     # create umbrella, write guidance, install skills, sync mounts
 flux root [--product ID]           # print the umbrella (or product) path
 flux launch [harness]              # verify guidance is current, then start a harness
-flux doctor [--no-fetch]           # git freshness, derived drift, last sync, manifests, tools
+flux doctor [--no-fetch] [--fix]   # git freshness, derived drift, last sync, manifests, tools
 ```
 
 Find and record knowledge:
@@ -107,6 +107,7 @@ unsafe duplicate-remote checkouts are held back.
 ```sh
 flux sync --print                  # plan only: show what would pull/push/hold (always safe)
 flux sync                          # reconcile + publish per the auto policy
+flux sync --no-derived             # skip skill/guidance reconcile after manifest changes
 flux sync --publish pr             # currently holds changes and reports PR-mode follow-up
 ```
 
@@ -117,7 +118,10 @@ is a Flux policy layer planned on top of Nit and `gh`; it is not implemented in
 the current CLI yet. A non-print sync writes `.flux/last-sync.json`; use
 `flux doctor` to review the last publish/sync audit. `flux doctor` fetches refs
 before reporting behind/ahead counts by default; pass `--no-fetch` for an
-offline view labeled as of the last fetch.
+offline view labeled as of the last fetch. `flux doctor --fix` only
+fast-forwards clean stale manifest/content checkouts and reconciles generated
+guidance plus manifest skills; it reports dirty, diverged, product, and
+remote-unknown checkouts instead of touching them.
 
 ## Tips
 

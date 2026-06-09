@@ -9,8 +9,8 @@ commands by job.
 flux onboard [harness...] | --all [--manifest NAME] [--home DIR] [--umbrella DIR]
 flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR]
 flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [harness] [-- harness args...]
-flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--print] [--json]
-flux doctor [--no-fetch] [--json]
+flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--no-derived] [--print] [--json]
+flux doctor [--no-fetch] [--fix] [--json]
 flux version
 ```
 
@@ -79,4 +79,7 @@ publish existing local commits directly, but dirty non-content/admin files are
 still held back for explicit admin or review handling. Non-print syncs write
 `.flux/last-sync.json`; `flux doctor` reports that audit, per-checkout Git
 freshness, and derived skill/guidance drift. Doctor fetches refs before
-behind/ahead checks unless `--no-fetch` is passed for an offline view.
+behind/ahead checks unless `--no-fetch` is passed for an offline view. `doctor
+--fix` fast-forwards only clean stale manifest/content checkouts and reconciles
+derived guidance plus manifest skills. Sync performs the same derived reconcile
+after manifest checkout changes unless `--no-derived` is passed.

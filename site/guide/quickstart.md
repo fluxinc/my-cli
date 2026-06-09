@@ -21,7 +21,9 @@ flux doctor
 
 `flux doctor` reports manifest validity, generated guidance/skill drift, local
 Git freshness, and the last `.flux/last-sync.json` audit when an umbrella is
-present. Add `--no-fetch` for an offline freshness check.
+present. Add `--no-fetch` for an offline freshness check, or `--fix` to
+fast-forward clean stale manifest/content checkouts and reconcile derived
+skills/guidance.
 
 ## Register a manifest
 

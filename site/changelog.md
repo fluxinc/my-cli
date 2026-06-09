@@ -6,8 +6,12 @@
 
 - `flux doctor` reports per-checkout Git freshness, derived skill/guidance
   drift, and the last sync/publish audit.
+- Added `flux doctor --fix` for guarded fast-forward remediation of clean
+  stale manifest/content checkouts plus derived skill/guidance reconcile.
 - `flux sync` records non-print runs to `.flux/last-sync.json`; doctor fetches
   refs by default and supports `--no-fetch` for offline freshness checks.
+- `flux sync` reconciles generated guidance and manifest skills after manifest
+  checkout changes, with `--no-derived` as an escape hatch.
 - Added `flux admin customers add` and `flux admin customers edit` for customer
   catalog writes.
 - `flux admin skills remove` reports orphaned tools and allowed skill namespaces,
