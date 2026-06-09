@@ -37,12 +37,20 @@ so agents know how to use the CLI itself.
 | Concept | What it is |
 |---|---|
 | **Manifest** | An organization's configuration, stored in a Git repo. Declares skills, mounts, catalog, and tool hints. The single source of truth. |
-| **Skill** | A capability installed into harness skill directories. Either *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer). |
-| **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.flux/` identity namespace plus mounts and local scratch as peers. When sync publishing is enabled, this becomes a Nit control workspace so multi-repo commits and pushes have one substrate. |
+| **Skill** | A capability installed into harness skill directories. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer). The CLI also ships one public, organization-neutral *self-skill* named `flux`, embedded in the binary, that teaches harnesses how to use `flux` itself. |
+| **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.flux/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Nit control workspace so multi-repo commits and pushes have one substrate. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
 | **Catalog** | JSON inventories for products and canonical customers. Users opt specific products into their umbrella on demand. |
 | **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared fragments. `CLAUDE.md` points to the same file. |
 | **Tool** | An external executable the org depends on. `flux` reports presence and install hints — it never silently installs tools. |
+
+Skills arrive from two places, split by a public/private line. The `flux`
+self-skill is **public** and travels **inside the CLI binary** — it is
+organization-neutral, carries no company content, and the binary keeps it
+current on its own. **Organization skills** are **private** to a manifest repo
+you control and appear only once you add and sync that manifest, so they can
+carry guidance specific to your team. Nothing organization-specific is ever
+baked into the public CLI.
 
 ## Commands
 
@@ -156,10 +164,10 @@ handles private/public and content/admin policy, and blocks duplicate checkouts
 of the same remote until they are collapsed to one canonical checkout. Nit is
 the intended backend for real multi-repo Change creation, ordered push, and
 resume; Pins are reserved for intentional recorded workspace states. The Flux
-backend is a guarded bootstrap fallback while a workspace is not yet a Nit
-control workspace. `--publish direct` can publish existing local commits
-directly, but dirty non-content/admin files are still held back instead of being
-quietly committed.
+backend is a guarded bootstrap fallback when a workspace has not been
+initialized as a Nit control workspace. `--publish direct` can publish existing
+local commits directly, but dirty non-content/admin files are still held back
+instead of being quietly committed.
 
 ### Catalog
 

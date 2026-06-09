@@ -32,7 +32,7 @@ Humans own agency — products, goals, decisions, ownership. That belongs in
 *content* (a manifest repo, handbook documents), not in CLI surface area. The
 CLI deliberately does not grow human-workflow verbs; it grows content kinds.
 
-## 3. The six concepts
+## 3. The seven concepts
 
 **Manifest** — an org's configuration in a Git repo, cached locally on
 `manifest add` + `manifest sync`. The single source of truth for what skills
@@ -50,12 +50,15 @@ org expects. Validated by a schema (`manifest validate`).
 Flux also ships one public, organization-neutral self-skill named `flux`. It
 teaches harnesses how to use the CLI and is managed by `flux skills self ...`,
 not by organization manifests.
+Keeping it in the binary, not in a manifest, is deliberate: the public CLI
+carries no organization-specific content, so every org's particulars stay in the
+manifests they control.
 
 **Umbrella** — a per-user operating envelope (default `~/<org>`). It contains
 Flux state, generated guidance, version-controlled mounts, product repositories,
-and local-only scratch. When sync publishing is enabled, the umbrella can also
-be a Nit control workspace: the root records workspace metadata and pins, while
-the member repositories remain ordinary Git checkouts.
+and local-only scratch. When initialized as a Nit control workspace, the
+umbrella's root records workspace metadata and pins, while the member
+repositories remain ordinary Git checkouts.
 
 ```
 ~/<org>/
@@ -93,6 +96,11 @@ default umbrella small and lets each operator pull only what they work on.
 product repo does not let that repo inject new org-namespaced skills. Customer
 catalog entries provide stable IDs, aliases, partner associations, and optional
 domain confirmation so meeting metadata can resolve to one canonical identity.
+
+**Guidance** — generated root instructions for agents. `flux onboard` writes
+`AGENTS.md` from the embedded public baseline plus manifest-declared guidance
+fragments, and points `CLAUDE.md` at the same content where the platform allows
+it. `flux launch` checks guidance freshness before starting a harness.
 
 **Tool** — an external executable the org depends on. The manifest declares
 purpose and install hints. `flux doctor` / `flux tools info` report presence

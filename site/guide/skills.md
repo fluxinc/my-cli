@@ -2,6 +2,26 @@
 
 Skill commands answer what capabilities an agent can use locally.
 
+## Two sources of skills
+
+Skills reach a harness from two places, and the difference is the public/private
+boundary:
+
+- **The `flux` self-skill** ships *inside the CLI binary*. It is
+  organization-neutral — it only teaches harnesses how to drive `flux` itself —
+  so it is safe to install anywhere and carries no company content. The binary
+  owns its lifecycle (`install.sh`, `flux onboard`, and a quiet refresh on human
+  CLI runs); manage it explicitly with `flux skills self ...`.
+- **Organization skills** are declared in an org's *manifest repo* and land only
+  once you `flux manifest add` / `flux manifest sync` that manifest. Because they
+  live in a repo you control — typically private — they can carry
+  organization-specific guidance. `flux skills install` / `flux skills sync`
+  materialize them into harness skill directories.
+
+Nothing organization-specific is baked into the public CLI: the self-skill stays
+generic, and everything particular to your organization lives in a manifest you
+own.
+
 ## Flux self-skill
 
 ```sh

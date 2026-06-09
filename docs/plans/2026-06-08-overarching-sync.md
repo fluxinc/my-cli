@@ -1,14 +1,16 @@
 # Overarching Sync Command
 
-Status: draft design from Flux/Nit review.
+Status: v1 implemented for planner/direct publish/Nit backend; PR creation and
+bootstrap automation remain planned.
 
 ## Goal
 
-Flux needs one ergonomic command that reconciles the local operating envelope and
-publishes safe local updates, especially newly captured handbook records such as
-meeting notes.
+Flux needs one ergonomic command that reconciles the local operating envelope
+and publishes safe local updates, especially newly captured handbook records
+such as meeting notes.
 
-Today the operator has to know which lower-level command owns each step:
+Before `flux sync`, the operator had to know which lower-level command owned
+each step:
 
 - `flux manifest sync` refreshes manifest caches.
 - `flux mount sync` refreshes mounted content and product repositories.
@@ -16,8 +18,8 @@ Today the operator has to know which lower-level command owns each step:
 - `flux meetings add` writes local markdown records.
 - Plain Git or `gh` is still required to publish local content back upstream.
 
-`flux sync` should become the routine "make this workspace current and publish
-what is safe to publish" command.
+`flux sync` is now the routine "make this workspace current and publish what is
+safe to publish" command.
 
 ## Command Shape
 
@@ -30,7 +32,7 @@ flux sync [--manifest NAME] [--umbrella DIR]
           [--print] [--json]
 ```
 
-Default behavior should be `--publish auto`, not a blind push:
+Default behavior is `--publish auto`, not a blind push:
 
 1. Discover the selected manifest and umbrella.
 2. Fetch relevant remotes.
@@ -40,14 +42,17 @@ Default behavior should be `--publish auto`, not a blind push:
 5. Classify outbound local changes by repo and risk.
 6. Publish only changes that match the automatic policy.
 7. Print a report for every repo: `already landed`, `pulled`, `pushed`,
-   `pr opened`, `held back`, `failed`, or `not attempted`.
+   `held back`, `failed`, or `not attempted`. `pr opened` is reserved for the
+   future GitHub PR layer.
 
 `--backend auto` is the default. It uses Nit when the umbrella is initialized as
-a Nit workspace, and falls back to Flux's guarded Git path only while bootstrap
-or same-remote canonicalization is still incomplete.
+a Nit workspace, and falls back to Flux's guarded Git path when the umbrella is
+not initialized as Nit or when the current mode is still handled by Flux policy
+code.
 
-`--print` is the dry-run surface: it prints the planned Git, Nit, and `gh`
-operations without changing files or remotes.
+`--print` is the dry-run surface: it prints the planned Git and Nit operations
+without changing files or remotes. `gh` operations are not emitted yet because
+PR creation is not implemented.
 
 ## Automatic Publish Policy
 
@@ -67,15 +72,16 @@ Direct push is allowed when all of these are true:
   regardless of how the sibling's own changes are classified (see Same-Remote
   Checkouts).
 
-Everything else is held back unless the operator asks for `--publish pr` or
-`--publish direct`.
+Everything else is held back unless the operator asks for `--publish direct`.
+`--publish pr` is accepted as an explicit future-mode spelling, but currently
+holds changes and reports that PR mode is not implemented yet.
 
-`--publish direct` means "publish directly instead of opening review" for
+`--publish direct` means "publish directly instead of holding for review" for
 publishable commits. It can push existing local commits, and it can commit dirty
 changes only when they are still inside declared content paths. Dirty
 manifest/catalog/guidance/skill/tool/product-source changes remain held back
-even in direct mode; the operator should commit those explicitly through the
-admin workflow or move them to PR mode once PR support exists.
+even in direct mode; the operator should commit those explicitly through an
+admin workflow or wait for PR support.
 
 Held-back examples:
 
@@ -91,9 +97,12 @@ PR ceremony, while higher-risk changes naturally become review work.
 
 ## PR Mode
 
-`flux sync --publish pr` should create draft pull requests through `gh`.
+`flux sync --publish pr` is planned to create draft pull requests through `gh`.
+It is not implemented in v1. Current behavior is deliberately conservative:
+the command accepts `--publish pr`, avoids Nit publish, and reports that PR mode
+belongs to Flux's future GitHub policy layer.
 
-The PR flow:
+The intended PR flow:
 
 1. Verify `gh auth status` and repository visibility.
 2. Choose a branch name such as `flux/sync/20260608-handbook`.
@@ -142,17 +151,14 @@ important case is an organization workspace repository used both as:
 `flux sync` must detect this before publishing. Treating those as independent
 repos can create split local state.
 
-Recommended direction:
+Current direction:
 
-1. Short term (v1): detect duplicate remotes and publish only through the
-   canonical Nit member when every sibling checkout of that remote is clean. A
-   clean sibling is allowed and can be fast-forwarded after publish; a sibling
-   with uncommitted or unpushed changes blocks that remote. The hazard is
+1. v1 detects duplicate remotes and publishes only through the canonical Nit
+   member when every sibling checkout of that remote is clean. A clean sibling
+   is allowed and can be fast-forwarded after publish; a sibling with
+   uncommitted or unpushed changes blocks that remote. The hazard is
    base-staleness, not change class -- pushing one checkout advances the shared
-   remote and strands a dirty sibling on a stale base. This bites on day one:
-   the handbook mount was ahead one commit with 129 unpushed meeting files while
-   the manifest cache of the same remote had a dirty catalog/customers.json, so
-   the first real sync had to detect and reconcile rather than push blindly.
+   remote and strands a dirty sibling on a stale base.
 2. Medium term: make one canonical local repository for each remote, then expose
    scoped mounts as sparse worktrees or synchronized views of that canonical
    clone.
@@ -185,72 +191,105 @@ configuration.
 
 Nit is the intended substrate for Flux's multi-repo sync. The Flux umbrella is a
 Nit `init --control` workspace by design: one control root plus member
-repositories. `flux sync` should delegate the real multi-repo Change creation,
-ordered push, and resumable publish behavior to Nit instead of reimplementing
-that machinery. Routine sync should use `nit commit -m` followed by `nit push`;
-Pins remain available for deliberate recorded workspace states, not every
-meeting-note sync.
+repositories. When the umbrella is initialized, `flux sync` delegates the real
+multi-repo Change creation, ordered push, and resumable publish behavior to Nit
+instead of reimplementing that machinery. Routine Nit-backed sync uses
+`nit commit -m` followed by `nit push`; Pins remain available for deliberate
+recorded workspace states, not every meeting-note sync.
 
 Flux owns the layers Nit deliberately does not own:
 
-- Bootstrap: initialize the umbrella as a Nit workspace, adopt canonical member
+- Bootstrap: initialize new umbrellas as Nit workspaces, adopt canonical member
   repositories from the Flux manifest, and keep the roster aligned.
 - Policy: classify content vs admin changes, private vs public repositories, and
   direct-push vs review requirements before invoking Nit.
-- PRs: use `gh` to create GitHub PRs where policy demands review. Nit publishes
-  branches and review artifacts; it does not open GitHub PRs.
+- PRs: use `gh` to create GitHub PRs where policy demands review. This is
+  planned, not implemented yet. Nit publishes branches and review artifacts; it
+  does not open GitHub PRs.
 - Same-remote canonicalization: collapse multiple Flux checkouts of one remote
   into one canonical checkout before Nit sees the workspace. Nit must not model
   duplicate checkouts of the same remote as independent members because that
   breaks Change and Pin semantics.
 
-The current Flux-native Git path is therefore a guarded fallback for bootstrap
-and one-time untangling, not the long-term transaction engine. It may fetch,
-fast-forward, and direct-push private content-only changes when no Nit workspace
-exists yet, but once the umbrella is initialized and duplicate remotes are
-collapsed, `flux sync` should use `nit add`, `nit commit`, and `nit push`.
+The current Flux-native Git path is therefore a guarded fallback for bootstrap,
+uninitialized umbrellas, and policy modes that Flux still owns directly. It may
+fetch, fast-forward, and direct-push private content-only changes when no Nit
+workspace exists yet. Once the umbrella is initialized and duplicate remotes are
+safe, `flux sync` routes publish through `nit add`, `nit commit`, and
+`nit push`.
 
-The immediate historical mess remains pre-Nit cleanup: the existing umbrella is
-not yet a Nit workspace, and some divergent checkouts live outside the umbrella.
-After those are reconciled, the next durable step is:
+## Current Dogfood State
+
+A local dogfood umbrella has been initialized as a Nit control workspace:
 
 ```sh
 cd ~/flux
-nit init --control
-nit adopt <canonical-member-repos>
-flux sync --backend nit --print
+nit status
+# Workspace flux   root: ~/flux
+# Repos
+#   root              clean   on master
+#   handbook          clean   on master
+#   dicom-capacitor   clean   on master
 ```
+
+The roster has one canonical Nit member per current mounted remote. Sanitized
+shape:
+
+```yaml
+version: 1
+mode: control
+members:
+- id: handbook
+  path: handbook
+  required_excludes:
+  - handbook
+- id: dicom-capacitor
+  path: products/dicom-capacitor
+  required_excludes:
+  - products/dicom-capacitor
+```
+
+With that state, `flux sync --print --json` for the registered manifest selects
+`backend: "nit"`. In a clean local state it reports the manifest cache,
+handbook mount, and current product checkout as `already landed`. If a
+same-remote sibling outside the Nit roster is dirty, the command still selects
+Nit but holds that shared remote back with the duplicate-checkout safety
+message.
 
 ## Implementation Phases
 
-1. Add a read-only planner:
+1. Done: add a read-only planner.
    `flux sync --print --json` discovers manifests, mounts, duplicate remotes,
    dirty state, ahead/behind state, and publish classification.
-2. Add private content direct-push:
+2. Done: add private content direct-push.
    commit and push content-only changes that satisfy the automatic policy.
-3. Add PR mode:
-   create draft PRs with `gh` for held-back reviewable changes.
-4. Add same-remote canonicalization:
+3. Planned: add PR mode.
+   create draft PRs with `gh` for held-back reviewable changes. Current
+   behavior reports that PR mode is not implemented yet.
+4. Done for v1: add same-remote canonicalization.
    tolerate clean duplicate siblings while routing publish through the canonical
    Nit member, and hold the remote whenever a duplicate sibling has pending
    changes. Longer term, use a canonical clone plus sparse worktrees or an
    equivalent reconciliation layer.
-5. Stand up Nit for the umbrella:
-   initialize `~/flux` as a Nit control workspace, adopt one canonical checkout
-   per remote, and make `flux sync --backend auto` choose Nit.
-6. Replace guarded Git publishing with Nit delegation:
+5. Done for the current dogfood umbrella: stand up Nit for the umbrella.
+   `~/flux` is a Nit control workspace, has canonical members for the current
+   handbook and product checkouts, and makes `flux sync --backend auto` choose
+   Nit. General bootstrap automation is still open.
+6. Done for the Nit backend path: replace guarded Git publishing with Nit
+   delegation.
    use `nit add` for Flux-approved paths, `nit commit -m` for new local
    changes, and `nit push` / `nit push --resume` for ordered publish and
    recovery.
 
 ## Open Questions
 
-- Should `flux sync` direct-push by default for private content, or should direct
-  push require a manifest policy flag?
-- Should `flux sync --publish pr` always create draft PRs, or should it support
-  ready-for-review PRs via `--ready`?
+- Should the current direct-push default for private content gain a manifest
+  policy override?
+- When PR creation lands, should `flux sync --publish pr` always create draft
+  PRs, or should it support ready-for-review PRs via `--ready`?
 - Should meeting ingestion from external tools be a separate command, such as
   `flux meetings ingest`, so `flux sync` stays focused on reconciliation and
   publishing?
-- Should Flux auto-run `nit init --control` during `flux onboard`, or require an
-  explicit first `flux sync bootstrap` / `flux admin sync bootstrap` command?
+- Should Flux auto-run `nit init --control` during `flux onboard` for new
+  umbrellas, or require an explicit first `flux sync bootstrap` /
+  `flux admin sync bootstrap` command?

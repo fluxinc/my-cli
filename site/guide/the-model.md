@@ -19,16 +19,21 @@ flux manifest validate acme
 
 A capability installed into harness skill directories. Static skills live
 inside the manifest repo. Tool-provided skills are materialized by their owning
-tool, then installed by `flux`.
+tool, then installed by `flux`. The public CLI also ships one bundled
+organization-neutral self-skill named `flux`, managed by
+`flux skills self ...`, so harnesses know how to use Flux itself.
+These are the two skill sources, split by a public/private line: the self-skill
+is public and ships in the binary; organization skills are private to a manifest
+you control and appear only once that manifest is synced. Nothing
+organization-specific is baked into the public CLI.
 
 ## Umbrella
 
 A per-user workspace envelope, normally `~/<org>`. It contains local state,
 generated guidance, content mounts, product repos, and local scratch. When
-sync publishing is enabled, it can also be a Nit control workspace so multi-repo
-Change creation, ordered push, and resume use Nit instead of Flux
-reimplementing that transaction layer. Pins remain available for deliberate
-recorded workspace states.
+initialized as a Nit control workspace, multi-repo Change creation, ordered
+push, and resume use Nit instead of Flux reimplementing that transaction layer.
+Pins remain available for deliberate recorded workspace states.
 
 ## Mount
 
