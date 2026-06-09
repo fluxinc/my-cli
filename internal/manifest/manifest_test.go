@@ -258,6 +258,29 @@ func TestValidateManifestAllowsWorkspaceRequirementFromMount(t *testing.T) {
 	}
 }
 
+func TestSaveDocumentRoundTripsExampleManifest(t *testing.T) {
+	source := filepath.Join("..", "..", "examples", "acme-workspace", "manifest.json")
+	original, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, _, err := LoadDocument(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "manifest.json")
+	if err := SaveDocument(target, doc); err != nil {
+		t.Fatal(err)
+	}
+	roundTrip, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(roundTrip) != string(original) {
+		t.Fatalf("round-trip manifest changed:\n%s", roundTrip)
+	}
+}
+
 func TestEffectiveMountsIncludesLegacyWorkspaces(t *testing.T) {
 	doc := Document{
 		Mounts: []Mount{{

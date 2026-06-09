@@ -117,15 +117,16 @@ Manifest authoring is explicit admin work:
 
 ```sh
 flux admin skills add <skill-dir> --id org:name --manifest-dir <checkout>
-flux admin skills remove <id|slug> --manifest-dir <checkout>
+flux admin skills remove <id|slug> --manifest-dir <checkout> [--prune-orphans]
 ```
 
 Admin skill commands write a maintainer checkout, not the synced cache. They
 refuse dirty git checkouts unless `--force` is supplied, never commit or push,
 and require explicit flags for duplicate-prone or destructive cleanup such as
 `--keep-original`, `--remove-original`, `--delete-source`, or product
-`related_skills` pruning. After a write they print the relevant `git status`
-and `git diff` follow-up commands.
+`related_skills` pruning. Removing a skill reports now-orphaned tools and
+allowed namespaces; `--prune-orphans` removes those too. After a write they
+print the relevant `git status` and `git diff` follow-up commands.
 
 `flux admin` is the home for shared/workspace configuration. Mutating or
 configuration commands are reachable there too, with the top-level forms

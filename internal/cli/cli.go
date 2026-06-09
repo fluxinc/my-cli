@@ -168,7 +168,7 @@ Usage:
   flux skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
   flux skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
   flux admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
-  flux admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--force] [--json]
+  flux admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
   flux admin onboard ...                      (alias of flux onboard)
   flux admin manifest add|sync|validate ...   (alias of flux manifest ...)
   flux admin mount add|remove|sync ...        (alias of flux mount ...)
@@ -1045,11 +1045,9 @@ func (f *stringListFlag) String() string {
 }
 
 func (f *stringListFlag) Set(value string) error {
-	for _, part := range strings.Split(value, ",") {
-		cleaned := strings.TrimSpace(part)
-		if cleaned != "" {
-			*f = append(*f, cleaned)
-		}
+	cleaned := strings.TrimSpace(value)
+	if cleaned != "" {
+		*f = append(*f, cleaned)
 	}
 	return nil
 }
@@ -3022,7 +3020,7 @@ func (a app) runAdmin(args []string) error {
 func (a app) printAdminUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
   flux admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
-  flux admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--force] [--json]
+  flux admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
   flux admin onboard ...                      (alias of flux onboard)
   flux admin manifest add|sync|validate ...   (alias of flux manifest ...)
   flux admin mount add|remove|sync ...        (alias of flux mount ...)
@@ -3117,6 +3115,10 @@ type adminSkillResult struct {
 	RemovedOriginal bool     `json:"removed_original,omitempty"`
 	DeletedSource   bool     `json:"deleted_source,omitempty"`
 	PrunedProducts  []string `json:"pruned_products,omitempty"`
+	OrphanedTools   []string `json:"orphaned_tools,omitempty"`
+	OrphanedNS      []string `json:"orphaned_allowed_namespaces,omitempty"`
+	PrunedTools     []string `json:"pruned_tools,omitempty"`
+	PrunedNS        []string `json:"pruned_allowed_namespaces,omitempty"`
 	Message         string   `json:"message,omitempty"`
 	NextCommands    []string `json:"next_commands,omitempty"`
 }
@@ -3280,12 +3282,14 @@ func (a app) runAdminSkillsRemove(args []string) error {
 	var manifestDir string
 	var deleteSource bool
 	var pruneRelated bool
+	var pruneOrphans bool
 	var force bool
 	var jsonOut bool
 	fs := newFlagSet("flux admin skills remove", a.stderr)
 	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
 	fs.BoolVar(&deleteSource, "delete-source", false, "delete the static manifest source directory")
 	fs.BoolVar(&pruneRelated, "prune-related", false, "remove product catalog related_skills references")
+	fs.BoolVar(&pruneOrphans, "prune-orphans", false, "remove now-unreferenced tools and allowed skill namespaces")
 	fs.BoolVar(&force, "force", false, "allow dirty checkout")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON result")
 	rest, err := parseInterspersed(fs, args, map[string]bool{"manifest-dir": true})
@@ -3295,7 +3299,7 @@ func (a app) runAdminSkillsRemove(args []string) error {
 	if len(rest) != 1 || manifestDir == "" {
 		return fmt.Errorf("usage: flux admin skills remove <id|slug> --manifest-dir DIR")
 	}
-	result, err := a.adminSkillsRemove(rest[0], manifestDir, deleteSource, pruneRelated, force)
+	result, err := a.adminSkillsRemove(rest[0], manifestDir, deleteSource, pruneRelated, pruneOrphans, force)
 	if err != nil {
 		return err
 	}
@@ -3310,7 +3314,7 @@ func (a app) runAdminSkillsRemove(args []string) error {
 	return nil
 }
 
-func (a app) adminSkillsRemove(ref, manifestDir string, deleteSource, pruneRelated, force bool) (adminSkillResult, error) {
+func (a app) adminSkillsRemove(ref, manifestDir string, deleteSource, pruneRelated, pruneOrphans, force bool) (adminSkillResult, error) {
 	doc, manifestPath, root, err := loadAdminManifestCheckout(manifestDir)
 	if err != nil {
 		return adminSkillResult{}, err
@@ -3342,7 +3346,10 @@ func (a app) adminSkillsRemove(ref, manifestDir string, deleteSource, pruneRelat
 	if pruneRelated && len(prunedProducts) != 0 {
 		products = pruneProductSkillRefs(products, removed.ID)
 	}
-	sourcePath := filepath.Join(root, filepath.FromSlash(removed.Path))
+	sourcePath := ""
+	if removed.Path != "" {
+		sourcePath = filepath.Join(root, filepath.FromSlash(removed.Path))
+	}
 	if deleteSource {
 		sourceType := removed.Source.Type
 		if sourceType == "" {
@@ -3359,6 +3366,19 @@ func (a app) adminSkillsRemove(ref, manifestDir string, deleteSource, pruneRelat
 		}
 	}
 	doc.Skills = append(doc.Skills[:idx], doc.Skills[idx+1:]...)
+	orphanedTools, orphanedNS := adminSkillOrphans(doc, removed)
+	prunedTools := []string(nil)
+	prunedNS := []string(nil)
+	if pruneOrphans {
+		if len(orphanedTools) != 0 {
+			doc.Tools = pruneManifestTools(doc.Tools, stringSet(orphanedTools))
+			prunedTools = orphanedTools
+		}
+		if len(orphanedNS) != 0 {
+			doc.AllowedExternalNamespaces = pruneStrings(doc.AllowedExternalNamespaces, stringSet(orphanedNS))
+			prunedNS = orphanedNS
+		}
+	}
 	if result := manifest.ValidateDocument("", doc); len(result.Errors) != 0 {
 		return adminSkillResult{}, fmt.Errorf("updated manifest is invalid: %s", strings.Join(result.Errors, "; "))
 	}
@@ -3389,9 +3409,124 @@ func (a app) adminSkillsRemove(ref, manifestDir string, deleteSource, pruneRelat
 		SourcePath:     sourcePath,
 		DeletedSource:  deletedSource,
 		PrunedProducts: prunedProducts,
-		Message:        "removed skill declaration",
+		OrphanedTools:  orphanedTools,
+		OrphanedNS:     orphanedNS,
+		PrunedTools:    prunedTools,
+		PrunedNS:       prunedNS,
+		Message:        adminSkillRemoveMessage(orphanedTools, orphanedNS, prunedTools, prunedNS),
 		NextCommands:   adminNextCommands(root),
 	}, nil
+}
+
+func adminSkillOrphans(doc manifest.Document, removed manifest.Skill) ([]string, []string) {
+	candidateTools := adminSkillToolRefs(removed)
+	referencedTools := adminReferencedToolIDs(doc)
+	orphanedTools := []string(nil)
+	for _, tool := range doc.Tools {
+		if candidateTools[tool.ID] && !referencedTools[tool.ID] {
+			orphanedTools = append(orphanedTools, tool.ID)
+		}
+	}
+
+	orphanedNS := []string(nil)
+	ns := skillNamespace(removed.ID)
+	if ns != "" && ns != doc.Organization.ID && stringInSlice(doc.AllowedExternalNamespaces, ns) && !skillNamespaceUsed(doc.Skills, ns) {
+		orphanedNS = append(orphanedNS, ns)
+	}
+	return orphanedTools, orphanedNS
+}
+
+func adminSkillToolRefs(skill manifest.Skill) map[string]bool {
+	refs := map[string]bool{}
+	if skill.Source.Tool != "" {
+		refs[skill.Source.Tool] = true
+	}
+	for _, req := range skill.Requires {
+		typ, id, ok := strings.Cut(req, ":")
+		if ok && typ == "tool" && id != "" {
+			refs[id] = true
+		}
+	}
+	return refs
+}
+
+func adminReferencedToolIDs(doc manifest.Document) map[string]bool {
+	refs := map[string]bool{}
+	for _, skill := range doc.Skills {
+		for id := range adminSkillToolRefs(skill) {
+			refs[id] = true
+		}
+	}
+	return refs
+}
+
+func skillNamespace(skillID string) string {
+	ns, _, ok := strings.Cut(skillID, ":")
+	if !ok {
+		return ""
+	}
+	return ns
+}
+
+func skillNamespaceUsed(skills []manifest.Skill, ns string) bool {
+	for _, skill := range skills {
+		if skillNamespace(skill.ID) == ns {
+			return true
+		}
+	}
+	return false
+}
+
+func stringInSlice(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func stringSet(values []string) map[string]bool {
+	out := make(map[string]bool, len(values))
+	for _, value := range values {
+		out[value] = true
+	}
+	return out
+}
+
+func pruneManifestTools(tools []manifest.Tool, remove map[string]bool) []manifest.Tool {
+	out := tools[:0]
+	for _, tool := range tools {
+		if !remove[tool.ID] {
+			out = append(out, tool)
+		}
+	}
+	return out
+}
+
+func pruneStrings(values []string, remove map[string]bool) []string {
+	out := values[:0]
+	for _, value := range values {
+		if !remove[value] {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func adminSkillRemoveMessage(orphanedTools, orphanedNS, prunedTools, prunedNS []string) string {
+	lines := []string{"removed skill declaration"}
+	if len(prunedTools) != 0 {
+		lines = append(lines, "pruned orphaned tools: "+strings.Join(prunedTools, ", "))
+	} else if len(orphanedTools) != 0 {
+		lines = append(lines, "orphaned tools remain: "+strings.Join(orphanedTools, ", ")+" (re-run with --prune-orphans to remove)")
+	}
+	if len(prunedNS) != 0 {
+		lines = append(lines, "pruned orphaned allowed namespaces: "+strings.Join(prunedNS, ", "))
+	} else if len(orphanedNS) != 0 {
+		lines = append(lines, "orphaned allowed namespaces remain: "+strings.Join(orphanedNS, ", ")+" (re-run with --prune-orphans to remove)")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func printAdminNextCommands(w io.Writer, commands []string) {

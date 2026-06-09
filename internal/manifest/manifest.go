@@ -54,13 +54,13 @@ type ValidationResult struct {
 type Document struct {
 	ManifestVersion           int           `json:"manifest_version"`
 	Organization              Organization  `json:"organization"`
-	AllowedExternalNamespaces []string      `json:"allowed_external_namespaces"`
-	Umbrella                  Umbrella      `json:"umbrella"`
-	AgentGuidance             AgentGuidance `json:"agent_guidance"`
-	Skills                    []Skill       `json:"skills"`
-	Mounts                    []Mount       `json:"mounts"`
-	Workspaces                []Workspace   `json:"workspaces"`
-	Tools                     []Tool        `json:"tools"`
+	AllowedExternalNamespaces []string      `json:"allowed_external_namespaces,omitempty"`
+	Umbrella                  Umbrella      `json:"umbrella,omitzero"`
+	AgentGuidance             AgentGuidance `json:"agent_guidance,omitzero"`
+	Skills                    []Skill       `json:"skills,omitempty"`
+	Mounts                    []Mount       `json:"mounts,omitempty"`
+	Workspaces                []Workspace   `json:"workspaces,omitempty"`
+	Tools                     []Tool        `json:"tools,omitempty"`
 }
 
 // Organization identifies the organization owning this manifest.
@@ -73,27 +73,27 @@ type Organization struct {
 type Skill struct {
 	ID           string   `json:"id"`
 	InstallSlug  string   `json:"install_slug"`
-	Path         string   `json:"path"`
-	Source       Source   `json:"source"`
-	Capabilities []string `json:"capabilities"`
-	Requires     []string `json:"requires"`
+	Path         string   `json:"path,omitempty"`
+	Source       Source   `json:"source,omitzero"`
+	Capabilities []string `json:"capabilities,omitempty"`
+	Requires     []string `json:"requires,omitempty"`
 }
 
 // Source describes non-manifest-repo skill sources such as tool-provided skills.
 type Source struct {
-	Type string `json:"type"`
+	Type string `json:"type,omitempty"`
 	Tool string `json:"tool,omitempty"`
 }
 
 // Umbrella describes the local organization workspace envelope.
 type Umbrella struct {
-	RecommendedPath string `json:"recommended_path"`
+	RecommendedPath string `json:"recommended_path,omitempty"`
 }
 
 // AgentGuidance describes manifest-owned additions to generated workspace
 // AGENTS.md files.
 type AgentGuidance struct {
-	Paths []string `json:"paths"`
+	Paths []string `json:"paths,omitempty"`
 }
 
 // Mount describes one content source that can be cloned into an umbrella.
@@ -137,20 +137,20 @@ type Tool struct {
 	ID           string       `json:"id"`
 	Mode         string       `json:"mode"`
 	Purpose      string       `json:"purpose"`
-	Install      ToolInstall  `json:"install"`
-	SkillInstall SkillInstall `json:"skill_install"`
+	Install      ToolInstall  `json:"install,omitzero"`
+	SkillInstall SkillInstall `json:"skill_install,omitzero"`
 }
 
 // ToolInstall describes operator-facing install hints for a tool.
 type ToolInstall struct {
-	Commands []string `json:"commands"`
-	DocsURL  string   `json:"docs_url"`
+	Commands []string `json:"commands,omitempty"`
+	DocsURL  string   `json:"docs_url,omitempty"`
 }
 
 // SkillInstall describes how a tool can materialize its own agent skill.
 type SkillInstall struct {
 	Command string   `json:"command"`
-	Args    []string `json:"args"`
+	Args    []string `json:"args,omitempty"`
 }
 
 // Runner executes external commands. Tests can replace it.

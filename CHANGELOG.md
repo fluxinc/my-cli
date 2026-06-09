@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `flux admin skills remove` now reports orphaned tool declarations and allowed
+  skill namespaces, and can remove them with `--prune-orphans`.
+
+### Fixed
+
+- `flux meetings add` no longer double-prefixes ids when the slug already starts
+  with a date, and repeatable list flags keep comma-containing values intact.
+- Manifest writes no longer add zero-value JSON noise such as empty `source`,
+  `requires`, `workspaces`, or `skill_install` fields.
+
 ## 0.4.0 - 2026-06-08
 
 ### Added

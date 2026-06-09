@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `flux admin skills remove` reports orphaned tools and allowed skill namespaces,
+  and can remove them with `--prune-orphans`.
+
+### Fixed
+
+- `flux meetings add` handles date-prefixed slugs and comma-containing
+  attendees/partners correctly.
+- Manifest writes omit zero-value JSON fields instead of adding unrelated
+  serialization noise.
+
 ## 0.4.0 - 2026-06-08
 
 ### Added

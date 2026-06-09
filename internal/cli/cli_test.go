@@ -597,6 +597,106 @@ func TestAdminSkillsRemoveBlocksThenPrunesRelatedProducts(t *testing.T) {
 	}
 }
 
+func TestAdminSkillsRemoveReportsAndPrunesOrphanDependencies(t *testing.T) {
+	setup := func(t *testing.T) string {
+		t.Helper()
+		manifestDir := t.TempDir()
+		writeAdminManifest(t, manifestDir, `,
+  "allowed_external_namespaces": ["spark"],
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" },
+    {
+      "id": "spark:use-spark",
+      "install_slug": "use-spark",
+      "source": { "type": "tool", "tool": "spark" },
+      "requires": ["tool:spark"]
+    }
+  ],
+  "tools": [
+    {
+      "id": "qmd",
+      "mode": "optional",
+      "purpose": "Search local markdown",
+      "install": {
+        "commands": ["npm install -g @tobilu/qmd"],
+        "docs_url": "https://github.com/tobilu/qmd"
+      }
+    },
+    {
+      "id": "spark",
+      "mode": "optional",
+      "purpose": "Install Spark-provided skills",
+      "skill_install": {
+        "command": "spark",
+        "args": ["skills", "install"]
+      }
+    }
+  ]`)
+		return manifestDir
+	}
+
+	t.Run("reports by default", func(t *testing.T) {
+		manifestDir := setup(t)
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		if err := a.run([]string{
+			"flux", "admin", "skills", "remove", "spark:use-spark",
+			"--manifest-dir", manifestDir,
+			"--json",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var result adminSkillResult
+		if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Join(result.OrphanedTools, ",") != "spark" || strings.Join(result.OrphanedNS, ",") != "spark" || result.SourcePath != "" {
+			t.Fatalf("result = %#v", result)
+		}
+		doc, _, err := manifest.LoadDocument(manifestDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(doc.Tools) != 2 || !stringInSlice(doc.AllowedExternalNamespaces, "spark") {
+			t.Fatalf("doc after default remove = %#v", doc)
+		}
+	})
+
+	t.Run("prunes when requested", func(t *testing.T) {
+		manifestDir := setup(t)
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		if err := a.run([]string{
+			"flux", "admin", "skills", "remove", "spark:use-spark",
+			"--manifest-dir", manifestDir,
+			"--prune-orphans",
+			"--json",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var result adminSkillResult
+		if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Join(result.PrunedTools, ",") != "spark" || strings.Join(result.PrunedNS, ",") != "spark" {
+			t.Fatalf("result = %#v", result)
+		}
+		data, err := os.ReadFile(filepath.Join(manifestDir, "manifest.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(data)
+		for _, unwanted := range []string{`"source":`, `"requires": null`, `"workspaces": null`, `"skill_install":`, `"spark"`} {
+			if strings.Contains(text, unwanted) {
+				t.Fatalf("manifest contains %q after prune:\n%s", unwanted, text)
+			}
+		}
+		if !strings.Contains(text, `"id": "qmd"`) {
+			t.Fatalf("manifest lost remaining tool:\n%s", text)
+		}
+	})
+}
+
 func TestAdminSkillsDirtyCheckoutRequiresForce(t *testing.T) {
 	manifestDir := t.TempDir()
 	writeAdminManifest(t, manifestDir, "")
@@ -1420,6 +1520,22 @@ Promised onboarding review and data cleanup.
 	}
 	if !strings.Contains(stdout.String(), "2026-05-13-sampleco-followup") || !strings.Contains(stdout.String(), "## Promises") || !strings.Contains(stdout.String(), `source_id: spark-123`) {
 		t.Fatalf("meetings add stdout = %q", stdout.String())
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"flux", "meetings", "add", "2026-05-28-sampleco-followup", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--attendees", "Heather (PMH, mammo tech)", "--partner", "Siemens, Healthineers", "--print"}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"2026-05-28-sampleco-followup",
+		`date: 2026-05-28`,
+		`  - "Heather (PMH, mammo tech)"`,
+		`  - "Siemens, Healthineers"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("meetings add stdout = %q, missing %q", out, want)
+		}
 	}
 }
 

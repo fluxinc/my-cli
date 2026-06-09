@@ -139,10 +139,14 @@ func Get(roots []Root, idOrPath string) (Meeting, string, error) {
 // Add creates a markdown meeting scaffold in root/meetings.
 func Add(root Root, slug string, opts AddOptions) (Meeting, string, error) {
 	slug = cleanSlug(slug)
+	slugDate, slug := splitDatePrefix(slug)
 	if slug == "" {
 		return Meeting{}, "", fmt.Errorf("meeting slug is required")
 	}
 	date := opts.Date
+	if date == "" {
+		date = slugDate
+	}
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
 	}
@@ -551,9 +555,20 @@ func dateFromStem(stem string) string {
 	return ""
 }
 
+func splitDatePrefix(slug string) (string, string) {
+	if len(slug) <= len("2006-01-02-") || slug[len("2006-01-02")] != '-' {
+		return "", slug
+	}
+	date := dateFromStem(slug)
+	if date == "" {
+		return "", slug
+	}
+	return date, slug[len("2006-01-02-"):]
+}
+
 func titleFromSlug(slug string) string {
-	if len(slug) > len("2006-01-02-") && dateFromStem(slug) != "" {
-		slug = slug[len("2006-01-02-"):]
+	if _, rest := splitDatePrefix(slug); rest != slug {
+		slug = rest
 	}
 	parts := strings.Fields(strings.ReplaceAll(slug, "-", " "))
 	for i, part := range parts {

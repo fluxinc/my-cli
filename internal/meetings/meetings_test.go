@@ -97,6 +97,22 @@ No match.
 	if added.ID != "2026-05-13-sampleco-followup" || !strings.Contains(scaffold, "## Promises") || !strings.Contains(scaffold, `source_id: spark-456`) {
 		t.Fatalf("added = %#v scaffold = %q", added, scaffold)
 	}
+
+	prefixed, _, err := Add(root, "2026-05-28-sampleco-followup", AddOptions{DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prefixed.ID != "2026-05-28-sampleco-followup" || prefixed.Date != "2026-05-28" {
+		t.Fatalf("prefixed = %#v", prefixed)
+	}
+
+	overridden, _, err := Add(root, "2026-05-28-sampleco-followup", AddOptions{Date: "2026-06-01", DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if overridden.ID != "2026-06-01-sampleco-followup" || overridden.Date != "2026-06-01" {
+		t.Fatalf("overridden = %#v", overridden)
+	}
 }
 
 func writeMeeting(t *testing.T, root, name, body string) {

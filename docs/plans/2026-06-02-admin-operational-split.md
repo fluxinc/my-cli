@@ -238,7 +238,9 @@ and must require an explicit flag.
 `remove` removes the manifest declaration. `--delete-source` may delete the
 static source directory, but only when the path stays inside the maintainer
 checkout. Product catalog `related_skills` references must block removal unless
-`--prune-related` is supplied.
+`--prune-related` is supplied. Removal also reports now-orphaned tool
+declarations and allowed skill namespaces; `--prune-orphans` removes them in the
+same write.
 
 Out of scope for v1 authoring (named so the gaps are deliberate, not silent):
 `add` handles static directory import only; declaring a tool-sourced skill
@@ -348,8 +350,9 @@ make admin commands modify those specific fields.
    emit git/operator follow-up commands. Implemented for static directory
    import and declaration removal: add copies into `skills/<install_slug>`,
    remove blocks product `related_skills` references unless `--prune-related`
-   is supplied, and both commands refuse dirty git checkouts unless `--force`
-   is supplied. Imports from harness-visible skill directories require an
+   is supplied and can prune orphaned tools/namespaces with `--prune-orphans`.
+   Both commands refuse dirty git checkouts unless `--force` is supplied.
+   Imports from harness-visible skill directories require an
    explicit `--keep-original` or `--remove-original` choice. The commands do not
    commit or push, and they print `git status` / `git diff` follow-up commands.
 

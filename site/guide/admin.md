@@ -18,7 +18,9 @@ flux admin skills remove acme:my-skill \
 ```
 
 They refuse dirty checkouts unless `--force` is supplied, never commit or push,
-and print follow-up `git status` and `git diff` commands.
+and print follow-up `git status` and `git diff` commands. Removal reports
+now-orphaned tools and allowed namespaces by default; add `--prune-orphans` to
+remove them in the same write.
 
 ## Admin aliases
 

@@ -80,7 +80,9 @@ Find and record knowledge:
 flux meetings list   [--since DATE] [--customer ID] [--partner ID] [--json]
 flux meetings search <text>        # single keywords match best
 flux meetings get    <id|path>
-flux meetings add    <slug> [--date DATE] [--title TEXT] [--customer ID] [--attendees NAME]
+flux meetings add    <slug> [--date DATE] [--title TEXT] [--customer ID] [--attendees NAME] [--partner ID] [--source-id ID]
+                     # --attendees/--partner repeatable; each occurrence is one literal value, commas preserved
+                     # a slug that starts with YYYY-MM-DD sets the date and is not double-prefixed
 flux customers list  [--json]      # canonical customer IDs, aliases, partners
 ```
 
