@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - 2026-06-08
 
 ### Added
 
@@ -12,6 +12,8 @@
 - The installer and `flux onboard` now install the bundled Flux self-skill into
   existing harnesses, and human CLI runs quietly refresh already-installed
   file-based copies.
+- Documented the public/private skill model: the `flux` self-skill ships in the
+  public binary; organization skills stay private to a manifest you control.
 
 ## 0.3.0 - 2026-06-08
 

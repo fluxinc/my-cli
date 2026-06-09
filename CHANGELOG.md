@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - 2026-06-08
 
 ### Added
 
@@ -13,6 +13,9 @@
 - `install.sh` now runs the installed binary to install the bundled Flux
   self-skill into existing harness skill directories, and normal human CLI runs
   quietly refresh already-installed file-based copies.
+- Documented the public/private skill model across the README and docs site: the
+  `flux` self-skill ships in the public binary, while organization skills stay
+  private to a manifest you control.
 
 ## 0.3.0 - 2026-06-08
 
