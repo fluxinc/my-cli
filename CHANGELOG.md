@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added `flux admin customers add` and `flux admin customers edit` for explicit
+  maintainer writes to `catalog/customers.json`.
 - `flux admin skills remove` now reports orphaned tool declarations and allowed
   skill namespaces, and can remove them with `--prune-orphans`.
 

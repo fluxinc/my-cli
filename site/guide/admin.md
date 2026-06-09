@@ -33,6 +33,7 @@ flux admin manifest sync acme
 flux admin manifest validate acme
 flux admin mount add product:sample-product --manifest acme
 flux admin meetings add sampleco-followup --manifest acme --workspace handbook
+flux admin customers add sampleco.example.com --manifest-dir ~/src/acme-workspace
 ```
 
 The top-level forms remain quiet compatibility aliases in this release.

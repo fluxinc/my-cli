@@ -1730,6 +1730,126 @@ Alias filter match.
 	}
 }
 
+func TestAdminCustomersAddAndEdit(t *testing.T) {
+	t.Run("add customer", func(t *testing.T) {
+		manifestDir := setupAdminCustomerManifest(t)
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		if err := a.run([]string{
+			"flux", "admin", "customers", "add", "otherco.example.com",
+			"--manifest-dir", manifestDir,
+			"--name", "OtherCo",
+			"--domain", "otherco.example.com",
+			"--alias", "otherco",
+			"--alias", "oc",
+			"--partner", "IntegratorCo",
+			"--domain-confirmed",
+			"--json",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var result adminCustomerResult
+		if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if result.Action != "added" || result.Customer.ID != "otherco.example.com" || !result.Customer.DomainConfirmed {
+			t.Fatalf("result = %#v", result)
+		}
+		customers := readAdminCustomers(t, manifestDir)
+		if len(customers) != 2 || customers[1].ID != "otherco.example.com" || strings.Join(customers[1].Aliases, ",") != "otherco,oc" {
+			t.Fatalf("customers = %#v", customers)
+		}
+	})
+
+	t.Run("duplicate add errors", func(t *testing.T) {
+		manifestDir := setupAdminCustomerManifest(t)
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		err := a.run([]string{
+			"flux", "admin", "customers", "add", "sampleco.example.com",
+			"--manifest-dir", manifestDir,
+		})
+		if err == nil || !strings.Contains(err.Error(), "already exists") {
+			t.Fatalf("add duplicate err = %v", err)
+		}
+	})
+
+	t.Run("partial edit", func(t *testing.T) {
+		manifestDir := setupAdminCustomerManifest(t)
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		if err := a.run([]string{
+			"flux", "admin", "customers", "edit", "sampleco.example.com",
+			"--manifest-dir", manifestDir,
+			"--name", "SampleCo Updated",
+			"--partner", "IntegratorCo",
+			"--partner", "ReviewCo",
+			"--json",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var result adminCustomerResult
+		if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		customer := result.Customer
+		if customer.Name != "SampleCo Updated" || customer.Domain != "sampleco.example.com" || strings.Join(customer.Aliases, ",") != "sampleco,sc" || strings.Join(customer.Partners, ",") != "IntegratorCo,ReviewCo" || !customer.DomainConfirmed {
+			t.Fatalf("customer = %#v", customer)
+		}
+	})
+
+	t.Run("missing edit errors", func(t *testing.T) {
+		manifestDir := setupAdminCustomerManifest(t)
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		err := a.run([]string{
+			"flux", "admin", "customers", "edit", "missingco.example.com",
+			"--manifest-dir", manifestDir,
+			"--name", "MissingCo",
+		})
+		if err == nil || !strings.Contains(err.Error(), "does not exist") {
+			t.Fatalf("edit missing err = %v", err)
+		}
+	})
+
+	t.Run("dirty checkout requires force", func(t *testing.T) {
+		manifestDir := setupAdminCustomerManifest(t)
+		initCLIGitRepo(t, manifestDir)
+		writeCLITestFile(t, filepath.Join(manifestDir, "dirty.txt"), "dirty\n")
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		err := a.run([]string{
+			"flux", "admin", "customers", "add", "otherco.example.com",
+			"--manifest-dir", manifestDir,
+		})
+		if err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
+			t.Fatalf("dirty err = %v", err)
+		}
+	})
+
+	t.Run("minimal write omits empty fields", func(t *testing.T) {
+		manifestDir := setupAdminCustomerManifest(t)
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		if err := a.run([]string{
+			"flux", "admin", "customers", "add", "localco",
+			"--manifest-dir", manifestDir,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(filepath.Join(manifestDir, "catalog", "customers.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(data)
+		for _, unwanted := range []string{`"name": ""`, `"aliases": null`, `"partners": null`, `"domain_confirmed": false`} {
+			if strings.Contains(text, unwanted) {
+				t.Fatalf("customer catalog contains %q:\n%s", unwanted, text)
+			}
+		}
+	})
+}
+
 func TestTopLevelHelp(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
@@ -1805,6 +1925,31 @@ func writeAdminManifest(t *testing.T, dir, extra string) {
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" }`+extra+`
 }`)
+}
+
+func setupAdminCustomerManifest(t *testing.T) string {
+	t.Helper()
+	manifestDir := t.TempDir()
+	writeAdminManifest(t, manifestDir, "")
+	data, err := os.ReadFile(filepath.Join("..", "..", "examples", "acme-workspace", "catalog", "customers.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(manifestDir, "catalog", "customers.json"), string(data))
+	return manifestDir
+}
+
+func readAdminCustomers(t *testing.T, manifestDir string) []manifest.Customer {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(manifestDir, "catalog", "customers.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var customers []manifest.Customer
+	if err := json.Unmarshal(data, &customers); err != nil {
+		t.Fatal(err)
+	}
+	return customers
 }
 
 func setupCLISkillsManifestFixture(t *testing.T) string {

@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added `flux admin customers add` and `flux admin customers edit` for customer
+  catalog writes.
 - `flux admin skills remove` reports orphaned tools and allowed skill namespaces,
   and can remove them with `--prune-orphans`.
 

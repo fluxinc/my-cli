@@ -56,9 +56,10 @@ Run `flux --help` (or `flux <command> --help`) for the authoritative surface.
   `flux manifest list`, `flux mount list`, and `flux sync --print`.
 - **Admin** commands mutate the shared source of truth (the manifest, catalog,
   guidance, skills declarations). They live under `flux admin ...`
-  (`flux admin skills add/remove`, `flux admin manifest/mount/meetings/onboard`)
-  and require explicit intent. Do not run them to "fix" something unless the
-  user asked to change the organization's configuration.
+  (`flux admin skills add/remove`, `flux admin customers add/edit`,
+  `flux admin manifest/mount/meetings/onboard`) and require explicit intent. Do
+  not run them to "fix" something unless the user asked to change the
+  organization's configuration.
 
 When unsure, reach for the operational form first; it cannot damage shared
 state.

@@ -118,7 +118,7 @@ type Product struct {
 // Customer describes one canonical customer identity.
 type Customer struct {
 	ID              string   `json:"id"`
-	Name            string   `json:"name"`
+	Name            string   `json:"name,omitempty"`
 	Domain          string   `json:"domain,omitempty"`
 	DomainConfirmed bool     `json:"domain_confirmed,omitempty"`
 	Aliases         []string `json:"aliases,omitempty"`
@@ -909,6 +909,16 @@ func validateCustomers(path string, customers []Customer) error {
 		}
 	}
 	return nil
+}
+
+// ValidateCustomers reports whether a customer catalog is internally consistent.
+func ValidateCustomers(path string, customers []Customer) error {
+	return validateCustomers(path, customers)
+}
+
+// ValidCustomerID reports whether value is an accepted canonical customer id.
+func ValidCustomerID(value string) bool {
+	return customerID(value)
 }
 
 func portableNamespacedID(value string) bool {

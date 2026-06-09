@@ -137,6 +137,7 @@ flux admin onboard ...                 # alias of flux onboard
 flux admin manifest add|sync|validate  # alias of flux manifest ...
 flux admin mount add|remove|sync       # alias of flux mount ...
 flux admin meetings add                # alias of flux meetings add
+flux admin customers add|edit          # edit catalog/customers.json
 ```
 
 Admin aliases are intentionally limited to those mutating/configuration
