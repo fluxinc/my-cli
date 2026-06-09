@@ -27,7 +27,7 @@ export default defineConfig({
       { text: 'Guide', link: '/guide/what-is-flux' },
       { text: 'CLI', link: '/guide/cli-reference' },
       {
-        text: 'v0.4.0',
+        text: 'v0.5.0',
         items: [
           { text: 'Changelog', link: '/changelog' },
           { text: 'GitHub', link: 'https://github.com/fluxinc/flux' },
