@@ -832,6 +832,9 @@ func validateTool(t Tool, result *ValidationResult) {
 	if !portableID(t.ID) {
 		result.Errors = append(result.Errors, fmt.Sprintf("tool id %q must be lowercase kebab-case", t.ID))
 	}
+	if t.Mode != "" && t.Mode != "required" && t.Mode != "optional" {
+		result.Errors = append(result.Errors, fmt.Sprintf("tool %q mode must be required or optional", t.ID))
+	}
 	if len(t.SkillInstall.Args) != 0 && strings.TrimSpace(t.SkillInstall.Command) == "" {
 		result.Errors = append(result.Errors, fmt.Sprintf("tool %q skill_install.command is required when skill_install.args are provided", t.ID))
 	}

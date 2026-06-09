@@ -39,7 +39,7 @@ so agents know how to use the CLI itself.
 |---|---|
 | **Manifest** | An organization's configuration, stored in a Git repo. Declares skills, mounts, catalog, and tool hints. The single source of truth. |
 | **Skill** | A capability installed into harness skill directories. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer). The CLI also ships one public, organization-neutral *self-skill* named `flux`, embedded in the binary, that teaches harnesses how to use `flux` itself. |
-| **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.flux/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Nit control workspace so multi-repo commits and pushes have one substrate. |
+| **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.flux/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Gnit control workspace so multi-repo commits and pushes have one substrate. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
 | **Catalog** | JSON inventories for products and canonical customers. Users opt specific products into their umbrella on demand. |
 | **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared fragments. `CLAUDE.md` points to the same file. |
@@ -146,15 +146,19 @@ Manifest authoring is explicit admin work:
 ```sh
 flux admin skills add <skill-dir> --id org:name --manifest-dir <checkout>
 flux admin skills remove <id|slug> --manifest-dir <checkout> [--prune-orphans]
+flux admin tools add <id> --manifest-dir <checkout> --mode required|optional --purpose "..."
+flux admin tools edit <id> --manifest-dir <checkout> [--purpose "..."]
+flux admin tools remove <id> --manifest-dir <checkout>
 ```
 
-Admin skill commands write a maintainer checkout, not the synced cache. They
+Admin commands write a maintainer checkout, not the synced cache. They
 refuse dirty git checkouts unless `--force` is supplied, never commit or push,
 and require explicit flags for duplicate-prone or destructive cleanup such as
 `--keep-original`, `--remove-original`, `--delete-source`, or product
 `related_skills` pruning. Removing a skill reports now-orphaned tools and
-allowed namespaces; `--prune-orphans` removes those too. After a write they
-print the relevant `git status` and `git diff` follow-up commands.
+allowed namespaces; `--prune-orphans` removes those too. Tool removal refuses
+manifest skills that still reference the tool. After a write they print the
+relevant `git status` and `git diff` follow-up commands.
 
 `flux admin` is the home for shared/workspace configuration. Mutating or
 configuration commands are reachable there too, with the top-level forms
@@ -166,6 +170,7 @@ flux admin manifest add|sync|validate  # alias of flux manifest ...
 flux admin mount add|remove|sync       # alias of flux mount ...
 flux admin meetings add                # alias of flux meetings add
 flux admin customers add|edit          # edit catalog/customers.json
+flux admin tools add|edit|remove       # edit manifest tools[]
 ```
 
 Admin aliases are intentionally limited to those mutating/configuration
@@ -185,18 +190,18 @@ flux mount remove <mount...> [--force]
 
 ```sh
 flux sync --print                           # plan inbound refresh and outbound publish
-flux sync [--backend auto|nit|flux]         # auto prefers Nit once the umbrella is initialized
+flux sync [--backend auto|gnit|flux]         # auto prefers Gnit once the umbrella is initialized
 flux sync --publish auto|never|direct|pr    # explicit override; direct is CLI-only
 flux sync --no-derived                      # skip skill/guidance reconcile after manifest changes
 ```
 
 `flux sync` is the routine reconciliation command. Flux classifies changes,
 handles private/public and content/admin policy, and blocks duplicate checkouts
-of the same remote until they are collapsed to one canonical checkout. Nit is
+of the same remote until they are collapsed to one canonical checkout. Gnit is
 the intended backend for real multi-repo Change creation, ordered push, and
 resume; Pins are reserved for intentional recorded workspace states. The Flux
 backend is a guarded bootstrap fallback when a workspace has not been
-initialized as a Nit control workspace. `--publish direct` can publish existing
+initialized as a Gnit control workspace. `--publish direct` can publish existing
 local commits directly, but dirty non-content/admin files are still held back
 instead of being quietly committed. A manifest can set top-level
 `sync.publish_policy` to `auto`, `never`, or `pr` as the default when
@@ -230,6 +235,7 @@ is present and falls back to built-in token-AND markdown search.
 ### Diagnostics
 
 ```sh
+flux tools list                             # declared tools across selected manifests
 flux tools info <name>                      # install hints for a declared tool
 flux doctor [--no-fetch] [--fix]            # git freshness, derived drift, last sync, manifests, tools
 ```

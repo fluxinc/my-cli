@@ -31,8 +31,8 @@ organization-specific is baked into the public CLI.
 
 A per-user workspace envelope, normally `~/<org>`. It contains local state,
 generated guidance, content mounts, product repos, and local scratch. When
-initialized as a Nit control workspace, multi-repo Change creation, ordered
-push, and resume use Nit instead of Flux reimplementing that transaction layer.
+initialized as a Gnit control workspace, multi-repo Change creation, ordered
+push, and resume use Gnit instead of Flux reimplementing that transaction layer.
 Pins remain available for deliberate recorded workspace states.
 
 ## Mount

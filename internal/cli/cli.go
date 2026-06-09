@@ -169,7 +169,7 @@ Usage:
   flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
   flux update [--check] [--version X.Y.Z] [--json] [--yes]
-  flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
+  flux sync [--backend auto|gnit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
   flux skills self install|uninstall|status ...
   flux skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
   flux skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
@@ -184,6 +184,8 @@ Usage:
   flux admin manifest add|sync|validate ...   (alias of flux manifest ...)
   flux admin mount add|remove|sync ...        (alias of flux mount ...)
   flux admin meetings add ...                 (alias of flux meetings add)
+  flux admin customers add|edit ...           (edit manifest customer catalog)
+  flux admin tools add|edit|remove ...        (edit manifest tool hints)
   flux manifest add <name> <git-url>
   flux manifest list
   flux manifest sync <name...> | --all [--print]
@@ -194,6 +196,7 @@ Usage:
   flux mount remove <mount...> [--print] [--force]
   flux workspace list [--manifest NAME]
   flux workspace sync <workspace...> | --all [--manifest NAME] [--print]
+  flux tools list
   flux tools info <name>
   flux meetings list
   flux meetings search <text>
@@ -619,7 +622,7 @@ func (a app) runSync(args []string) error {
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
-	fs.StringVar(&backend, "backend", "auto", "sync backend: auto, nit, or flux")
+	fs.StringVar(&backend, "backend", "auto", "sync backend: auto, gnit, or flux")
 	fs.StringVar(&publish, "publish", "auto", "publish mode: auto, never, direct, or pr")
 	fs.StringVar(&scope, "scope", "all", "sync scope: all, local, content, manifest, or products")
 	fs.StringVar(&message, "message", "", "commit message for newly committed content")
@@ -646,7 +649,7 @@ func (a app) runSync(args []string) error {
 		return fmt.Errorf("sync does not accept positional arguments")
 	}
 	if !validSyncBackend(backend) {
-		return fmt.Errorf("--backend must be one of auto, nit, or flux")
+		return fmt.Errorf("--backend must be one of auto, gnit, or flux")
 	}
 	if !validSyncPublish(publish) {
 		return fmt.Errorf("--publish must be one of auto, never, direct, or pr")
@@ -666,27 +669,27 @@ func (a app) runSync(args []string) error {
 	if err != nil {
 		return a.maybeJSONError(jsonOut, err)
 	}
-	nitRoot := ""
+	gnitRoot := ""
 	if root, err := resolveFluxRoot(home, manifestName, umbrellaRoot); err == nil {
-		nitRoot = findNitWorkspaceRoot(root)
+		gnitRoot = findGnitWorkspaceRoot(root)
 	}
 	effectiveBackend := backend
 	backendMessage := ""
 	if effectiveBackend == "auto" {
-		if publish != "pr" && nitRoot != "" {
-			effectiveBackend = "nit"
+		if publish != "pr" && gnitRoot != "" {
+			effectiveBackend = "gnit"
 		} else {
 			effectiveBackend = "flux"
 			if publish == "pr" {
-				backendMessage = "PR mode is handled by Flux/gh; Nit remains the publish substrate after PR support lands"
+				backendMessage = "PR mode is handled by Flux/gh; Gnit remains the publish substrate after PR support lands"
 			} else {
-				backendMessage = "Nit workspace not initialized; using Flux guard backend"
+				backendMessage = "Gnit workspace not initialized; using Flux guard backend"
 			}
 		}
 	}
 	report := syncer.Run(entries, syncer.Options{
 		Backend:    effectiveBackend,
-		NitRoot:    nitRoot,
+		GnitRoot:   gnitRoot,
 		Publish:    publish,
 		DryRun:     printOnly,
 		Message:    message,
@@ -740,10 +743,10 @@ type syncCommandReport struct {
 
 func (a app) printSyncUsage() {
 	fmt.Fprintln(a.stderr, `Usage of flux sync:
-  flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
+  flux sync [--backend auto|gnit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
 
 Synchronizes registered Flux repositories in both directions. The default
-backend uses Nit when the umbrella is a Nit workspace; otherwise Flux uses a
+backend uses Gnit when the umbrella is a Gnit workspace; otherwise Flux uses a
 guarded Git fallback until bootstrap/canonicalization is complete. The default
 publish mode only pushes private content-only changes when sibling checkouts of
 the same remote are clean. Direct mode can push existing commits, but dirty
@@ -818,7 +821,7 @@ func (a app) defaultSyncPublish(home, manifestName, fallback string) (string, er
 
 func validSyncBackend(value string) bool {
 	switch value {
-	case "auto", "nit", "flux":
+	case "auto", "gnit", "flux":
 		return true
 	default:
 		return false
@@ -999,8 +1002,8 @@ func githubRepoSlug(gitURL string) (string, bool) {
 func (a app) printSyncReport(report syncer.Report) {
 	if report.Backend != "" {
 		line := "# backend: " + report.Backend
-		if report.NitRoot != "" {
-			line += "\tnit_root=" + report.NitRoot
+		if report.GnitRoot != "" {
+			line += "\tgnit_root=" + report.GnitRoot
 		}
 		if report.BackendMessage != "" {
 			line += "\t" + report.BackendMessage
@@ -1228,9 +1231,9 @@ func autoRefreshDue(state autoRefreshState, key string, now time.Time, ttl time.
 	return !last.Add(ttl).After(now)
 }
 
-func findNitWorkspaceRoot(start string) string {
+func findGnitWorkspaceRoot(start string) string {
 	for dir := filepath.Clean(start); ; dir = filepath.Dir(dir) {
-		if _, err := os.Stat(filepath.Join(dir, ".nit", "roster.yaml")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, ".gnit", "roster.yaml")); err == nil {
 			return dir
 		}
 		parent := filepath.Dir(dir)
@@ -2909,6 +2912,8 @@ func (a app) runTools(args []string) error {
 		return fmt.Errorf("missing tools subcommand")
 	}
 	switch args[0] {
+	case "list":
+		return a.runToolsList(args[1:])
 	case "info":
 		return a.runToolsInfo(args[1:])
 	case "-h", "--help", "help":
@@ -2921,6 +2926,7 @@ func (a app) runTools(args []string) error {
 
 func (a app) printToolsUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
+  flux tools list [--manifest NAME] [--home DIR] [--json]
   flux tools info <name> [--manifest NAME] [--home DIR] [--json]
 
 Tool entries are operator-facing hints from synced organization manifests.`)
@@ -2929,6 +2935,37 @@ Tool entries are operator-facing hints from synced organization manifests.`)
 type toolInfo struct {
 	Manifest string        `json:"manifest"`
 	Tool     manifest.Tool `json:"tool"`
+}
+
+func (a app) runToolsList(args []string) error {
+	var home string
+	var manifestName string
+	var jsonOut bool
+	fs := newFlagSet("flux tools list", a.stderr)
+	fs.StringVar(&home, "home", "", "override home directory")
+	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home":     true,
+		"manifest": true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("tools list does not accept positional arguments")
+	}
+	infos, err := a.listToolInfo(home, manifestName)
+	if err != nil {
+		return err
+	}
+	if jsonOut {
+		return printJSON(a.stdout, infos)
+	}
+	for _, info := range infos {
+		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\n", info.Manifest, info.Tool.ID, info.Tool.Mode, info.Tool.Purpose)
+	}
+	return nil
 }
 
 func (a app) runToolsInfo(args []string) error {
@@ -3126,6 +3163,20 @@ func printHumanField(w io.Writer, label, value string) {
 		line = nextPrefix + word
 	}
 	fmt.Fprintln(w, line)
+}
+
+func (a app) listToolInfo(home, manifestName string) ([]toolInfo, error) {
+	docs, err := loadRegisteredDocs(home, manifestName)
+	if err != nil {
+		return nil, err
+	}
+	var out []toolInfo
+	for _, doc := range docs {
+		for _, tool := range doc.doc.Tools {
+			out = append(out, toolInfo{Manifest: doc.ref.Name, Tool: tool})
+		}
+	}
+	return out, nil
 }
 
 func (a app) findToolInfo(home, manifestName, toolID string) ([]toolInfo, error) {
@@ -4046,6 +4097,8 @@ func (a app) runAdmin(args []string) error {
 		return a.runAdminMeetings(args[1:])
 	case "customers":
 		return a.runAdminCustomers(args[1:])
+	case "tools":
+		return a.runAdminTools(args[1:])
 	case "-h", "--help", "help":
 		a.printAdminUsage()
 		return nil
@@ -4063,11 +4116,14 @@ func (a app) printAdminUsage() {
   flux admin mount add|remove|sync ...        (alias of flux mount ...)
   flux admin meetings add ...                 (alias of flux meetings add)
   flux admin customers add|edit ...           (edit manifest customer catalog)
+  flux admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
+  flux admin tools edit <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--clear-install-commands] [--docs-url URL|--clear-docs-url] [--skill-install-command CMD] [--skill-install-arg ARG] [--clear-skill-install] [--force] [--json]
+  flux admin tools remove <id> --manifest-dir DIR [--force] [--json]
 
 admin groups shared/workspace configuration. The top-level command forms remain
 as compatibility aliases. Admin aliases are limited to mutating/configuration
 subcommands; operational reads (skills list/show/status, manifest list, mount
-list, meetings list/search/get) stay under their top-level commands.`)
+list, tools list/info, meetings list/search/get) stay under their top-level commands.`)
 }
 
 func adminOperationalReadError(group, subcommand string) error {
@@ -4144,6 +4200,27 @@ func (a app) runAdminCustomers(args []string) error {
 	}
 }
 
+func (a app) runAdminTools(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing admin tools subcommand")
+	}
+	switch args[0] {
+	case "add":
+		return a.runAdminToolsAdd(args[1:])
+	case "edit":
+		return a.runAdminToolsEdit(args[1:])
+	case "remove":
+		return a.runAdminToolsRemove(args[1:])
+	case "list", "info":
+		return adminOperationalReadError("tools", args[0])
+	case "-h", "--help", "help":
+		a.printAdminUsage()
+		return nil
+	default:
+		return fmt.Errorf("unknown admin tools subcommand %q", args[0])
+	}
+}
+
 func (a app) runAdminSkills(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("missing admin skills subcommand")
@@ -4189,6 +4266,15 @@ type adminCustomerResult struct {
 	NextCommands []string          `json:"next_commands,omitempty"`
 }
 
+type adminToolResult struct {
+	Action       string        `json:"action"`
+	ID           string        `json:"id"`
+	ManifestPath string        `json:"manifest_path"`
+	Tool         manifest.Tool `json:"tool,omitempty"`
+	Message      string        `json:"message,omitempty"`
+	NextCommands []string      `json:"next_commands,omitempty"`
+}
+
 type adminCustomerOpts struct {
 	manifestDir     string
 	name            optionalStringFlag
@@ -4198,6 +4284,21 @@ type adminCustomerOpts struct {
 	domainConfirmed optionalBoolFlag
 	force           bool
 	jsonOut         bool
+}
+
+type adminToolOpts struct {
+	manifestDir          string
+	mode                 optionalStringFlag
+	purpose              optionalStringFlag
+	installCommands      stringListFlag
+	docsURL              optionalStringFlag
+	skillInstallCommand  optionalStringFlag
+	skillInstallArgs     stringListFlag
+	clearInstallCommands bool
+	clearDocsURL         bool
+	clearSkillInstall    bool
+	force                bool
+	jsonOut              bool
 }
 
 type optionalStringFlag struct {
@@ -4301,6 +4402,112 @@ func (a app) printAdminCustomerResult(result adminCustomerResult, jsonOut bool) 
 	return nil
 }
 
+func (a app) runAdminToolsAdd(args []string) error {
+	opts, rest, err := parseAdminToolOpts("flux admin tools add", a.stderr, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 || opts.manifestDir == "" || !opts.mode.set || !opts.purpose.set {
+		return fmt.Errorf("usage: flux admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT")
+	}
+	result, err := a.adminToolsAdd(rest[0], opts)
+	if err != nil {
+		return err
+	}
+	return a.printAdminToolResult(result, opts.jsonOut)
+}
+
+func (a app) runAdminToolsEdit(args []string) error {
+	opts, rest, err := parseAdminToolOpts("flux admin tools edit", a.stderr, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 || opts.manifestDir == "" {
+		return fmt.Errorf("usage: flux admin tools edit <id> --manifest-dir DIR")
+	}
+	result, err := a.adminToolsEdit(rest[0], opts)
+	if err != nil {
+		return err
+	}
+	return a.printAdminToolResult(result, opts.jsonOut)
+}
+
+func (a app) runAdminToolsRemove(args []string) error {
+	var manifestDir string
+	var force bool
+	var jsonOut bool
+	fs := newFlagSet("flux admin tools remove", a.stderr)
+	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
+	fs.BoolVar(&force, "force", false, "allow dirty checkout")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON result")
+	rest, err := parseInterspersed(fs, args, map[string]bool{"manifest-dir": true})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 || manifestDir == "" {
+		return fmt.Errorf("usage: flux admin tools remove <id> --manifest-dir DIR")
+	}
+	result, err := a.adminToolsRemove(rest[0], manifestDir, force)
+	if err != nil {
+		return err
+	}
+	return a.printAdminToolResult(result, jsonOut)
+}
+
+func parseAdminToolOpts(name string, stderr io.Writer, args []string) (adminToolOpts, []string, error) {
+	var opts adminToolOpts
+	fs := newFlagSet(name, stderr)
+	fs.StringVar(&opts.manifestDir, "manifest-dir", "", "maintainer manifest checkout")
+	fs.Var(&opts.mode, "mode", "tool mode: required or optional")
+	fs.Var(&opts.purpose, "purpose", "tool purpose")
+	fs.Var(&opts.installCommands, "install-command", "install command hint (repeatable)")
+	fs.Var(&opts.docsURL, "docs-url", "tool documentation URL")
+	fs.Var(&opts.skillInstallCommand, "skill-install-command", "command that materializes tool-provided skills")
+	fs.Var(&opts.skillInstallArgs, "skill-install-arg", "argument for the skill install command (repeatable)")
+	fs.BoolVar(&opts.clearInstallCommands, "clear-install-commands", false, "remove install command hints")
+	fs.BoolVar(&opts.clearDocsURL, "clear-docs-url", false, "remove the docs URL")
+	fs.BoolVar(&opts.clearSkillInstall, "clear-skill-install", false, "remove skill_install")
+	fs.BoolVar(&opts.force, "force", false, "allow dirty checkout or replace an existing declaration")
+	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON result")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"manifest-dir":          true,
+		"mode":                  true,
+		"purpose":               true,
+		"install-command":       true,
+		"docs-url":              true,
+		"skill-install-command": true,
+		"skill-install-arg":     true,
+	})
+	if err != nil {
+		return opts, rest, err
+	}
+	if opts.clearInstallCommands && len(opts.installCommands) != 0 {
+		return opts, rest, fmt.Errorf("--clear-install-commands cannot be combined with --install-command")
+	}
+	if opts.clearDocsURL && opts.docsURL.set {
+		return opts, rest, fmt.Errorf("--clear-docs-url cannot be combined with --docs-url")
+	}
+	if opts.clearSkillInstall && (opts.skillInstallCommand.set || len(opts.skillInstallArgs) != 0) {
+		return opts, rest, fmt.Errorf("--clear-skill-install cannot be combined with --skill-install-command or --skill-install-arg")
+	}
+	if opts.mode.set && !validToolMode(opts.mode.value) {
+		return opts, rest, fmt.Errorf("--mode must be required or optional")
+	}
+	return opts, rest, nil
+}
+
+func (a app) printAdminToolResult(result adminToolResult, jsonOut bool) error {
+	if jsonOut {
+		return printJSON(a.stdout, result)
+	}
+	fmt.Fprintf(a.stdout, "%s\t%s\t%s\n", result.Action, result.ID, result.ManifestPath)
+	if result.Message != "" {
+		fmt.Fprintln(a.stdout, result.Message)
+	}
+	printAdminNextCommands(a.stdout, result.NextCommands)
+	return nil
+}
+
 func (a app) adminCustomersAdd(id string, opts adminCustomerOpts) (adminCustomerResult, error) {
 	root, customers, path, err := loadAdminCustomerCatalogFromCheckout(opts.manifestDir)
 	if err != nil {
@@ -4366,6 +4573,173 @@ func (a app) adminCustomersEdit(id string, opts adminCustomerOpts) (adminCustome
 		Message:      "updated customer catalog entry",
 		NextCommands: adminNextCommands(root),
 	}, nil
+}
+
+func (a app) adminToolsAdd(id string, opts adminToolOpts) (adminToolResult, error) {
+	doc, manifestPath, root, err := loadAdminManifestCheckout(opts.manifestDir)
+	if err != nil {
+		return adminToolResult{}, err
+	}
+	if err := ensureAdminManifestClean(root, opts.force); err != nil {
+		return adminToolResult{}, err
+	}
+	id = strings.TrimSpace(id)
+	if !portableKebab(id) {
+		return adminToolResult{}, fmt.Errorf("tool id %q must be lowercase kebab-case", id)
+	}
+	idx := toolIndex(doc.Tools, id)
+	if idx != -1 && !opts.force {
+		return adminToolResult{}, fmt.Errorf("tool %q already exists; re-run with --force to replace it", id)
+	}
+	tool := manifest.Tool{ID: id}
+	applyAdminToolOpts(&tool, opts)
+	if idx == -1 {
+		doc.Tools = append(doc.Tools, tool)
+	} else {
+		doc.Tools[idx] = tool
+	}
+	if result := manifest.ValidateDocument(root, doc); len(result.Errors) != 0 {
+		return adminToolResult{}, fmt.Errorf("updated manifest is invalid: %s", strings.Join(result.Errors, "; "))
+	}
+	if err := manifest.SaveDocument(manifestPath, doc); err != nil {
+		return adminToolResult{}, err
+	}
+	action := "added"
+	message := "added tool declaration"
+	if idx != -1 {
+		action = "edited"
+		message = "replaced tool declaration"
+	}
+	return adminToolResult{
+		Action:       action,
+		ID:           tool.ID,
+		ManifestPath: manifestPath,
+		Tool:         tool,
+		Message:      message,
+		NextCommands: adminNextCommands(root),
+	}, nil
+}
+
+func (a app) adminToolsEdit(id string, opts adminToolOpts) (adminToolResult, error) {
+	doc, manifestPath, root, err := loadAdminManifestCheckout(opts.manifestDir)
+	if err != nil {
+		return adminToolResult{}, err
+	}
+	if err := ensureAdminManifestClean(root, opts.force); err != nil {
+		return adminToolResult{}, err
+	}
+	id = strings.TrimSpace(id)
+	idx := toolIndex(doc.Tools, id)
+	if idx == -1 {
+		return adminToolResult{}, fmt.Errorf("tool %q does not exist", id)
+	}
+	applyAdminToolOpts(&doc.Tools[idx], opts)
+	if result := manifest.ValidateDocument(root, doc); len(result.Errors) != 0 {
+		return adminToolResult{}, fmt.Errorf("updated manifest is invalid: %s", strings.Join(result.Errors, "; "))
+	}
+	if err := manifest.SaveDocument(manifestPath, doc); err != nil {
+		return adminToolResult{}, err
+	}
+	return adminToolResult{
+		Action:       "edited",
+		ID:           doc.Tools[idx].ID,
+		ManifestPath: manifestPath,
+		Tool:         doc.Tools[idx],
+		Message:      "updated tool declaration",
+		NextCommands: adminNextCommands(root),
+	}, nil
+}
+
+func (a app) adminToolsRemove(id, manifestDir string, force bool) (adminToolResult, error) {
+	doc, manifestPath, root, err := loadAdminManifestCheckout(manifestDir)
+	if err != nil {
+		return adminToolResult{}, err
+	}
+	if err := ensureAdminManifestClean(root, force); err != nil {
+		return adminToolResult{}, err
+	}
+	id = strings.TrimSpace(id)
+	idx := toolIndex(doc.Tools, id)
+	if idx == -1 {
+		return adminToolResult{}, fmt.Errorf("tool %q does not exist", id)
+	}
+	refs := adminToolSkillReferences(doc, id)
+	if len(refs) != 0 {
+		return adminToolResult{}, fmt.Errorf("tool %q is referenced by skills: %s", id, strings.Join(refs, ", "))
+	}
+	removed := doc.Tools[idx]
+	doc.Tools = append(doc.Tools[:idx], doc.Tools[idx+1:]...)
+	if result := manifest.ValidateDocument(root, doc); len(result.Errors) != 0 {
+		return adminToolResult{}, fmt.Errorf("updated manifest is invalid: %s", strings.Join(result.Errors, "; "))
+	}
+	if err := manifest.SaveDocument(manifestPath, doc); err != nil {
+		return adminToolResult{}, err
+	}
+	return adminToolResult{
+		Action:       "removed",
+		ID:           removed.ID,
+		ManifestPath: manifestPath,
+		Tool:         removed,
+		Message:      "removed tool declaration",
+		NextCommands: adminNextCommands(root),
+	}, nil
+}
+
+func applyAdminToolOpts(tool *manifest.Tool, opts adminToolOpts) {
+	if opts.mode.set {
+		tool.Mode = opts.mode.value
+	}
+	if opts.purpose.set {
+		tool.Purpose = opts.purpose.value
+	}
+	if opts.clearInstallCommands {
+		tool.Install.Commands = nil
+	} else if len(opts.installCommands) != 0 {
+		tool.Install.Commands = append([]string(nil), opts.installCommands...)
+	}
+	if opts.clearDocsURL {
+		tool.Install.DocsURL = ""
+	} else if opts.docsURL.set {
+		tool.Install.DocsURL = opts.docsURL.value
+	}
+	if opts.clearSkillInstall {
+		tool.SkillInstall = manifest.SkillInstall{}
+		return
+	}
+	if opts.skillInstallCommand.set {
+		tool.SkillInstall.Command = opts.skillInstallCommand.value
+	}
+	if len(opts.skillInstallArgs) != 0 {
+		tool.SkillInstall.Args = append([]string(nil), opts.skillInstallArgs...)
+	}
+}
+
+func toolIndex(tools []manifest.Tool, id string) int {
+	for i, tool := range tools {
+		if tool.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func adminToolSkillReferences(doc manifest.Document, toolID string) []string {
+	var refs []string
+	for _, skill := range doc.Skills {
+		if adminSkillToolRefs(skill)[toolID] {
+			refs = append(refs, skill.ID)
+		}
+	}
+	return refs
+}
+
+func validToolMode(value string) bool {
+	switch value {
+	case "required", "optional":
+		return true
+	default:
+		return false
+	}
 }
 
 func applyCustomerOpts(customer *manifest.Customer, opts adminCustomerOpts, add bool) {

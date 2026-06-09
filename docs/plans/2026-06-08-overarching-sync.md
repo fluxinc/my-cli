@@ -1,6 +1,6 @@
 # Overarching Sync Command
 
-Status: v1 implemented for planner/direct publish/Nit backend; PR creation and
+Status: v1 implemented for planner/direct publish/Gnit backend; PR creation and
 bootstrap automation remain planned.
 
 ## Goal
@@ -25,7 +25,7 @@ safe to publish" command.
 
 ```sh
 flux sync [--manifest NAME] [--umbrella DIR]
-          [--backend auto|nit|flux]
+          [--backend auto|gnit|flux]
           [--publish auto|never|direct|pr]
           [--scope all|local|content|manifest|products]
           [--message TEXT]
@@ -45,12 +45,12 @@ Default behavior is `--publish auto`, not a blind push:
    `held back`, `failed`, or `not attempted`. `pr opened` is reserved for the
    future GitHub PR layer.
 
-`--backend auto` is the default. It uses Nit when the umbrella is initialized as
-a Nit workspace, and falls back to Flux's guarded Git path when the umbrella is
-not initialized as Nit or when the current mode is still handled by Flux policy
+`--backend auto` is the default. It uses Gnit when the umbrella is initialized as
+a Gnit workspace, and falls back to Flux's guarded Git path when the umbrella is
+not initialized as Gnit or when the current mode is still handled by Flux policy
 code.
 
-`--print` is the dry-run surface: it prints the planned Git and Nit operations
+`--print` is the dry-run surface: it prints the planned Git and Gnit operations
 without changing files or remotes. `gh` operations are not emitted yet because
 PR creation is not implemented.
 
@@ -99,7 +99,7 @@ PR ceremony, while higher-risk changes naturally become review work.
 
 `flux sync --publish pr` is planned to create draft pull requests through `gh`.
 It is not implemented in v1. Current behavior is deliberately conservative:
-the command accepts `--publish pr`, avoids Nit publish, and reports that PR mode
+the command accepts `--publish pr`, avoids Gnit publish, and reports that PR mode
 belongs to Flux's future GitHub policy layer.
 
 The intended PR flow:
@@ -153,7 +153,7 @@ repos can create split local state.
 
 Current direction:
 
-1. v1 detects duplicate remotes and publishes only through the canonical Nit
+1. v1 detects duplicate remotes and publishes only through the canonical Gnit
    member when every sibling checkout of that remote is clean. A clean sibling
    is allowed and can be fast-forwarded after publish; a sibling with
    uncommitted or unpushed changes blocks that remote. The hazard is
@@ -165,7 +165,7 @@ Current direction:
 3. Long term: route all commits and pushes for a given remote through the
    canonical checkout, even if the editable path was a scoped mount.
 
-This same-remote reconciliation is Flux's responsibility. Nit should not be
+This same-remote reconciliation is Flux's responsibility. Gnit should not be
 asked to model two checkouts of one remote as two independent member repos.
 
 ## Admin vs Operational Placement
@@ -187,44 +187,49 @@ changes are reported and held, then routed through `flux admin ...`. This keeps
 the operational surface safe for an agent to run without mutating organization
 configuration.
 
-## Nit As The Spine
+## Gnit As The Spine
 
-Nit is the intended substrate for Flux's multi-repo sync. The Flux umbrella is a
-Nit `init --control` workspace by design: one control root plus member
+Gnit is the intended substrate for Flux's multi-repo sync. The Flux umbrella is a
+Gnit `init --control` workspace by design: one control root plus member
 repositories. When the umbrella is initialized, `flux sync` delegates the real
-multi-repo Change creation, ordered push, and resumable publish behavior to Nit
-instead of reimplementing that machinery. Routine Nit-backed sync uses
-`nit commit -m` followed by `nit push`; Pins remain available for deliberate
+multi-repo Change creation, ordered push, and resumable publish behavior to Gnit
+instead of reimplementing that machinery. Routine Gnit-backed sync uses
+`gnit commit -m` followed by `gnit push`; Pins remain available for deliberate
 recorded workspace states, not every meeting-note sync.
 
-Flux owns the layers Nit deliberately does not own:
+Flux owns the layers Gnit deliberately does not own:
 
-- Bootstrap: initialize new umbrellas as Nit workspaces, adopt canonical member
+- Bootstrap: initialize new umbrellas as Gnit workspaces, adopt canonical member
   repositories from the Flux manifest, and keep the roster aligned.
 - Policy: classify content vs admin changes, private vs public repositories, and
-  direct-push vs review requirements before invoking Nit.
+  direct-push vs review requirements before invoking Gnit.
 - PRs: use `gh` to create GitHub PRs where policy demands review. This is
-  planned, not implemented yet. Nit publishes branches and review artifacts; it
+  planned, not implemented yet. Gnit publishes branches and review artifacts; it
   does not open GitHub PRs.
 - Same-remote canonicalization: collapse multiple Flux checkouts of one remote
-  into one canonical checkout before Nit sees the workspace. Nit must not model
+  into one canonical checkout before Gnit sees the workspace. Gnit must not model
   duplicate checkouts of the same remote as independent members because that
   breaks Change and Pin semantics.
 
 The current Flux-native Git path is therefore a guarded fallback for bootstrap,
 uninitialized umbrellas, and policy modes that Flux still owns directly. It may
-fetch, fast-forward, and direct-push private content-only changes when no Nit
+fetch, fast-forward, and direct-push private content-only changes when no Gnit
 workspace exists yet. Once the umbrella is initialized and duplicate remotes are
-safe, `flux sync` routes publish through `nit add`, `nit commit`, and
-`nit push`.
+safe, `flux sync` routes publish through `gnit add`, `gnit commit`, and
+`gnit push`.
 
 ## Current Dogfood State
 
-A local dogfood umbrella has been initialized as a Nit control workspace:
+The local dogfood umbrella still needs Gnit workspace migration. A live check on
+2026-06-09 showed `gnit status` from `~/flux` reporting no Gnit workspace. Until
+`.gnit/roster.yaml` exists there, `flux sync --backend auto` falls back to the
+guarded Flux Git backend.
+
+The intended Gnit shape is:
 
 ```sh
 cd ~/flux
-nit status
+gnit status
 # Workspace flux   root: ~/flux
 # Repos
 #   root              clean   on master
@@ -232,8 +237,8 @@ nit status
 #   dicom-capacitor   clean   on master
 ```
 
-The roster has one canonical Nit member per current mounted remote. Sanitized
-shape:
+The roster should have one canonical Gnit member per current mounted remote.
+Sanitized shape:
 
 ```yaml
 version: 1
@@ -249,11 +254,11 @@ members:
   - products/dicom-capacitor
 ```
 
-With that state, `flux sync --print --json` for the registered manifest selects
-`backend: "nit"`. In a clean local state it reports the manifest cache,
+With that state, `flux sync --print --json` for the registered manifest should select
+`backend: "gnit"`. In a clean local state it reports the manifest cache,
 handbook mount, and current product checkout as `already landed`. If a
-same-remote sibling outside the Nit roster is dirty, the command still selects
-Nit but holds that shared remote back with the duplicate-checkout safety
+same-remote sibling outside the Gnit roster is dirty, the command still selects
+Gnit but holds that shared remote back with the duplicate-checkout safety
 message.
 
 ## Implementation Phases
@@ -268,17 +273,17 @@ message.
    behavior reports that PR mode is not implemented yet.
 4. Done for v1: add same-remote canonicalization.
    tolerate clean duplicate siblings while routing publish through the canonical
-   Nit member, and hold the remote whenever a duplicate sibling has pending
+   Gnit member, and hold the remote whenever a duplicate sibling has pending
    changes. Longer term, use a canonical clone plus sparse worktrees or an
    equivalent reconciliation layer.
-5. Done for the current dogfood umbrella: stand up Nit for the umbrella.
-   `~/flux` is a Nit control workspace, has canonical members for the current
-   handbook and product checkouts, and makes `flux sync --backend auto` choose
-   Nit. General bootstrap automation is still open.
-6. Done for the Nit backend path: replace guarded Git publishing with Nit
+5. Pending for the current dogfood umbrella: stand up Gnit for the umbrella.
+   `~/flux` needs `.gnit/roster.yaml`, canonical members for the current
+   handbook and product checkouts, and then should make `flux sync --backend
+   auto` choose Gnit. General bootstrap automation is still open.
+6. Done for the Gnit backend path: replace guarded Git publishing with Gnit
    delegation.
-   use `nit add` for Flux-approved paths, `nit commit -m` for new local
-   changes, and `nit push` / `nit push --resume` for ordered publish and
+   use `gnit add` for Flux-approved paths, `gnit commit -m` for new local
+   changes, and `gnit push` / `gnit push --resume` for ordered publish and
    recovery.
 
 ## Open Questions
@@ -290,6 +295,6 @@ message.
 - Should meeting ingestion from external tools be a separate command, such as
   `flux meetings ingest`, so `flux sync` stays focused on reconciliation and
   publishing?
-- Should Flux auto-run `nit init --control` during `flux onboard` for new
+- Should Flux auto-run `gnit init --control` during `flux onboard` for new
   umbrellas, or require an explicit first `flux sync bootstrap` /
   `flux admin sync bootstrap` command?

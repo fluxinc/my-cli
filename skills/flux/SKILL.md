@@ -52,15 +52,17 @@ Run `flux --help` (or `flux <command> --help`) for the authoritative surface.
 - **Operational** commands are read-only or only touch local per-user state.
   They are safe to run freely: `flux skills list/show/status`,
   `flux meetings list/search/get`, `flux customers list`,
-  `flux catalog list products`, `flux root`, `flux launch`, `flux doctor`,
-  `flux manifest list`, `flux mount list`, and `flux sync --print`.
+  `flux catalog list products`, `flux tools list/info`, `flux root`,
+  `flux launch`, `flux doctor`, `flux manifest list`, `flux mount list`, and
+  `flux sync --print`.
   `flux update --check` is also safe for inspection. Run `flux update` itself
   only when the user explicitly asks to update the local CLI binary.
 - **Admin** commands mutate the shared source of truth (the manifest, catalog,
   guidance, skills declarations). They live under `flux admin ...`
   (`flux admin skills add/remove`, `flux admin customers add/edit`,
-  `flux admin manifest/mount/meetings/onboard`) and require explicit intent. Do
-  not run them to "fix" something unless the user asked to change the
+  `flux admin tools add/edit/remove`,
+  `flux admin manifest/mount/meetings/onboard`) and require explicit intent.
+  Do not run them to "fix" something unless the user asked to change the
   organization's configuration.
 
 When unsure, reach for the operational form first; it cannot damage shared
@@ -123,6 +125,8 @@ flux skills list                   # manifest/source skills available to install
 flux skills status                 # what's installed across harnesses, and where
 flux skills install [harness...] | --all
 flux skills sync                   # reconcile installs with the manifest (prune stale)
+flux tools list                    # manifest-declared external tools
+flux tools info <name>             # install hints for one external tool
 ```
 
 ## Sync: reconcile and publish
@@ -141,10 +145,10 @@ flux sync --publish never          # explicit local-only reconcile
 flux sync --publish pr             # currently holds changes and reports PR-mode follow-up
 ```
 
-`flux sync` uses **Nit** as its multi-repo publish backend once the umbrella is
-a Nit control workspace; otherwise it uses a guarded built-in Git path. Run
+`flux sync` uses **Gnit** as its multi-repo publish backend once the umbrella is
+a Gnit control workspace; otherwise it uses a guarded built-in Git path. Run
 `flux sync --print` first to see the plan before publishing. GitHub PR creation
-is a Flux policy layer planned on top of Nit and `gh`; it is not implemented in
+is a Flux policy layer planned on top of Gnit and `gh`; it is not implemented in
 the current CLI yet. A manifest can set top-level `sync.publish_policy` to
 `auto`, `never`, or `pr` as the default when `--publish` is omitted; an
 explicit CLI flag always wins. A non-print sync writes `.flux/last-sync.json`;

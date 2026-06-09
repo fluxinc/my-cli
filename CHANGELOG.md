@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added `flux tools list` to enumerate manifest-declared tools with mode,
+  purpose, and install hints.
+- Added `flux admin tools add|edit|remove` to manage manifest tool
+  declarations, with manifest validation and a reference check that blocks
+  removing a tool still referenced by a skill.
+
+### Changed
+
+- Renamed the multi-repo sync backend from Nit to Gnit: `flux sync` now takes
+  `--backend gnit`, detects `.gnit/roster.yaml`, invokes the `gnit` binary,
+  and reports `gnit_root` in JSON output.
+
 ## 0.6.0 - 2026-06-09
 
 ### Added
@@ -66,12 +82,12 @@
 
 ### Added
 
-- Added `flux sync`: nit-first bidirectional umbrella reconciliation. It pulls
+- Added `flux sync`: gnit-first bidirectional umbrella reconciliation. It pulls
   inbound updates and publishes safe local changes outbound, with a
   conservative auto policy that direct-pushes only private, content-only changes
   and holds admin/manifest, public, mixed, divergent, and duplicate-remote
   checkouts.
-- Nit is the multi-repo publish backend when the umbrella is a Nit control
+- Gnit is the multi-repo publish backend when the umbrella is a Gnit control
   workspace; a guarded Flux Git path is the fallback. Same-remote duplicate
   checkouts are detected, tolerated when clean, and held when a sibling has
   pending changes.

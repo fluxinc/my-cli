@@ -56,7 +56,7 @@ then push `master` **and** the tag. Pushing a `v*` tag runs `release.yml`
 `site/**` runs `deploy-site.yml` (GitHub Pages at https://fluxinc.github.io/flux/).
 The binary version comes from the git tag via goreleaser ldflags
 (`internal/version.Version`); the `VERSION` file is vestigial — do not bump it.
-This repo is plain Git, not a Nit workspace — `nit`/`.nit` do not apply here.
+This repo is plain Git, not a Gnit workspace — `gnit`/`.gnit` do not apply here.
 
 ## Agent-Specific Instructions
 

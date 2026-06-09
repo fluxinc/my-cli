@@ -35,7 +35,7 @@ type Entry struct {
 type Options struct {
 	Publish    string
 	Backend    string
-	NitRoot    string
+	GnitRoot   string
 	DryRun     bool
 	Message    string
 	Runner     Runner
@@ -59,7 +59,7 @@ type FastForwardOptions struct {
 type Report struct {
 	Publish        string   `json:"publish"`
 	Backend        string   `json:"backend,omitempty"`
-	NitRoot        string   `json:"nit_root,omitempty"`
+	GnitRoot       string   `json:"gnit_root,omitempty"`
 	BackendMessage string   `json:"backend_message,omitempty"`
 	DryRun         bool     `json:"dry_run,omitempty"`
 	Results        []Result `json:"results"`
@@ -108,8 +108,8 @@ type inspectMode struct {
 
 // Run inspects and optionally reconciles repositories.
 func Run(entries []Entry, opts Options) Report {
-	if opts.Backend == "nit" {
-		return runNit(entries, opts)
+	if opts.Backend == "gnit" {
+		return runGnit(entries, opts)
 	}
 	if opts.Backend == "" || opts.Backend == "auto" {
 		opts.Backend = "flux"
@@ -181,7 +181,7 @@ func runFlux(entries []Entry, opts Options) Report {
 	return Report{Publish: opts.Publish, Backend: "flux", DryRun: opts.DryRun, Results: collectResults(inspections)}
 }
 
-func runNit(entries []Entry, opts Options) Report {
+func runGnit(entries []Entry, opts Options) Report {
 	if opts.Publish == "" {
 		opts.Publish = "auto"
 	}
@@ -192,14 +192,14 @@ func runNit(entries []Entry, opts Options) Report {
 	if runner == nil {
 		runner = execCommand
 	}
-	report := Report{Publish: opts.Publish, Backend: "nit", NitRoot: opts.NitRoot, DryRun: opts.DryRun}
-	if opts.NitRoot == "" || !hasNitWorkspace(opts.NitRoot) {
-		report.BackendMessage = "Nit workspace not initialized; run nit init --control for the Flux umbrella before using the Nit backend"
-		report.Results = heldResults(entries, "Nit workspace not initialized")
+	report := Report{Publish: opts.Publish, Backend: "gnit", GnitRoot: opts.GnitRoot, DryRun: opts.DryRun}
+	if opts.GnitRoot == "" || !hasGnitWorkspace(opts.GnitRoot) {
+		report.BackendMessage = "Gnit workspace not initialized; run gnit init --control for the Flux umbrella before using the Gnit backend"
+		report.Results = heldResults(entries, "Gnit workspace not initialized")
 		return report
 	}
 	if opts.Publish == "pr" {
-		report.BackendMessage = "PR mode belongs to Flux's gh policy layer; Nit handles branch publishing, not PR creation"
+		report.BackendMessage = "PR mode belongs to Flux's gh policy layer; Gnit handles branch publishing, not PR creation"
 		report.Results = heldResults(entries, "PR mode is not implemented yet")
 		return report
 	}
@@ -213,7 +213,7 @@ func runNit(entries []Entry, opts Options) Report {
 		reconcileInbound(&inspections[i], opts, runner)
 	}
 
-	unsafeDuplicateRemotes := unsafeDuplicateRemoteReasons(inspections, opts.NitRoot)
+	unsafeDuplicateRemotes := unsafeDuplicateRemoteReasons(inspections, opts.GnitRoot)
 	if len(unsafeDuplicateRemotes) != 0 {
 		for i := range inspections {
 			reason, ok := unsafeDuplicateRemotes[inspections[i].remoteKey]
@@ -221,7 +221,7 @@ func runNit(entries []Entry, opts Options) Report {
 				hold(&inspections[i], reason)
 			}
 		}
-		report.BackendMessage = "Flux must reconcile unsafe duplicate checkouts before delegating those remotes to Nit"
+		report.BackendMessage = "Flux must reconcile unsafe duplicate checkouts before delegating those remotes to Gnit"
 	}
 
 	var stagePaths []string
@@ -253,15 +253,15 @@ func runNit(entries []Entry, opts Options) Report {
 			hold(in, "dirty changes are outside declared content paths")
 			continue
 		}
-		if !pathWithin(in.entry.LocalPath, opts.NitRoot) {
-			hold(in, "checkout is outside the Nit workspace; canonicalize or adopt it before Nit publish")
+		if !pathWithin(in.entry.LocalPath, opts.GnitRoot) {
+			hold(in, "checkout is outside the Gnit workspace; canonicalize or adopt it before Gnit publish")
 			continue
 		}
 		var entryStagePaths []string
 		for _, path := range in.dirty {
-			rel, err := filepath.Rel(opts.NitRoot, filepath.Join(in.entry.LocalPath, filepath.FromSlash(path)))
+			rel, err := filepath.Rel(opts.GnitRoot, filepath.Join(in.entry.LocalPath, filepath.FromSlash(path)))
 			if err != nil || strings.HasPrefix(filepath.ToSlash(rel), "../") || filepath.IsAbs(rel) {
-				hold(in, "dirty path is outside the Nit workspace")
+				hold(in, "dirty path is outside the Gnit workspace")
 				continue
 			}
 			entryStagePaths = append(entryStagePaths, filepath.ToSlash(rel))
@@ -277,7 +277,7 @@ func runNit(entries []Entry, opts Options) Report {
 		return report
 	}
 	if opts.DryRun {
-		message := nitDryRunMessage(len(stagePaths) != 0)
+		message := gnitDryRunMessage(len(stagePaths) != 0)
 		for _, in := range publishable {
 			in.result.Status = "dry-run"
 			in.result.Direction = "outbound"
@@ -287,7 +287,7 @@ func runNit(entries []Entry, opts Options) Report {
 		return report
 	}
 
-	out, err := runNitPublish(opts, stagePaths)
+	out, err := runGnitPublish(opts, stagePaths)
 	if err != nil {
 		msg := commandError(out, err)
 		for _, in := range publishable {
@@ -302,7 +302,7 @@ func runNit(entries []Entry, opts Options) Report {
 	for _, in := range publishable {
 		in.result.Status = "pushed"
 		in.result.Direction = "outbound"
-		in.result.Message = "published by nit"
+		in.result.Message = "published by gnit"
 		if msg != "" {
 			in.result.Message += ": " + msg
 		}
@@ -568,7 +568,7 @@ func hasDuplicatePendingSibling(in *inspection, all []inspection) bool {
 	return false
 }
 
-func unsafeDuplicateRemoteReasons(inspections []inspection, nitRoot string) map[string]string {
+func unsafeDuplicateRemoteReasons(inspections []inspection, gnitRoot string) map[string]string {
 	groups := map[string][]int{}
 	for i, in := range inspections {
 		if in.remoteKey == "" {
@@ -581,30 +581,30 @@ func unsafeDuplicateRemoteReasons(inspections []inspection, nitRoot string) map[
 		if len(indexes) < 2 {
 			continue
 		}
-		inNit := 0
+		inGnit := 0
 		for _, idx := range indexes {
-			if pathWithin(inspections[idx].entry.LocalPath, nitRoot) {
-				inNit++
+			if pathWithin(inspections[idx].entry.LocalPath, gnitRoot) {
+				inGnit++
 			}
 		}
 		switch {
-		case inNit > 1:
-			out[remote] = "same remote has multiple Nit workspace checkouts; collapse to one canonical checkout before Nit publish"
+		case inGnit > 1:
+			out[remote] = "same remote has multiple Gnit workspace checkouts; collapse to one canonical checkout before Gnit publish"
 			continue
-		case inNit == 0:
-			out[remote] = "same remote has multiple checkouts but no canonical Nit workspace checkout"
+		case inGnit == 0:
+			out[remote] = "same remote has multiple checkouts but no canonical Gnit workspace checkout"
 			continue
 		}
 		for _, idx := range indexes {
 			in := inspections[idx]
-			if pathWithin(in.entry.LocalPath, nitRoot) {
+			if pathWithin(in.entry.LocalPath, gnitRoot) {
 				continue
 			}
 			switch {
 			case in.result.Status == "failed":
 				out[remote] = "same remote sibling failed sync inspection"
 			case in.result.Ahead != 0 || len(in.dirty) != 0:
-				out[remote] = "same remote sibling has pending changes; reconcile or move them into the canonical checkout before Nit publish"
+				out[remote] = "same remote sibling has pending changes; reconcile or move them into the canonical checkout before Gnit publish"
 			}
 			if out[remote] != "" {
 				break
@@ -810,11 +810,11 @@ func execCommandInDir(dir, name string, args ...string) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
-func hasNitWorkspace(root string) bool {
+func hasGnitWorkspace(root string) bool {
 	if root == "" {
 		return false
 	}
-	_, err := os.Stat(filepath.Join(root, ".nit", "roster.yaml"))
+	_, err := os.Stat(filepath.Join(root, ".gnit", "roster.yaml"))
 	return err == nil
 }
 
@@ -838,24 +838,24 @@ func duplicateRemoteKeys(inspections []inspection) map[string]bool {
 	return out
 }
 
-func nitDryRunMessage(hasDirty bool) string {
+func gnitDryRunMessage(hasDirty bool) string {
 	var steps []string
 	if hasDirty {
-		steps = append(steps, "would run nit add for Flux-approved content paths")
-		steps = append(steps, "would run nit commit -m")
+		steps = append(steps, "would run gnit add for Flux-approved content paths")
+		steps = append(steps, "would run gnit commit -m")
 	}
-	steps = append(steps, "would run nit push")
+	steps = append(steps, "would run gnit push")
 	return strings.Join(steps, "; ")
 }
 
-func runNitPublish(opts Options, stagePaths []string) ([]byte, error) {
+func runGnitPublish(opts Options, stagePaths []string) ([]byte, error) {
 	dirRunner := opts.DirRunner
 	if dirRunner == nil {
 		dirRunner = execCommandInDir
 	}
 	var combined []byte
 	run := func(args ...string) error {
-		out, err := dirRunner(opts.NitRoot, "nit", args...)
+		out, err := dirRunner(opts.GnitRoot, "gnit", args...)
 		combined = append(combined, out...)
 		return err
 	}

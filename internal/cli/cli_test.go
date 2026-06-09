@@ -731,6 +731,115 @@ func TestAdminSkillsDirtyCheckoutRequiresForce(t *testing.T) {
 	}
 }
 
+func TestAdminToolsAddEditRemove(t *testing.T) {
+	t.Run("add and edit tool", func(t *testing.T) {
+		manifestDir := t.TempDir()
+		writeAdminManifest(t, manifestDir, "")
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		if err := a.run([]string{
+			"flux", "admin", "tools", "add", "gnit",
+			"--manifest-dir", manifestDir,
+			"--mode", "required",
+			"--purpose", "Multi-repo workspace publishing",
+			"--install-command", "curl -fsSL https://raw.githubusercontent.com/mostlydev/gnit/master/install.sh | sh",
+			"--docs-url", "https://github.com/mostlydev/gnit",
+			"--json",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var result adminToolResult
+		if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if result.Action != "added" || result.Tool.ID != "gnit" || result.Tool.Mode != "required" {
+			t.Fatalf("result = %#v", result)
+		}
+
+		stdout.Reset()
+		if err := a.run([]string{
+			"flux", "admin", "tools", "edit", "gnit",
+			"--manifest-dir", manifestDir,
+			"--purpose", "Gnit workspace publishing",
+			"--clear-install-commands",
+			"--json",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		result = adminToolResult{}
+		if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if result.Action != "edited" || result.Tool.Purpose != "Gnit workspace publishing" || len(result.Tool.Install.Commands) != 0 {
+			t.Fatalf("edited result = %#v", result)
+		}
+	})
+
+	t.Run("remove blocks referenced tool", func(t *testing.T) {
+		manifestDir := t.TempDir()
+		writeAdminManifest(t, manifestDir, `,
+  "skills": [
+    {
+      "id": "acme:publisher",
+      "install_slug": "publisher",
+      "path": "skills/publisher",
+      "requires": ["tool:gnit"]
+    }
+  ],
+  "tools": [
+    {
+      "id": "gnit",
+      "mode": "required",
+      "purpose": "Multi-repo workspace publishing"
+    }
+  ]`)
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		err := a.run([]string{
+			"flux", "admin", "tools", "remove", "gnit",
+			"--manifest-dir", manifestDir,
+		})
+		if err == nil || !strings.Contains(err.Error(), "referenced by skills") {
+			t.Fatalf("remove err = %v, want referenced blocker", err)
+		}
+	})
+
+	t.Run("remove unreferenced tool", func(t *testing.T) {
+		manifestDir := t.TempDir()
+		writeAdminManifest(t, manifestDir, `,
+  "tools": [
+    {
+      "id": "gnit",
+      "mode": "required",
+      "purpose": "Multi-repo workspace publishing"
+    }
+  ]`)
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		if err := a.run([]string{
+			"flux", "admin", "tools", "remove", "gnit",
+			"--manifest-dir", manifestDir,
+			"--json",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var result adminToolResult
+		if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if result.Action != "removed" || result.Tool.ID != "gnit" {
+			t.Fatalf("result = %#v", result)
+		}
+		doc, _, err := manifest.LoadDocument(manifestDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(doc.Tools) != 0 {
+			t.Fatalf("tools after remove = %#v", doc.Tools)
+		}
+	})
+}
+
 func TestUnimplementedAndUnknownCommands(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
@@ -930,7 +1039,7 @@ func TestMountCommands(t *testing.T) {
 	}
 }
 
-func TestSyncExplicitNitBackendReportsMissingWorkspace(t *testing.T) {
+func TestSyncExplicitGnitBackendReportsMissingWorkspace(t *testing.T) {
 	home := t.TempDir()
 	manifestCache := filepath.Join(home, ".local", "share", "flux", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
@@ -957,13 +1066,13 @@ func TestSyncExplicitNitBackendReportsMissingWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout.Reset()
-	if err := a.run([]string{"flux", "sync", "--backend", "nit", "--manifest", "acme", "--home", home, "--print", "--json"}); err != nil {
+	if err := a.run([]string{"flux", "sync", "--backend", "gnit", "--manifest", "acme", "--home", home, "--print", "--json"}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
 	for _, want := range []string{
-		`"backend": "nit"`,
-		"Nit workspace not initialized",
+		`"backend": "gnit"`,
+		"Gnit workspace not initialized",
 		`"status": "held back"`,
 		`"id": "handbook"`,
 	} {
@@ -2103,6 +2212,14 @@ func TestToolsInfoAndDoctorCommands(t *testing.T) {
 		"--home", home,
 	}); err != nil {
 		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"flux", "tools", "list", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "acme\tqmd\toptional\tsearch ranking helper") {
+		t.Fatalf("tools list stdout = %q", stdout.String())
 	}
 
 	stdout.Reset()

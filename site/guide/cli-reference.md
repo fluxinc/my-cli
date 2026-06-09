@@ -9,7 +9,7 @@ commands by job.
 flux onboard [harness...] | --all [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 flux root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 flux launch [--product ID] [--onboard] [--print] [--manifest NAME] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
-flux sync [--backend auto|nit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--no-derived] [--print] [--json]
+flux sync [--backend auto|gnit|flux] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--no-derived] [--print] [--json]
 flux doctor [--no-fetch] [--fix] [--json]
 flux update [--check] [--version X.Y.Z] [--json] [--yes]
 flux version
@@ -41,6 +41,7 @@ flux admin manifest add|sync|validate ...
 flux admin mount add|remove|sync ...
 flux admin meetings add ...
 flux admin customers add|edit <id> --manifest-dir DIR
+flux admin tools add|edit|remove <id> --manifest-dir DIR
 ```
 
 ## Manifests, mounts, and workspace
@@ -70,11 +71,12 @@ flux meetings add <slug>
 
 flux customers list
 flux catalog list products
+flux tools list
 flux tools info <name>
 ```
 
-`flux sync` is the routine reconciliation command. `--backend auto` prefers Nit
-when the umbrella is initialized as a Nit control workspace; Flux keeps the
+`flux sync` is the routine reconciliation command. `--backend auto` prefers Gnit
+when the umbrella is initialized as a Gnit control workspace; Flux keeps the
 bootstrap, policy, duplicate-remote, and PR layers. `--publish direct` can
 publish existing local commits directly, but dirty non-content/admin files are
 still held back for explicit admin or review handling. A manifest can set

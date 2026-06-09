@@ -57,7 +57,7 @@ manifests they control.
 
 **Umbrella** — a per-user operating envelope (default `~/<org>`). It contains
 Flux state, generated guidance, version-controlled mounts, product repositories,
-and local-only scratch. When initialized as a Nit control workspace, the
+and local-only scratch. When initialized as a Gnit control workspace, the
 umbrella's root records workspace metadata and pins, while the member
 repositories remain ordinary Git checkouts.
 
@@ -66,7 +66,7 @@ repositories remain ordinary Git checkouts.
 ├── .flux/
 │   ├── workspace.json   identity: schema version, org, manifest ref, created_at
 │   └── state.json       dynamic: selected products, per-mount sync status
-├── .nit/                optional Nit control metadata for multi-repo sync
+├── .gnit/                optional Gnit control metadata for multi-repo sync
 ├── <handbook mount>/    manifest-declared content
 ├── <other mounts>/
 ├── products/            opted-in catalog products (detached clones)
@@ -104,11 +104,11 @@ fragments, and points `CLAUDE.md` at the same content where the platform allows
 it. `flux launch` checks guidance freshness before starting a harness.
 
 **Tool** — an external executable the org depends on. The manifest declares
-purpose and install hints. `flux doctor` / `flux tools info` report presence
-and what to run. `flux` never silently installs a tool — hints, not actions.
-Meeting search is allowed to use `qmd` when present because it is an operator
-tool declared by the manifest, but the built-in markdown scan remains the
-fallback and keeps the CLI functional without optional tools.
+purpose and install hints. `flux doctor`, `flux tools list`, and `flux tools
+info` report presence and what to run. `flux` never silently installs a tool —
+hints, not actions. Meeting search is allowed to use `qmd` when present because
+it is an operator tool declared by the manifest, but the built-in markdown scan
+remains the fallback and keeps the CLI functional without optional tools.
 
 ## 4. The public/private boundary (a first-class constraint)
 
