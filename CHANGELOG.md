@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `our doctor` now reads as a repair dry run: every finding that
+  `our doctor --fix` can repair is marked `would fast-forward`,
+  `would reconcile derived guidance and skills`, or
+  `would reinstall the our self-skill` (also `would_fix` in `--json`), with a
+  closing `fixable` count pointing at `our doctor --fix`. Findings doctor
+  cannot repair keep their explanatory remediation text.
+
 ## 0.10.0 - 2026-06-10
 
 ### Changed

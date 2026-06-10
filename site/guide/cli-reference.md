@@ -12,10 +12,13 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
   generated guidance and skills when the manifest changed, and publishes
   local content that is safe to publish. This is the one routine verb — when
   a startup notice says something is stale or unpublished, run this.
-- **`our doctor`** explains without changing anything: manifest validity,
-  per-checkout Git freshness, derived guidance/skill drift, and the last sync
-  audit. Reach for it when `our sync` held something back and you want the
-  why. `--fix` applies only the safe subset of what sync already does.
+- **`our doctor`** is the dry run for installation and workspace repair: it
+  diagnoses manifest validity, per-checkout Git freshness, derived
+  guidance/skill drift, and the last sync audit, marking every repairable
+  finding with `would ...` and a closing fixable count. Nothing changes until
+  you re-run with `--fix`, which applies exactly that plan; findings `--fix`
+  cannot repair (dirty, diverged, product checkouts) keep their explanatory
+  remediation text instead.
 - **`our manifests sync`** refreshes the registered manifest cache. You need
   it before an umbrella exists (bootstrap) or when managing several
   registered manifests; when exactly one manifest changes and an umbrella is

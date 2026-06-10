@@ -179,11 +179,13 @@ our sync --publish pr             # currently holds changes and reports PR-mode 
 reconciles them automatically after a manifest checkout changes.
 
 Rule of thumb for the three similar verbs: `our sync` converges everything
-(use it by default), `our doctor` diagnoses and explains held-back state
-without changing it, and `our manifests sync` refreshes the registered
-manifest cache. Use `our manifests sync` before an umbrella exists or for
-multi-manifest administration; when exactly one manifest changes and an
-umbrella is known, it also reconciles generated guidance and manifest skills.
+(use it by default); `our doctor` is the repair dry run — it diagnoses,
+marks each repairable finding with `would ...`, and prints a fixable count,
+while `our doctor --fix` applies exactly that plan; `our manifests sync`
+refreshes the registered manifest cache. Use `our manifests sync` before an
+umbrella exists or for multi-manifest administration; when exactly one
+manifest changes and an umbrella is known, it also reconciles generated
+guidance and manifest skills.
 
 `our sync` uses **Gnit** as its multi-repo publish backend once the umbrella is
 a Gnit control workspace; otherwise it uses a guarded built-in Git path. Run

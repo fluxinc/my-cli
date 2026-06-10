@@ -3063,11 +3063,12 @@ type doctorReport struct {
 }
 
 type doctorItem struct {
-	Name    string   `json:"name"`
-	Status  string   `json:"status"`
-	Path    string   `json:"path,omitempty"`
-	Message string   `json:"message,omitempty"`
-	Details []string `json:"details,omitempty"`
+	Name     string   `json:"name"`
+	Status   string   `json:"status"`
+	Path     string   `json:"path,omitempty"`
+	Message  string   `json:"message,omitempty"`
+	WouldFix string   `json:"would_fix,omitempty"`
+	Details  []string `json:"details,omitempty"`
 }
 
 func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doctorOptions) doctorReport {
@@ -3118,7 +3119,22 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 	}
 	report.Freshness = append(report.Freshness, a.doctorFreshness(home, manifestName, umbrellaRoot, !opts.NoFetch, root)...)
 	report.Derived = append(report.Derived, a.doctorDerived(home, manifestName, root)...)
+	if root != "" {
+		for i := range report.Derived {
+			item := &report.Derived[i]
+			if item.Status == "ok" || item.Status == "error" {
+				continue
+			}
+			if item.Name == "selfskill" {
+				item.WouldFix = "reinstall the our self-skill"
+			} else {
+				item.WouldFix = "reconcile derived guidance and skills"
+			}
+		}
+	}
 	if opts.Fix {
+		clearDoctorWouldFix(report.Freshness)
+		clearDoctorWouldFix(report.Derived)
 		report.Fixes = append(report.Fixes, a.doctorFix(home, manifestName, umbrellaRoot, root, report.Derived)...)
 	}
 	if root != "" {
@@ -3305,7 +3321,19 @@ func doctorFreshnessItem(result syncer.Result, fetch bool, refreshes map[string]
 	if result.Error != "" {
 		item.Details = append(item.Details, result.Error)
 	}
+	if item.Status == "stale" && !result.BehindUnknown && len(result.Dirty) == 0 &&
+		result.Ahead == 0 && result.Behind > 0 &&
+		(result.Role == "manifest" || result.Role == "content") {
+		item.WouldFix = "fast-forward"
+	}
 	return item
+}
+
+// clearDoctorWouldFix drops dry-run plans once --fix is actually applying them.
+func clearDoctorWouldFix(items []doctorItem) {
+	for i := range items {
+		items[i].WouldFix = ""
+	}
 }
 
 func doctorFreshnessName(result syncer.Result) string {
@@ -3924,6 +3952,7 @@ func doctorTools(manifestName string, tools []manifest.Tool) []doctorItem {
 }
 
 func (a app) printDoctorReport(report doctorReport) {
+	fixable := 0
 	printItems := func(kind string, items []doctorItem) {
 		for _, item := range items {
 			line := fmt.Sprintf("%s\t%s\t%s", kind, item.Name, item.Status)
@@ -3932,6 +3961,10 @@ func (a app) printDoctorReport(report doctorReport) {
 			}
 			if item.Message != "" {
 				line += "\t" + item.Message
+			}
+			if item.WouldFix != "" {
+				fixable++
+				line += "\twould " + item.WouldFix
 			}
 			fmt.Fprintln(a.stdout, line)
 			for _, detail := range item.Details {
@@ -3949,6 +3982,9 @@ func (a app) printDoctorReport(report doctorReport) {
 	printItems("last-sync", report.LastSync)
 	printItems("workspace", report.Workspaces)
 	printItems("tool", report.Tools)
+	if fixable > 0 {
+		fmt.Fprintf(a.stdout, "fixable\t%d\trun `our doctor --fix` to apply\n", fixable)
+	}
 }
 
 func doctorUmbrella(home, root string) []doctorItem {

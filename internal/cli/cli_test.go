@@ -1701,6 +1701,43 @@ func TestSyncPersistsLastSyncAuditAndDoctorReportsIt(t *testing.T) {
 	}
 }
 
+func TestDoctorWithoutFixReportsWouldFixPlan(t *testing.T) {
+	remote, clone, writer := setupCLIRemoteRepo(t, t.TempDir(), "handbook", map[string]string{"README.md": "seed\n"})
+	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": "`+remote+`", "mode": "required" }
+  ]
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	mountPath := filepath.Join(umbrellaRoot, "handbook")
+	if err := os.Rename(clone, mountPath); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "meetings", "2026-06-09-remote.md"), "remote\n")
+	commitAndPushCLIGit(t, writer, "remote meeting")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "would fast-forward") {
+		t.Fatalf("doctor stdout = %q, want would-fast-forward plan", out)
+	}
+	if !strings.Contains(out, "our doctor --fix") {
+		t.Fatalf("doctor stdout = %q, want doctor --fix hint", out)
+	}
+	if _, err := os.Stat(filepath.Join(mountPath, "meetings", "2026-06-09-remote.md")); !os.IsNotExist(err) {
+		t.Fatalf("doctor without --fix mutated the mount: %v", err)
+	}
+}
+
 func TestDoctorFixFastForwardsCleanStaleMount(t *testing.T) {
 	remote, clone, writer := setupCLIRemoteRepo(t, t.TempDir(), "handbook", map[string]string{"README.md": "seed\n"})
 	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
