@@ -37,8 +37,8 @@ v0.13.0 separated the **control plane** (the private manifest repo) from the
 ```
 control plane    <org>-manifest repo      defines everything; admin-writable
 data plane       <org>-workspace repo(s)  durable content; org-writable
-execution plane  Mode A: sessions         interactive humans + harnesses
-                 Mode B: contained claws  governed fleet agents
+execution plane  Mode A: sessions          interactive humans + harnesses
+                 Mode B: contained runners governed fleet agents
 ```
 
 The unifying thesis: **`our` is operator-controlled self-materialization of
@@ -74,9 +74,11 @@ happens in **sessions** — visible, ordinary directories:
   generated session guidance. Cheap (worktrees share the object store),
   plain (a human can `cd` in, run git, take over), isolated (branches are
   per-session; the base checkout never sees uncommitted session state).
-- `our ai` **defaults into a session** (create or reuse); `--no-session`
-  launches on the base umbrella for admin/debug. The ergonomic path must be
-  the safe path — guidance alone does not change default agent behavior.
+- `our ai` **defaults into a fresh session**. Reuse is explicit only
+  (`our work resume <id>` or `our ai --session <id>`), because implicit reuse
+  recreates successive-run inheritance. `--no-session` launches on the base
+  umbrella for admin/debug. The ergonomic path must be the safe path —
+  guidance alone does not change default agent behavior.
 - `our work status` lists sessions: branch, dirty paths, age, harness.
 - `our work finish --land | --publish | --discard` is the only way work
   leaves a session: land merges to the base branch locally; publish lands
@@ -89,7 +91,9 @@ happens in **sessions** — visible, ordinary directories:
   status` remediation. This must not rely on accidental duplicate-remote
   detection. Clean, closed sessions are GC candidates by age.
 - Humans use the same verbs, or take over an agent's session by cd-ing into
-  it — full symmetry.
+  it — full symmetry. The base `AGENTS.md` should describe the base umbrella
+  as inspection/admin space, not the default place for agent scratch; session
+  guidance points harnesses at the session's own `scratch/`.
 
 Substrate alignment: gnit (the umbrella's intended multi-repo substrate) has
 this exact workflow designed as `gnit worktree add <path> --pin` — isolated
@@ -116,10 +120,10 @@ mapping is close to 1:1:
 | members / roles             | agent identity + persona seed              |
 | catalog products            | repo mounts                                |
 
-A future `our claw compile [--role R]` (verb TBD) emits the org-side launch
+A future `our launch compile [--role R]` (verb TBD) emits the org-side launch
 artifacts — contract text, role-scoped mount list, tool grants, MCP server
-declarations, persona seed — that container tooling (e.g. Clawdapus's
-`claw up`) consumes. Inside the container the agent gets a role-scoped
+declarations, persona seed — that container tooling (for example, `claw up`)
+consumes. Inside the container the agent gets a role-scoped
 umbrella pulled into its home, the `our` CLI installed, and **only the
 operational verb set** reachable through the mediated tool plane; `our
 admin *` and `our sync` remain operator-only — the privilege split the CLI
@@ -144,7 +148,10 @@ Mode B implies manifest extensions that are useful standalone:
   explicit-publish remediation. Schema validity is deliberately not enough —
   an agent half-draft can be schema-valid.
 - **Modifications to tracked files** publish as today; the human
-  edit-a-record flow is untouched.
+  edit-a-record flow is untouched. This is a compatibility compromise, not
+  full isolation: the patch buys immediate safety for new stray files, while
+  default sessions are what prevent tracked-file half-edits from being made in
+  the base checkout.
 
 ## Options
 
@@ -152,8 +159,9 @@ Mode B implies manifest extensions that are useful standalone:
 
 - Pro: fast, narrow; closes the litter-publishing hole immediately.
 - Pro: preserves human direct edits to tracked records.
-- Con: agents still share one checkout — cross-pollution and inheritance
-  remain; introduces provenance state to explain and maintain.
+- Con: agents still share one checkout — tracked-file half-edits,
+  cross-pollution, and inheritance remain; introduces provenance state to
+  explain and maintain.
 - When it wins: as v0.13.1, while the execution plane is built.
 
 ### O2 — Patch + sessions, opt-in (`our work start`, `our ai --session`)
@@ -209,7 +217,8 @@ The combined path:
    plus `our record adopt`.
 2. **v0.14** — `our work` sessions (visible `work/<id>`, plain git
    worktrees, first-class registry, sync session-awareness), with `our ai`
-   defaulting into a session and `--no-session` as the escape hatch.
+   defaulting into a fresh session, explicit resume only, and `--no-session`
+   as the escape hatch.
 3. **v0.15** — manifest `roles` + `mcp_servers`; org-side launch-artifact
    compilation for contained runners.
 4. Later — gnit backend for sessions once umbrellas bootstrap as gnit
