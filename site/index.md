@@ -55,21 +55,26 @@ our ai codex
 ```
 
 `our ai codex` performs the same root resolution and
-guidance freshness check before starting a harness. `our init` creates a local
-private manifest/handbook repo, commits it, registers it, syncs the manifest
-cache, and prints the optional GitHub publish command.
+guidance freshness check before starting a harness. `our init` creates a
+private manifest repo (the control plane) plus a content repo at
+`~/acme/workspace` (the actual workspace), all local and working offline;
+`our publish` later creates the private remotes and pushes both.
 
 ## The Operating Shape
 
 ```
 ~/acme/
 ├── .our/          # workspace identity and local state
-├── handbook/       # manifest-declared content mount
+├── workspace/      # manifest-declared content mount (its own repo)
 ├── repos/          # opted-in product repositories
 ├── personal/       # local-only scratch
 ├── AGENTS.md       # generated root guidance
 └── CLAUDE.md       # compatibility pointer when supported
 ```
+
+The organization manifest lives in its own private repository outside the
+umbrella — the workspace is a mount of things the manifest defines, and
+day-to-day work never edits the manifest itself.
 
 Start with the [quickstart](/guide/quickstart), then read
 [the model](/guide/the-model) for the boundary between the public CLI and a

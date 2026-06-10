@@ -1,20 +1,23 @@
 # Admin
 
 `our admin` groups commands that mutate shared or workspace configuration.
-Operational reads stay top-level.
+Operational reads stay top-level. The manifest is the control plane in its
+own private repository — admin commands are the intended way to change it,
+since it never appears inside the day-to-day workspace.
 
 ## Manifest skill authoring
 
-Admin skill commands write a maintainer checkout, not the synced manifest
-cache:
+Admin skill commands write a maintainer checkout through `--manifest-dir`
+(your own clone of the manifest repo, or the registered checkout printed by
+`our manifests list`):
 
 ```sh
 our admin skills add ./my-skill \
   --id acme:my-skill \
-  --manifest-dir ~/src/acme-workspace
+  --manifest-dir ~/src/acme-manifest
 
 our admin skills remove acme:my-skill \
-  --manifest-dir ~/src/acme-workspace
+  --manifest-dir ~/src/acme-manifest
 ```
 
 On `add`, `--install-slug SLUG` renames the install directory inside the

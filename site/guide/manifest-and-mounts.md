@@ -7,19 +7,32 @@ inside the umbrella.
 
 ```sh
 our init acme --name "Acme"
+our publish
 our manifests add acme <git-url>
 our manifests list
 our manifests sync acme
 our manifests validate acme
 ```
 
-The synced cache is disposable derived state. Admin authoring commands should
-write a maintainer checkout through `--manifest-dir`.
+The manifest repository is the control plane: it defines the workspace but is
+not part of it. `our init` keeps it at the registry path, outside the
+umbrella, so day-to-day work cannot accidentally edit `manifest.json`; admin
+authoring commands write to a maintainer checkout through `--manifest-dir`.
+Content lives in separate mounted repositories — `our init` scaffolds one at
+`<umbrella>/workspace` — which also lets hosting permissions differ: admins
+push the manifest, the whole organization pushes content.
 
-For a mount that should read from the same repository as the manifest, set
-`git_url` to `"."`. `our` resolves that marker to the URL or local path used
-when the manifest was registered, so a scaffold created with `our init` can be
-published without editing `manifest.json`.
+Until `our publish` runs, the scaffolded mount's `git_url` is the content
+repo's local path and every sync reports `local-only`. `our publish` creates
+the private remotes, rewrites mount URLs to the published repositories, and
+pushes; `our sync` refuses to publish a manifest that still references local
+paths, and `our doctor` names each such mount.
+
+A mount may also read from the same repository as the manifest (`git_url`
+`"."` or the manifest's own URL). This conflated layout is supported for
+existing organizations — the CLI keeps a single checkout for it and skips
+sparse-checkout so manifest files stay available — but new organizations get
+the separated layout.
 
 For a fuller neutral reference, browse the
 [Acme example workspace](https://github.com/fluxinc/our-ai/tree/master/examples/acme-workspace).
@@ -73,9 +86,11 @@ handbook.
 
 ## Sparse content
 
-A private workspace repo can be both the manifest source and a handbook mount.
-Sparse include paths prevent manifest internals such as `manifest.json` and
-`skills/` from appearing as a second copy inside the umbrella.
+External content mounts can use sparse include paths so only the relevant
+subtree lands in the umbrella. For legacy conflated repos that serve as both
+manifest source and content mount, the CLI shares one checkout and does not
+apply sparse-checkout to it (narrowing the tree would hide the manifest
+files the registry reads).
 
 ## Catalog commands
 

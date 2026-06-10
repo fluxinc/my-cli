@@ -4,13 +4,18 @@
 
 ## Manifest
 
-The organization source of truth. A manifest repo declares skills, mounts,
-catalog entries, tool hints, umbrella defaults, and generated guidance inputs.
+The organization source of truth — the control plane. A manifest repo declares
+skills, mounts, catalog entries, tool hints, umbrella defaults, and generated
+guidance inputs. The manifest is not the workspace: the workspace is a mount
+of things the manifest defines. It lives in its own private repository
+outside the umbrella, so day-to-day work never edits it and hosting
+permissions can restrict who pushes it.
 
-Create a starter manifest or register an existing one:
+Create a starter organization or register an existing manifest:
 
 ```sh
 our init acme --name "Acme"
+our publish
 our manifests add acme <git-url>
 our manifests sync acme
 our manifests validate acme
@@ -40,8 +45,8 @@ Pins remain available for deliberate recorded workspace states.
 
 A Git-backed content folder cloned into the umbrella. Mounts can be required,
 default, or optional. Common content kinds include handbook, meetings, support,
-fleet, policy, docs, and repo. Sparse include paths keep private manifest internals out
-of the operating workspace. Support content holds anonymized problem-to-solution
+fleet, policy, docs, and repo. `our init` scaffolds the organization's content
+repo as a mount at `<umbrella>/workspace`. Support content holds anonymized problem-to-solution
 records with frontmatter attribution (customer id, repeatable identifiers,
 claimed_by/observed_by/approved_by), searched via `our support`. Fleet content
 holds one record per deployed instance, updated in place via `our fleet set`;

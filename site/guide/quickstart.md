@@ -25,16 +25,32 @@ present. Add `--no-fetch` for an offline freshness check, or `--fix` to
 fast-forward clean stale manifest/content checkouts and reconcile derived
 skills/guidance.
 
-## Create a manifest
+## Create an organization
 
 ```sh
 our init acme --name "Acme"
 ```
 
-`our init` creates a small private manifest/handbook repo at
-`~/acme-workspace`, commits it, registers it, syncs the manifest cache, and
-prints the optional `gh repo create ... --private --source . --push` command
-for publishing it later.
+`our init` creates two local repositories and registers the organization:
+
+- a **private manifest repo** — the control plane (manifest, catalog, skills,
+  agent guidance), kept at the registry path out of the workspace; admins
+  change it through `our admin` commands;
+- a **content repo** at `~/acme/workspace` — the actual workspace content:
+  meetings, support records, fleet records, decisions, policy, people.
+
+Everything works offline immediately and reports `local-only` until you
+publish. When you're ready to share:
+
+```sh
+our publish
+```
+
+One command creates the two private GitHub repos (`acme-manifest` and
+`acme-workspace`), points the manifest's mount at the published content repo,
+pushes both, and prints the join command for teammates. Because the manifest
+and the workspace are separate repos, you can restrict manifest pushes to
+admins while the whole team pushes content.
 
 If your team already has a manifest repo, register that instead:
 

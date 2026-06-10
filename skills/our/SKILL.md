@@ -28,11 +28,13 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
 
 `our` has seven concepts. Everything in the CLI is one of these:
 
-- **Manifest** — an organization's configuration in a Git repo: declares skills,
-  mounts, catalog, and tool hints. The single source of truth. Registered
-  locally with `our init <org-id>` for a new starter repo or
-  `our manifests add <name> <git-url>` for an existing repo, then refreshed
-  with `our manifests sync`.
+- **Manifest** — an organization's configuration in its own private Git repo:
+  declares skills, mounts, catalog, and tool hints. The single source of
+  truth, and the control plane only — the manifest is not the workspace; the
+  workspace is a mount of things the manifest defines, and day-to-day work
+  never edits the manifest. Registered locally with `our init <org-id>` for a
+  new organization or `our manifests add <name> <git-url>` for an existing
+  repo, then refreshed with `our manifests sync`.
 - **Skill** — a capability installed into harness skill directories. Either
   *static* (a directory in the manifest repo) or *tool-provided*.
 - **Umbrella** — a per-user operating envelope (e.g. `~/our` or `~/acme`): a
@@ -78,7 +80,9 @@ Bootstrap / refresh the workspace:
 
 ```sh
 our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR]
-                                    # create/register/sync a starter manifest repo
+                                    # create manifest + content repos locally and register them
+our publish [--manifest NAME] [--print]
+                                    # create private remotes, rewrite local mount URLs, push both repos
 our setup [--manifest NAME] [--no-refresh] [--no-update-check]
                                     # create umbrella, write guidance, install skills, sync mounts
 our root [--product ID] [--no-refresh] [--no-update-check]
@@ -89,13 +93,18 @@ our ai [--product ID] [--setup] [--no-refresh] [--no-update-check] [harness]
 our doctor [--no-fetch] [--fix]   # git freshness, derived drift, last sync, manifests, tools
 ```
 
-Use `our init` only when the user explicitly wants to create a new organization
-manifest source. It creates a local private manifest/handbook repo, commits it,
-registers it, syncs the manifest cache, and prints the next `our setup`,
-`our ai`, and optional `gh repo create ... --private --source . --push`
-commands. The starter manifest uses mount `git_url: "."` for the handbook,
-which means "use the URL or local path this manifest was registered with";
-keep that marker unless the user wants the mount to come from a separate repo.
+Use `our init` only when the user explicitly wants to create a new
+organization. It creates two local repos — a private manifest repo at the
+registry path and a content repo at `<umbrella>/workspace` — commits and
+registers them, and prints the next `our setup`, `our ai`, and `our publish`
+commands. Everything reports `local-only` until published. Run `our publish`
+only when the user wants the organization shared: it creates private remotes
+(`<org>-manifest`, `<org>-workspace`), rewrites the manifest's local mount
+URLs to the published repos, and pushes both. Never hand-edit mount URLs and
+never push a manifest that still references local paths — `our sync` holds it
+and `our doctor` names the offending mounts. A mount `git_url` of `"."` (or
+the manifest's own URL) is a legacy conflated layout: supported, single
+checkout, but not what init generates.
 
 `root`, `ai`, and `setup` make a best-effort, TTL-gated refresh of clean
 manifest/content checkouts before reading workspace context. They do not touch
@@ -193,7 +202,7 @@ Rule of thumb for the three similar verbs: `our sync` converges everything
 (use it by default); `our doctor` is the repair dry run — it diagnoses,
 marks each repairable finding with `would ...`, and prints a fixable count,
 while `our doctor --fix` applies exactly that plan; `our manifests sync`
-refreshes the registered manifest cache. Use `our manifests sync` before an
+refreshes the registered manifest checkout. Use `our manifests sync` before an
 umbrella exists or for multi-manifest administration; when exactly one
 manifest changes and an umbrella is known, it also reconciles generated
 guidance and manifest skills.

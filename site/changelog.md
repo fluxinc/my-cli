@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.13.0 - 2026-06-10
+
+### Added
+
+- Added `our publish`: one idempotent command to take a local organization
+  online. It creates private remotes for the content and manifest
+  repositories (or adopts existing origins and pushes, verifying GitHub
+  remotes are private), rewrites local mount URLs to the published remotes in
+  a commit scoped to `manifest.json`, updates the registry, and prints the
+  teammate join command. `--print` shows the plan without changing anything.
+- Checkouts without an `origin` remote now report `local-only` (pointing at
+  `our publish`) across `our manifests sync`, `our mounts sync`, and
+  `our sync`, instead of failing.
+- `our sync` refuses to publish a manifest whose mounts still reference local
+  paths, and `our doctor` names each local-path mount with the `our publish`
+  remediation, so a machine-local URL can never leak to teammates.
+
+### Changed
+
+- The manifest is now a control plane separate from workspace content:
+  `our init` creates two local repositories — a private manifest repo
+  (manifest, catalog, skills, agent guidance) at the registry path, and a
+  content repo at `<umbrella>/workspace` with the handbook directories.
+  The workspace never contains `manifest.json`, and hosting permissions can
+  restrict manifest pushes to admins while the whole organization pushes
+  content. Published repos default to `<org>-manifest` and `<org>-workspace`.
+  `our init --path` now selects the content repo location.
+- A mount whose git URL matches the manifest's own remote (or the `"."`
+  marker) remains supported as a compatibility layout: it resolves to the
+  single registered checkout (no duplicate clone, sparse-checkout skipped,
+  one merged sync entry). New organizations get the two-repo layout.
+
+### Fixed
+
+- Content publishing in self-hosted organizations is no longer held back by
+  `another checkout of the same remote has pending changes`: the layouts that
+  kept duplicate checkouts of one remote are gone.
+- Gemini skill installs and uninstalls now respect `--home` isolation instead
+  of writing to the real `~/.gemini` (#16).
+
 ## 0.12.0 - 2026-06-10
 
 ### Added

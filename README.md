@@ -24,9 +24,12 @@ our ai codex
 That's the whole setup. Launch AI harnesses from the umbrella root so they see
 the generated workspace context; `our ai codex` performs
 the same root resolution and verifies the generated guidance before starting.
-`our init` creates a small private manifest/handbook repo at `~/acme-workspace`,
-commits it, registers it, syncs the manifest cache, and prints the optional
-`gh repo create ... --private --source . --push` publish command.
+`our init` creates two local repos — a private manifest repo (the control
+plane: manifest, catalog, skills) and a content repo at `~/acme/workspace`
+(the actual workspace) — registers them, and works offline. When ready to
+share, `our publish` creates the private remotes, points the manifest at the
+published content repo, and pushes both; teammates join with a single
+`our manifests add acme <manifest-url>`.
 Run `our update` to update an install from the latest GitHub release; re-running
 `install.sh` still works as a fallback. Developers can still install from source
 with `go install github.com/fluxinc/our-ai/cmd/our@latest`. The installer also
@@ -39,7 +42,7 @@ so agents know how to use the CLI itself.
 
 | Concept | What it is |
 |---|---|
-| **Manifest** | An organization's configuration, stored in a Git repo. Declares skills, mounts, catalog, and tool hints. The single source of truth. |
+| **Manifest** | An organization's configuration, stored in its own private Git repo — the control plane. Declares skills, mounts, catalog, and tool hints. The single source of truth; it is not the workspace, and day-to-day work never touches it. |
 | **Skill** | A capability installed into harness skill directories. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer). The CLI also ships one public, organization-neutral *self-skill* named `our`, embedded in the binary, that teaches harnesses how to use `our` itself. |
 | **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.our/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Gnit control workspace so multi-repo commits and pushes have one substrate. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
@@ -112,9 +115,10 @@ prints the matching follow-up, such as `brew upgrade our`,
 ### Manifests
 
 ```sh
-our init <org-id> [--name NAME] [--path DIR] # create/register a starter manifest repo
+our init <org-id> [--name NAME] [--path DIR] # create manifest + content repos locally
+our publish [--manifest NAME] [--print]      # create private remotes, rewrite mount URLs, push
 our manifests add <name> <git-url>          # register an org manifest
-our manifests sync <name...> | --all        # refresh cache and derived artifacts
+our manifests sync <name...> | --all        # refresh checkout and derived artifacts
 our manifests list                          # list registered manifests
 our manifests validate <name|path>          # schema + reference checks
 ```
@@ -325,15 +329,17 @@ contain organization content.**
 - **`our` (this repo, public)** — the CLI: onboarding, manifest, skill,
   mount, catalog, and meeting mechanics. Generic. No customer data, no
   proprietary skills, no internal strategy.
-- **`<org>-workspace` (private)** — the org's operating layer: `manifest.json`,
-  proprietary skills, catalog JSON, tool declarations, and handbook content
-  (meetings, support, decisions, policy, projects).
+- **`<org>-manifest` (private, control plane)** — the org's definition layer:
+  `manifest.json`, proprietary skills, catalog JSON, tool declarations, and
+  agent guidance fragments. Admin-writable.
+- **`<org>-workspace` (private, data plane)** — the org's operating content:
+  meetings, support, fleet, decisions, policy, projects, people. Pushed by
+  the whole organization.
 
-The manifest repo is private and is also mounted as the org's handbook content,
-**scoped** so only content directories land in the umbrella — the manifest and
-skill sources stay in the manifest cache and are never exposed as a second,
-drifting copy. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full
-design rationale.
+The manifest repo stays outside the umbrella entirely; the workspace a user
+or agent browses is a mount of the content repositories the manifest defines.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design
+rationale.
 
 ## Design Documentation
 

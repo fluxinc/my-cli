@@ -29,6 +29,7 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
 
 ```sh
 our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
+our publish [--manifest NAME] [--home DIR] [--print] [--json]
 our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 our root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 our ai [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
@@ -38,9 +39,20 @@ our update [--check] [--version X.Y.Z] [--json] [--yes]
 our version
 ```
 
-`our init` creates a small local manifest/handbook repo, commits it, registers
-it, syncs the manifest cache, and prints the follow-up `our setup`, `our ai`,
-and optional publish commands.
+`our init` creates two local repositories — a private manifest repo at the
+registry path (the control plane) and a content repo at
+`<umbrella>/workspace` (`--path` overrides) — commits and registers them, and
+prints the follow-up `our setup`, `our ai`, and `our publish` commands. Both
+repos work offline and report `local-only` until published.
+
+`our publish` takes the organization online idempotently: it creates private
+remotes (`<org>-workspace`, `<org>-manifest`) via `gh`, or adopts existing
+origins and pushes (verifying GitHub remotes are private), rewrites local
+mount URLs to the published repositories in a commit scoped to
+`manifest.json`, updates the registry, and prints the teammate join command.
+`our sync` refuses to publish a manifest that still references local mount
+paths, and `our doctor` names each such mount with the `our publish`
+remediation.
 
 ## Skills
 
