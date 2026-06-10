@@ -10,9 +10,10 @@ It demonstrates the same shape a private organization workspace would use:
 - `meetings/`, `support/`, `decisions/`, `projects/`, `policy/`, and `people/`
   are handbook content directories that can be mounted into an umbrella.
 
-The `git_url` values intentionally use placeholder `github.com/example/...`
-URLs. For a real local onboarding smoke, copy this directory into a temporary
-Git repo and update `manifest.json` to point its `handbook` mount at that repo.
+The handbook mount uses `git_url: "."`, which means "clone from the URL or
+local path this manifest was registered with." That keeps the fixture usable as
+a local Git repo and as a published private template without editing
+`manifest.json`.
 
 Useful checks:
 

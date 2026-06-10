@@ -6,7 +6,8 @@ inside the umbrella.
 ## Manifest lifecycle
 
 ```sh
-our manifests add acme https://github.com/example/acme-workspace.git
+our init acme --name "Acme"
+our manifests add acme <git-url>
 our manifests list
 our manifests sync acme
 our manifests validate acme
@@ -14,6 +15,14 @@ our manifests validate acme
 
 The synced cache is disposable derived state. Admin authoring commands should
 write a maintainer checkout through `--manifest-dir`.
+
+For a mount that should read from the same repository as the manifest, set
+`git_url` to `"."`. `our` resolves that marker to the URL or local path used
+when the manifest was registered, so a scaffold created with `our init` can be
+published without editing `manifest.json`.
+
+For a fuller neutral reference, browse the
+[Acme example workspace](https://github.com/fluxinc/our-ai/tree/master/examples/acme-workspace).
 
 When `our manifests sync` pulls or clones exactly one manifest, it also
 reconciles generated guidance and manifest skills for an existing matching

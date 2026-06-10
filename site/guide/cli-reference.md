@@ -28,6 +28,7 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
 ## Setup and launch
 
 ```sh
+our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
 our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 our root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 our ai [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
@@ -36,6 +37,10 @@ our doctor [--no-fetch] [--fix] [--json]
 our update [--check] [--version X.Y.Z] [--json] [--yes]
 our version
 ```
+
+`our init` creates a small local manifest/handbook repo, commits it, registers
+it, syncs the manifest cache, and prints the follow-up `our setup`, `our ai`,
+and optional publish commands.
 
 ## Skills
 

@@ -240,6 +240,26 @@ func TestValidateManifestCatchesInvalidMounts(t *testing.T) {
 	}
 }
 
+func TestValidateManifestAllowsSelfMountGitURL(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": ".",
+      "mode": "default"
+    }
+  ]
+}`)
+	result := ValidateFile(dir)
+	if len(result.Errors) != 0 {
+		t.Fatalf("errors = %#v", result.Errors)
+	}
+}
+
 func TestValidateManifestCatchesInvalidMountIncludePaths(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `{

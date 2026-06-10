@@ -131,6 +131,8 @@ func (a app) run(args []string) error {
 		return a.runVersion(args[2:])
 	case "update":
 		return a.runUpdate(args[2:])
+	case "init":
+		return a.runInit(args[2:])
 	case "skills":
 		return a.runSkills(args[2:])
 	case "setup":
@@ -186,6 +188,7 @@ Usage:
   our root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   our ai [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
   our update [--check] [--version X.Y.Z] [--json] [--yes]
+  our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
   our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
   our skills self install|uninstall|status ...
   our skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
@@ -233,6 +236,392 @@ Usage:
   our products list
   our doctor [--no-fetch] [--fix] [--json]
   our version`)
+}
+
+type initOptions struct {
+	orgID        string
+	orgName      string
+	repoPath     string
+	home         string
+	umbrellaPath string
+	setup        bool
+	jsonOut      bool
+}
+
+type initResult struct {
+	OrganizationID   string                `json:"organization_id"`
+	OrganizationName string                `json:"organization_name"`
+	RepoPath         string                `json:"repo_path"`
+	SelfMount        string                `json:"self_mount"`
+	Manifest         manifest.Ref          `json:"manifest"`
+	Sync             []manifest.SyncResult `json:"sync"`
+	NextCommands     []initNextCommand     `json:"next_commands"`
+}
+
+type initNextCommand struct {
+	Action  string `json:"action"`
+	Command string `json:"command"`
+}
+
+func (a app) runInit(args []string) error {
+	var opts initOptions
+	fs := newFlagSet("our init", a.stderr)
+	fs.StringVar(&opts.orgName, "name", "", "organization display name")
+	fs.StringVar(&opts.repoPath, "path", "", "manifest repository path")
+	fs.StringVar(&opts.umbrellaPath, "umbrella", "", "recommended umbrella path")
+	fs.StringVar(&opts.home, "home", "", "override home directory")
+	fs.BoolVar(&opts.setup, "setup", false, "run our setup after creating and syncing the manifest")
+	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	fs.Usage = func() {
+		a.printInitUsage()
+		fs.PrintDefaults()
+	}
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"name":     true,
+		"path":     true,
+		"umbrella": true,
+		"home":     true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: our init <org-id>")
+	}
+	if opts.setup && opts.jsonOut {
+		return fmt.Errorf("--setup and --json are not supported together")
+	}
+	opts.orgID = rest[0]
+	result, err := a.createInitScaffold(opts)
+	if err != nil {
+		return err
+	}
+	if opts.jsonOut {
+		return printJSON(a.stdout, result)
+	}
+	a.printInitResult(result)
+	if opts.setup {
+		setupArgs := []string{"--manifest", opts.orgID}
+		if opts.home != "" {
+			setupArgs = append(setupArgs, "--home", opts.home)
+		}
+		if opts.umbrellaPath != "" {
+			setupArgs = append(setupArgs, "--umbrella", opts.umbrellaPath)
+		}
+		return a.runOnboard(setupArgs)
+	}
+	return nil
+}
+
+func (a app) printInitUsage() {
+	fmt.Fprintln(a.stderr, `Usage of our init:
+  our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
+
+Creates a small local manifest repository, commits it, registers it, and syncs
+the manifest cache so our setup can run immediately.
+
+Examples:
+  our init acme --name "Acme"
+  our init acme --path ~/acme-workspace
+
+Options:`)
+}
+
+func (a app) createInitScaffold(opts initOptions) (initResult, error) {
+	if !portableKebab(opts.orgID) {
+		return initResult{}, fmt.Errorf("organization id %q must be lowercase kebab-case", opts.orgID)
+	}
+	if _, exists, err := manifest.Find(opts.home, opts.orgID); err != nil {
+		return initResult{}, err
+	} else if exists {
+		return initResult{}, fmt.Errorf("manifest %q is already registered", opts.orgID)
+	}
+	homeDir, err := resolveHome(opts.home)
+	if err != nil {
+		return initResult{}, err
+	}
+	repoPath := opts.repoPath
+	if repoPath == "" {
+		repoPath = filepath.Join(homeDir, opts.orgID+"-workspace")
+	} else {
+		repoPath = expandUserPath(homeDir, repoPath)
+	}
+	repoPath, err = filepath.Abs(repoPath)
+	if err != nil {
+		return initResult{}, err
+	}
+	if err := ensureInitTarget(repoPath); err != nil {
+		return initResult{}, err
+	}
+	orgName := strings.TrimSpace(opts.orgName)
+	if orgName == "" {
+		orgName = displayNameFromID(opts.orgID)
+	}
+	umbrellaPath := strings.TrimSpace(opts.umbrellaPath)
+	if umbrellaPath == "" {
+		umbrellaPath = "~/" + opts.orgID
+	}
+	doc := initManifestDocument(opts.orgID, orgName, umbrellaPath)
+	if err := writeInitScaffold(repoPath, doc); err != nil {
+		return initResult{}, err
+	}
+	if validation := manifest.ValidateFile(repoPath); len(validation.Errors) != 0 {
+		return initResult{}, fmt.Errorf("generated manifest is invalid: %s", strings.Join(validation.Errors, "; "))
+	}
+	if err := gitInitCommit(repoPath); err != nil {
+		return initResult{}, err
+	}
+	ref, err := manifest.Add(opts.home, opts.orgID, repoPath)
+	if err != nil {
+		return initResult{}, err
+	}
+	syncResults, err := manifest.Sync(opts.home, []string{opts.orgID}, false, false, nil)
+	if err != nil {
+		return initResult{}, err
+	}
+	if manifestResultsFailed(syncResults) {
+		return initResult{}, fmt.Errorf("manifest sync failed")
+	}
+	result := initResult{
+		OrganizationID:   opts.orgID,
+		OrganizationName: orgName,
+		RepoPath:         repoPath,
+		SelfMount:        manifest.SelfMountGitURL,
+		Manifest:         ref,
+		Sync:             syncResults,
+	}
+	result.NextCommands = initNextCommands(opts.home, opts.orgID, repoPath)
+	return result, nil
+}
+
+func initManifestDocument(orgID, orgName, umbrellaPath string) manifest.Document {
+	return manifest.Document{
+		ManifestVersion: 1,
+		Organization: manifest.Organization{
+			ID:   orgID,
+			Name: orgName,
+		},
+		Umbrella: manifest.Umbrella{
+			RecommendedPath: umbrellaPath,
+		},
+		AgentGuidance: manifest.AgentGuidance{
+			Paths: []string{"agent-guidance/" + orgID + ".md"},
+		},
+		Skills: []manifest.Skill{
+			{
+				ID:          orgID + ":handbook",
+				InstallSlug: orgID + "-handbook",
+				Path:        "skills/" + orgID + "-handbook",
+				Capabilities: []string{
+					"meetings",
+					"support",
+					"fleet",
+					"decisions",
+					"workspace",
+				},
+				Requires: []string{"workspace:handbook"},
+			},
+		},
+		Mounts: []manifest.Mount{
+			{
+				ID:     "handbook",
+				Kind:   "handbook",
+				GitURL: manifest.SelfMountGitURL,
+				Mode:   "default",
+				IncludePaths: []string{
+					"meetings",
+					"support",
+					"fleet",
+					"decisions",
+					"projects",
+					"policy",
+					"people",
+				},
+			},
+		},
+	}
+}
+
+func ensureInitTarget(path string) error {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return os.MkdirAll(path, 0o755)
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("init path %s exists and is not a directory", path)
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	if len(entries) != 0 {
+		return fmt.Errorf("init path %s is not empty", path)
+	}
+	return nil
+}
+
+func writeInitScaffold(root string, doc manifest.Document) error {
+	if err := manifest.SaveDocument(root, doc); err != nil {
+		return err
+	}
+	orgID := doc.Organization.ID
+	orgName := doc.Organization.Name
+	files := map[string]string{
+		"README.md": initRootREADME(orgID, orgName),
+		filepath.Join("agent-guidance", orgID+".md"):           initAgentGuidance(orgName),
+		filepath.Join("skills", orgID+"-handbook", "SKILL.md"): initSkillDoc(orgID, orgName),
+		filepath.Join("catalog", "customers.json"):             "[]\n",
+		filepath.Join("catalog", "products.json"):              "[]\n",
+		filepath.Join("meetings", "README.md"):                 initSectionREADME("Meetings", "Record meeting notes with our meetings add, then publish with our sync."),
+		filepath.Join("support", "README.md"):                  initSectionREADME("Support", "Record anonymized problem-to-solution notes with our support add."),
+		filepath.Join("fleet", "README.md"):                    initSectionREADME("Fleet", "Track deployed instances or devices with our fleet add and our fleet set."),
+		filepath.Join("decisions", "README.md"):                initSectionREADME("Decisions", "Keep durable decisions and their context here."),
+		filepath.Join("projects", "README.md"):                 initSectionREADME("Projects", "Keep project notes that agents should be able to read."),
+		filepath.Join("policy", "README.md"):                   initSectionREADME("Policy", "Keep operating policies and rules of engagement here."),
+		filepath.Join("people", "README.md"):                   initSectionREADME("People", "Keep public-safe team role notes here."),
+	}
+	for path, content := range files {
+		if err := writeInitFile(filepath.Join(root, path), content); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeInitFile(path, content string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+func initRootREADME(orgID, orgName string) string {
+	return fmt.Sprintf(`# %s Our AI Workspace
+
+This repository is the private manifest and handbook source for %s.
+
+## Joining %s
+
+Register this repository, sync it, and onboard:
+
+`+"```sh"+`
+our manifests add %s <git-url-of-this-repository>
+our manifests sync %s
+our setup
+our ai codex
+`+"```"+`
+
+The manifest is in `+"`manifest.json`"+`. The default handbook mount points back to
+this repository and includes the content directories in this checkout.
+
+## Publish
+
+When the local scaffold is ready to share, create a private Git repository and
+push it:
+
+`+"```sh"+`
+gh repo create %s-workspace --private --source . --push
+`+"```"+`
+`, orgName, orgName, orgName, orgID, orgID, orgID)
+}
+
+func initAgentGuidance(orgName string) string {
+	return fmt.Sprintf(`# %s Agent Guidance
+
+- Use the generated workspace root as the operating context.
+- Prefer the handbook mount for organization-specific facts before asking the operator.
+- Keep private notes and operating content in this workspace repository, not in public code.
+`, orgName)
+}
+
+func initSkillDoc(orgID, orgName string) string {
+	return fmt.Sprintf(`---
+name: %s-handbook
+description: Use the %s handbook for meetings, support records, fleet records, decisions, policy, people, projects, and workspace-specific operating context.
+---
+
+# %s Handbook
+
+Use this skill when work depends on %s-specific context from the Our AI
+workspace. Start with the generated root guidance, then inspect the relevant
+handbook directories or use the `+"`our meetings`"+`, `+"`our support`"+`, and
+`+"`our fleet`"+` commands.
+`, orgID, orgName, orgName, orgName)
+}
+
+func initSectionREADME(title, body string) string {
+	return fmt.Sprintf("# %s\n\n%s\n", title, body)
+}
+
+func gitInitCommit(root string) error {
+	if err := runGit(root, "init", "--quiet"); err != nil {
+		return err
+	}
+	if err := runGit(root, "add", "."); err != nil {
+		return err
+	}
+	if err := runGit(root, "commit", "--quiet", "-m", "Initial Our AI workspace"); err == nil {
+		return nil
+	}
+	// No usable git identity configured; commit with a neutral fallback.
+	return runGit(root, "-c", "user.name=Our AI", "-c", "user.email=our-ai@example.invalid", "commit", "--quiet", "-m", "Initial Our AI workspace")
+}
+
+func runGit(root string, args ...string) error {
+	cmdArgs := append([]string{"-C", root}, args...)
+	cmd := exec.Command("git", cmdArgs...)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	message := strings.TrimSpace(string(out))
+	if message == "" {
+		message = err.Error()
+	}
+	return fmt.Errorf("git %s: %s", strings.Join(args, " "), message)
+}
+
+func initNextCommands(home, orgID, repoPath string) []initNextCommand {
+	manifestFlag := ""
+	if initManifestFlagNeeded(home) {
+		manifestFlag = " --manifest " + shellQuote(orgID)
+	}
+	return []initNextCommand{
+		{Action: "setup", Command: "our setup" + manifestFlag},
+		{Action: "launch", Command: "our ai" + manifestFlag + " claude"},
+		{Action: "launch", Command: "our ai" + manifestFlag + " codex"},
+		{Action: "publish", Command: "cd " + shellQuote(repoPath) + " && gh repo create " + shellQuote(orgID+"-workspace") + " --private --source . --push"},
+	}
+}
+
+func initManifestFlagNeeded(home string) bool {
+	reg, err := manifest.LoadRegistry(home)
+	return err == nil && len(reg.Manifests) > 1
+}
+
+func (a app) printInitResult(result initResult) {
+	fmt.Fprintf(a.stdout, "manifest-repo\tcreated\t%s\n", result.RepoPath)
+	fmt.Fprintf(a.stdout, "manifest\tregistered\t%s\t%s\n", result.Manifest.Name, result.Manifest.LocalPath)
+	for _, item := range result.Sync {
+		fmt.Fprintf(a.stdout, "manifest-cache\t%s\t%s\n", item.Status, item.LocalPath)
+	}
+	for _, next := range result.NextCommands {
+		fmt.Fprintf(a.stdout, "next\t%s\t%s\n", next.Action, next.Command)
+	}
+}
+
+func displayNameFromID(id string) string {
+	parts := strings.Split(id, "-")
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(part[:1]) + part[1:]
+	}
+	return strings.Join(parts, " ")
 }
 
 func (a app) runRoot(args []string) error {

@@ -49,14 +49,15 @@ works.
 ## First Run
 
 ```sh
-our manifests add acme https://github.com/example/acme-workspace.git
-our manifests sync acme
+our init acme --name "Acme"
 our setup
-cd "$(our root)" && claude
+our ai codex
 ```
 
 `our ai codex` performs the same root resolution and
-guidance freshness check before starting a harness.
+guidance freshness check before starting a harness. `our init` creates a local
+private manifest/handbook repo, commits it, registers it, syncs the manifest
+cache, and prints the optional GitHub publish command.
 
 ## The Operating Shape
 

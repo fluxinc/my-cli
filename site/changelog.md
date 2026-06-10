@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added `our init <org-id>` to create a small local manifest/handbook repo,
+  commit it, register it, sync the manifest cache, and print the next setup,
+  launch, and optional GitHub publish commands.
+- Mount `git_url: "."` now resolves to the Git URL or local path used to
+  register the manifest, so self-hosted handbook mounts survive publishing.
+
+### Fixed
+
+- Reworked the quickstart and manifest docs so the first-run path no longer
+  points at a dead example manifest URL.
+
 ## 0.11.0 - 2026-06-10
 
 ### Changed

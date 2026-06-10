@@ -183,6 +183,34 @@ func TestListMountsUsesUmbrellaRoot(t *testing.T) {
 	}
 }
 
+func TestListMountsResolvesSelfMountGitURL(t *testing.T) {
+	home := t.TempDir()
+	ref := writeRegisteredManifest(t, home, "acme", `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": ".",
+      "mode": "default",
+      "include_paths": ["meetings"]
+    }
+  ]
+}`)
+	entries, err := ListMounts(home, "acme", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries = %#v", entries)
+	}
+	if entries[0].GitURL != ref.GitURL {
+		t.Fatalf("GitURL = %q, want %q", entries[0].GitURL, ref.GitURL)
+	}
+}
+
 func TestSyncMountsFiltersModes(t *testing.T) {
 	home := t.TempDir()
 	writeRegisteredManifest(t, home, "acme", `{

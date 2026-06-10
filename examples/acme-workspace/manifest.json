@@ -36,7 +36,7 @@
     {
       "id": "handbook",
       "kind": "handbook",
-      "git_url": "https://github.com/example/acme-workspace.git",
+      "git_url": ".",
       "mode": "default",
       "include_paths": [
         "meetings",

@@ -97,13 +97,17 @@ func ListMounts(home, manifestName, umbrellaRoot string) ([]Entry, error) {
 			return nil, err
 		}
 		for _, mount := range manifest.EffectiveMounts(doc) {
+			gitURL := mount.GitURL
+			if gitURL == manifest.SelfMountGitURL {
+				gitURL = ref.GitURL
+			}
 			entries = append(entries, Entry{
 				Manifest:     ref.Name,
 				Organization: doc.Organization.ID,
 				ID:           mount.ID,
 				Kind:         mount.Kind,
 				Mode:         mount.Mode,
-				GitURL:       mount.GitURL,
+				GitURL:       gitURL,
 				IncludePaths: mount.IncludePaths,
 				LocalPath:    umbrella.MountPath(root, mount.ID),
 				UmbrellaRoot: root,

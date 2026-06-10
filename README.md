@@ -16,15 +16,17 @@ Documentation: https://fluxinc.github.io/our-ai/
 ```sh
 curl -sSL https://raw.githubusercontent.com/fluxinc/our-ai/master/install.sh | sh
 
-our manifests add acme https://github.com/example/acme-workspace.git
-our manifests sync acme
+our init acme --name "Acme"
 our setup
-cd "$(our root)" && claude
+our ai codex
 ```
 
 That's the whole setup. Launch AI harnesses from the umbrella root so they see
 the generated workspace context; `our ai codex` performs
 the same root resolution and verifies the generated guidance before starting.
+`our init` creates a small private manifest/handbook repo at `~/acme-workspace`,
+commits it, registers it, syncs the manifest cache, and prints the optional
+`gh repo create ... --private --source . --push` publish command.
 Run `our update` to update an install from the latest GitHub release; re-running
 `install.sh` still works as a fallback. Developers can still install from source
 with `go install github.com/fluxinc/our-ai/cmd/our@latest`. The installer also
@@ -110,6 +112,7 @@ prints the matching follow-up, such as `brew upgrade our`,
 ### Manifests
 
 ```sh
+our init <org-id> [--name NAME] [--path DIR] # create/register a starter manifest repo
 our manifests add <name> <git-url>          # register an org manifest
 our manifests sync <name...> | --all        # refresh cache and derived artifacts
 our manifests list                          # list registered manifests

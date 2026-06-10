@@ -7,10 +7,11 @@
 The organization source of truth. A manifest repo declares skills, mounts,
 catalog entries, tool hints, umbrella defaults, and generated guidance inputs.
 
-Register and refresh it:
+Create a starter manifest or register an existing one:
 
 ```sh
-our manifests add acme https://github.com/example/acme-workspace.git
+our init acme --name "Acme"
+our manifests add acme <git-url>
 our manifests sync acme
 our manifests validate acme
 ```

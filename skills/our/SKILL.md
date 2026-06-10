@@ -30,8 +30,9 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
 
 - **Manifest** — an organization's configuration in a Git repo: declares skills,
   mounts, catalog, and tool hints. The single source of truth. Registered
-  locally with `our manifests add <name> <git-url>` and refreshed with
-  `our manifests sync`.
+  locally with `our init <org-id>` for a new starter repo or
+  `our manifests add <name> <git-url>` for an existing repo, then refreshed
+  with `our manifests sync`.
 - **Skill** — a capability installed into harness skill directories. Either
   *static* (a directory in the manifest repo) or *tool-provided*.
 - **Umbrella** — a per-user operating envelope (e.g. `~/our` or `~/acme`): a
@@ -76,6 +77,8 @@ state.
 Bootstrap / refresh the workspace:
 
 ```sh
+our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR]
+                                    # create/register/sync a starter manifest repo
 our setup [--manifest NAME] [--no-refresh] [--no-update-check]
                                     # create umbrella, write guidance, install skills, sync mounts
 our root [--product ID] [--no-refresh] [--no-update-check]
@@ -85,6 +88,14 @@ our ai [--product ID] [--setup] [--no-refresh] [--no-update-check] [harness]
                                     # --setup reconciles the umbrella first when guidance is stale or missing
 our doctor [--no-fetch] [--fix]   # git freshness, derived drift, last sync, manifests, tools
 ```
+
+Use `our init` only when the user explicitly wants to create a new organization
+manifest source. It creates a local private manifest/handbook repo, commits it,
+registers it, syncs the manifest cache, and prints the next `our setup`,
+`our ai`, and optional `gh repo create ... --private --source . --push`
+commands. The starter manifest uses mount `git_url: "."` for the handbook,
+which means "use the URL or local path this manifest was registered with";
+keep that marker unless the user wants the mount to come from a separate repo.
 
 `root`, `ai`, and `setup` make a best-effort, TTL-gated refresh of clean
 manifest/content checkouts before reading workspace context. They do not touch

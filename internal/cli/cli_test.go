@@ -84,6 +84,218 @@ func TestSyncContentPathsIncludesSupport(t *testing.T) {
 	}
 }
 
+func TestInitCreatesManifestRepoAndRegisters(t *testing.T) {
+	home := t.TempDir()
+	repo := filepath.Join(t.TempDir(), "acme-workspace")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "init", "acme",
+		"--name", "Acme Example",
+		"--path", repo,
+		"--home", home,
+		"--json",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if stderr.String() != "" {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	var result initResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode init JSON: %v\n%s", err, stdout.String())
+	}
+	if result.OrganizationID != "acme" || result.OrganizationName != "Acme Example" {
+		t.Fatalf("organization = %q/%q", result.OrganizationID, result.OrganizationName)
+	}
+	if result.RepoPath != repo {
+		t.Fatalf("repo path = %q, want %q", result.RepoPath, repo)
+	}
+	if result.SelfMount != manifest.SelfMountGitURL {
+		t.Fatalf("self mount = %q", result.SelfMount)
+	}
+	if result.Manifest.Name != "acme" || result.Manifest.GitURL != repo {
+		t.Fatalf("manifest ref = %#v", result.Manifest)
+	}
+	if len(result.Sync) != 1 || result.Sync[0].Status != "synced" {
+		t.Fatalf("sync result = %#v", result.Sync)
+	}
+	for _, want := range []initNextCommand{
+		{Action: "setup", Command: "our setup"},
+		{Action: "launch", Command: "our ai claude"},
+		{Action: "launch", Command: "our ai codex"},
+	} {
+		if !initResultHasNext(result, want) {
+			t.Fatalf("next commands = %#v, missing %#v", result.NextCommands, want)
+		}
+	}
+
+	doc, _, err := manifest.LoadDocument(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Organization.ID != "acme" || doc.Organization.Name != "Acme Example" {
+		t.Fatalf("document organization = %#v", doc.Organization)
+	}
+	if doc.Umbrella.RecommendedPath != "~/acme" {
+		t.Fatalf("umbrella path = %q", doc.Umbrella.RecommendedPath)
+	}
+	if len(doc.Mounts) != 1 || doc.Mounts[0].GitURL != manifest.SelfMountGitURL {
+		t.Fatalf("mounts = %#v", doc.Mounts)
+	}
+	if len(doc.Skills) != 1 || doc.Skills[0].ID != "acme:handbook" {
+		t.Fatalf("skills = %#v", doc.Skills)
+	}
+	if validation := manifest.ValidateFile(repo); len(validation.Errors) != 0 {
+		t.Fatalf("generated manifest invalid: %#v", validation.Errors)
+	}
+	for _, path := range []string{
+		filepath.Join(repo, ".git"),
+		filepath.Join(repo, "README.md"),
+		filepath.Join(repo, "agent-guidance", "acme.md"),
+		filepath.Join(repo, "skills", "acme-handbook", "SKILL.md"),
+		filepath.Join(repo, "catalog", "customers.json"),
+		filepath.Join(home, ".local", "share", "our", "manifests", "acme", "manifest.json"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected %s: %v", path, err)
+		}
+	}
+}
+
+func TestInitRefusesNonEmptyPath(t *testing.T) {
+	home := t.TempDir()
+	repo := filepath.Join(t.TempDir(), "acme-workspace")
+	writeCLITestFile(t, filepath.Join(repo, "existing.txt"), "already here\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{"our", "init", "acme", "--path", repo, "--home", home})
+	if err == nil || !strings.Contains(err.Error(), "is not empty") {
+		t.Fatalf("err = %v, want non-empty path error", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".git")); !os.IsNotExist(err) {
+		t.Fatalf(".git exists after failed init: %v", err)
+	}
+}
+
+func TestInitNextCommandsUseManifestWhenRegistryHasSeveralManifests(t *testing.T) {
+	home := t.TempDir()
+	repo := filepath.Join(t.TempDir(), "acme-workspace")
+	if _, err := manifest.Add(home, "extra", "https://github.com/example/extra-workspace.git"); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "init", "acme", "--path", repo, "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"next\tsetup\tour setup --manifest acme\n",
+		"next\tlaunch\tour ai --manifest acme claude\n",
+		"next\tlaunch\tour ai --manifest acme codex\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("stdout = %q, missing %q", out, want)
+		}
+	}
+}
+
+func TestInitCommitUsesConfiguredGitIdentity(t *testing.T) {
+	home := t.TempDir()
+	repo := filepath.Join(t.TempDir(), "acme-workspace")
+	gitConfig := filepath.Join(t.TempDir(), "gitconfig")
+	if err := os.WriteFile(gitConfig, []byte("[user]\n\tname = Config User\n\temail = config@example.com\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", gitConfig)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "init", "acme", "--path", repo, "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	author := initCommitAuthor(t, repo)
+	if author != "Config User <config@example.com>" {
+		t.Fatalf("author = %q, want configured git identity", author)
+	}
+}
+
+func TestInitCommitFallsBackWithoutGitIdentity(t *testing.T) {
+	home := t.TempDir()
+	repo := filepath.Join(t.TempDir(), "acme-workspace")
+	gitConfig := filepath.Join(t.TempDir(), "gitconfig")
+	if err := os.WriteFile(gitConfig, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", gitConfig)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	for _, key := range []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "EMAIL"} {
+		if value, ok := os.LookupEnv(key); ok {
+			t.Setenv(key, value) // register restore, then unset below
+			os.Unsetenv(key)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "init", "acme", "--path", repo, "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	author := initCommitAuthor(t, repo)
+	if author != "Our AI <our-ai@example.invalid>" {
+		t.Fatalf("author = %q, want fallback identity", author)
+	}
+}
+
+func initCommitAuthor(t *testing.T, repo string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", repo, "log", "-1", "--format=%an <%ae>").Output()
+	if err != nil {
+		t.Fatalf("git log: %v", err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func TestInitScaffoldREADMETeachesTeammateFirstRun(t *testing.T) {
+	home := t.TempDir()
+	repo := filepath.Join(t.TempDir(), "acme-workspace")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "init", "acme", "--path", repo, "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(repo, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	readme := string(data)
+	for _, want := range []string{
+		"our manifests add acme",
+		"our manifests sync acme",
+		"our setup",
+		"gh repo create",
+	} {
+		if !strings.Contains(readme, want) {
+			t.Fatalf("README missing %q:\n%s", want, readme)
+		}
+	}
+}
+
+func initResultHasNext(result initResult, want initNextCommand) bool {
+	for _, got := range result.NextCommands {
+		if got == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestSkillsInstallHelpMentionsGuidance(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}

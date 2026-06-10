@@ -64,11 +64,13 @@ or docs URLs with the matching `--clear-*` flags).
 
 ## Admin aliases
 
-Mutating or configuration commands are reachable under admin:
+Use `our init` to create a new local manifest repo. Mutating or configuration
+commands for an existing source are reachable under admin:
 
 ```sh
 our admin setup
-our admin manifests add acme https://github.com/example/acme-workspace.git
+our init acme --name "Acme"
+our admin manifests add acme <git-url>
 our admin manifests sync acme
 our admin manifests validate acme
 our admin mounts add product:sample-product

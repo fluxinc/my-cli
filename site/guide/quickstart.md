@@ -25,10 +25,21 @@ present. Add `--no-fetch` for an offline freshness check, or `--fix` to
 fast-forward clean stale manifest/content checkouts and reconcile derived
 skills/guidance.
 
-## Register a manifest
+## Create a manifest
 
 ```sh
-our manifests add acme https://github.com/example/acme-workspace.git
+our init acme --name "Acme"
+```
+
+`our init` creates a small private manifest/handbook repo at
+`~/acme-workspace`, commits it, registers it, syncs the manifest cache, and
+prints the optional `gh repo create ... --private --source . --push` command
+for publishing it later.
+
+If your team already has a manifest repo, register that instead:
+
+```sh
+our manifests add acme <git-url>
 our manifests sync acme
 ```
 
