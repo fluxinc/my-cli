@@ -251,6 +251,18 @@ func Install(s Skill, h harness.Harness, opts InstallOpts) Result {
 
 	if h == harness.Gemini {
 		res.TargetPath = "(gemini CLI)"
+		if opts.SkipMissing {
+			configDir := h.ConfigDir(home)
+			if _, err := os.Stat(configDir); errors.Is(err, fs.ErrNotExist) {
+				res.Status = StatusSkipped
+				res.Message = fmt.Sprintf("harness not present: %s", configDir)
+				return res
+			} else if err != nil {
+				res.Status = StatusFailed
+				res.Err = err
+				return res
+			}
+		}
 		if opts.DryRun {
 			res.Status = StatusDryRun
 			res.Message = fmt.Sprintf("gemini skills link %s --scope user --consent", s.SourcePath)
@@ -267,6 +279,7 @@ func Install(s Skill, h harness.Harness, opts InstallOpts) Result {
 			return res
 		}
 		cmd := exec.Command("gemini", "skills", "link", s.SourcePath, "--scope", "user", "--consent")
+		cmd.Env = envWithHome(home)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			res.Status = StatusFailed
@@ -366,6 +379,18 @@ func Uninstall(skillName string, h harness.Harness, opts InstallOpts) Result {
 
 	if h == harness.Gemini {
 		res.TargetPath = "(gemini CLI)"
+		if opts.SkipMissing {
+			configDir := h.ConfigDir(home)
+			if _, err := os.Stat(configDir); errors.Is(err, fs.ErrNotExist) {
+				res.Status = StatusSkipped
+				res.Message = fmt.Sprintf("harness not present: %s", configDir)
+				return res
+			} else if err != nil {
+				res.Status = StatusFailed
+				res.Err = err
+				return res
+			}
+		}
 		if opts.DryRun {
 			res.Status = StatusDryRun
 			res.Message = fmt.Sprintf("gemini skills uninstall %s --scope user", skillName)
@@ -382,6 +407,7 @@ func Uninstall(skillName string, h harness.Harness, opts InstallOpts) Result {
 			return res
 		}
 		cmd := exec.Command("gemini", "skills", "uninstall", skillName, "--scope", "user")
+		cmd.Env = envWithHome(home)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			res.Status = StatusFailed
@@ -684,6 +710,17 @@ func resolveHome(override string) (string, error) {
 		return override, nil
 	}
 	return os.UserHomeDir()
+}
+
+func envWithHome(home string) []string {
+	env := os.Environ()
+	for i, entry := range env {
+		if strings.HasPrefix(entry, "HOME=") {
+			env[i] = "HOME=" + home
+			return env
+		}
+	}
+	return append(env, "HOME="+home)
 }
 
 func removePath(target string, info fs.FileInfo) error {
