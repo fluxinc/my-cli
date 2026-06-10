@@ -180,6 +180,122 @@ schemas; refresh belongs to the runtime/governance plane.
   default sessions are what prevent tracked-file half-edits from being made in
   the base checkout.
 
+## Prior art: adopt vs build
+
+A four-area sweep (worktree session managers, service descriptor standards,
+publish gating, secret references) found that most of this plan decomposes
+onto existing, boring mechanisms — and sharpened where the genuine novelty
+is. The plan adopts accordingly.
+
+### Adopt (exists; do not reinvent)
+
+- **Secret references are URIs.** `auth_ref` becomes a scheme-addressed
+  reference: `op://vault/item/field` accepted verbatim (resolved by the op
+  CLI — `op run`-style env injection at launch, never to disk), `env://VAR`,
+  `broker://<credential-id>` for push-gated brokers, or `none`. The separate
+  resolver-mode enum is dropped — it conflated storage backends with
+  mediation planes. Mode policy replaces it: Mode A resolves locally at
+  launch; Mode B compilation refuses to emit locally-resolvable references
+  into container artifacts (only service id + grant travel; the governance
+  plane resolves). Precedent: op:// (already used in fleet records),
+  helmfile/vals `ref+` across 30+ backends, Berglas, Kong; Docker Compose is
+  adopting the same convention (docker/compose#13821).
+- **Service descriptions reuse existing schemas by reference.** For
+  `kind: mcp`, `describe_ref` targets a server.json document (the MCP
+  registry schema every major harness ecosystem now consumes); inline
+  connection material reuses server.json vocabulary rather than coining
+  fields. For `kind: http`, `describe_ref` targets OpenAPI/AsyncAPI.
+  Container-native services may point at a `claw.describe` descriptor.
+  `kind: a2a` (agent cards) is reserved. Backstage catalog-info was
+  evaluated and rejected — inventory without connection material.
+- **Mode A materialization is the ecosystem-standard move.** `our setup`
+  emits each harness's native config dialect (`.mcp.json` with `${VAR}`
+  placeholders, `.vscode/mcp.json` with inputs, etc.), never secret values —
+  exactly what org MCP registries (e.g. GitHub Copilot's) already do.
+- **The adoption verb copies Jujutsu.** jj hit this exact litter problem
+  (it auto-snapshots like our sync auto-publishes) and solved it with
+  `snapshot.auto-track = "none()"` plus `jj file track`. `our record adopt`
+  is the same verb; sync reports held files (named, with remediation)
+  instead of hiding them. Provenance is recorded out-of-band by the
+  creating CLI command — never as in-file markers, which the `@generated`
+  convention proves are forgeable by the agent being gated (the in-toto
+  trust lesson: the creator attests, not the artifact).
+- **Session conventions imitate the field, without harness coupling.**
+  Worktree-per-session is now mainstream harness UX, which validates the
+  model — but `our work` deliberately does NOT integrate with any harness's
+  internal worktree mechanisms (hooks, flags, lifecycle APIs): that locks
+  the design to each harness and creates a permanent compatibility
+  treadmill. Sessions are owned by `our` on plain git; `our ai` launches
+  any harness with its working directory inside the session, which is the
+  only integration surface every harness already supports. The cleanup
+  conventions the ecosystem converged on (auto-remove clean, prompt on
+  dirty, age-based GC) are imitated, not wired. This is the same principle
+  the containment layer already established for fleet agents: external,
+  inward-facing mechanisms (directory layout, mounts, process environment)
+  govern the workload at boundaries it cannot avoid, removing any mechanical
+  dependency on the internals of a plethora of harnesses. Sessions are that
+  principle applied to the interactive case.
+- **Belt-and-braces from git operations practice:** `.gitignore` for
+  `work/` and `scratch/`; server-side push rulesets blocking those paths on
+  content repos; session/agent trailers stamped on landed commits.
+
+### Dependency policy
+
+External tool dependencies are limited to mature, well-maintained projects:
+git, gh, and optionally the op CLI as a secret resolver (declared as a
+manifest tool; its absence degrades to held references with doctor
+warnings). Surveyed niche or venture-backed session managers and resolver
+frameworks are treated as precedent to imitate, never as dependencies; the
+multi-repo substrate remains in-house (gnit) by design.
+
+### Build (genuinely unserved)
+
+- **Multi-repo sessions.** Every surveyed manager — claude-squad, Conductor,
+  Nimbalyst, vibe-kanban, container-use, gwq, amux, GitButler — is
+  single-repo; Conductor's linked-directories multi-repo is documented as
+  "not yet perfect". One session spanning worktrees of N writable mounts,
+  with a registry consulted by org-level sync, exists nowhere.
+- **The provenance ledger** (paths + creating command, written only by
+  blessed CLI verbs, consulted at publish): every existing gate keys on
+  path, pattern, schema, or self-asserted markers — all non-discriminating
+  here, since a blessed record and an agent half-draft can be byte-identical
+  in location and shape.
+- **The services grant/policy envelope**: requested grant + role-granted
+  visibility in a git-native, serverless registry consumed identically by
+  humans and agents. server.json stops at `isSecret`; org-registry products
+  assume a hosted service.
+- **Mode-aware compile policy** (refusing local secret references in
+  container artifacts) — the property no off-the-shelf resolver has.
+
+### Simplification worth deciding (operator call)
+
+jj's history suggests auto-publishing untracked files is the unusual
+feature, not the gate. The more conventional end state may be **"never
+auto-publish untracked; adopt or finish to publish"** — which eliminates
+the provenance ledger for the auto path entirely (records created by
+`our ... add` are adopted implicitly at creation; everything else waits for
+`our record adopt` or `our work finish`). Same UX for the happy path,
+strictly less state.
+
+## Boundary with container tooling ("our speaks claw")
+
+The manifest↔pod mapping table raised a real concern: vocabulary overlap
+and drift between the org manifest and container tooling DSLs (Clawfile /
+pod-file `x-claw` blocks). Resolution: **the manifest stays semantic; claw
+is a compile target, not a vocabulary source.**
+
+- The manifest's sections describe organization truth (roles, mounts,
+  skills, tools, services, guidance) in `our`'s own minimal schema.
+- `our launch compile` emits the container tooling's native formats —
+  pod-file fragments and contract documents — the same way Mode A emits each
+  harness's native MCP config dialect. Speaking the consumer's dialect at
+  the boundary avoids both a parallel DSL and schema coupling: container
+  tooling evolves independently, and a new runner format becomes a new
+  emitter, not a manifest migration.
+- Where a concept is a genuine published standard (server.json for MCP
+  connection material, OpenAPI for HTTP, op:// for secret references), the
+  manifest adopts the standard directly rather than wrapping it.
+
 ## Options
 
 ### O1 — Safety patch only (now)
