@@ -211,6 +211,134 @@ func TestListMountsResolvesSelfMountGitURL(t *testing.T) {
 	}
 }
 
+func TestListMountsSelfMountUsesManifestCheckoutPath(t *testing.T) {
+	home := t.TempDir()
+	ref := writeRegisteredManifest(t, home, "acme", `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": ".",
+      "mode": "default"
+    }
+  ]
+}`)
+	entries, err := ListMounts(home, "acme", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries = %#v", entries)
+	}
+	if entries[0].LocalPath != ref.LocalPath {
+		t.Fatalf("LocalPath = %q, want manifest checkout %q (self-mounts must not create a second checkout)", entries[0].LocalPath, ref.LocalPath)
+	}
+}
+
+func TestListMountsTreatsMatchingRemoteAsSelfMount(t *testing.T) {
+	home := t.TempDir()
+	// The mount declares the manifest's own remote explicitly (with cosmetic
+	// .git/case differences) instead of the "." marker; it is still the same
+	// repository and must not get a second checkout.
+	ref := writeRegisteredManifest(t, home, "acme", `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": "https://github.com/ACME/acme-ai-manifest",
+      "mode": "default",
+      "include_paths": ["meetings"]
+    }
+  ]
+}`)
+	entries, err := ListMounts(home, "acme", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries = %#v", entries)
+	}
+	if !entries[0].SelfMount {
+		t.Fatalf("entry = %#v, want SelfMount=true for matching remote URL", entries[0])
+	}
+	if entries[0].LocalPath != ref.LocalPath {
+		t.Fatalf("LocalPath = %q, want manifest checkout %q", entries[0].LocalPath, ref.LocalPath)
+	}
+}
+
+func TestSyncMountsSelfMountSkipsSparseCheckout(t *testing.T) {
+	home := t.TempDir()
+	ref := writeRegisteredManifest(t, home, "acme", `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": ".",
+      "mode": "default",
+      "include_paths": ["meetings", "support"]
+    }
+  ]
+}`)
+	if err := os.MkdirAll(filepath.Join(ref.LocalPath, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var commands []string
+	results, err := SyncMounts(home, "acme", "", nil, true, nil, false, func(name string, args ...string) ([]byte, error) {
+		commands = append(commands, name+" "+strings.Join(args, " "))
+		return []byte("ok\n"), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != "synced" {
+		t.Fatalf("results = %#v, want synced", results)
+	}
+	for _, cmd := range commands {
+		if strings.Contains(cmd, "sparse-checkout") {
+			t.Fatalf("self-mount ran sparse-checkout against the manifest checkout: %#v", commands)
+		}
+	}
+}
+
+func TestSyncMountsReportsLocalOnlyWithoutOrigin(t *testing.T) {
+	home := t.TempDir()
+	ref := writeRegisteredManifest(t, home, "acme", `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": ".",
+      "mode": "default"
+    }
+  ]
+}`)
+	// A real repository without an origin remote, run through real git: the
+	// local-only classification must not depend on a stubbed runner.
+	runGit(t, filepath.Dir(ref.LocalPath), "init", "-q", ref.LocalPath)
+	results, err := SyncMounts(home, "acme", "", nil, true, nil, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != "local-only" {
+		t.Fatalf("results = %#v, want local-only", results)
+	}
+	if !strings.Contains(results[0].Message, "no origin remote") {
+		t.Fatalf("message = %q, want no-origin explanation", results[0].Message)
+	}
+}
+
 func TestSyncMountsFiltersModes(t *testing.T) {
 	home := t.TempDir()
 	writeRegisteredManifest(t, home, "acme", `{

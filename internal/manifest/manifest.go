@@ -232,12 +232,63 @@ func Add(home, name, gitURL string) (Ref, error) {
 	}
 	for i, existing := range reg.Manifests {
 		if existing.Name == name {
+			if SameRemote(existing.GitURL, gitURL) && strings.TrimSpace(existing.LocalPath) != "" {
+				// Re-adding the same source must not clobber a re-pointed
+				// checkout (e.g. a self-hosted manifest living in its umbrella).
+				ref.LocalPath = existing.LocalPath
+			}
 			reg.Manifests[i] = ref
 			return ref, SaveRegistry(home, reg)
 		}
 	}
 	reg.Manifests = append(reg.Manifests, ref)
 	return ref, SaveRegistry(home, reg)
+}
+
+// DefaultCachePath returns the registry's default checkout location for a
+// manifest name, whether or not it is registered.
+func DefaultCachePath(home, name string) (string, error) {
+	homeDir, err := resolveHome(home)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cacheRoot(homeDir), "manifests", name), nil
+}
+
+// SetLocalPath re-points a registered manifest at an existing local checkout.
+func SetLocalPath(home, name, localPath string) (Ref, error) {
+	if strings.TrimSpace(localPath) == "" {
+		return Ref{}, fmt.Errorf("manifest local path is required")
+	}
+	reg, err := LoadRegistry(home)
+	if err != nil {
+		return Ref{}, err
+	}
+	for i, existing := range reg.Manifests {
+		if existing.Name == name {
+			reg.Manifests[i].LocalPath = localPath
+			return reg.Manifests[i], SaveRegistry(home, reg)
+		}
+	}
+	return Ref{}, fmt.Errorf("manifest %q is not registered; run our manifests add %s <git-url>", name, name)
+}
+
+// NormalizeRemote canonicalizes a git remote URL for equality checks. It
+// mirrors the syncer's remote-key normalization so the two layers agree on
+// which checkouts are the same repository.
+func NormalizeRemote(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	value = strings.TrimSuffix(value, ".git")
+	value = strings.TrimSuffix(value, "/")
+	return value
+}
+
+// SameRemote reports whether two git URLs point at the same remote.
+func SameRemote(a, b string) bool {
+	if strings.TrimSpace(a) == "" || strings.TrimSpace(b) == "" {
+		return false
+	}
+	return NormalizeRemote(a) == NormalizeRemote(b)
 }
 
 // Find returns a configured manifest by name.
@@ -570,6 +621,11 @@ func syncOne(ref Ref, dryRun bool, runner Runner) SyncResult {
 		if dryRun {
 			res.Status = "dry-run"
 			res.Message = fmt.Sprintf("would run git -C %s pull --ff-only", ref.LocalPath)
+			return res
+		}
+		if _, err := runner("git", "-C", ref.LocalPath, "remote", "get-url", "origin"); err != nil {
+			res.Status = "local-only"
+			res.Message = "no origin remote configured; nothing to pull until the repository is published"
 			return res
 		}
 		if err := ghauth.CheckGitURL(ref.GitURL, ghauth.Runner(runner)); err != nil {

@@ -22,6 +22,7 @@ import (
 	"github.com/fluxinc/our-ai/internal/selfupdate"
 	"github.com/fluxinc/our-ai/internal/skills"
 	"github.com/fluxinc/our-ai/internal/support"
+	"github.com/fluxinc/our-ai/internal/syncer"
 	"github.com/fluxinc/our-ai/internal/umbrella"
 	"github.com/fluxinc/our-ai/internal/workspace"
 )
@@ -118,8 +119,8 @@ func TestInitCreatesManifestRepoAndRegisters(t *testing.T) {
 	if result.Manifest.Name != "acme" || result.Manifest.GitURL != repo {
 		t.Fatalf("manifest ref = %#v", result.Manifest)
 	}
-	if len(result.Sync) != 1 || result.Sync[0].Status != "synced" {
-		t.Fatalf("sync result = %#v", result.Sync)
+	if len(result.Sync) != 1 || result.Sync[0].Status != "local-only" {
+		t.Fatalf("sync result = %#v, want local-only (no origin until published)", result.Sync)
 	}
 	for _, want := range []initNextCommand{
 		{Action: "setup", Command: "our setup"},
@@ -156,11 +157,43 @@ func TestInitCreatesManifestRepoAndRegisters(t *testing.T) {
 		filepath.Join(repo, "agent-guidance", "acme.md"),
 		filepath.Join(repo, "skills", "acme-handbook", "SKILL.md"),
 		filepath.Join(repo, "catalog", "customers.json"),
-		filepath.Join(home, ".local", "share", "our", "manifests", "acme", "manifest.json"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s: %v", path, err)
 		}
+	}
+	if result.Manifest.LocalPath != repo {
+		t.Fatalf("registry LocalPath = %q, want the scaffold checkout %q", result.Manifest.LocalPath, repo)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".local", "share", "our", "manifests", "acme")); !os.IsNotExist(err) {
+		t.Fatalf("init created a duplicate manifest cache checkout: %v", err)
+	}
+}
+
+func TestInitDefaultsToUmbrellaMountPath(t *testing.T) {
+	home := t.TempDir()
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "init", "acme", "--home", home, "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	var result initResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode init JSON: %v\n%s", err, stdout.String())
+	}
+	want := filepath.Join(home, "acme", "workspace")
+	if result.RepoPath != want {
+		t.Fatalf("repo path = %q, want umbrella workspace path %q", result.RepoPath, want)
+	}
+	if result.Manifest.LocalPath != want {
+		t.Fatalf("registry LocalPath = %q, want %q", result.Manifest.LocalPath, want)
+	}
+	if _, err := os.Stat(filepath.Join(want, ".git")); err != nil {
+		t.Fatalf("scaffold checkout missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".local", "share", "our", "manifests", "acme")); !os.IsNotExist(err) {
+		t.Fatalf("init created a duplicate manifest cache checkout: %v", err)
 	}
 }
 
@@ -284,6 +317,156 @@ func TestInitScaffoldREADMETeachesTeammateFirstRun(t *testing.T) {
 		if !strings.Contains(readme, want) {
 			t.Fatalf("README missing %q:\n%s", want, readme)
 		}
+	}
+}
+
+func seedLegacyOrgRepo(t *testing.T) string {
+	t.Helper()
+	seedHome := t.TempDir()
+	seed := filepath.Join(t.TempDir(), "acme-seed")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "init", "acme", "--path", seed, "--home", seedHome}); err != nil {
+		t.Fatalf("seed init: %v", err)
+	}
+	return seed
+}
+
+func cloneTestRepo(t *testing.T, source, target string) {
+	t.Helper()
+	out, err := exec.Command("git", "clone", "--quiet", source, target).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git clone %s -> %s: %v\n%s", source, target, err, out)
+	}
+}
+
+func TestSetupMigratesLegacyDuplicateSelfMountCheckout(t *testing.T) {
+	seed := seedLegacyOrgRepo(t)
+	home := t.TempDir()
+	ref, err := manifest.Add(home, "acme", seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cloneTestRepo(t, seed, ref.LocalPath)
+	legacyMount := filepath.Join(home, "acme", "handbook")
+	cloneTestRepo(t, seed, legacyMount)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "setup", "--home", home, "claude"}); err != nil {
+		t.Fatalf("setup: %v\nstderr: %s", err, stderr.String())
+	}
+	canonical := filepath.Join(home, "acme", "workspace")
+	found, ok, err := manifest.Find(home, "acme")
+	if err != nil || !ok {
+		t.Fatalf("Find: ok=%v err=%v", ok, err)
+	}
+	if found.LocalPath != canonical {
+		t.Fatalf("registry LocalPath = %q, want migrated %q", found.LocalPath, canonical)
+	}
+	if _, err := os.Stat(filepath.Join(canonical, ".git")); err != nil {
+		t.Fatalf("canonical checkout missing: %v", err)
+	}
+	if _, err := os.Stat(ref.LocalPath); !os.IsNotExist(err) {
+		t.Fatalf("legacy cache checkout still exists at %s: %v", ref.LocalPath, err)
+	}
+	if _, err := os.Stat(legacyMount); !os.IsNotExist(err) {
+		t.Fatalf("legacy mount checkout still exists at %s: %v", legacyMount, err)
+	}
+}
+
+func TestSetupRelocatesLegacyCacheWhenUmbrellaCheckoutMissing(t *testing.T) {
+	seed := seedLegacyOrgRepo(t)
+	home := t.TempDir()
+	ref, err := manifest.Add(home, "acme", seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cloneTestRepo(t, seed, ref.LocalPath)
+	dirty := filepath.Join(ref.LocalPath, "support", "2026-06-10-draft.md")
+	writeCLITestFile(t, dirty, "draft\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "setup", "--home", home, "claude"}); err != nil {
+		t.Fatalf("setup: %v\nstderr: %s", err, stderr.String())
+	}
+	canonical := filepath.Join(home, "acme", "workspace")
+	found, ok, err := manifest.Find(home, "acme")
+	if err != nil || !ok || found.LocalPath != canonical {
+		t.Fatalf("registry LocalPath = %q (ok=%v err=%v), want relocated %q", found.LocalPath, ok, err, canonical)
+	}
+	if _, err := os.Stat(filepath.Join(canonical, ".git")); err != nil {
+		t.Fatalf("relocated checkout missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(canonical, "support", "2026-06-10-draft.md")); err != nil {
+		t.Fatalf("relocation lost uncommitted work: %v", err)
+	}
+	if _, err := os.Stat(ref.LocalPath); !os.IsNotExist(err) {
+		t.Fatalf("legacy cache checkout still exists at %s: %v", ref.LocalPath, err)
+	}
+}
+
+func TestSetupMigratesDirtyCacheOverCleanDuplicate(t *testing.T) {
+	seed := seedLegacyOrgRepo(t)
+	home := t.TempDir()
+	ref, err := manifest.Add(home, "acme", seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cloneTestRepo(t, seed, ref.LocalPath)
+	legacyMount := filepath.Join(home, "acme", "handbook")
+	cloneTestRepo(t, seed, legacyMount)
+	writeCLITestFile(t, filepath.Join(ref.LocalPath, "catalog", "customers.json"), "[{\"id\":\"edited\"}]\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "setup", "--home", home, "claude"}); err != nil {
+		t.Fatalf("setup: %v\nstderr: %s", err, stderr.String())
+	}
+	canonical := filepath.Join(home, "acme", "workspace")
+	found, ok, err := manifest.Find(home, "acme")
+	if err != nil || !ok || found.LocalPath != canonical {
+		t.Fatalf("registry LocalPath = %q (ok=%v err=%v), want %q", found.LocalPath, ok, err, canonical)
+	}
+	data, err := os.ReadFile(filepath.Join(canonical, "catalog", "customers.json"))
+	if err != nil || !strings.Contains(string(data), "edited") {
+		t.Fatalf("migration lost the dirty admin edit: %v %q", err, data)
+	}
+	if _, err := os.Stat(legacyMount); !os.IsNotExist(err) {
+		t.Fatalf("clean duplicate checkout still exists at %s: %v", legacyMount, err)
+	}
+}
+
+func TestSetupRefusesMigrationWhenBothCheckoutsHaveLocalWork(t *testing.T) {
+	seed := seedLegacyOrgRepo(t)
+	home := t.TempDir()
+	ref, err := manifest.Add(home, "acme", seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cloneTestRepo(t, seed, ref.LocalPath)
+	legacyMount := filepath.Join(home, "acme", "handbook")
+	cloneTestRepo(t, seed, legacyMount)
+	writeCLITestFile(t, filepath.Join(ref.LocalPath, "catalog", "customers.json"), "[{\"id\":\"edited\"}]\n")
+	writeCLITestFile(t, filepath.Join(legacyMount, "meetings", "2026-06-10-sync.md"), "note\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err = a.run([]string{"our", "setup", "--home", home, "claude"})
+	if err == nil {
+		t.Fatalf("setup succeeded despite two checkouts with local work\nstderr: %s", stderr.String())
+	}
+	for _, want := range []string{"catalog/customers.json", "meetings/2026-06-10-sync.md", ref.LocalPath, legacyMount} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("err = %q, missing %q", err.Error(), want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(ref.LocalPath, ".git")); err != nil {
+		t.Fatalf("refused migration must not touch the cache checkout: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(legacyMount, ".git")); err != nil {
+		t.Fatalf("refused migration must not touch the mount checkout: %v", err)
 	}
 }
 
@@ -1866,6 +2049,56 @@ func TestDoctorFixReinstallsAbsentSelfSkill(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "our", "SKILL.md")); err != nil {
 		t.Fatalf("self-skill not reinstalled: %v", err)
+	}
+}
+
+func TestSyncEmitsSingleWorkspaceEntryForSelfMount(t *testing.T) {
+	home, umbrellaRoot, manifestCache, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": ".", "mode": "required" },
+    { "id": "notes", "kind": "meetings", "git_url": ".", "mode": "default", "include_paths": ["meetings"] }
+  ]
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "sync", "--print", "--json",
+		"--backend", "builtin",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var report syncCommandReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("decode sync JSON: %v\n%s", err, stdout.String())
+	}
+	if len(report.Results) != 1 {
+		t.Fatalf("results = %#v, want exactly one entry for the single checkout", report.Results)
+	}
+	result := report.Results[0]
+	if result.Role != "workspace" {
+		t.Fatalf("role = %q, want workspace (manifest and self-mounts share one checkout)", result.Role)
+	}
+	if result.LocalPath != manifestCache {
+		t.Fatalf("local path = %q, want the registered checkout %q", result.LocalPath, manifestCache)
+	}
+}
+
+func TestChangedManifestForDerivedIncludesWorkspaceRole(t *testing.T) {
+	report := syncer.Report{Results: []syncer.Result{
+		{Manifest: "acme", ID: "acme", Role: "workspace", Status: "pulled"},
+	}}
+	name, ok := changedManifestForDerived(report)
+	if !ok || name != "acme" {
+		t.Fatalf("changedManifestForDerived = %q, %v; want acme, true (workspace pulls must reconcile derived state)", name, ok)
 	}
 }
 

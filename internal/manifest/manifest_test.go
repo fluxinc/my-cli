@@ -3,6 +3,7 @@ package manifest
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,6 +28,83 @@ func TestAddAndLoadRegistry(t *testing.T) {
 	}
 	if len(reg.Manifests) != 1 || reg.Manifests[0].GitURL != ref.GitURL {
 		t.Fatalf("registry = %#v", reg)
+	}
+}
+
+func TestSetLocalPathRepointsRegistry(t *testing.T) {
+	home := t.TempDir()
+	if _, err := Add(home, "acme", "https://github.com/acme/acme-workspace.git"); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(home, "acme", "handbook")
+	ref, err := SetLocalPath(home, "acme", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref.LocalPath != target {
+		t.Fatalf("ref.LocalPath = %q, want %q", ref.LocalPath, target)
+	}
+	found, ok, err := Find(home, "acme")
+	if err != nil || !ok {
+		t.Fatalf("Find after SetLocalPath: ok=%v err=%v", ok, err)
+	}
+	if found.LocalPath != target {
+		t.Fatalf("registry LocalPath = %q, want %q", found.LocalPath, target)
+	}
+	if _, err := SetLocalPath(home, "ghost", target); err == nil {
+		t.Fatal("SetLocalPath for unknown manifest should fail")
+	}
+}
+
+func TestAddPreservesRepointedLocalPathForSameURL(t *testing.T) {
+	home := t.TempDir()
+	url := "https://github.com/acme/acme-workspace.git"
+	if _, err := Add(home, "acme", url); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(home, "acme", "handbook")
+	if _, err := SetLocalPath(home, "acme", target); err != nil {
+		t.Fatal(err)
+	}
+	ref, err := Add(home, "acme", url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref.LocalPath != target {
+		t.Fatalf("re-add same URL reset LocalPath to %q, want preserved %q", ref.LocalPath, target)
+	}
+	ref, err = Add(home, "acme", "https://github.com/acme/other.git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(ref.LocalPath, filepath.Join(home, ".local", "share", appDir, "manifests")) {
+		t.Fatalf("re-add with new URL kept LocalPath %q, want cache path", ref.LocalPath)
+	}
+}
+
+func TestSyncReportsLocalOnlyCheckoutWithoutOrigin(t *testing.T) {
+	home := t.TempDir()
+	ref, err := Add(home, "acme", filepath.Join(home, "acme", "handbook"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(ref.LocalPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A real repository without an origin remote, run through real git: the
+	// local-only classification must not depend on a stubbed runner.
+	if out, err := exec.Command("git", "-C", ref.LocalPath, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	results, err := Sync(home, []string{"acme"}, false, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != "local-only" {
+		t.Fatalf("results = %#v, want local-only status", results)
+	}
+	if !strings.Contains(results[0].Message, "no origin remote") {
+		t.Fatalf("message = %q, want no-origin explanation", results[0].Message)
 	}
 }
 
@@ -70,6 +148,9 @@ func TestSyncMarksChangedWhenHeadReadFailsAfterPull(t *testing.T) {
 	results, err := Sync(home, []string{"acme"}, false, false, func(name string, args ...string) ([]byte, error) {
 		if name != "git" {
 			return nil, errors.New("unexpected command")
+		}
+		if len(args) >= 4 && args[0] == "-C" && args[2] == "remote" {
+			return []byte("https://github.com/acme/remote.git\n"), nil
 		}
 		if len(args) >= 4 && args[0] == "-C" && args[2] == "rev-parse" {
 			headReads++

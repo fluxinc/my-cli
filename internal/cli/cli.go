@@ -340,9 +340,15 @@ func (a app) createInitScaffold(opts initOptions) (initResult, error) {
 	if err != nil {
 		return initResult{}, err
 	}
+	umbrellaPath := strings.TrimSpace(opts.umbrellaPath)
+	if umbrellaPath == "" {
+		umbrellaPath = "~/" + opts.orgID
+	}
 	repoPath := opts.repoPath
 	if repoPath == "" {
-		repoPath = filepath.Join(homeDir, opts.orgID+"-workspace")
+		// The org repository is its own only checkout: scaffold it directly
+		// at the canonical umbrella workspace path.
+		repoPath = umbrella.WorkspacePath(expandUserPath(homeDir, umbrellaPath))
 	} else {
 		repoPath = expandUserPath(homeDir, repoPath)
 	}
@@ -357,10 +363,6 @@ func (a app) createInitScaffold(opts initOptions) (initResult, error) {
 	if orgName == "" {
 		orgName = displayNameFromID(opts.orgID)
 	}
-	umbrellaPath := strings.TrimSpace(opts.umbrellaPath)
-	if umbrellaPath == "" {
-		umbrellaPath = "~/" + opts.orgID
-	}
 	doc := initManifestDocument(opts.orgID, orgName, umbrellaPath)
 	if err := writeInitScaffold(repoPath, doc); err != nil {
 		return initResult{}, err
@@ -371,7 +373,11 @@ func (a app) createInitScaffold(opts initOptions) (initResult, error) {
 	if err := gitInitCommit(repoPath); err != nil {
 		return initResult{}, err
 	}
-	ref, err := manifest.Add(opts.home, opts.orgID, repoPath)
+	if _, err := manifest.Add(opts.home, opts.orgID, repoPath); err != nil {
+		return initResult{}, err
+	}
+	// The scaffold checkout is canonical; never keep a duplicate cache clone.
+	ref, err := manifest.SetLocalPath(opts.home, opts.orgID, repoPath)
 	if err != nil {
 		return initResult{}, err
 	}
@@ -393,6 +399,10 @@ func (a app) createInitScaffold(opts initOptions) (initResult, error) {
 	result.NextCommands = initNextCommands(opts.home, opts.orgID, repoPath)
 	return result, nil
 }
+
+// initMountID is the mount id of the self-mounted org repository scaffolded
+// by our init; the scaffold lives at the umbrella mount path for this id.
+const initMountID = "handbook"
 
 func initManifestDocument(orgID, orgName, umbrellaPath string) manifest.Document {
 	return manifest.Document{
@@ -424,7 +434,7 @@ func initManifestDocument(orgID, orgName, umbrellaPath string) manifest.Document
 		},
 		Mounts: []manifest.Mount{
 			{
-				ID:     "handbook",
+				ID:     initMountID,
 				Kind:   "handbook",
 				GitURL: manifest.SelfMountGitURL,
 				Mode:   "default",
@@ -582,6 +592,172 @@ func runGit(root string, args ...string) error {
 		message = err.Error()
 	}
 	return fmt.Errorf("git %s: %s", strings.Join(args, " "), message)
+}
+
+// workspaceCheckout classifies one local checkout of the org repository for
+// single-checkout migration decisions.
+type workspaceCheckout struct {
+	path      string
+	dirty     []string
+	hasWork   bool // dirty, ahead of upstream, or unverifiable
+	deletable bool // clean, not ahead, and on the manifest's remote
+}
+
+func classifyWorkspaceCheckout(path, refGitURL string) workspaceCheckout {
+	c := workspaceCheckout{path: path}
+	dirty, err := gitDirtyFiles(path)
+	if err != nil {
+		c.hasWork = true
+		return c
+	}
+	c.dirty = dirty
+	ahead, aheadKnown := gitAheadCount(path)
+	origin, _ := gitCmdOutput(path, "remote", "get-url", "origin")
+	sameRemote := manifest.SameRemote(origin, refGitURL)
+	c.hasWork = len(dirty) != 0 || ahead > 0 || !aheadKnown
+	c.deletable = !c.hasWork && sameRemote
+	return c
+}
+
+// ensureCanonicalWorkspace converges a self-mounted manifest onto one
+// canonical checkout at <umbrella>/workspace: it keeps the checkout that
+// carries local work, removes verified-clean duplicates, and re-points the
+// registry. It refuses (with exact paths and files) when more than one
+// checkout has local work.
+func ensureCanonicalWorkspace(home string, doc registeredDoc, root string) (manifest.Ref, error) {
+	ref := doc.ref
+	if _, selfMounted := selfMountContentPaths(ref, doc.doc); !selfMounted {
+		return ref, nil
+	}
+	canonical := umbrella.WorkspacePath(root)
+	cachePath, err := manifest.DefaultCachePath(home, ref.Name)
+	if err != nil {
+		return ref, err
+	}
+	candidates := []string{canonical, ref.LocalPath}
+	for _, mount := range manifest.EffectiveMounts(doc.doc) {
+		if mount.GitURL == manifest.SelfMountGitURL || manifest.SameRemote(mount.GitURL, ref.GitURL) {
+			candidates = append(candidates, umbrella.MountPath(root, mount.ID))
+		}
+	}
+	seen := map[string]bool{}
+	var existing []workspaceCheckout
+	for _, path := range candidates {
+		if path == "" || seen[path] {
+			continue
+		}
+		seen[path] = true
+		if !isGitCheckout(path) {
+			continue
+		}
+		existing = append(existing, classifyWorkspaceCheckout(path, ref.GitURL))
+	}
+	if len(existing) == 0 {
+		// Nothing cloned yet; future clones should land at the canonical path.
+		if ref.LocalPath != canonical {
+			return manifest.SetLocalPath(home, ref.Name, canonical)
+		}
+		return ref, nil
+	}
+	var withWork []workspaceCheckout
+	for _, c := range existing {
+		if c.hasWork {
+			withWork = append(withWork, c)
+		}
+	}
+	if len(withWork) > 1 {
+		lines := make([]string, 0, len(withWork))
+		for _, c := range withWork {
+			detail := strings.Join(c.dirty, ", ")
+			if detail == "" {
+				detail = "unpublished or unverifiable commits"
+			}
+			lines = append(lines, fmt.Sprintf("  %s: %s", c.path, detail))
+		}
+		return ref, fmt.Errorf("multiple checkouts of %s have local work:\n%s\npublish or stash the changes in all but one checkout, then run our setup again", ref.GitURL, strings.Join(lines, "\n"))
+	}
+	winner := existing[0]
+	if len(withWork) == 1 {
+		winner = withWork[0]
+	}
+	for _, c := range existing {
+		if c.path == winner.path {
+			continue
+		}
+		if !c.deletable {
+			return ref, fmt.Errorf("duplicate checkout %s of %s cannot be removed automatically; remove or repoint it, then run our setup again", c.path, ref.GitURL)
+		}
+		if err := os.RemoveAll(c.path); err != nil {
+			return ref, fmt.Errorf("remove duplicate checkout %s: %w", c.path, err)
+		}
+	}
+	target := winner.path
+	// Relocate only checkouts in our managed locations; a deliberately
+	// custom path stays where the operator put it.
+	movable := winner.path == cachePath || pathWithinDir(winner.path, root)
+	if winner.path != canonical && movable {
+		if err := os.MkdirAll(filepath.Dir(canonical), 0o755); err != nil {
+			return ref, err
+		}
+		if err := os.Rename(winner.path, canonical); err != nil {
+			return ref, fmt.Errorf("move %s to %s: %w", winner.path, canonical, err)
+		}
+		target = canonical
+	}
+	if ref.LocalPath != target {
+		return manifest.SetLocalPath(home, ref.Name, target)
+	}
+	return ref, nil
+}
+
+func isGitCheckout(path string) bool {
+	_, err := os.Stat(filepath.Join(path, ".git"))
+	return err == nil
+}
+
+func gitCmdOutput(dir string, args ...string) (string, error) {
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	out, err := cmd.CombinedOutput()
+	return strings.TrimSpace(string(out)), err
+}
+
+func gitDirtyFiles(dir string) ([]string, error) {
+	cmd := exec.Command("git", "-C", dir, "status", "--porcelain")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("git status: %s", strings.TrimSpace(string(out)))
+	}
+	var files []string
+	// Porcelain lines are "XY path"; do not trim the line first — the
+	// two-character status may start with a significant space.
+	for _, line := range strings.Split(string(out), "\n") {
+		if len(line) > 3 {
+			files = append(files, strings.TrimSpace(line[3:]))
+		}
+	}
+	return files, nil
+}
+
+// gitAheadCount returns commits ahead of upstream; known=false when there is
+// no upstream to compare against.
+func gitAheadCount(dir string) (int, bool) {
+	out, err := gitCmdOutput(dir, "rev-list", "--count", "@{u}..HEAD")
+	if err != nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(out)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+func pathWithinDir(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func initNextCommands(home, orgID, repoPath string) []initNextCommand {
@@ -1235,7 +1411,9 @@ func changedManifestForDerived(report syncer.Report) (string, bool) {
 	seen := map[string]bool{}
 	var names []string
 	for _, result := range report.Results {
-		if result.Role != "manifest" {
+		// A workspace entry is the manifest checkout merged with its
+		// self-mounted content; changes there affect derived state too.
+		if result.Role != "manifest" && result.Role != "workspace" {
 			continue
 		}
 		if !syncManifestResultChanged(result) {
@@ -1327,22 +1505,43 @@ func (a app) collectSyncEntries(home, manifestName, umbrellaRoot, scope string) 
 	}
 	var entries []syncer.Entry
 	for _, doc := range docs {
-		if scope == "all" || scope == "local" || scope == "manifest" {
-			entries = append(entries, syncer.Entry{
-				Manifest:  doc.ref.Name,
-				ID:        doc.ref.Name,
-				Role:      "manifest",
-				Kind:      "manifest",
-				GitURL:    doc.ref.GitURL,
-				LocalPath: doc.ref.LocalPath,
-			})
+		manifestWanted := scope == "all" || scope == "local" || scope == "manifest"
+		contentWanted := scope == "all" || scope == "local" || scope == "content"
+		// A self-mounted manifest shares one checkout between the manifest
+		// and its content mounts; emit it once as a workspace entry instead
+		// of one entry per role.
+		selfPaths, selfMounted := selfMountContentPaths(doc.ref, doc.doc)
+		if manifestWanted || contentWanted {
+			if selfMounted {
+				entries = append(entries, syncer.Entry{
+					Manifest:     doc.ref.Name,
+					ID:           doc.ref.Name,
+					Role:         "workspace",
+					Kind:         "workspace",
+					GitURL:       doc.ref.GitURL,
+					LocalPath:    doc.ref.LocalPath,
+					ContentPaths: selfPaths,
+				})
+			} else if manifestWanted {
+				entries = append(entries, syncer.Entry{
+					Manifest:  doc.ref.Name,
+					ID:        doc.ref.Name,
+					Role:      "manifest",
+					Kind:      "manifest",
+					GitURL:    doc.ref.GitURL,
+					LocalPath: doc.ref.LocalPath,
+				})
+			}
 		}
-		if scope == "all" || scope == "local" || scope == "content" {
+		if contentWanted {
 			mounts, err := workspace.ListMounts(home, doc.ref.Name, umbrellaRoot)
 			if err != nil {
 				return nil, err
 			}
 			for _, mount := range mounts {
+				if mount.SelfMount {
+					continue
+				}
 				entries = append(entries, syncer.Entry{
 					Manifest:     mount.Manifest,
 					ID:           mount.ID,
@@ -1404,10 +1603,14 @@ func (a app) collectSyncProductEntries(home string, doc registeredDoc, umbrellaR
 }
 
 func syncContentPaths(entry workspace.Entry) []string {
-	if len(entry.IncludePaths) != 0 {
-		return append([]string(nil), entry.IncludePaths...)
+	return mountContentPaths(entry.Kind, entry.IncludePaths)
+}
+
+func mountContentPaths(kind string, includePaths []string) []string {
+	if len(includePaths) != 0 {
+		return append([]string(nil), includePaths...)
 	}
-	switch entry.Kind {
+	switch kind {
 	case "handbook":
 		return []string{"meetings", "support", "decisions", "projects", "policy", "people"}
 	case "meetings":
@@ -1423,6 +1626,27 @@ func syncContentPaths(entry workspace.Entry) []string {
 	default:
 		return nil
 	}
+}
+
+// selfMountContentPaths reports whether the manifest mounts its own
+// repository and returns the union of those mounts' content paths.
+func selfMountContentPaths(ref manifest.Ref, doc manifest.Document) ([]string, bool) {
+	var paths []string
+	seen := map[string]bool{}
+	found := false
+	for _, mount := range manifest.EffectiveMounts(doc) {
+		if mount.GitURL != manifest.SelfMountGitURL && !manifest.SameRemote(mount.GitURL, ref.GitURL) {
+			continue
+		}
+		found = true
+		for _, path := range mountContentPaths(mount.Kind, mount.IncludePaths) {
+			if !seen[path] {
+				seen[path] = true
+				paths = append(paths, path)
+			}
+		}
+	}
+	return paths, found
 }
 
 func dedupeSyncEntries(entries []syncer.Entry) []syncer.Entry {
@@ -7565,6 +7789,11 @@ func (a app) runOnboard(args []string) error {
 			return err
 		}
 		ws = ensured
+		if migrated, err := ensureCanonicalWorkspace(opts.home, doc, root); err != nil {
+			return err
+		} else {
+			doc.ref = migrated
+		}
 		a.maybeAutoRefresh(opts.home, doc.ref.Name, root, root, opts.noRefresh)
 		a.maybeUpdateNotice(opts.home, opts.noUpdateCheck)
 		refreshed, err := loadSingleRegisteredDoc(opts.home, doc.ref.Name)

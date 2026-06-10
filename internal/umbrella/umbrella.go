@@ -237,6 +237,14 @@ func MountPath(root, id string) string {
 	return filepath.Join(root, id)
 }
 
+// WorkspacePath returns the canonical checkout location for a self-mounted
+// organization repository (manifest, catalog, and content in one repo). It is
+// named workspace rather than after any single mount because several mounts
+// may be views into the same checkout.
+func WorkspacePath(root string) string {
+	return filepath.Join(root, "workspace")
+}
+
 // ProductPath returns the filesystem path for one selected product clone.
 // New clones default to repos/<id>; an existing legacy products/<id> checkout
 // keeps resolving until it is migrated.

@@ -29,6 +29,7 @@ type Entry struct {
 	LocalPath    string   `json:"local_path"`
 	UmbrellaRoot string   `json:"umbrella_root,omitempty"`
 	SourceRef    string   `json:"source_ref,omitempty"`
+	SelfMount    bool     `json:"self_mount,omitempty"`
 }
 
 // SyncResult describes one workspace sync action.
@@ -98,8 +99,13 @@ func ListMounts(home, manifestName, umbrellaRoot string) ([]Entry, error) {
 		}
 		for _, mount := range manifest.EffectiveMounts(doc) {
 			gitURL := mount.GitURL
-			if gitURL == manifest.SelfMountGitURL {
+			localPath := umbrella.MountPath(root, mount.ID)
+			selfMount := gitURL == manifest.SelfMountGitURL || manifest.SameRemote(gitURL, ref.GitURL)
+			if selfMount {
 				gitURL = ref.GitURL
+				// A self-mount is the manifest repository itself; reuse the
+				// registered checkout instead of cloning a duplicate.
+				localPath = ref.LocalPath
 			}
 			entries = append(entries, Entry{
 				Manifest:     ref.Name,
@@ -109,9 +115,10 @@ func ListMounts(home, manifestName, umbrellaRoot string) ([]Entry, error) {
 				Mode:         mount.Mode,
 				GitURL:       gitURL,
 				IncludePaths: mount.IncludePaths,
-				LocalPath:    umbrella.MountPath(root, mount.ID),
+				LocalPath:    localPath,
 				UmbrellaRoot: root,
 				SourceRef:    "manifest:" + ref.Name + ":" + mount.ID,
+				SelfMount:    selfMount,
 			})
 		}
 	}
@@ -291,14 +298,22 @@ func syncOne(entry Entry, dryRun bool, runner Runner) SyncResult {
 		return res
 	}
 
+	// A self-mount shares its working tree with the whole manifest repository;
+	// narrowing it with sparse-checkout would hide manifest and catalog files.
+	sparse := len(entry.IncludePaths) != 0 && !entry.SelfMount
 	if isGitDir(entry.LocalPath) {
 		if dryRun {
 			res.Status = "dry-run"
-			if len(entry.IncludePaths) != 0 {
+			if sparse {
 				res.Message = fmt.Sprintf("would run git -C %s sparse-checkout set --no-cone %s && git -C %s pull --ff-only", entry.LocalPath, strings.Join(entry.IncludePaths, " "), entry.LocalPath)
 			} else {
 				res.Message = fmt.Sprintf("would run git -C %s pull --ff-only", entry.LocalPath)
 			}
+			return res
+		}
+		if _, err := runner("git", "-C", entry.LocalPath, "remote", "get-url", "origin"); err != nil {
+			res.Status = "local-only"
+			res.Message = "no origin remote configured; nothing to pull until the repository is published"
 			return res
 		}
 		if err := ghauth.CheckGitURL(entry.GitURL, ghauth.Runner(runner)); err != nil {
@@ -307,7 +322,7 @@ func syncOne(entry Entry, dryRun bool, runner Runner) SyncResult {
 			return res
 		}
 		var messages []string
-		if len(entry.IncludePaths) != 0 {
+		if sparse {
 			out, err := runner("git", sparseCheckoutArgs(entry)...)
 			if err != nil {
 				res.Status = "failed"
@@ -334,7 +349,7 @@ func syncOne(entry Entry, dryRun bool, runner Runner) SyncResult {
 
 	if dryRun {
 		res.Status = "dry-run"
-		if len(entry.IncludePaths) != 0 {
+		if sparse {
 			res.Message = fmt.Sprintf("would run git clone --sparse %s %s && git -C %s sparse-checkout set --no-cone %s", entry.GitURL, entry.LocalPath, entry.LocalPath, strings.Join(entry.IncludePaths, " "))
 		} else {
 			res.Message = fmt.Sprintf("would run git clone %s %s", entry.GitURL, entry.LocalPath)
@@ -351,7 +366,7 @@ func syncOne(entry Entry, dryRun bool, runner Runner) SyncResult {
 		res.Error = err.Error()
 		return res
 	}
-	out, err := runner("git", cloneArgs(entry)...)
+	out, err := runner("git", cloneArgs(entry, sparse)...)
 	if err != nil {
 		res.Status = "failed"
 		res.Error = commandError(out, err)
@@ -361,7 +376,7 @@ func syncOne(entry Entry, dryRun bool, runner Runner) SyncResult {
 	if msg := strings.TrimSpace(string(out)); msg != "" {
 		messages = append(messages, msg)
 	}
-	if len(entry.IncludePaths) != 0 {
+	if sparse {
 		out, err := runner("git", sparseCheckoutArgs(entry)...)
 		if err != nil {
 			res.Status = "failed"
@@ -377,9 +392,9 @@ func syncOne(entry Entry, dryRun bool, runner Runner) SyncResult {
 	return res
 }
 
-func cloneArgs(entry Entry) []string {
+func cloneArgs(entry Entry, sparse bool) []string {
 	args := []string{"clone"}
-	if len(entry.IncludePaths) != 0 {
+	if sparse {
 		args = append(args, "--sparse")
 	}
 	return append(args, entry.GitURL, entry.LocalPath)
