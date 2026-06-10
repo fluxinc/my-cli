@@ -105,8 +105,9 @@ gnit control workspace; gnit is the substrate, not a prerequisite.
 ### Mode B: contained materialization (fleet)
 
 For unattended/role agents, isolation comes from containment, not
-convention: a container materialized **from the manifest**, with volume,
-tool, MCP, and service mounts compiled from what the manifest declares.
+convention: a container materialized **from the manifest**, with volume
+mounts, local tool requirements, and service surfaces compiled from what the
+manifest declares.
 
 The manifest already describes nearly everything such a pod needs — the
 mapping is close to 1:1:
@@ -116,13 +117,13 @@ mapping is close to 1:1:
 | guidance (+ role)           | behavioral contract (read-only AGENTS.md)  |
 | mounts (role-scoped subset) | volume mounts into the agent home          |
 | skills                      | skill installation directives              |
-| tools + org MCP servers     | managed/mediated tool plane                |
+| tools                       | local tool requirements                    |
 | members / roles             | agent identity + persona seed              |
 | catalog products            | repo mounts                                |
-| services (role-granted)     | surface grants + mediated tool wiring      |
+| services (role-granted)     | remote surfaces + mediated tool wiring     |
 
 A future `our launch compile [--role R]` (verb TBD) emits the org-side launch
-artifacts — contract text, role-scoped mount list, tool grants, MCP server
+artifacts — contract text, role-scoped mount list, tool grants, service
 declarations, persona seed — that container tooling (for example, `claw up`)
 consumes. Inside the container the agent gets a role-scoped
 umbrella pulled into its home, the `our` CLI installed, and **only the
@@ -151,8 +152,8 @@ Mode B implies manifest extensions that are useful standalone:
 Two gated-service shapes anchor the services design, and both are consumed
 identically by human and AI operators — gating is a property of the
 service, not of the consumer: a **credential broker** (asking is free; each
-read requires a push approval on the operator's phone; one-time scoped
-secrets, nothing at rest) and a **communications platform** (agents draft
+read requires out-of-band approval; returned credentials are scoped and never
+committed to the manifest) and a **communications platform** (operators draft
 freely; every send passes human review through an approval-gated,
 idempotent pipeline).
 
