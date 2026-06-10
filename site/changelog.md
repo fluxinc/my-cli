@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added `our support list/search/get/add` for anonymized support records under
+  `support/`, with qmd-first search, a built-in markdown search fallback, and
+  linkable frontmatter attribution: an optional canonical customer ID, a
+  repeatable `--identifier` list for device, order, or asset identifiers, and
+  org member fields (`claimed_by`, `observed_by`, and the human sign-off
+  `approved_by`).
+- Added `support` as a manifest mount kind; handbook mounts without explicit
+  `include_paths` now treat `support/` as approved content for sync publishing.
+- Added `our fleet list/search/get/add/set` and the `fleet` mount kind: a
+  registry of deployed instances with one record per stable id under
+  `fleet/<id>.md`, updated in place. `our fleet get` resolves any entry in a
+  record's `identifiers` list and reports related support records;
+  `our fleet set` updates scalar frontmatter while preserving everything else
+  and suggests an `our sync --message` command for the transition; and
+  `our support add` warns when an `--identifier` is unknown to the registry.
+- Extracted the shared `internal/record` engine behind meetings, support, and
+  fleet records (frontmatter parsing now ignores inline YAML comments in
+  unquoted values).
+
+### Fixed
+
+- `our doctor` now reports an absent or stale `our` self-skill on present
+  harnesses instead of claiming no skill drift, and `our doctor --fix`
+  reinstalls it (#13).
+
 ## 0.8.0 - 2026-06-09
 
 ### Changed

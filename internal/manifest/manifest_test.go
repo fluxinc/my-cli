@@ -108,7 +108,19 @@ func TestValidateManifest(t *testing.T) {
       "kind": "handbook",
       "git_url": "https://github.com/acme/acme-handbook.git",
       "mode": "required",
-      "include_paths": ["meetings", "decisions"]
+      "include_paths": ["meetings", "support", "decisions"]
+    },
+    {
+      "id": "support",
+      "kind": "support",
+      "git_url": "https://github.com/acme/acme-support.git",
+      "mode": "optional"
+    },
+    {
+      "id": "fleet",
+      "kind": "fleet",
+      "git_url": "https://github.com/acme/acme-fleet.git",
+      "mode": "optional"
     }
   ],
   "workspaces": [

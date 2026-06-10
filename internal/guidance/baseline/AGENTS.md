@@ -12,6 +12,18 @@ Use the `our` CLI before falling back to ad hoc file searches:
 - `our meetings list`, `our meetings search <text>`, and
   `our meetings get <id>` query local meeting notes; use `--customer`,
   `--partner`, and `--product` filters when those axes are known.
+- `our support list`, `our support search <text>`, and `our support get <id>`
+  query anonymized support records; use `our support add <slug>` after
+  resolving substantive support problems, recording the customer, any device,
+  order, or asset identifiers, and the org members involved (`claimed_by`,
+  `observed_by`) in frontmatter so records link later. Leave `approved_by` for
+  explicit operator sign-off.
+- `our fleet list`, `our fleet search <text>`, and
+  `our fleet get <id|identifier>` query the deployed-instance registry; `get`
+  resolves any identifier (order, location, serial) and lists related support
+  records. Update workflow state with `our fleet set <id> status=<value>` and
+  publish each meaningful transition with the suggested `our sync --message`
+  command.
 - Add `--json` when a harness needs structured output.
 
 Default layout:

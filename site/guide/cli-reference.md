@@ -40,6 +40,7 @@ our admin setup ...
 our admin manifests add|sync|validate ...
 our admin mounts add|remove|sync ...
 our admin meetings add ...
+our admin support add ...
 our admin customers add|edit <id> --manifest-dir DIR
 our admin tools add|edit|remove <id> --manifest-dir DIR
 ```
@@ -68,6 +69,17 @@ our meetings list
 our meetings search <text>
 our meetings get <id|path>
 our meetings add <slug>
+
+our support list
+our support search <text>
+our support get <id|path>
+our support add <slug>
+
+our fleet list
+our fleet search <text>
+our fleet get <id|identifier|path>
+our fleet add <id>
+our fleet set <id> KEY=VALUE...
 
 our customers list
 our products list

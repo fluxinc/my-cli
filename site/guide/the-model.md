@@ -38,7 +38,8 @@ Pins remain available for deliberate recorded workspace states.
 ## Mount
 
 A Git-backed content folder cloned into the umbrella. Mounts can be required,
-default, or optional. Sparse include paths keep private manifest internals out
+default, or optional. Common content kinds include handbook, meetings, support,
+fleet, policy, docs, and repo. Sparse include paths keep private manifest internals out
 of the operating workspace.
 
 ## Catalog

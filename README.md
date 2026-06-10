@@ -169,6 +169,7 @@ our admin setup ...                 # alias of our setup
 our admin manifests add|sync|validate  # alias of our manifests ...
 our admin mounts add|remove|sync       # alias of our mounts ...
 our admin meetings add                # alias of our meetings add
+our admin support add                 # alias of our support add
 our admin customers add|edit          # edit catalog/customers.json
 our admin tools add|edit|remove       # edit manifest tools[]
 ```
@@ -232,6 +233,46 @@ umbrella by default, including the configured umbrella from the registered
 manifest when the command is run outside the umbrella. Search uses `qmd` when it
 is present and falls back to built-in token-AND markdown search.
 
+### Support records
+
+```sh
+our support list   [--since DATE] [--customer ID] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
+our support search <text> [--customer ID] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
+our support get    <id|path> [--json]
+our support add    <slug> [--date DATE] [--title TEXT] [--customer ID]
+                    [--product ID] [--area TEXT] [--tag TEXT]
+                    [--status open|workaround|resolved] [--feature-candidate]
+                    [--print] [--json]
+```
+
+An anonymized problem-solving record under `support/`. Use optional canonical
+customer IDs in frontmatter when recurrence evidence matters, and keep the body
+free of identifying details. Search uses `qmd` when present and falls back to
+built-in token-AND markdown search.
+
+### Fleet registry
+
+```sh
+our fleet list   [--status TEXT] [--customer ID] [--partner ID] [--identifier ID]
+                  [--branch NAME] [--where KEY=VALUE] [--json]
+our fleet search <text> [same filters] [--json]
+our fleet get    <id|identifier|path> [--json]
+our fleet add    <id> [--customer ID] [--partner ID] [--status TEXT]
+                  [--device TEXT] [--serial TEXT] [--identifier ID]
+                  [--config-repo NAME] [--config-branch NAME]
+                  [--deployed-site TEXT] [--ship-to TEXT] [--contact TEXT]
+                  [--install-date DATE] [--print] [--json]
+our fleet set    <id|identifier> KEY=VALUE... [--json]
+```
+
+A registry record per deployed instance under `fleet/<id>.md`, keyed by a
+stable id (hostname or node name) and updated in place. `get` resolves any
+entry in the record's `identifiers` list — a sales order, functional location,
+or serial — and lists support records sharing an identifier. `set` updates
+scalar frontmatter fields while preserving everything else, and suggests an
+`our sync --message` command so workflow transitions stay readable in git
+history. The status vocabulary is organization-defined.
+
 ### Diagnostics
 
 ```sh
@@ -271,7 +312,7 @@ contain organization content.**
   proprietary skills, no internal strategy.
 - **`<org>-workspace` (private)** — the org's operating layer: `manifest.json`,
   proprietary skills, catalog JSON, tool declarations, and handbook content
-  (meetings, decisions, policy, projects).
+  (meetings, support, decisions, policy, projects).
 
 The manifest repo is private and is also mounted as the org's handbook content,
 **scoped** so only content directories land in the umbrella — the manifest and

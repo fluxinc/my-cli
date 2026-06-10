@@ -82,7 +82,7 @@ umbrella, meeting commands use the single configured registered manifest's
 recommended umbrella when it has been onboarded.
 
 **Mount** — a Git-backed content folder cloned into the umbrella. Kinds include
-handbook, meetings, policy, docs, repo. Modes: `required`, `default`,
+handbook, meetings, support, fleet, policy, docs, repo. Modes: `required`, `default`,
 `optional`. Optional mounts are clone-if-accessible: if the user lacks access
 they are skipped with a warning, not a failure (RBAC by Git permissions, not by
 the CLI).
@@ -221,3 +221,20 @@ set following the `list / add / search / get` shape already used by meetings —
 same shape, different on-disk directory. The CLI grows by adding *content
 kinds*, not by adding workflow features, keeping the agent-facing contract
 stable.
+
+Support knowledge is one such content kind: anonymized records capture problem,
+context, solution, validation, and feature signals in private mounted markdown
+under `support/`. Operator tools such as `qmd` can index those records, and
+agents can later use them to draft feature requests without turning support
+capture into a separate workflow system.
+
+The fleet registry is the first *registry-shaped* content kind: where meetings
+and support are dated, append-only journals, fleet keeps one record per
+deployed instance under `fleet/<id>.md`, keyed by a stable id and updated in
+place with `our fleet set` (which preserves untouched frontmatter and body).
+State history is the record's git history rather than event files, so each
+meaningful transition should publish with a descriptive `our sync --message`.
+The `identifiers` frontmatter list is the join currency with support records:
+`our fleet get` resolves any identifier and surfaces related incidents, and
+`our support add --identifier` warns when an identifier is unknown to the
+registry. Both nouns share the `internal/record` engine.

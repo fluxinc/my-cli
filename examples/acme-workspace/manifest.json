@@ -22,6 +22,8 @@
       "path": "skills/acme-handbook",
       "capabilities": [
         "meetings",
+        "support",
+        "fleet",
         "decisions",
         "workspace"
       ],
@@ -38,6 +40,8 @@
       "mode": "default",
       "include_paths": [
         "meetings",
+        "support",
+        "fleet",
         "decisions",
         "projects",
         "policy",

@@ -51,7 +51,9 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
 
 - **Operational** commands are read-only or only touch local per-user state.
   They are safe to run freely: `our skills list/show/status`,
-  `our meetings list/search/get`, `our customers list`,
+  `our meetings list/search/get`, `our support list/search/get`,
+  `our fleet list/search/get`,
+  `our customers list`,
   `our products list`, `our tools list/info`, `our root`,
   `our ai`, `our doctor`, `our manifests list`, `our mounts list`, and
   `our sync --print`.
@@ -61,7 +63,8 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   guidance, skills declarations). They live under `our admin ...`
   (`our admin skills add/remove`, `our admin customers add/edit`,
   `our admin tools add/edit/remove`,
-  `our admin manifests/mounts/meetings/setup`) and require explicit intent.
+  `our admin manifests/mounts/meetings/support/setup`) and require explicit
+  intent.
   Do not run them to "fix" something unless the user asked to change the
   organization's configuration.
 
@@ -115,6 +118,21 @@ our meetings get    <id|path>
 our meetings add    <slug> [--date DATE] [--title TEXT] [--customer ID] [--attendees NAME] [--partner ID] [--source-id ID]
                      # --attendees/--partner repeatable; each occurrence is one literal value, commas preserved
                      # a slug that starts with YYYY-MM-DD sets the date and is not double-prefixed
+our support list    [--since DATE] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
+our support search  <text>        # qmd-first support record search when available
+our support get     <id|path>
+our fleet list      [--status TEXT] [--customer ID] [--partner ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
+our fleet search    <text>        # qmd-first fleet registry search when available
+our fleet get       <id|identifier|path>   # resolves any identifier; lists related support records
+our fleet set       <id|identifier> KEY=VALUE...  # scalar frontmatter updates; preserves the rest
+our fleet add       <id> [--customer ID] [--partner ID] [--status TEXT] [--device TEXT] [--serial TEXT] [--identifier ID] [--config-repo NAME] [--config-branch NAME] [--deployed-site TEXT] [--ship-to TEXT] [--contact TEXT] [--install-date DATE] [--print] [--json]
+our support add     <slug> [--date DATE] [--title TEXT] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--observed-by MEMBER] [--approved-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--status open|workaround|resolved] [--feature-candidate] [--print] [--json]
+                     # --identifier repeatable: record every device, order, or asset
+                     # identifier that applies (workstation name, equipment/box ID,
+                     # functional location, sales order) so records link later
+                     # --claimed-by = org member who worked it; --observed-by repeatable
+                     # for others involved; never set --approved-by without explicit
+                     # operator approval — it is the human sign-off field
 our customers list  [--json]      # canonical customer IDs, aliases, partners
 ```
 
@@ -134,8 +152,8 @@ our tools info <name>             # install hints for one external tool
 `our sync` is the routine "make this workspace current and publish what is safe
 to publish" command. It pulls inbound updates and, by default (`--publish
 auto`), direct-pushes only **private, content-only** changes (e.g. new meeting
-notes); manifest/catalog/admin changes, public repos, divergent branches, and
-unsafe duplicate-remote checkouts are held back.
+notes or support records); manifest/catalog/admin changes, public repos,
+divergent branches, and unsafe duplicate-remote checkouts are held back.
 
 ```sh
 our sync --print                  # plan only: show what would pull/push/hold (always safe)
@@ -167,5 +185,17 @@ remote-unknown checkouts instead of touching them.
   remediation command — read it and follow it.
 - To record what happened in a meeting, use `our meetings add` and then
   `our sync` to publish it, rather than editing files and pushing by hand.
+- To record a resolved support problem, use `our support add` with anonymized
+  body text; put linkable attribution in frontmatter — the canonical customer
+  ID, every applicable device, order, or asset identifier (`--identifier`,
+  repeatable), and the org members involved (`--claimed-by` for who worked it,
+  `--observed-by` for others) — so recurrence on the same equipment or by the
+  same people is discoverable later. Leave `approved_by` empty unless the
+  operator explicitly approves the record.
+- To look up a deployed instance, prefer `our fleet get <id-or-identifier>` —
+  any sales order, functional location, serial, or hostname resolves — and use
+  the related support records it lists. Record workflow transitions with
+  `our fleet set <id> status=<value>`, then publish with the suggested
+  `our sync --message` command so each transition stays a readable git commit.
 - This skill is installed and kept current by the `our` CLI itself; do not
   hand-edit the installed copy.

@@ -17,13 +17,16 @@ import (
 	"time"
 
 	"github.com/fluxinc/our-ai/internal/bundle"
+	"github.com/fluxinc/our-ai/internal/fleet"
 	"github.com/fluxinc/our-ai/internal/guidance"
 	"github.com/fluxinc/our-ai/internal/harness"
 	"github.com/fluxinc/our-ai/internal/manifest"
 	"github.com/fluxinc/our-ai/internal/meetings"
+	"github.com/fluxinc/our-ai/internal/record"
 	"github.com/fluxinc/our-ai/internal/selfskill"
 	"github.com/fluxinc/our-ai/internal/selfupdate"
 	"github.com/fluxinc/our-ai/internal/skills"
+	"github.com/fluxinc/our-ai/internal/support"
 	"github.com/fluxinc/our-ai/internal/syncer"
 	"github.com/fluxinc/our-ai/internal/umbrella"
 	"github.com/fluxinc/our-ai/internal/workspace"
@@ -156,6 +159,10 @@ func (a app) run(args []string) error {
 		return a.runDoctor(args[2:])
 	case "meetings":
 		return a.runMeetings(args[2:])
+	case "support":
+		return a.runSupport(args[2:])
+	case "fleet":
+		return a.runFleet(args[2:])
 	case "customers":
 		return a.runCustomers(args[2:])
 	case "products":
@@ -194,6 +201,7 @@ Usage:
   our admin manifests add|sync|validate ...   (alias of our manifests ...)
   our admin mounts add|remove|sync ...        (alias of our mounts ...)
   our admin meetings add ...                 (alias of our meetings add)
+  our admin support add ...                  (alias of our support add)
   our admin customers add|edit ...           (edit manifest customer catalog)
   our admin tools add|edit|remove ...        (edit manifest tool hints)
   our manifests add <name> <git-url>
@@ -212,6 +220,15 @@ Usage:
   our meetings search <text>
   our meetings get <id|path>
   our meetings add <slug>
+  our support list
+  our support search <text>
+  our support get <id|path>
+  our support add <slug>
+  our fleet list
+  our fleet search <text>
+  our fleet get <id|identifier|path>
+  our fleet add <id>
+  our fleet set <id> KEY=VALUE...
   our customers list
   our products list
   our doctor [--no-fetch] [--fix] [--json]
@@ -947,9 +964,13 @@ func syncContentPaths(entry workspace.Entry) []string {
 	}
 	switch entry.Kind {
 	case "handbook":
-		return []string{"meetings", "decisions", "projects", "policy", "people"}
+		return []string{"meetings", "support", "decisions", "projects", "policy", "people"}
 	case "meetings":
 		return []string{"meetings"}
+	case "support":
+		return []string{"support"}
+	case "fleet":
+		return []string{"fleet"}
 	case "policy":
 		return []string{"policy"}
 	case "docs":
@@ -1424,6 +1445,587 @@ func (a app) runMeetingsAdd(args []string) error {
 	return nil
 }
 
+func (a app) runSupport(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing support subcommand")
+	}
+	switch args[0] {
+	case "list":
+		return a.runSupportList(args[1:])
+	case "search":
+		return a.runSupportSearch(args[1:])
+	case "get":
+		return a.runSupportGet(args[1:])
+	case "add":
+		return a.runSupportAdd(args[1:])
+	case "-h", "--help", "help":
+		a.printSupportUsage()
+		return nil
+	default:
+		return fmt.Errorf("unknown support subcommand %q", args[0])
+	}
+}
+
+func (a app) printSupportUsage() {
+	fmt.Fprintln(a.stdout, `Usage:
+  our support list [--manifest NAME] [--workspace ID] [--since DATE] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
+  our support search <text> [--manifest NAME] [--workspace ID] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
+  our support get <id|path> [--manifest NAME] [--workspace ID] [--json]
+  our support add <slug> [--manifest NAME] [--workspace ID] [--date DATE] [--title TEXT] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--observed-by MEMBER] [--approved-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--status open|workaround|resolved] [--feature-candidate] [--print] [--json]
+
+Support commands use local markdown files under workspace support/ directories.
+Repeat --identifier for each device, order, or asset identifier (for example a
+workstation name, equipment ID, functional location, or sales order number) so
+records can be linked to the same equipment later. --claimed-by names the org
+member who worked the problem, --observed-by (repeatable) anyone else involved,
+and --approved-by the member who signed off on the record; agents should leave
+approved_by empty unless the operator explicitly approves.`)
+}
+
+func (a app) runSupportList(args []string) error {
+	opts, rest, err := parseSupportReadOpts("our support list", a.stderr, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("support list does not accept positional arguments")
+	}
+	roots, err := supportRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	filter := a.resolveSupportFilter(opts.home, opts.manifestName, opts.umbrellaRoot, opts.filter())
+	found, err := support.List(roots, filter)
+	if err != nil {
+		return err
+	}
+	return a.printSupport(found, opts.jsonOut)
+}
+
+func (a app) runSupportSearch(args []string) error {
+	opts, rest, err := parseSupportReadOpts("our support search", a.stderr, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: our support search <text>")
+	}
+	roots, err := supportRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	filter := a.resolveSupportFilter(opts.home, opts.manifestName, opts.umbrellaRoot, opts.filter())
+	found, err := supportSearch(roots, rest[0], filter)
+	if err != nil {
+		return err
+	}
+	return a.printSupport(found, opts.jsonOut)
+}
+
+func (a app) runSupportGet(args []string) error {
+	var opts meetingCommonOpts
+	fs := newFlagSet("our support get", a.stderr)
+	bindMeetingCommonFlags(fs, &opts)
+	rest, err := parseInterspersed(fs, args, meetingValueFlags())
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: our support get <id|path>")
+	}
+	roots, err := supportRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	record, content, err := support.Get(roots, rest[0])
+	if err != nil {
+		return err
+	}
+	if opts.jsonOut {
+		return printJSON(a.stdout, struct {
+			Record  support.Record `json:"record"`
+			Content string         `json:"content"`
+		}{Record: record, Content: content})
+	}
+	fmt.Fprint(a.stdout, content)
+	return nil
+}
+
+func (a app) runSupportAdd(args []string) error {
+	var opts supportAddOpts
+	fs := newFlagSet("our support add", a.stderr)
+	bindMeetingCommonFlags(fs, &opts.meetingCommonOpts)
+	fs.StringVar(&opts.date, "date", "", "support record date, YYYY-MM-DD")
+	fs.StringVar(&opts.title, "title", "", "support record title")
+	fs.StringVar(&opts.customer, "customer", "", "canonical customer ID")
+	fs.Var(&opts.identifiers, "identifier", "device, order, or asset identifier (repeatable)")
+	fs.StringVar(&opts.claimedBy, "claimed-by", "", "org member who worked the problem")
+	fs.Var(&opts.observedBy, "observed-by", "org member who was involved or observed (repeatable)")
+	fs.StringVar(&opts.approvedBy, "approved-by", "", "org member who approved this record")
+	fs.StringVar(&opts.product, "product", "", "product ID")
+	fs.StringVar(&opts.area, "area", "", "product or problem area")
+	fs.Var(&opts.tags, "tag", "support tag (repeatable)")
+	fs.StringVar(&opts.status, "status", "", "support status: open, workaround, or resolved")
+	fs.BoolVar(&opts.featureCandidate, "feature-candidate", false, "mark as a feature candidate")
+	fs.BoolVar(&opts.printOnly, "print", false, "print the scaffold without writing a file")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home":        true,
+		"manifest":    true,
+		"workspace":   true,
+		"umbrella":    true,
+		"date":        true,
+		"title":       true,
+		"customer":    true,
+		"identifier":  true,
+		"claimed-by":  true,
+		"observed-by": true,
+		"approved-by": true,
+		"product":     true,
+		"area":        true,
+		"tag":         true,
+		"status":      true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: our support add <slug>")
+	}
+	roots, err := supportRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	if len(roots) != 1 {
+		return fmt.Errorf("support add requires exactly one workspace; pass --manifest and --workspace")
+	}
+	customer := a.resolveCustomerForWrite(opts.home, opts.manifestName, opts.umbrellaRoot, opts.customer)
+	record, content, err := support.Add(roots[0], rest[0], support.AddOptions{
+		Date:             opts.date,
+		Title:            opts.title,
+		Customer:         customer,
+		Identifiers:      []string(opts.identifiers),
+		ClaimedBy:        opts.claimedBy,
+		ObservedBy:       []string(opts.observedBy),
+		ApprovedBy:       opts.approvedBy,
+		Product:          opts.product,
+		Area:             opts.area,
+		Tags:             []string(opts.tags),
+		Status:           opts.status,
+		FeatureCandidate: opts.featureCandidate,
+		DryRun:           opts.printOnly,
+	})
+	if err != nil {
+		return err
+	}
+	a.warnUnknownFleetIdentifiers(opts.meetingCommonOpts, []string(opts.identifiers))
+	if opts.jsonOut {
+		return printJSON(a.stdout, struct {
+			Record  support.Record `json:"record"`
+			Content string         `json:"content,omitempty"`
+		}{Record: record, Content: content})
+	}
+	if opts.printOnly {
+		fmt.Fprintf(a.stdout, "# path: %s\n%s", record.Path, content)
+		return nil
+	}
+	fmt.Fprintln(a.stdout, record.Path)
+	return nil
+}
+
+func (a app) runFleet(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing fleet subcommand")
+	}
+	switch args[0] {
+	case "list":
+		return a.runFleetList(args[1:])
+	case "search":
+		return a.runFleetSearch(args[1:])
+	case "get":
+		return a.runFleetGet(args[1:])
+	case "add":
+		return a.runFleetAdd(args[1:])
+	case "set":
+		return a.runFleetSet(args[1:])
+	case "-h", "--help", "help":
+		a.printFleetUsage()
+		return nil
+	default:
+		return fmt.Errorf("unknown fleet subcommand %q", args[0])
+	}
+}
+
+func (a app) printFleetUsage() {
+	fmt.Fprintln(a.stdout, `Usage:
+  our fleet list [--manifest NAME] [--workspace ID] [--status TEXT] [--customer ID] [--partner ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
+  our fleet search <text> [--manifest NAME] [--workspace ID] [--status TEXT] [--customer ID] [--partner ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
+  our fleet get <id|identifier|path> [--manifest NAME] [--workspace ID] [--json]
+  our fleet add <id> [--manifest NAME] [--workspace ID] [--customer ID] [--partner ID] [--status TEXT] [--device TEXT] [--serial TEXT] [--identifier ID] [--config-repo NAME] [--config-branch NAME] [--deployed-site TEXT] [--ship-to TEXT] [--contact TEXT] [--install-date DATE] [--print] [--json]
+  our fleet set <id|identifier> KEY=VALUE... [--manifest NAME] [--workspace ID] [--json]
+
+Fleet commands use local markdown files under workspace fleet/ directories:
+one registry record per deployed instance, keyed by a stable id (use the
+hostname or node name). get resolves any identifier — a sales order, purchase
+order, functional location, or serial from the record's identifiers list —
+and reports related support records that share an identifier. set updates
+scalar frontmatter fields in place (for example status=live) and preserves
+every other line; state history is the record's git history, so publish each
+meaningful transition with our sync --message. status vocabulary is
+organization-defined. --where filters on any top-level frontmatter field.`)
+}
+
+func (a app) runFleetList(args []string) error {
+	opts, rest, err := parseFleetReadOpts("our fleet list", a.stderr, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("fleet list does not accept positional arguments")
+	}
+	filter, err := opts.filter()
+	if err != nil {
+		return err
+	}
+	roots, err := fleetRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	filter = a.resolveFleetFilter(opts.home, opts.manifestName, opts.umbrellaRoot, filter)
+	found, err := fleet.List(roots, filter)
+	if err != nil {
+		return err
+	}
+	return a.printFleet(found, opts.jsonOut)
+}
+
+func (a app) runFleetSearch(args []string) error {
+	opts, rest, err := parseFleetReadOpts("our fleet search", a.stderr, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: our fleet search <text>")
+	}
+	filter, err := opts.filter()
+	if err != nil {
+		return err
+	}
+	roots, err := fleetRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	filter = a.resolveFleetFilter(opts.home, opts.manifestName, opts.umbrellaRoot, filter)
+	found, err := fleetSearch(roots, rest[0], filter)
+	if err != nil {
+		return err
+	}
+	return a.printFleet(found, opts.jsonOut)
+}
+
+func (a app) runFleetGet(args []string) error {
+	var opts meetingCommonOpts
+	fs := newFlagSet("our fleet get", a.stderr)
+	bindMeetingCommonFlags(fs, &opts)
+	rest, err := parseInterspersed(fs, args, meetingValueFlags())
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: our fleet get <id|identifier|path>")
+	}
+	roots, err := fleetRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	rec, content, err := fleet.Get(roots, rest[0])
+	if err != nil {
+		return err
+	}
+	related := a.relatedSupportRecords(opts.home, opts.manifestName, opts.umbrellaRoot, rec)
+	if opts.jsonOut {
+		return printJSON(a.stdout, struct {
+			Record         fleet.Record     `json:"record"`
+			Content        string           `json:"content"`
+			RelatedSupport []support.Record `json:"related_support,omitempty"`
+		}{Record: rec, Content: content, RelatedSupport: related})
+	}
+	fmt.Fprint(a.stdout, content)
+	if len(related) != 0 {
+		fmt.Fprintf(a.stdout, "\n# Related support records\n\n")
+		for _, sr := range related {
+			fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\n", sr.Date, sr.ID, sr.Title, sr.Path)
+		}
+	}
+	return nil
+}
+
+func (a app) runFleetAdd(args []string) error {
+	var opts fleetAddOpts
+	fs := newFlagSet("our fleet add", a.stderr)
+	bindMeetingCommonFlags(fs, &opts.meetingCommonOpts)
+	fs.StringVar(&opts.customer, "customer", "", "canonical customer ID")
+	fs.StringVar(&opts.partner, "partner", "", "resale or service partner ID")
+	fs.StringVar(&opts.status, "status", "", "workflow status (organization-defined; default new)")
+	fs.StringVar(&opts.device, "device", "", "device or instance model")
+	fs.StringVar(&opts.serial, "serial", "", "device serial number")
+	fs.Var(&opts.identifiers, "identifier", "order, invoice, location, or asset identifier (repeatable)")
+	fs.StringVar(&opts.configRepo, "config-repo", "", "configuration repository")
+	fs.StringVar(&opts.configBranch, "config-branch", "", "configuration branch")
+	fs.StringVar(&opts.deployedSite, "deployed-site", "", "where the instance runs")
+	fs.StringVar(&opts.shipTo, "ship-to", "", "where the instance shipped (may differ from deployed site)")
+	fs.Var(&opts.contacts, "contact", "site contact (repeatable)")
+	fs.StringVar(&opts.installDate, "install-date", "", "install date, YYYY-MM-DD")
+	fs.BoolVar(&opts.printOnly, "print", false, "print the scaffold without writing a file")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home":          true,
+		"manifest":      true,
+		"workspace":     true,
+		"umbrella":      true,
+		"customer":      true,
+		"partner":       true,
+		"status":        true,
+		"device":        true,
+		"serial":        true,
+		"identifier":    true,
+		"config-repo":   true,
+		"config-branch": true,
+		"deployed-site": true,
+		"ship-to":       true,
+		"contact":       true,
+		"install-date":  true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: our fleet add <id>")
+	}
+	roots, err := fleetRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	if len(roots) != 1 {
+		return fmt.Errorf("fleet add requires exactly one workspace; pass --manifest and --workspace")
+	}
+	customer := a.resolveCustomerForWrite(opts.home, opts.manifestName, opts.umbrellaRoot, opts.customer)
+	rec, content, err := fleet.Add(roots[0], rest[0], fleet.AddOptions{
+		Customer:     customer,
+		Partner:      opts.partner,
+		Status:       opts.status,
+		Device:       opts.device,
+		Serial:       opts.serial,
+		Identifiers:  []string(opts.identifiers),
+		ConfigRepo:   opts.configRepo,
+		ConfigBranch: opts.configBranch,
+		DeployedSite: opts.deployedSite,
+		ShipTo:       opts.shipTo,
+		Contacts:     []string(opts.contacts),
+		InstallDate:  opts.installDate,
+		DryRun:       opts.printOnly,
+	})
+	if err != nil {
+		return err
+	}
+	if opts.jsonOut {
+		return printJSON(a.stdout, struct {
+			Record  fleet.Record `json:"record"`
+			Content string       `json:"content,omitempty"`
+		}{Record: rec, Content: content})
+	}
+	if opts.printOnly {
+		fmt.Fprintf(a.stdout, "# path: %s\n%s", rec.Path, content)
+		return nil
+	}
+	fmt.Fprintln(a.stdout, rec.Path)
+	return nil
+}
+
+func (a app) runFleetSet(args []string) error {
+	var opts meetingCommonOpts
+	fs := newFlagSet("our fleet set", a.stderr)
+	bindMeetingCommonFlags(fs, &opts)
+	rest, err := parseInterspersed(fs, args, meetingValueFlags())
+	if err != nil {
+		return err
+	}
+	if len(rest) < 2 {
+		return fmt.Errorf("usage: our fleet set <id|identifier> KEY=VALUE...")
+	}
+	updates := map[string]string{}
+	for _, pair := range rest[1:] {
+		key, value, found := strings.Cut(pair, "=")
+		key = strings.TrimSpace(key)
+		if !found || key == "" {
+			return fmt.Errorf("fleet set arguments must be KEY=VALUE, got %q", pair)
+		}
+		updates[key] = strings.TrimSpace(value)
+	}
+	roots, err := fleetRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	rec, changes, err := fleet.Set(roots, rest[0], updates)
+	if err != nil {
+		return err
+	}
+	syncCommand := ""
+	if len(changes) != 0 {
+		var parts []string
+		for _, change := range changes {
+			parts = append(parts, change.Key+"="+change.New)
+		}
+		syncCommand = fmt.Sprintf("our sync --message %s", shellQuote(fmt.Sprintf("Update fleet %s: %s", rec.ID, strings.Join(parts, ", "))))
+	}
+	if opts.jsonOut {
+		return printJSON(a.stdout, struct {
+			Record      fleet.Record         `json:"record"`
+			Changes     []record.FieldChange `json:"changes"`
+			SyncCommand string               `json:"sync_command,omitempty"`
+		}{Record: rec, Changes: changes, SyncCommand: syncCommand})
+	}
+	if len(changes) == 0 {
+		fmt.Fprintf(a.stdout, "no changes for %s\n", rec.Path)
+		return nil
+	}
+	fmt.Fprintf(a.stdout, "updated %s\n", rec.Path)
+	for _, change := range changes {
+		fmt.Fprintf(a.stdout, "  %s: %q -> %q\n", change.Key, change.Old, change.New)
+	}
+	fmt.Fprintf(a.stdout, "publish this transition with: %s\n", syncCommand)
+	return nil
+}
+
+// relatedSupportRecords best-effort lists support records sharing an
+// identifier with the fleet record. Resolution failures mean no related
+// records, never an error: the support noun may not be adopted.
+func (a app) relatedSupportRecords(home, manifestName, umbrellaRoot string, rec fleet.Record) []support.Record {
+	roots, err := supportRoots(home, manifestName, "", umbrellaRoot)
+	if err != nil {
+		return nil
+	}
+	all, err := support.List(roots, support.Filter{})
+	if err != nil {
+		return nil
+	}
+	keys := map[string]bool{strings.ToLower(rec.ID): true}
+	for _, id := range rec.Identifiers {
+		keys[strings.ToLower(id)] = true
+	}
+	var out []support.Record
+	for _, sr := range all {
+		for _, id := range sr.Identifiers {
+			if keys[strings.ToLower(id)] {
+				out = append(out, sr)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// warnUnknownFleetIdentifiers notes identifiers absent from the fleet
+// registry. The registry may legitimately lag reality, so this warns and
+// never blocks; without a populated registry it stays silent.
+func (a app) warnUnknownFleetIdentifiers(opts meetingCommonOpts, identifiers []string) {
+	if len(identifiers) == 0 {
+		return
+	}
+	roots, err := fleetRoots(opts.home, opts.manifestName, "", opts.umbrellaRoot)
+	if err != nil {
+		return
+	}
+	all, err := fleet.List(roots, fleet.Filter{})
+	if err != nil || len(all) == 0 {
+		return
+	}
+	known := map[string]bool{}
+	for _, rec := range all {
+		known[strings.ToLower(rec.ID)] = true
+		for _, id := range rec.Identifiers {
+			known[strings.ToLower(id)] = true
+		}
+	}
+	for _, id := range identifiers {
+		if !known[strings.ToLower(id)] {
+			fmt.Fprintf(a.stderr, "note: identifier %q is not in the fleet registry; it may be new or misspelled\n", id)
+		}
+	}
+}
+
+type fleetReadOpts struct {
+	meetingCommonOpts
+	status     string
+	customer   string
+	partner    string
+	identifier string
+	branch     string
+	where      stringListFlag
+}
+
+type fleetAddOpts struct {
+	meetingCommonOpts
+	customer     string
+	partner      string
+	status       string
+	device       string
+	serial       string
+	identifiers  stringListFlag
+	configRepo   string
+	configBranch string
+	deployedSite string
+	shipTo       string
+	contacts     stringListFlag
+	installDate  string
+	printOnly    bool
+}
+
+func parseFleetReadOpts(name string, stderr io.Writer, args []string) (fleetReadOpts, []string, error) {
+	var opts fleetReadOpts
+	fs := newFlagSet(name, stderr)
+	bindMeetingCommonFlags(fs, &opts.meetingCommonOpts)
+	fs.StringVar(&opts.status, "status", "", "workflow status")
+	fs.StringVar(&opts.customer, "customer", "", "customer ID")
+	fs.StringVar(&opts.partner, "partner", "", "partner ID")
+	fs.StringVar(&opts.identifier, "identifier", "", "order, invoice, location, or asset identifier")
+	fs.StringVar(&opts.branch, "branch", "", "configuration branch")
+	fs.Var(&opts.where, "where", "KEY=VALUE frontmatter filter (repeatable)")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home":       true,
+		"manifest":   true,
+		"workspace":  true,
+		"umbrella":   true,
+		"status":     true,
+		"customer":   true,
+		"partner":    true,
+		"identifier": true,
+		"branch":     true,
+		"where":      true,
+	})
+	return opts, rest, err
+}
+
+func (opts fleetReadOpts) filter() (fleet.Filter, error) {
+	filter := fleet.Filter{
+		Status:     opts.status,
+		Customer:   opts.customer,
+		Partner:    opts.partner,
+		Identifier: opts.identifier,
+		Branch:     opts.branch,
+	}
+	for _, pair := range opts.where {
+		key, value, found := strings.Cut(pair, "=")
+		key = strings.TrimSpace(key)
+		if !found || key == "" {
+			return fleet.Filter{}, fmt.Errorf("--where must be KEY=VALUE, got %q", pair)
+		}
+		if filter.Where == nil {
+			filter.Where = map[string]string{}
+		}
+		filter.Where[key] = strings.TrimSpace(value)
+	}
+	return filter, nil
+}
+
 type meetingCommonOpts struct {
 	home         string
 	manifestName string
@@ -1451,6 +2053,35 @@ type meetingAddOpts struct {
 	sourceID  string
 	status    string
 	printOnly bool
+}
+
+type supportReadOpts struct {
+	meetingCommonOpts
+	since            string
+	customer         string
+	identifier       string
+	claimedBy        string
+	product          string
+	area             string
+	tag              string
+	featureCandidate bool
+}
+
+type supportAddOpts struct {
+	meetingCommonOpts
+	date             string
+	title            string
+	customer         string
+	identifiers      stringListFlag
+	claimedBy        string
+	observedBy       stringListFlag
+	approvedBy       string
+	product          string
+	area             string
+	tags             stringListFlag
+	status           string
+	featureCandidate bool
+	printOnly        bool
 }
 
 type stringListFlag []string
@@ -1488,6 +2119,34 @@ func parseMeetingReadOpts(name string, stderr io.Writer, args []string) (meeting
 	return opts, rest, err
 }
 
+func parseSupportReadOpts(name string, stderr io.Writer, args []string) (supportReadOpts, []string, error) {
+	var opts supportReadOpts
+	fs := newFlagSet(name, stderr)
+	bindMeetingCommonFlags(fs, &opts.meetingCommonOpts)
+	fs.StringVar(&opts.since, "since", "", "minimum support record date, YYYY-MM-DD")
+	fs.StringVar(&opts.customer, "customer", "", "customer ID")
+	fs.StringVar(&opts.identifier, "identifier", "", "device, order, or asset identifier")
+	fs.StringVar(&opts.claimedBy, "claimed-by", "", "org member who worked the problem")
+	fs.StringVar(&opts.product, "product", "", "product ID")
+	fs.StringVar(&opts.area, "area", "", "product or problem area")
+	fs.StringVar(&opts.tag, "tag", "", "support tag")
+	fs.BoolVar(&opts.featureCandidate, "feature-candidate", false, "show only feature candidates")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home":       true,
+		"manifest":   true,
+		"workspace":  true,
+		"umbrella":   true,
+		"since":      true,
+		"customer":   true,
+		"identifier": true,
+		"claimed-by": true,
+		"product":    true,
+		"area":       true,
+		"tag":        true,
+	})
+	return opts, rest, err
+}
+
 func bindMeetingCommonFlags(fs *flag.FlagSet, opts *meetingCommonOpts) {
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	fs.StringVar(&opts.manifestName, "manifest", "", "limit to one registered manifest")
@@ -1514,14 +2173,41 @@ func (opts meetingReadOpts) filter() meetings.Filter {
 	}
 }
 
+func (opts supportReadOpts) filter() support.Filter {
+	return support.Filter{
+		Since:       opts.since,
+		Customer:    opts.customer,
+		Identifier:  opts.identifier,
+		ClaimedBy:   opts.claimedBy,
+		Product:     opts.product,
+		Area:        opts.area,
+		Tag:         opts.tag,
+		FeatureOnly: opts.featureCandidate,
+	}
+}
+
 func meetingRoots(home, manifestName, workspaceID, umbrellaRoot string) ([]meetings.Root, error) {
+	return contentRoots(home, manifestName, workspaceID, umbrellaRoot, "meeting", []string{"handbook", "meetings"})
+}
+
+func supportRoots(home, manifestName, workspaceID, umbrellaRoot string) ([]support.Root, error) {
+	return contentRoots(home, manifestName, workspaceID, umbrellaRoot, "support", []string{"handbook", "support"})
+}
+
+func fleetRoots(home, manifestName, workspaceID, umbrellaRoot string) ([]fleet.Root, error) {
+	return contentRoots(home, manifestName, workspaceID, umbrellaRoot, "fleet", []string{"handbook", "fleet"})
+}
+
+// contentRoots resolves the workspace roots for one content noun. The noun
+// only changes which mount kinds participate and how empty results read.
+func contentRoots(home, manifestName, workspaceID, umbrellaRoot, noun string, kinds []string) ([]record.Root, error) {
 	if umbrellaRoot != "" {
-		return umbrellaMeetingRoots(home, workspaceID, umbrellaRoot)
+		return umbrellaContentRoots(home, workspaceID, umbrellaRoot, noun, kinds)
 	}
 	if root, ok := umbrella.FindRoot("."); ok {
-		return umbrellaMeetingRoots(home, workspaceID, root)
+		return umbrellaContentRoots(home, workspaceID, root, noun, kinds)
 	}
-	if roots, ok, err := configuredUmbrellaMeetingRoots(home, manifestName, workspaceID); ok || err != nil {
+	if roots, ok, err := configuredUmbrellaContentRoots(home, manifestName, workspaceID, noun, kinds); ok || err != nil {
 		return roots, err
 	}
 	if manifestName == "" {
@@ -1531,12 +2217,12 @@ func meetingRoots(home, manifestName, workspaceID, umbrellaRoot string) ([]meeti
 	if err != nil {
 		return nil, err
 	}
-	var roots []meetings.Root
+	var roots []record.Root
 	for _, entry := range entries {
 		if workspaceID != "" && entry.ID != workspaceID {
 			continue
 		}
-		roots = append(roots, meetings.Root{
+		roots = append(roots, record.Root{
 			Manifest:  entry.Manifest,
 			Workspace: entry.ID,
 			Path:      entry.LocalPath,
@@ -1551,7 +2237,7 @@ func meetingRoots(home, manifestName, workspaceID, umbrellaRoot string) ([]meeti
 	return roots, nil
 }
 
-func configuredUmbrellaMeetingRoots(home, manifestName, workspaceID string) ([]meetings.Root, bool, error) {
+func configuredUmbrellaContentRoots(home, manifestName, workspaceID, noun string, kinds []string) ([]record.Root, bool, error) {
 	docs, err := loadRegisteredDocs(home, manifestName)
 	if err != nil || len(docs) == 0 {
 		return nil, false, nil
@@ -1575,7 +2261,7 @@ func configuredUmbrellaMeetingRoots(home, manifestName, workspaceID string) ([]m
 		}
 	}
 	if len(candidates) == 1 {
-		roots, err := umbrellaMeetingRoots(home, workspaceID, candidates[0].root)
+		roots, err := umbrellaContentRoots(home, workspaceID, candidates[0].root, noun, kinds)
 		return roots, true, err
 	}
 	if len(candidates) > 1 {
@@ -1590,7 +2276,7 @@ func configuredUmbrellaMeetingRoots(home, manifestName, workspaceID string) ([]m
 	return nil, false, nil
 }
 
-func umbrellaMeetingRoots(home, workspaceID, umbrellaRoot string) ([]meetings.Root, error) {
+func umbrellaContentRoots(home, workspaceID, umbrellaRoot, noun string, kinds []string) ([]record.Root, error) {
 	root, err := resolveUmbrellaRoot(home, umbrellaRoot)
 	if err != nil {
 		return nil, err
@@ -1599,7 +2285,7 @@ func umbrellaMeetingRoots(home, workspaceID, umbrellaRoot string) ([]meetings.Ro
 	if err != nil {
 		return nil, fmt.Errorf("read umbrella state: %w", err)
 	}
-	var roots []meetings.Root
+	var roots []record.Root
 	for _, mount := range state.Mounts {
 		if workspaceID != "" && mount.ID != workspaceID {
 			continue
@@ -1607,10 +2293,10 @@ func umbrellaMeetingRoots(home, workspaceID, umbrellaRoot string) ([]meetings.Ro
 		if mount.Status != "synced" {
 			continue
 		}
-		if mount.Kind != "handbook" && mount.Kind != "meetings" {
+		if !record.ContainsValue(kinds, mount.Kind) {
 			continue
 		}
-		roots = append(roots, meetings.Root{
+		roots = append(roots, record.Root{
 			Manifest:  mount.SourceRef,
 			Workspace: mount.ID,
 			Path:      umbrella.MountPath(root, mount.ID),
@@ -1620,7 +2306,7 @@ func umbrellaMeetingRoots(home, workspaceID, umbrellaRoot string) ([]meetings.Ro
 		if workspaceID != "" {
 			return nil, fmt.Errorf("workspace %q is not mounted in umbrella %s", workspaceID, root)
 		}
-		return nil, fmt.Errorf("no meeting mounts synced in umbrella %s", root)
+		return nil, fmt.Errorf("no %s mounts synced in umbrella %s", noun, root)
 	}
 	return roots, nil
 }
@@ -1665,13 +2351,130 @@ type qmdSearchResult struct {
 	Score   float64 `json:"score"`
 }
 
+func (a app) printSupport(found []support.Record, jsonOut bool) error {
+	if jsonOut {
+		return printJSON(a.stdout, found)
+	}
+	for _, record := range found {
+		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%t\t%s\t%s\n",
+			record.Date,
+			record.ID,
+			record.Title,
+			record.Customer,
+			strings.Join(record.Identifiers, ","),
+			record.ClaimedBy,
+			record.Product,
+			record.Area,
+			record.Status,
+			strings.Join(record.Tags, ","),
+			record.FeatureCandidate,
+			record.Snippet,
+			record.Path,
+		)
+	}
+	return nil
+}
+
+var supportSearch = defaultSupportSearch
+var qmdSupportSearch = runQMDSupportSearch
+
+func defaultSupportSearch(roots []support.Root, query string, filter support.Filter) ([]support.Record, error) {
+	qmdFound, qmdOK := qmdSupportSearch(roots, query, filter)
+	fallback, err := support.Search(roots, query, filter)
+	if err != nil {
+		return nil, err
+	}
+	if qmdOK && len(qmdFound) != 0 {
+		return mergeSupportResults(qmdFound, fallback), nil
+	}
+	return fallback, nil
+}
+
+var fleetSearch = defaultFleetSearch
+var qmdFleetSearch = runQMDFleetSearch
+
+func defaultFleetSearch(roots []fleet.Root, query string, filter fleet.Filter) ([]fleet.Record, error) {
+	qmdFound, qmdOK := qmdFleetSearch(roots, query, filter)
+	fallback, err := fleet.Search(roots, query, filter)
+	if err != nil {
+		return nil, err
+	}
+	if qmdOK && len(qmdFound) != 0 {
+		return mergeFleetResults(qmdFound, fallback), nil
+	}
+	return fallback, nil
+}
+
+func (a app) printFleet(found []fleet.Record, jsonOut bool) error {
+	if jsonOut {
+		return printJSON(a.stdout, found)
+	}
+	for _, record := range found {
+		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			record.ID,
+			record.Customer,
+			record.Partner,
+			record.Status,
+			record.Device,
+			record.ConfigBranch,
+			strings.Join(record.Identifiers, ","),
+			record.DeployedSite,
+			record.Snippet,
+			record.Path,
+		)
+	}
+	return nil
+}
+
+func runQMDSupportSearch(roots []support.Root, query string, filter support.Filter) ([]support.Record, bool) {
+	found, err := support.List(roots, filter)
+	if err != nil {
+		return nil, false
+	}
+	return runQMDContentSearch(found, query, "support",
+		func(record support.Record) string { return record.Path },
+		func(record support.Record, snippet string) support.Record { record.Snippet = snippet; return record })
+}
+
 func runQMDMeetingSearch(roots []meetings.Root, query string, filter meetings.Filter) ([]meetings.Meeting, bool) {
+	found, err := meetings.List(roots, filter)
+	if err != nil {
+		return nil, false
+	}
+	return runQMDContentSearch(found, query, "meetings",
+		func(meeting meetings.Meeting) string { return meeting.Path },
+		func(meeting meetings.Meeting, snippet string) meetings.Meeting {
+			meeting.Snippet = snippet
+			return meeting
+		})
+}
+
+func runQMDFleetSearch(roots []fleet.Root, query string, filter fleet.Filter) ([]fleet.Record, bool) {
+	found, err := fleet.List(roots, filter)
+	if err != nil {
+		return nil, false
+	}
+	return runQMDContentSearch(found, query, "fleet",
+		func(record fleet.Record) string { return record.Path },
+		func(record fleet.Record, snippet string) fleet.Record { record.Snippet = snippet; return record })
+}
+
+// runQMDContentSearch runs one qmd query over pre-filtered records of any
+// content noun, matching qmd result paths back to records by path keys.
+func runQMDContentSearch[T any](items []T, query, dirToken string, path func(T) string, withSnippet func(T, string) T) ([]T, bool) {
 	qmd, err := exec.LookPath("qmd")
 	if err != nil {
 		return nil, false
 	}
-	index, err := qmdMeetingIndex(roots, filter)
-	if err != nil || len(index) == 0 {
+	index := map[string]T{}
+	for _, item := range items {
+		for _, key := range qmdContentKeys(path(item)) {
+			if _, exists := index[key]; !exists {
+				index[key] = item
+			}
+		}
+	}
+	if len(index) == 0 {
 		return nil, false
 	}
 	cmd := exec.Command(qmd, "search", query, "--json", "-n", "100")
@@ -1687,39 +2490,23 @@ func runQMDMeetingSearch(roots []meetings.Root, query string, filter meetings.Fi
 	if err := json.Unmarshal([]byte(trimmed), &results); err != nil {
 		return nil, false
 	}
-	var found []meetings.Meeting
+	var found []T
 	seen := map[string]bool{}
 	for _, result := range results {
-		meeting, ok := matchQMDMeeting(index, result.File)
-		if !ok || seen[meeting.Path] {
+		item, ok := matchQMDContent(index, result.File, dirToken)
+		if !ok || seen[path(item)] {
 			continue
 		}
 		if snippet := cleanQMDSnippet(result.Snippet); snippet != "" {
-			meeting.Snippet = snippet
+			item = withSnippet(item, snippet)
 		}
-		found = append(found, meeting)
-		seen[meeting.Path] = true
+		found = append(found, item)
+		seen[path(item)] = true
 	}
 	return found, true
 }
 
-func qmdMeetingIndex(roots []meetings.Root, filter meetings.Filter) (map[string]meetings.Meeting, error) {
-	found, err := meetings.List(roots, filter)
-	if err != nil {
-		return nil, err
-	}
-	index := map[string]meetings.Meeting{}
-	for _, meeting := range found {
-		for _, key := range qmdMeetingKeys(meeting) {
-			if _, exists := index[key]; !exists {
-				index[key] = meeting
-			}
-		}
-	}
-	return index, nil
-}
-
-func qmdMeetingKeys(meeting meetings.Meeting) []string {
+func qmdContentKeys(path string) []string {
 	var keys []string
 	add := func(value string) {
 		value = strings.ToLower(filepath.ToSlash(value))
@@ -1727,30 +2514,31 @@ func qmdMeetingKeys(meeting meetings.Meeting) []string {
 			keys = append(keys, value)
 		}
 	}
-	add(meeting.Path)
-	if abs, err := filepath.Abs(meeting.Path); err == nil {
+	add(path)
+	if abs, err := filepath.Abs(path); err == nil {
 		add(abs)
 	}
-	root := filepath.Dir(filepath.Dir(meeting.Path))
-	if rel, err := filepath.Rel(root, meeting.Path); err == nil {
+	root := filepath.Dir(filepath.Dir(path))
+	if rel, err := filepath.Rel(root, path); err == nil {
 		add(rel)
 	}
-	if rel, err := filepath.Rel(filepath.Dir(root), meeting.Path); err == nil {
+	if rel, err := filepath.Rel(filepath.Dir(root), path); err == nil {
 		add(rel)
 	}
 	return keys
 }
 
-func matchQMDMeeting(index map[string]meetings.Meeting, file string) (meetings.Meeting, bool) {
-	for _, key := range qmdResultKeys(file) {
-		if meeting, ok := index[key]; ok {
-			return meeting, true
+func matchQMDContent[T any](index map[string]T, file, dirToken string) (T, bool) {
+	for _, key := range qmdContentResultKeys(file, dirToken) {
+		if item, ok := index[key]; ok {
+			return item, true
 		}
 	}
-	return meetings.Meeting{}, false
+	var zero T
+	return zero, false
 }
 
-func qmdResultKeys(file string) []string {
+func qmdContentResultKeys(file, dirToken string) []string {
 	file = strings.TrimSpace(file)
 	var keys []string
 	add := func(value string) {
@@ -1767,7 +2555,7 @@ func qmdResultKeys(file string) []string {
 		add(rel)
 		parts := strings.Split(filepath.ToSlash(rel), "/")
 		for i, part := range parts {
-			if part != "meetings" {
+			if part != dirToken {
 				continue
 			}
 			add(strings.Join(parts[i:], "/"))
@@ -1791,21 +2579,57 @@ func cleanQMDSnippet(snippet string) string {
 }
 
 func mergeMeetingResults(primary, fallback []meetings.Meeting) []meetings.Meeting {
-	out := append([]meetings.Meeting(nil), primary...)
+	return mergeContentResults(primary, fallback, func(meeting meetings.Meeting) string { return meeting.Path })
+}
+
+func mergeSupportResults(primary, fallback []support.Record) []support.Record {
+	return mergeContentResults(primary, fallback, func(record support.Record) string { return record.Path })
+}
+
+func mergeFleetResults(primary, fallback []fleet.Record) []fleet.Record {
+	return mergeContentResults(primary, fallback, func(record fleet.Record) string { return record.Path })
+}
+
+func mergeContentResults[T any](primary, fallback []T, path func(T) string) []T {
+	out := append([]T(nil), primary...)
 	seen := map[string]bool{}
-	for _, meeting := range primary {
-		seen[meeting.Path] = true
+	for _, item := range primary {
+		seen[path(item)] = true
 	}
-	for _, meeting := range fallback {
-		if !seen[meeting.Path] {
-			out = append(out, meeting)
-			seen[meeting.Path] = true
+	for _, item := range fallback {
+		if !seen[path(item)] {
+			out = append(out, item)
+			seen[path(item)] = true
 		}
 	}
 	return out
 }
 
 func (a app) resolveMeetingFilter(home, manifestName, umbrellaRoot string, filter meetings.Filter) meetings.Filter {
+	if filter.Customer == "" {
+		return filter
+	}
+	customer, ok, err := a.findCustomer(home, manifestName, umbrellaRoot, filter.Customer)
+	if err != nil || !ok {
+		return filter
+	}
+	filter.CustomerValues = uniqueStrings(append(append([]string{filter.Customer, customer.ID, customer.Domain}, customer.Aliases...), customer.Name))
+	return filter
+}
+
+func (a app) resolveSupportFilter(home, manifestName, umbrellaRoot string, filter support.Filter) support.Filter {
+	if filter.Customer == "" {
+		return filter
+	}
+	customer, ok, err := a.findCustomer(home, manifestName, umbrellaRoot, filter.Customer)
+	if err != nil || !ok {
+		return filter
+	}
+	filter.CustomerValues = uniqueStrings(append(append([]string{filter.Customer, customer.ID, customer.Domain}, customer.Aliases...), customer.Name))
+	return filter
+}
+
+func (a app) resolveFleetFilter(home, manifestName, umbrellaRoot string, filter fleet.Filter) fleet.Filter {
 	if filter.Customer == "" {
 		return filter
 	}
@@ -2460,6 +3284,44 @@ func (a app) doctorFix(home, manifestName, umbrellaRoot, root string, derived []
 	if manifestFixed || doctorDerivedHasDrift(derived) {
 		items = append(items, a.doctorFixDerived(home, manifestName, root)...)
 	}
+	items = append(items, a.doctorFixSelfSkill(home)...)
+	return items
+}
+
+func (a app) doctorFixSelfSkill(home string) []doctorItem {
+	rows, err := selfskill.Inspect(harness.All(), selfskill.Options{Home: home})
+	if err != nil {
+		return []doctorItem{{Name: "selfskill", Status: "error", Message: err.Error()}}
+	}
+	var hs []harness.Harness
+	for _, row := range rows {
+		if row.Status == "absent" || row.Status == "stale" {
+			hs = append(hs, row.Harness)
+		}
+	}
+	if len(hs) == 0 {
+		return nil
+	}
+	results, err := selfskill.Install(hs, selfskill.Options{Home: home, Link: true, SkipMissing: true})
+	if err != nil {
+		return []doctorItem{{Name: "selfskill", Status: "error", Message: err.Error()}}
+	}
+	var items []doctorItem
+	for _, result := range results {
+		item := doctorItem{
+			Name:    "selfskill:" + string(result.Harness),
+			Status:  doctorFixStatusFromSkill(result.Status),
+			Path:    result.TargetPath,
+			Message: result.Message,
+		}
+		if item.Message == "" {
+			item.Message = "reinstalled our self-skill"
+		}
+		if result.Err != nil {
+			item.Details = append(item.Details, result.Err.Error())
+		}
+		items = append(items, item)
+	}
 	return items
 }
 
@@ -2608,6 +3470,7 @@ func doctorFixFailed(items []doctorItem) bool {
 func (a app) doctorDerived(home, manifestName, root string) []doctorItem {
 	var items []doctorItem
 	items = append(items, a.doctorSkillDrift(home, manifestName)...)
+	items = append(items, a.doctorSelfSkill(home)...)
 	if root != "" {
 		items = append(items, doctorDerivedGuidance(home, root, manifestName))
 	}
@@ -2667,6 +3530,43 @@ func (a app) doctorSkillDrift(home, manifestName string) []doctorItem {
 	}
 	if len(items) == 0 {
 		items = append(items, doctorItem{Name: "skills", Status: "ok", Message: "no present harness skill drift detected"})
+	}
+	return items
+}
+
+func (a app) doctorSelfSkill(home string) []doctorItem {
+	rows, err := selfskill.Inspect(harness.All(), selfskill.Options{Home: home})
+	if err != nil {
+		return []doctorItem{{Name: "selfskill", Status: "error", Message: err.Error()}}
+	}
+	var items []doctorItem
+	for _, row := range rows {
+		if row.Status == "installed" || row.Status == "missing-harness" {
+			continue
+		}
+		item := doctorItem{
+			Name:   "selfskill:" + string(row.Harness),
+			Status: row.Status,
+			Path:   row.TargetPath,
+		}
+		if row.Message != "" {
+			item.Message = row.Message
+		} else {
+			item.Message = row.Remedy
+		}
+		if row.CanonicalID != "" {
+			item.Details = append(item.Details, "canonical_id="+row.CanonicalID)
+		}
+		if row.LinkTarget != "" {
+			item.Details = append(item.Details, "link_target="+row.LinkTarget)
+		}
+		if row.Remedy != "" && row.Remedy != item.Message {
+			item.Details = append(item.Details, "remedy="+row.Remedy)
+		}
+		items = append(items, item)
+	}
+	if len(items) == 0 {
+		items = append(items, doctorItem{Name: "selfskill", Status: "ok", Message: "our self-skill installed for present harnesses"})
 	}
 	return items
 }
@@ -4183,6 +5083,8 @@ func (a app) runAdmin(args []string) error {
 		return a.runAdminMount(args[1:])
 	case "meetings":
 		return a.runAdminMeetings(args[1:])
+	case "support":
+		return a.runAdminSupport(args[1:])
 	case "customers":
 		return a.runAdminCustomers(args[1:])
 	case "tools":
@@ -4203,6 +5105,7 @@ func (a app) printAdminUsage() {
   our admin manifests add|sync|validate ...   (alias of our manifests ...)
   our admin mounts add|remove|sync ...        (alias of our mounts ...)
   our admin meetings add ...                 (alias of our meetings add)
+  our admin support add ...                  (alias of our support add)
   our admin customers add|edit ...           (edit manifest customer catalog)
   our admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
   our admin tools edit <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--clear-install-commands] [--docs-url URL|--clear-docs-url] [--skill-install-command CMD] [--skill-install-arg ARG] [--clear-skill-install] [--force] [--json]
@@ -4211,7 +5114,8 @@ func (a app) printAdminUsage() {
 admin groups shared/workspace configuration. The top-level command forms remain
 as compatibility aliases. Admin aliases are limited to mutating/configuration
 subcommands; operational reads (skills list/show/status, manifests list, mounts
-list, tools list/info, meetings list/search/get) stay under their top-level commands.`)
+list, tools list/info, meetings/support list/search/get) stay under their
+top-level commands.`)
 }
 
 func adminOperationalReadError(group, subcommand string) error {
@@ -4266,6 +5170,23 @@ func (a app) runAdminMeetings(args []string) error {
 		return nil
 	default:
 		return fmt.Errorf("unknown admin meetings subcommand %q", args[0])
+	}
+}
+
+func (a app) runAdminSupport(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing admin support subcommand")
+	}
+	switch args[0] {
+	case "add":
+		return a.runSupport(args)
+	case "list", "search", "get":
+		return adminOperationalReadError("support", args[0])
+	case "-h", "--help", "help":
+		a.printAdminUsage()
+		return nil
+	default:
+		return fmt.Errorf("unknown admin support subcommand %q", args[0])
 	}
 }
 

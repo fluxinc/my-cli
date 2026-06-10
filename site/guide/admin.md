@@ -56,6 +56,7 @@ our admin manifests sync acme
 our admin manifests validate acme
 our admin mounts add product:sample-product --manifest acme
 our admin meetings add sampleco-followup --manifest acme --workspace handbook
+our admin support add routing-timeout --manifest acme --workspace handbook
 our admin customers add sampleco.example.com --manifest-dir ~/src/acme-workspace
 our admin tools add qmd --manifest-dir ~/src/acme-workspace --mode optional --purpose "Markdown search"
 ```
@@ -76,6 +77,9 @@ our tools info qmd
 our meetings list
 our meetings search cleanup
 our meetings get 2026-05-13-sampleco-followup
+our support list
+our support search timeout
+our support get 2026-06-10-routing-timeout
 ```
 
 If a read command is invoked through `our admin`, the CLI points back to the

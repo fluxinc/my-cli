@@ -41,6 +41,15 @@ our mounts remove handbook --print
 Required and default mounts are synced during onboarding. Optional mounts are
 selected on demand and recorded in umbrella state.
 
+Content mounts can be broad, such as a handbook, or narrow, such as meetings or
+support. A support mount is intended for private anonymized records that capture
+problem, context, solution, validation, and feature signals for later search.
+A fleet mount is a registry rather than a journal: one record per deployed
+instance, keyed by a stable id, updated in place with `our fleet set`, with
+state history carried by the record's git log. Its own repo gives
+remote-access and commercial fields a tighter access boundary than the
+handbook.
+
 ## Sparse content
 
 A private workspace repo can be both the manifest source and a handbook mount.

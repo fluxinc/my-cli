@@ -845,7 +845,7 @@ func validateTool(t Tool, result *ValidationResult) {
 
 func validMountKind(kind string) bool {
 	switch kind {
-	case "handbook", "meetings", "policy", "docs", "repo":
+	case "handbook", "meetings", "support", "fleet", "policy", "docs", "repo":
 		return true
 	default:
 		return false
