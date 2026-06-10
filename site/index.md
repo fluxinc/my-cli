@@ -25,7 +25,7 @@ features:
     details: Claude Code, Codex, OpenCode, and Gemini get the same declared capabilities — no per-harness setup.
   - icon: "03"
     title: Local umbrella
-    details: Every operator gets the same deterministic workspace, with synced content, products, state, and scratch.
+    details: Every operator gets the same deterministic workspace, with synced content, product repositories, state, and scratch.
   - icon: "04"
     title: Operational by default
     details: Read, inspect, launch, diagnose, and materialize local skills without mutating the shared source of truth.
@@ -64,7 +64,7 @@ guidance freshness check before starting a harness.
 ~/acme/
 ├── .our/          # workspace identity and local state
 ├── handbook/       # manifest-declared content mount
-├── products/       # opted-in product repos
+├── repos/          # opted-in product repositories
 ├── personal/       # local-only scratch
 ├── AGENTS.md       # generated root guidance
 └── CLAUDE.md       # compatibility pointer when supported
