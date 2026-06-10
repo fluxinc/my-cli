@@ -39,36 +39,25 @@ running `our manifests sync` against a private repo.
 ## Onboard the workspace
 
 ```sh
-our setup --manifest acme
+our setup
+# our setup --manifest acme    # only needed when several manifests are registered
 ```
 
-Onboarding is safe to re-run. It validates the manifest, installs declared
-skills, creates the umbrella, writes generated guidance, and syncs default
-content. Re-running `our setup` is idempotent, and opted-in product clones
+With one registered manifest, every command defaults to it. Onboarding is safe to re-run.
+It validates the manifest, installs declared skills, creates the umbrella,
+writes generated guidance, and syncs default content. Opted-in product clones
 live under `repos/<id>` in the umbrella.
 
-## Start an agent from the umbrella
+## Start an agent
 
 ```sh
-cd "$(our root --manifest acme)"
-claude
+our ai codex
 ```
 
-Or let `our` resolve and verify the launch point:
-
-```sh
-our ai --manifest acme codex
-```
-
-Use `--print` when you want the command without executing it:
-
-```sh
-our ai --manifest acme --print codex
-```
-
-`our root` is the shell-integration form: it just prints the path. `our ai`
-verifies generated guidance before launching a harness; pass `--setup` to
-reconcile the umbrella first.
+That's it: `our ai` verifies generated guidance, then launches the harness
+from the umbrella. Pass `--print` to see the command without executing it,
+or `--setup` to reconcile the umbrella first. If you prefer plain shell, the
+equivalent is `cd "$(our root)" && codex`.
 
 At startup, `our root`, `our ai`, and `our setup` print stderr-only `notice`
 lines for checkouts auto-refresh cannot converge (dirty, ahead, behind, or

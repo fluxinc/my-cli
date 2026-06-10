@@ -67,13 +67,13 @@ or docs URLs with the matching `--clear-*` flags).
 Mutating or configuration commands are reachable under admin:
 
 ```sh
-our admin setup --manifest acme
+our admin setup
 our admin manifests add acme https://github.com/example/acme-workspace.git
 our admin manifests sync acme
 our admin manifests validate acme
-our admin mounts add product:sample-product --manifest acme
-our admin meetings add sampleco-followup --manifest acme --workspace handbook
-our admin support add routing-timeout --manifest acme --workspace handbook
+our admin mounts add product:sample-product
+our admin meetings add sampleco-followup --workspace handbook
+our admin support add routing-timeout --workspace handbook
 our admin customers add sampleco.example.com --manifest-dir ~/src/acme-workspace
 our admin tools add qmd --manifest-dir ~/src/acme-workspace --mode optional --purpose "Markdown search"
 ```

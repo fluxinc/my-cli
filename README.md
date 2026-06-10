@@ -18,12 +18,12 @@ curl -sSL https://raw.githubusercontent.com/fluxinc/our-ai/master/install.sh | s
 
 our manifests add acme https://github.com/example/acme-workspace.git
 our manifests sync acme
-our setup --manifest acme
-cd "$(our root --manifest acme)" && claude
+our setup
+cd "$(our root)" && claude
 ```
 
 That's the whole setup. Launch AI harnesses from the umbrella root so they see
-the generated workspace context; `our ai --manifest acme codex` performs
+the generated workspace context; `our ai codex` performs
 the same root resolution and verifies the generated guidance before starting.
 Run `our update` to update an install from the latest GitHub release; re-running
 `install.sh` still works as a fallback. Developers can still install from source

@@ -40,9 +40,9 @@ align already-installed file-based copies with the running binary.
 ## Inspect declared skills
 
 ```sh
-our skills list --manifest acme
-our skills show acme:handbook --manifest acme
-our skills status --manifest acme
+our skills list
+our skills show acme:handbook
+our skills status
 ```
 
 Use `--json` when an agent needs machine-readable output.
@@ -50,10 +50,10 @@ Use `--json` when an agent needs machine-readable output.
 ## Install and reconcile
 
 ```sh
-our skills install --all --manifest acme
-our skills install codex --skill acme:handbook --manifest acme
-our skills sync --all --manifest acme
-our skills purge --all --manifest acme
+our skills install --all
+our skills install codex --skill acme:handbook
+our skills sync --all
+our skills purge --all
 ```
 
 Manifest `install`, `uninstall`, `sync`, and `purge` operate on local harness

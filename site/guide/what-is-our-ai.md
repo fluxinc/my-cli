@@ -18,7 +18,7 @@ different capabilities.
 `our` makes the setup deterministic:
 
 ```sh
-our setup --manifest acme
+our setup
 ```
 
 The command converges local state. Re-run it when the manifest changes.

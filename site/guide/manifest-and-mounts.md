@@ -41,10 +41,10 @@ older `products` spelling still works).
 ## Mount lifecycle
 
 ```sh
-our mounts list --manifest acme
-our mounts add handbook --manifest acme
-our mounts add product:sample-product --manifest acme
-our mounts sync --all --manifest acme
+our mounts list
+our mounts add handbook
+our mounts add product:sample-product
+our mounts sync --all
 our mounts remove handbook --print
 ```
 
@@ -71,8 +71,8 @@ Sparse include paths prevent manifest internals such as `manifest.json` and
 ## Catalog commands
 
 ```sh
-our products list --manifest acme
-our customers list --manifest acme
+our products list
+our customers list
 ```
 
 Product catalog entries can reference related manifest skills. Mounting a

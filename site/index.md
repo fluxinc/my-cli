@@ -51,11 +51,11 @@ works.
 ```sh
 our manifests add acme https://github.com/example/acme-workspace.git
 our manifests sync acme
-our setup --manifest acme
-cd "$(our root --manifest acme)" && claude
+our setup
+cd "$(our root)" && claude
 ```
 
-`our ai --manifest acme codex` performs the same root resolution and
+`our ai codex` performs the same root resolution and
 guidance freshness check before starting a harness.
 
 ## The Operating Shape
