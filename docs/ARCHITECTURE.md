@@ -34,11 +34,15 @@ CLI deliberately does not grow human-workflow verbs; it grows content kinds.
 
 ## 3. The seven concepts
 
-**Manifest** — an org's configuration in a Git repo, cached locally on
-`manifests add` + `manifests sync`. The single source of truth for what skills
-exist, what mounts exist, what products are in the catalog, what tools the org
-expects, and the default `our sync` publish policy. Validated by a schema
-(`manifests validate`).
+**Manifest** — an org's configuration in its own private Git repo, checked
+out locally on `manifests add` + `manifests sync`. The single source of truth
+for what skills exist, what mounts exist, what products are in the catalog,
+what tools the org expects, and the default `our sync` publish policy.
+Validated by a schema (`manifests validate`). The manifest is the **control
+plane**: it is not the workspace — the workspace is a mount of things the
+manifest defines — and it lives outside the umbrella so day-to-day work never
+touches it. Write access can differ per plane: admins push the manifest; the
+whole organization pushes workspace content.
 
 **Skill** — a capability installed into harness skill directories. Two kinds:
 
@@ -67,7 +71,7 @@ repositories remain ordinary Git checkouts.
 │   ├── workspace.json   identity: schema version, org, manifest ref, created_at
 │   └── state.json       dynamic: selected products, per-mount sync status
 ├── .gnit/                optional Gnit control metadata for multi-repo sync
-├── <handbook mount>/    manifest-declared content
+├── workspace/           the org content repo (its own remote), mounted
 ├── <other mounts>/
 ├── repos/               opted-in catalog product repositories
 ├── personal/            local-only, never synced — agent + human scratch
@@ -113,27 +117,36 @@ remains the fallback and keeps the CLI functional without optional tools.
 ## 4. The public/private boundary (a first-class constraint)
 
 The mechanism is generic and public; the content is proprietary and private.
-These are **two repositories**:
+These are **three repositories**:
 
 1. **`our` (public)** — this CLI. Generic, no org data, tests use neutral
    placeholders.
-2. **`<org>-workspace` (private)** — `manifest.json`, proprietary skills,
-   catalog JSON, tool declarations, and handbook content.
+2. **`<org>-manifest` (private, control plane)** — `manifest.json`,
+   proprietary skills, catalog JSON, tool declarations, agent guidance
+   fragments. Lives at the registry path, outside the umbrella; changed
+   through `our admin` commands; hosting permissions can restrict pushes to
+   admins.
+3. **`<org>-workspace` (private, data plane)** — the operating content:
+   meetings, support, fleet, decisions, projects, policy, people. Mounted
+   visibly in the umbrella; pushed by the whole organization.
 
-A subtle consequence: the private workspace repo plays two roles. It is the
-**manifest source** (cached under the user's data dir, authoritative for skills
-and config) *and* it is the **handbook content mount** inside the umbrella. A
-naive design would clone the whole repo twice and expose `skills/` and
-`manifest.json` a second time inside the umbrella, where an agent grepping the
-umbrella could read a stale duplicate.
+`our init` creates both private repos locally and `our publish` takes them
+online; teammates register only the manifest URL, and the manifest defines
+which content repos mount where. Keeping the planes in separate repositories
+is what lets write access differ (admins vs everyone) and guarantees an agent
+grepping the umbrella can never read — or dirty — the manifest.
 
-**Mount scoping** solves this. A mount may declare `include_paths`. When set,
-`our` clones with `git clone --sparse` and applies
-`git sparse-checkout set --no-cone <paths>`, so only the listed content
-directories appear in the umbrella. The manifest and skill sources stay in the
-manifest cache and never appear as a second source of truth. The same scoping
-mechanism is the forward path for finer access control: narrow what a given
-umbrella materializes without splitting the repo apart.
+A **conflated layout** (one private repo serving as both manifest source and
+content mount) remains supported for compatibility: `our` keeps a single
+checkout for it, skips sparse-checkout on it, and syncs it as one merged
+entry. New organizations get the separated layout.
+
+**Mount scoping** narrows external content mounts. A mount may declare
+`include_paths`; `our` then clones with `git clone --sparse` and applies
+`git sparse-checkout set --no-cone <paths>`, so only the listed directories
+appear in the umbrella. The same scoping mechanism is the forward path for
+finer access control: narrow what a given umbrella materializes without
+splitting a repo apart.
 
 Include paths are validated as portable, repo-relative paths (no absolute
 paths, no `..` traversal, no backslashes) so a manifest cannot scope a mount

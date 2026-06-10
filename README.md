@@ -346,11 +346,12 @@ rationale.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the design: concepts, the
   manifest schema, umbrella shape, mount scoping, skill resolution, the
   agents-primary philosophy, and the public/private boundary.
-- [docs/PLAN.md](docs/PLAN.md) — public-safe implementation plan and repo
-  boundaries for continuing work while this repo remains published.
-- [docs/plans/2026-05-28-startup-context-ergonomics.md](docs/plans/2026-05-28-startup-context-ergonomics.md)
-  — converged design for `our root`, `our ai`, `our doctor` guidance
-  freshness, and the post-launch orientation section in generated `AGENTS.md`.
+- [docs/PLAN.md](docs/PLAN.md) — public-safe implementation plan: current
+  baseline, active direction, and non-goals.
+- [docs/plans/](docs/plans/README.md) — long-form design plans with a status
+  index (active / shipped / superseded). Start with
+  [the execution plane](docs/plans/2026-06-10-execution-plane.md) for where
+  the CLI is headed: sessions, contained runners, and organization services.
 - [examples/acme-workspace](examples/acme-workspace) — neutral manifest,
   catalog, skill, and handbook fixture for local development.
 
