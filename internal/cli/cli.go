@@ -452,7 +452,7 @@ func initManifestDocument(orgID, orgName, umbrellaPath, contentGitURL string) ma
 		},
 		Mounts: []manifest.Mount{
 			{
-				ID: initMountID,
+				ID:   initMountID,
 				Kind: "handbook",
 				// Local until our publish rewrites it to the hosted remote.
 				GitURL: contentGitURL,
@@ -506,14 +506,14 @@ func writeInitManifestScaffold(root string, doc manifest.Document) error {
 
 func writeInitContentScaffold(root, orgID, orgName string) error {
 	files := map[string]string{
-		"README.md":                              initContentREADME(orgName),
-		filepath.Join("meetings", "README.md"):   initSectionREADME("Meetings", "Record meeting notes with our meetings add, then publish with our sync."),
-		filepath.Join("support", "README.md"):    initSectionREADME("Support", "Record anonymized problem-to-solution notes with our support add."),
-		filepath.Join("fleet", "README.md"):      initSectionREADME("Fleet", "Track deployed instances or devices with our fleet add and our fleet set."),
-		filepath.Join("decisions", "README.md"):  initSectionREADME("Decisions", "Keep durable decisions and their context here."),
-		filepath.Join("projects", "README.md"):   initSectionREADME("Projects", "Keep project notes that agents should be able to read."),
-		filepath.Join("policy", "README.md"):     initSectionREADME("Policy", "Keep operating policies and rules of engagement here."),
-		filepath.Join("people", "README.md"):     initSectionREADME("People", "Keep public-safe team role notes here."),
+		"README.md":                             initContentREADME(orgName),
+		filepath.Join("meetings", "README.md"):  initSectionREADME("Meetings", "Record meeting notes with our meetings add, then publish with our sync."),
+		filepath.Join("support", "README.md"):   initSectionREADME("Support", "Record anonymized problem-to-solution notes with our support add."),
+		filepath.Join("fleet", "README.md"):     initSectionREADME("Fleet", "Track deployed instances or devices with our fleet add and our fleet set."),
+		filepath.Join("decisions", "README.md"): initSectionREADME("Decisions", "Keep durable decisions and their context here."),
+		filepath.Join("projects", "README.md"):  initSectionREADME("Projects", "Keep project notes that agents should be able to read."),
+		filepath.Join("policy", "README.md"):    initSectionREADME("Policy", "Keep operating policies and rules of engagement here."),
+		filepath.Join("people", "README.md"):    initSectionREADME("People", "Keep public-safe team role notes here."),
 	}
 	for path, content := range files {
 		if err := writeInitFile(filepath.Join(root, path), content); err != nil {
@@ -749,7 +749,7 @@ func (a app) publishOrg(home string, doc registeredDoc, printOnly bool) (publish
 	rewritten := false
 	for i := range newDoc.Mounts {
 		mount := newDoc.Mounts[i]
-		if mount.GitURL == manifest.SelfMountGitURL || !filepath.IsAbs(mount.GitURL) {
+		if !localMountGitURL(mount.GitURL) {
 			continue
 		}
 		sourcePath := mount.GitURL
@@ -845,6 +845,17 @@ func (a app) ensurePublishedRepo(path, repoName, target string, printOnly bool, 
 		return "", publishStep{Target: target, Repo: repoName, Action: "failed", Message: "origin remote missing after gh repo create"}, fmt.Errorf("origin remote missing after gh repo create %s", repoName)
 	}
 	return origin, publishStep{Target: target, Repo: repoName, Action: "created", URL: origin}, nil
+}
+
+func localMountGitURL(gitURL string) bool {
+	gitURL = strings.TrimSpace(gitURL)
+	if gitURL == "" || gitURL == manifest.SelfMountGitURL {
+		return false
+	}
+	if filepath.IsAbs(gitURL) {
+		return true
+	}
+	return strings.HasPrefix(gitURL, "./") || strings.HasPrefix(gitURL, "../") || strings.HasPrefix(gitURL, "~/")
 }
 
 func initNextCommands(home, orgID string) []initNextCommand {
@@ -1399,6 +1410,14 @@ func (a app) runSync(args []string) error {
 	if err != nil {
 		return a.maybeJSONError(jsonOut, err)
 	}
+	var localMountBlocks []syncer.Result
+	if publish != "never" && syncScopeAllowsDerived(scope) {
+		localMountBlocks, err = a.localMountSyncBlocks(home, manifestName)
+		if err != nil {
+			return a.maybeJSONError(jsonOut, err)
+		}
+		entries = withoutBlockedManifestEntries(entries, localMountBlocks)
+	}
 	gnitRoot := ""
 	if root, err := resolveOurRoot(home, manifestName, umbrellaRoot); err == nil {
 		gnitRoot = findGnitWorkspaceRoot(root)
@@ -1428,6 +1447,7 @@ func (a app) runSync(args []string) error {
 	if backendMessage != "" && report.BackendMessage == "" {
 		report.BackendMessage = backendMessage
 	}
+	report.Results = append(report.Results, localMountBlocks...)
 	var derived *derivedReconcileReport
 	if !printOnly && !noDerived && syncScopeAllowsDerived(scope) {
 		if changedManifest, ok := changedManifestForDerived(report); ok {
@@ -1464,6 +1484,68 @@ func (a app) runSync(args []string) error {
 		return a.maybeJSONError(jsonOut, fmt.Errorf("one or more derived reconciliation operations failed"))
 	}
 	return nil
+}
+
+func (a app) localMountSyncBlocks(home, manifestName string) ([]syncer.Result, error) {
+	docs, err := loadRegisteredDocs(home, manifestName)
+	if err != nil {
+		return nil, err
+	}
+	var out []syncer.Result
+	for _, doc := range docs {
+		localMounts := localMountGitURLs(doc.doc)
+		if len(localMounts) == 0 {
+			continue
+		}
+		out = append(out, syncer.Result{
+			Manifest:  doc.ref.Name,
+			ID:        doc.ref.Name,
+			Role:      "manifest",
+			Kind:      "manifest",
+			GitURL:    doc.ref.GitURL,
+			LocalPath: doc.ref.LocalPath,
+			Status:    "held back",
+			Message:   "manifest has local mount URL(s): " + strings.Join(localMounts, ", ") + "; run our publish --manifest " + doc.ref.Name,
+		})
+	}
+	return out, nil
+}
+
+func withoutBlockedManifestEntries(entries []syncer.Entry, blocks []syncer.Result) []syncer.Entry {
+	if len(blocks) == 0 {
+		return entries
+	}
+	blocked := map[string]bool{}
+	for _, block := range blocks {
+		name := block.Manifest
+		if name == "" {
+			name = block.ID
+		}
+		blocked[name] = true
+	}
+	out := entries[:0]
+	for _, entry := range entries {
+		name := entry.Manifest
+		if name == "" {
+			name = entry.ID
+		}
+		if entry.Role == "manifest" && blocked[name] {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func localMountGitURLs(doc manifest.Document) []string {
+	var out []string
+	for _, mount := range manifest.EffectiveMounts(doc) {
+		if localMountGitURL(mount.GitURL) {
+			out = append(out, mount.ID+"="+mount.GitURL)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 type syncCommandReport struct {
@@ -3815,6 +3897,7 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 		if err != nil {
 			continue
 		}
+		report.Manifests = append(report.Manifests, doctorLocalMountURLs(ref, doc)...)
 		report.Workspaces = append(report.Workspaces, doctorWorkspaces(home, ref.Name, doc.Workspaces)...)
 		report.Tools = append(report.Tools, doctorTools(ref.Name, doc.Tools)...)
 	}
@@ -3842,6 +3925,25 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 		report.LastSync = append(report.LastSync, doctorLastSync(root))
 	}
 	return report
+}
+
+func doctorLocalMountURLs(ref manifest.Ref, doc manifest.Document) []doctorItem {
+	var items []doctorItem
+	for _, mount := range manifest.EffectiveMounts(doc) {
+		if !localMountGitURL(mount.GitURL) {
+			continue
+		}
+		items = append(items, doctorItem{
+			Name:    ref.Name + ":mount:" + mount.ID,
+			Status:  "local-only",
+			Path:    mount.GitURL,
+			Message: "mount git_url is local-only; run our publish --manifest " + ref.Name,
+			Details: []string{
+				"manifest=" + ref.LocalPath,
+			},
+		})
+	}
+	return items
 }
 
 func (a app) doctorVersion(home string) doctorItem {

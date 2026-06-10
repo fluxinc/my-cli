@@ -481,6 +481,49 @@ func TestPublishPrintPlansWithoutChanges(t *testing.T) {
 	}
 }
 
+func TestSyncHoldsManifestWithLocalMountURL(t *testing.T) {
+	home := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "init", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	manifestRepo, err := manifest.DefaultCachePath(home, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote := filepath.Join(t.TempDir(), "acme-manifest.git")
+	runCLIGit(t, home, "init", "--bare", "-q", remote)
+	runCLIGit(t, manifestRepo, "remote", "add", "origin", remote)
+	runCLIGit(t, manifestRepo, "push", "-q", "-u", "origin", "master")
+	writeCLITestFile(t, filepath.Join(manifestRepo, "catalog", "customers.json"), "[{\"id\":\"local\"}]\n")
+	commitCLIGit(t, manifestRepo, "Edit catalog locally")
+	localHead := strings.TrimSpace(gitCLIOutput(t, manifestRepo, "rev-parse", "HEAD"))
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"our", "sync",
+		"--backend", "builtin",
+		"--publish", "direct",
+		"--scope", "manifest",
+		"--manifest", "acme",
+		"--home", home,
+	}); err != nil {
+		t.Fatalf("sync: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"manifest\theld back", "local mount URL", "run our publish --manifest acme"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("sync stdout = %q, missing %q", out, want)
+		}
+	}
+	remoteHead := strings.TrimSpace(gitCLIOutput(t, manifestRepo, "rev-parse", "origin/master"))
+	if remoteHead == localHead {
+		t.Fatalf("sync pushed manifest despite local mount URL guard")
+	}
+}
+
 func initResultHasNext(result initResult, want initNextCommand) bool {
 	for _, got := range result.NextCommands {
 		if got == want {
@@ -1951,6 +1994,30 @@ func TestDoctorReportsFreshnessNoFetch(t *testing.T) {
 	if !strings.Contains(out, "freshness\tmanifest:acme\tok") ||
 		!strings.Contains(out, "up to date (as of last fetch)") {
 		t.Fatalf("doctor stdout = %q", out)
+	}
+}
+
+func TestDoctorReportsLocalMountURLRequiresPublish(t *testing.T) {
+	home := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "init", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home, "--no-fetch"}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	for _, want := range []string{"manifest\tacme:mount:workspace\tlocal-only", "mount git_url is local-only", "run our publish --manifest acme"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("doctor stdout = %q, missing %q", out, want)
+		}
+	}
+	if strings.Contains(out, "manifest\tacme\tlocal-only") {
+		t.Fatalf("doctor local-mount report should be a mount item, got %q", out)
 	}
 }
 
@@ -4478,6 +4545,16 @@ func runCLIGit(t *testing.T, dir string, args ...string) {
 	if err != nil {
 		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, out)
 	}
+}
+
+func gitCLIOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return string(out)
 }
 
 func TestAdminRoutingDelegatesToTopLevelHandlers(t *testing.T) {
