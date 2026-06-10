@@ -7,7 +7,7 @@ export default defineConfig({
   description: 'One manifest gives every AI harness the same skills, guidance, and context.',
   lastUpdated: true,
   head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/our-ai/favicon.svg' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/our-ai/favicon.svg?v=2' }],
     ['link', { rel: 'manifest', href: '/our-ai/site.webmanifest' }],
     ['meta', { name: 'theme-color', content: '#0f766e' }],
     ['meta', { property: 'og:type', content: 'website' }],
@@ -15,11 +15,11 @@ export default defineConfig({
     ['meta', { property: 'og:title', content: 'Our AI - One manifest for every AI harness' }],
     ['meta', { property: 'og:description', content: 'Install skills, generated guidance, mounts, and local context for every AI harness from one organization manifest.' }],
     ['meta', { property: 'og:url', content: 'https://fluxinc.github.io/our-ai/' }],
-    ['meta', { property: 'og:image', content: 'https://fluxinc.github.io/our-ai/our-ai-glyph.svg' }],
+    ['meta', { property: 'og:image', content: 'https://fluxinc.github.io/our-ai/our-ai-glyph.svg?v=2' }],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
     ['meta', { name: 'twitter:title', content: 'Our AI - One manifest for every AI harness' }],
     ['meta', { name: 'twitter:description', content: 'One command gives every installed AI harness the same skills, context, and local tooling.' }],
-    ['meta', { name: 'twitter:image', content: 'https://fluxinc.github.io/our-ai/our-ai-glyph.svg' }],
+    ['meta', { name: 'twitter:image', content: 'https://fluxinc.github.io/our-ai/our-ai-glyph.svg?v=2' }],
   ],
   themeConfig: {
     logo: {

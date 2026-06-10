@@ -3,7 +3,7 @@
   "short_name": "Our AI",
   "icons": [
     {
-      "src": "/our-ai/favicon.svg",
+      "src": "/our-ai/favicon.svg?v=2",
       "sizes": "64x64",
       "type": "image/svg+xml"
     }
