@@ -543,7 +543,14 @@ func ListInstalled(h harness.Harness, opts InstallOpts) ([]InstalledSkill, error
 		if info.Mode()&os.ModeSymlink != 0 {
 			installed.Kind = "symlink"
 			if link, err := os.Readlink(target); err == nil {
+				if !filepath.IsAbs(link) {
+					link = filepath.Join(filepath.Dir(target), link)
+				}
 				installed.LinkTarget = link
+				if marker, ok := readManagedMarker(link); ok {
+					installed.CanonicalID = marker.CanonicalID
+					installed.Source = marker.Source
+				}
 			}
 		} else if marker, ok := readManagedMarker(target); ok {
 			installed.CanonicalID = marker.CanonicalID

@@ -151,7 +151,7 @@ status: finalized
 		filepath.Join(umbrellaRoot, ".our", "workspace.json"),
 		filepath.Join(umbrellaRoot, ".our", "state.json"),
 		filepath.Join(umbrellaRoot, "personal"),
-		filepath.Join(umbrellaRoot, "products"),
+		filepath.Join(umbrellaRoot, "repos"),
 		filepath.Join(umbrellaRoot, "AGENTS.md"),
 	} {
 		if _, err := os.Stat(path); err != nil {
@@ -190,7 +190,7 @@ status: finalized
 			t.Fatalf("mount add product output = %q, missing %q", addProductOut, want)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(umbrellaRoot, "products", "sample-product", ".git")); err != nil {
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, "repos", "sample-product", ".git")); err != nil {
 		t.Fatalf("product was not cloned: %v", err)
 	}
 	mountListOut := runOurDir(t, bin, home, umbrellaRoot, "mounts", "list", "--home", home, "--json")

@@ -38,14 +38,55 @@ func TestEnsureWritesWorkspaceAndState(t *testing.T) {
 		filepath.Join(root, DirName, WorkspaceFile),
 		filepath.Join(root, DirName, StateFile),
 		filepath.Join(root, "personal"),
-		filepath.Join(root, "products"),
+		filepath.Join(root, "repos"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("missing %s: %v", path, err)
 		}
 	}
+	if _, err := os.Stat(filepath.Join(root, "products")); !os.IsNotExist(err) {
+		t.Fatalf("legacy products dir scaffolded: %v", err)
+	}
 	if found, ok := FindRoot(filepath.Join(root, "personal")); !ok || found != root {
 		t.Fatalf("FindRoot = %q, %v", found, ok)
+	}
+}
+
+func TestProductPathDefaultsToRepos(t *testing.T) {
+	root := t.TempDir()
+	if got, want := ProductPath(root, "sample"), filepath.Join(root, "repos", "sample"); got != want {
+		t.Fatalf("ProductPath = %q, want %q", got, want)
+	}
+}
+
+func TestProductPathPrefersExistingLegacyProductsClone(t *testing.T) {
+	root := t.TempDir()
+	legacy := filepath.Join(root, "products", "sample")
+	if err := os.MkdirAll(legacy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := ProductPath(root, "sample"); got != legacy {
+		t.Fatalf("ProductPath = %q, want legacy %q", got, legacy)
+	}
+}
+
+func TestEnsureMigratesLegacyProductsToRepos(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "our")
+	legacyFile := filepath.Join(root, "products", "sample", "README.md")
+	if err := os.MkdirAll(filepath.Dir(legacyFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyFile, []byte("seed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Ensure(root, "our", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "repos", "sample", "README.md")); err != nil {
+		t.Fatalf("legacy clone not migrated: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "products")); !os.IsNotExist(err) {
+		t.Fatalf("legacy products dir still present: %v", err)
 	}
 }
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Product repositories now clone under `repos/<id>` instead of `products/<id>`.
+  `our setup` migrates an existing `products/` directory automatically, and
+  legacy `products/<id>` checkouts keep resolving until migrated. The sync
+  scope accepts `repos` (the `products` spelling still works).
+- Startup commands (`our root`, `our ai`, `our setup`) now print a stderr
+  `notice` line for checkouts the auto-refresh cannot converge — dirty, ahead,
+  behind, or diverged — naming the repository and the command that reconciles
+  it. Stdout is unchanged, so `cd "$(our root)"` remains safe.
+
+### Fixed
+
+- `our manifests sync` now reconciles generated guidance and manifest skills
+  after pulling or cloning a changed manifest for an existing matching umbrella;
+  pass `--no-derived` for a cache-only refresh.
+- `our ai` now ensures the bundled `our` self-skill is installed before it
+  execs a filesystem harness, and manifest skill sync/purge no longer removes
+  that self-skill.
+
 ## 0.9.0 - 2026-06-10
 
 ### Added

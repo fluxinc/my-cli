@@ -57,6 +57,40 @@ func TestSyncDryRunPlansCloneAndPull(t *testing.T) {
 	}
 }
 
+func TestSyncMarksChangedWhenHeadReadFailsAfterPull(t *testing.T) {
+	home := t.TempDir()
+	ref, err := Add(home, "acme", filepath.Join(home, "remote.git"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(ref.LocalPath, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	headReads := 0
+	results, err := Sync(home, []string{"acme"}, false, false, func(name string, args ...string) ([]byte, error) {
+		if name != "git" {
+			return nil, errors.New("unexpected command")
+		}
+		if len(args) >= 4 && args[0] == "-C" && args[2] == "rev-parse" {
+			headReads++
+			if headReads == 1 {
+				return []byte("before\n"), nil
+			}
+			return nil, errors.New("rev-parse failed")
+		}
+		if len(args) >= 4 && args[0] == "-C" && args[2] == "pull" {
+			return []byte("Already up to date.\n"), nil
+		}
+		return nil, errors.New("unexpected git command")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Status != "synced" || !results[0].Changed {
+		t.Fatalf("results = %#v, want successful changed sync", results)
+	}
+}
+
 func TestSyncChecksGitHubAuthBeforeClone(t *testing.T) {
 	home := t.TempDir()
 	if _, err := Add(home, "acme", "https://github.com/acme/acme-ai-manifest.git"); err != nil {

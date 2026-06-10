@@ -2,6 +2,7 @@
 package selfskill
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -47,6 +48,9 @@ func Materialize(home string) (skills.Skill, string, error) {
 	if err != nil {
 		return skills.Skill{}, "", err
 	}
+	if err := writeSelfSkillMarker(source.SkillsDir); err != nil {
+		return skills.Skill{}, "", err
+	}
 	found, err := skills.DiscoverDeclared(source.SkillsDir, []skills.DeclaredSkill{
 		{
 			ID:          CanonicalID,
@@ -63,6 +67,26 @@ func Materialize(home string) (skills.Skill, string, error) {
 		return skills.Skill{}, "", fmt.Errorf("embedded Our AI self-skill not found")
 	}
 	return found[0], source.SkillsDir, nil
+}
+
+func writeSelfSkillMarker(sourceRoot string) error {
+	marker := bundle.Marker{
+		Installer:   "our",
+		Version:     bundle.Version(),
+		Mode:        "symlink",
+		Source:      sourceRoot,
+		CanonicalID: CanonicalID,
+	}
+	data, err := json.MarshalIndent(marker, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	path := filepath.Join(sourceRoot, Name, bundle.MarkerName)
+	if existing, err := os.ReadFile(path); err == nil && string(existing) == string(data) {
+		return nil
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 // Install installs the bundled self-skill into the selected harnesses.

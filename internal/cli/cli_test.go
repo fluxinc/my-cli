@@ -16,9 +16,11 @@ import (
 	"time"
 
 	"github.com/fluxinc/our-ai/internal/fleet"
+	"github.com/fluxinc/our-ai/internal/harness"
 	"github.com/fluxinc/our-ai/internal/manifest"
 	"github.com/fluxinc/our-ai/internal/meetings"
 	"github.com/fluxinc/our-ai/internal/selfupdate"
+	"github.com/fluxinc/our-ai/internal/skills"
 	"github.com/fluxinc/our-ai/internal/support"
 	"github.com/fluxinc/our-ai/internal/umbrella"
 	"github.com/fluxinc/our-ai/internal/workspace"
@@ -451,6 +453,74 @@ func TestSkillsSyncPrunesStaleManagedSkill(t *testing.T) {
 	}
 }
 
+func TestSkillsSyncKeepsBundledSelfSkill(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+	if err := a.run([]string{"our", "skills", "self", "install", "claude-code", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"our", "skills", "sync", "claude-code",
+		"--manifest", "acme", "--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "our")); err != nil {
+		t.Fatalf("self-skill was pruned by manifest sync: %v", err)
+	}
+	if strings.Contains(stdout.String(), "claude-code\tour\tremoved") {
+		t.Fatalf("sync stdout removed self-skill: %q", stdout.String())
+	}
+}
+
+func TestSkillsSyncPrunesManifestSkillNamedOur(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sourceRoot := makeCLISkill(t, "our")
+	found, err := skills.Discover(sourceRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 1 {
+		t.Fatalf("discovered skills = %#v", found)
+	}
+	found[0].CanonicalID = "acme:our"
+	if result := skills.Install(found[0], harness.ClaudeCode, skills.InstallOpts{
+		Home:       home,
+		SourceRoot: sourceRoot,
+		Link:       false,
+	}); result.Status != skills.StatusInstalled {
+		t.Fatalf("install result = %#v", result)
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+	if err := a.run([]string{
+		"our", "skills", "sync", "claude-code",
+		"--manifest", "acme", "--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "our")); !os.IsNotExist(err) {
+		t.Fatalf("manifest-owned skill named our was not pruned: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "claude-code\tour\tremoved") {
+		t.Fatalf("sync stdout = %q, want named our skill removed", stdout.String())
+	}
+}
+
 func TestSkillsSyncNoPruneKeepsStaleManagedSkill(t *testing.T) {
 	home := setupCLISkillsManifestFixture(t)
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
@@ -502,6 +572,50 @@ func TestSkillsPurgeSkillFilterRemovesStaleManagedSkill(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "claude-code\told-skill\tremoved\tacme:old-skill") {
 		t.Fatalf("purge stdout = %q, want stale canonical removal", stdout.String())
+	}
+}
+
+func TestSkillsPurgeKeepsBundledSelfSkill(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+	if err := a.run([]string{"our", "skills", "self", "install", "claude-code", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"our", "skills", "purge", "claude-code",
+		"--manifest", "acme", "--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "our")); err != nil {
+		t.Fatalf("self-skill was purged by manifest purge: %v", err)
+	}
+	if strings.Contains(stdout.String(), "claude-code\tour\tremoved") {
+		t.Fatalf("purge stdout removed self-skill: %q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"our", "skills", "purge", "claude-code",
+		"--manifest", "acme", "--home", home, "--skill", "our",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "our")); err != nil {
+		t.Fatalf("self-skill was purged by explicit manifest purge: %v", err)
+	}
+	if strings.Contains(stdout.String(), "claude-code\tour\tremoved") {
+		t.Fatalf("explicit purge stdout removed self-skill: %q", stdout.String())
 	}
 }
 
@@ -1169,7 +1283,7 @@ func TestMountAddProductRecordsState(t *testing.T) {
 	if err := a.run([]string{"our", "mounts", "add", "product:sample-product", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(home, "acme", "products", "sample-product", ".git")); err != nil {
+	if _, err := os.Stat(filepath.Join(home, "acme", "repos", "sample-product", ".git")); err != nil {
 		t.Fatalf("product was not cloned: %v", err)
 	}
 	state, err := os.ReadFile(filepath.Join(home, "acme", ".our", "state.json"))
@@ -1208,7 +1322,7 @@ func TestMountAddProductRecordsState(t *testing.T) {
 	if err := a.run([]string{"our", "mounts", "remove", "product:sample-product", "--umbrella", umbrellaRoot, "--home", home, "--force"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(home, "acme", "products", "sample-product")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(home, "acme", "repos", "sample-product")); !os.IsNotExist(err) {
 		t.Fatalf("product dir still exists or stat failed unexpectedly: %v", err)
 	}
 	state, err = os.ReadFile(filepath.Join(home, "acme", ".our", "state.json"))
@@ -1393,7 +1507,7 @@ func TestRootCommandPrintsUmbrellaAndProductPaths(t *testing.T) {
 	if err := a.run([]string{"our", "root", "--manifest", "acme", "--home", home, "--product", "sample-product"}); err != nil {
 		t.Fatal(err)
 	}
-	wantProduct := filepath.Join(umbrellaRoot, "products", "sample-product")
+	wantProduct := filepath.Join(umbrellaRoot, "repos", "sample-product")
 	if strings.TrimSpace(stdout.String()) != wantProduct {
 		t.Fatalf("root --product stdout = %q, want %q", stdout.String(), wantProduct)
 	}
@@ -1887,6 +2001,266 @@ description: Acme handbook
 	}
 }
 
+func TestManifestSyncReconcilesDerivedAfterPull(t *testing.T) {
+	home, umbrellaRoot, _, _, writer := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "skills", "self", "install", "claude-code", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "agent_guidance": { "paths": ["guidance/fresh.md"] },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(writer, "guidance", "fresh.md"), "fresh guidance from manifest\n")
+	writeCLITestFile(t, filepath.Join(writer, "skills", "acme-handbook", "SKILL.md"), `---
+name: acme-handbook
+description: Acme handbook
+---
+`)
+	commitAndPushCLIGit(t, writer, "add guidance and handbook skill")
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"our", "manifests", "sync", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "acme\tsynced\t") ||
+		!strings.Contains(out, "derived\tguidance\t") ||
+		!strings.Contains(out, "derived-skill\tclaude-code\tacme-handbook\tinstalled") {
+		t.Fatalf("manifest sync stdout = %q", out)
+	}
+	data, err := os.ReadFile(filepath.Join(umbrellaRoot, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "fresh guidance from manifest") {
+		t.Fatalf("AGENTS.md was not regenerated from synced manifest:\n%s", data)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); err != nil {
+		t.Fatalf("skill was not installed after manifest sync: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "our")); err != nil {
+		t.Fatalf("self-skill was pruned by manifest sync derived reconcile: %v", err)
+	}
+}
+
+func TestManifestSyncNoDerivedSkipsDerivedReconcile(t *testing.T) {
+	home, umbrellaRoot, _, _, writer := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "agent_guidance": { "paths": ["guidance/fresh.md"] },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(writer, "guidance", "fresh.md"), "fresh guidance from manifest\n")
+	writeCLITestFile(t, filepath.Join(writer, "skills", "acme-handbook", "SKILL.md"), `---
+name: acme-handbook
+description: Acme handbook
+---
+`)
+	commitAndPushCLIGit(t, writer, "add guidance and handbook skill")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "manifests", "sync", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+		"--no-derived",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if strings.Contains(out, "derived") {
+		t.Fatalf("manifest sync stdout = %q, want no derived output", out)
+	}
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("AGENTS.md was regenerated despite --no-derived: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("skill installed despite --no-derived: %v", err)
+	}
+}
+
+func TestManifestSyncPrintSkipsDerivedReconcile(t *testing.T) {
+	home, umbrellaRoot, _, _, writer := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "agent_guidance": { "paths": ["guidance/fresh.md"] }
+}`)
+	writeCLITestFile(t, filepath.Join(writer, "guidance", "fresh.md"), "fresh guidance from manifest\n")
+	commitAndPushCLIGit(t, writer, "add guidance")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "manifests", "sync", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+		"--print",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stdout.String(), "derived") {
+		t.Fatalf("manifest sync --print stdout = %q, want no derived output", stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("AGENTS.md was regenerated despite --print: %v", err)
+	}
+}
+
+func TestManifestSyncChangedManifestWithoutUmbrellaPrintsRemediation(t *testing.T) {
+	home, umbrellaRoot, _, _, writer := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	writeCLITestFile(t, filepath.Join(writer, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "agent_guidance": { "paths": ["guidance/fresh.md"] }
+}`)
+	writeCLITestFile(t, filepath.Join(writer, "guidance", "fresh.md"), "fresh guidance from manifest\n")
+	commitAndPushCLIGit(t, writer, "add guidance")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "manifests", "sync", "acme",
+		"--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "derived\tmanifest:acme\tskipped") ||
+		!strings.Contains(out, "no existing umbrella found") ||
+		!strings.Contains(out, "run our setup --manifest acme --umbrella "+umbrellaRoot) {
+		t.Fatalf("manifest sync stdout = %q", out)
+	}
+}
+
+func TestManifestSyncWrongUmbrellaSkipsDerivedWithNotice(t *testing.T) {
+	home, umbrellaRoot, _, _, writer := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "other", "other"); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "agent_guidance": { "paths": ["guidance/fresh.md"] }
+}`)
+	writeCLITestFile(t, filepath.Join(writer, "guidance", "fresh.md"), "fresh guidance from manifest\n")
+	commitAndPushCLIGit(t, writer, "add guidance")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "manifests", "sync", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "derived\tmanifest:acme\tskipped") ||
+		!strings.Contains(out, "uses manifest \"other\", not \"acme\"") ||
+		!strings.Contains(out, "pass --umbrella for the acme umbrella") {
+		t.Fatalf("manifest sync stdout = %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("AGENTS.md was regenerated for wrong umbrella: %v", err)
+	}
+}
+
+func TestManifestSyncJSONIncludesDerivedOnChangedManifest(t *testing.T) {
+	home, umbrellaRoot, _, _, writer := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "agent_guidance": { "paths": ["guidance/fresh.md"] }
+}`)
+	writeCLITestFile(t, filepath.Join(writer, "guidance", "fresh.md"), "fresh guidance from manifest\n")
+	commitAndPushCLIGit(t, writer, "add guidance")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "manifests", "sync", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+		"--json",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var rows []manifestSyncCommandResult
+	if err := json.Unmarshal(stdout.Bytes(), &rows); err != nil {
+		t.Fatalf("parse manifest sync JSON: %v\n%s", err, stdout.String())
+	}
+	if len(rows) != 1 || rows[0].Name != "acme" || !rows[0].Changed || rows[0].Derived == nil {
+		t.Fatalf("manifest sync JSON rows = %#v", rows)
+	}
+	if rows[0].Derived.Guidance.Status == "" {
+		t.Fatalf("manifest sync JSON missing derived guidance: %#v", rows[0].Derived)
+	}
+}
+
 func TestRootAutoRefreshFastForwardsCleanStaleMountAndKeepsStdoutPure(t *testing.T) {
 	remote, clone, writer := setupCLIRemoteRepo(t, t.TempDir(), "handbook", map[string]string{"README.md": "seed\n"})
 	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
@@ -2108,6 +2482,57 @@ func TestRootAutoRefreshSkipsDirtyDivergedAndProductRepos(t *testing.T) {
 	}
 }
 
+func TestRootAutoRefreshNoticesHeldDirtyMountOnStderr(t *testing.T) {
+	remote, clone, writer := setupCLIRemoteRepo(t, t.TempDir(), "handbook", map[string]string{"README.md": "seed\n"})
+	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": "`+remote+`", "mode": "required" }
+  ]
+}`)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	mountPath := filepath.Join(umbrellaRoot, "handbook")
+	if err := os.Rename(clone, mountPath); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "remote.md"), "remote\n")
+	commitAndPushCLIGit(t, writer, "remote update")
+	writeCLITestFile(t, filepath.Join(mountPath, "local.md"), "dirty\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+		t.Fatal(err)
+	}
+	if got := stdout.String(); got != umbrellaRoot+"\n" {
+		t.Fatalf("root stdout = %q, want only root path", got)
+	}
+	errOut := stderr.String()
+	if !strings.Contains(errOut, "notice\tacme:content:handbook\t") {
+		t.Fatalf("root stderr = %q, want held-repo notice", errOut)
+	}
+	if !strings.Contains(errOut, "our sync") {
+		t.Fatalf("root stderr = %q, want remediation command", errOut)
+	}
+}
+
+func TestSyncScopeReposIsAcceptedAsProductsAlias(t *testing.T) {
+	home, _, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "sync", "--backend", "builtin", "--scope", "repos", "--print", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+		t.Fatalf("sync --scope repos failed: %v", err)
+	}
+}
+
 func TestSyncUsesManifestPublishPolicyAndCLIOverride(t *testing.T) {
 	home, _, _, _, _ := setupCLITrackedManifestBody(t, `{
   "manifest_version": 1,
@@ -2172,7 +2597,7 @@ func TestLaunchPrintsResolvedCommandWithoutCheckingGuidance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "cd " + filepath.Join(home, "acme", "products", "sample-product") + " && codex --model gpt-5\n"
+	want := "cd " + filepath.Join(home, "acme", "repos", "sample-product") + " && codex --model gpt-5\n"
 	if stdout.String() != want {
 		t.Fatalf("launch --print stdout = %q, want %q", stdout.String(), want)
 	}
@@ -2232,6 +2657,52 @@ func TestLaunchOnboardThenExecsWithArgs(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "launch\tcodex\tcd "+umbrellaRoot+" && codex") {
 		t.Fatalf("onboard stdout missing launch hint: %q", stdout.String())
+	}
+}
+
+func TestLaunchInstallsAbsentSelfSkillBeforeExec(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchFixture(t)
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "setup", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(home, ".codex", "skills", "our")); err != nil {
+		t.Fatal(err)
+	}
+
+	var gotPath, gotDir string
+	a = app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			if _, err := os.Lstat(filepath.Join(home, ".codex", "skills", "our")); err != nil {
+				t.Fatalf("self-skill was not installed before lookupPath: %v", err)
+			}
+			return "/test/bin/codex", nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotPath = path
+			gotDir = dir
+			return nil
+		},
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/test/bin/codex" || gotDir != umbrellaRoot {
+		t.Fatalf("exec path=%q dir=%q", gotPath, gotDir)
+	}
+	if stdout.String() != "" {
+		t.Fatalf("launch stdout = %q, want quiet self-skill repair", stdout.String())
 	}
 }
 

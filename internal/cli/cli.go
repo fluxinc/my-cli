@@ -186,7 +186,7 @@ Usage:
   our root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   our ai [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
   our update [--check] [--version X.Y.Z] [--json] [--yes]
-  our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
+  our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
   our skills self install|uninstall|status ...
   our skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
   our skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
@@ -206,7 +206,7 @@ Usage:
   our admin tools add|edit|remove ...        (edit manifest tool hints)
   our manifests add <name> <git-url>
   our manifests list
-  our manifests sync <name...> | --all [--print]
+  our manifests sync <name...> | --all [--umbrella DIR] [--no-derived] [--print]
   our manifests validate <name|path>
   our mounts list [--manifest NAME]
   our mounts add <kind:id|id> [--manifest NAME]
@@ -361,12 +361,59 @@ func (a app) runLaunch(args []string) error {
 		}
 	}
 
+	if err := a.ensureLaunchSelfSkill(h, opts.home); err != nil {
+		return err
+	}
+
 	binary, err := a.lookupPath(commandName)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "%s not found on PATH; run:\n%s\n", commandName, line)
 		return errAlreadyPrinted
 	}
 	return a.runHarness(binary, harnessArgs, targetDir)
+}
+
+func (a app) ensureLaunchSelfSkill(h harness.Harness, home string) error {
+	if !h.IsFilesystem() {
+		return nil
+	}
+	rows, err := selfskill.Inspect([]harness.Harness{h}, selfskill.Options{Home: home})
+	if err != nil {
+		return err
+	}
+	if len(rows) == 1 && rows[0].Status == "installed" {
+		return nil
+	}
+	results, err := selfskill.Install([]harness.Harness{h}, selfskill.Options{Home: home, Link: true})
+	if err != nil {
+		return err
+	}
+	if len(results) != 1 {
+		return fmt.Errorf("unexpected self-skill install result count: %d", len(results))
+	}
+	result := results[0]
+	switch result.Status {
+	case skills.StatusInstalled, skills.StatusUpdated:
+		return nil
+	default:
+		a.printLaunchSelfSkillBlock(result)
+		return errAlreadyPrinted
+	}
+}
+
+func (a app) printLaunchSelfSkillBlock(result skills.Result) {
+	fmt.Fprintf(a.stderr, "our self-skill %s for %s", result.Status, result.Harness)
+	if result.TargetPath != "" {
+		fmt.Fprintf(a.stderr, " at %s", result.TargetPath)
+	}
+	fmt.Fprintln(a.stderr)
+	if result.Message != "" {
+		fmt.Fprintln(a.stderr, result.Message)
+	}
+	if result.Err != nil {
+		fmt.Fprintln(a.stderr, result.Err)
+	}
+	fmt.Fprintf(a.stderr, "run: our skills self install %s --force\n", result.Harness)
 }
 
 func (a app) printLaunchUsage() {
@@ -385,7 +432,7 @@ Options:
   --home DIR        override home directory
   --manifest NAME   use a registered manifest when no umbrella is found
   --umbrella DIR    override umbrella root
-  --product ID      run from products/<id> under the umbrella
+  --product ID      run from repos/<id> under the umbrella (legacy products/<id> still resolves)
   --setup           reconcile the umbrella first if guidance is stale or missing
   --no-refresh      skip best-effort auto-refresh
   --no-update-check skip best-effort update notice
@@ -653,7 +700,7 @@ func (a app) runSync(args []string) error {
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
 	fs.StringVar(&backend, "backend", "auto", "sync backend: auto, gnit, or builtin")
 	fs.StringVar(&publish, "publish", "auto", "publish mode: auto, never, direct, or pr")
-	fs.StringVar(&scope, "scope", "all", "sync scope: all, local, content, manifest, or products")
+	fs.StringVar(&scope, "scope", "all", "sync scope: all, local, content, manifest, or repos")
 	fs.StringVar(&message, "message", "", "commit message for newly committed content")
 	fs.BoolVar(&printOnly, "print", false, "print planned actions without changing files or remotes")
 	fs.BoolVar(&noDerived, "no-derived", false, "skip derived skill/guidance reconciliation after manifest changes")
@@ -683,8 +730,9 @@ func (a app) runSync(args []string) error {
 	if !validSyncPublish(publish) {
 		return fmt.Errorf("--publish must be one of auto, never, direct, or pr")
 	}
+	scope = normalizeSyncScope(scope)
 	if !validSyncScope(scope) {
-		return fmt.Errorf("--scope must be one of all, local, content, manifest, or products")
+		return fmt.Errorf("--scope must be one of all, local, content, manifest, or repos")
 	}
 	publishExplicit := flagWasSet(fs, "publish")
 	if !publishExplicit {
@@ -772,7 +820,7 @@ type syncCommandReport struct {
 
 func (a app) printSyncUsage() {
 	fmt.Fprintln(a.stderr, `Usage of our sync:
-  our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
+  our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
 
 Synchronizes registered Our AI repositories in both directions. The default
 backend uses Gnit when the umbrella is a Gnit workspace; otherwise Our AI uses a
@@ -873,6 +921,14 @@ func validSyncScope(value string) bool {
 	default:
 		return false
 	}
+}
+
+// normalizeSyncScope maps the repos alias onto the internal products scope.
+func normalizeSyncScope(value string) string {
+	if value == "repos" {
+		return "products"
+	}
+	return value
 }
 
 func (a app) collectSyncEntries(home, manifestName, umbrellaRoot, scope string) ([]syncer.Entry, error) {
@@ -1116,16 +1172,47 @@ func existingUmbrellaRoot(home, manifestName, explicit string) (string, bool, er
 		if err != nil {
 			return "", false, err
 		}
-		return root, hasOurDir(root), nil
+		return existingUmbrellaRootStatus(root, manifestName)
 	}
 	if root, ok := umbrella.FindRoot("."); ok {
-		return root, true, nil
+		return existingUmbrellaRootStatus(root, manifestName)
 	}
 	root, err := resolveOurRoot(home, manifestName, "")
 	if err != nil {
 		return "", false, nil
 	}
-	return root, hasOurDir(root), nil
+	return existingUmbrellaRootStatus(root, manifestName)
+}
+
+type umbrellaManifestMismatchError struct {
+	Root string
+	Have string
+	Want string
+}
+
+func (e umbrellaManifestMismatchError) Error() string {
+	return fmt.Sprintf("umbrella %s uses manifest %q, not %q", e.Root, e.Have, e.Want)
+}
+
+func existingUmbrellaRootStatus(root, manifestName string) (string, bool, error) {
+	if !hasOurDir(root) {
+		return root, false, nil
+	}
+	if manifestName == "" {
+		return root, true, nil
+	}
+	ws, err := umbrella.LoadWorkspace(root)
+	if err != nil {
+		return root, false, err
+	}
+	if ws.ManifestRef != "" && ws.ManifestRef != manifestName {
+		return root, false, umbrellaManifestMismatchError{
+			Root: root,
+			Have: ws.ManifestRef,
+			Want: manifestName,
+		}
+	}
+	return root, true, nil
 }
 
 func hasOurDir(root string) bool {
@@ -1182,6 +1269,8 @@ func (a app) maybeAutoRefresh(home, manifestName, umbrellaRoot, root string, noR
 			fmt.Fprintf(a.stderr, "refresh\t%s\tfixed\t%s\n", item.Name, item.Message)
 		} else if include && item.Status == "error" {
 			fmt.Fprintf(a.stderr, "warning: auto-refresh %s failed: %s\n", item.Name, item.Message)
+		} else if notice, ok := freshnessNotice(result); ok {
+			fmt.Fprintf(a.stderr, "notice\t%s\t%s\n", doctorFreshnessName(result), notice)
 		}
 	}
 	if changed {
@@ -1189,6 +1278,29 @@ func (a app) maybeAutoRefresh(home, manifestName, umbrellaRoot, root string, noR
 			fmt.Fprintf(a.stderr, "warning: auto-refresh state not saved: %v\n", err)
 		}
 	}
+}
+
+// freshnessNotice describes a checkout the auto-refresh could not converge,
+// with the command that reconciles it. Failed and unknown inspections are
+// reported elsewhere; converged checkouts return false.
+func freshnessNotice(result syncer.Result) (string, bool) {
+	if result.Status == "failed" || result.Status == "unknown" || result.BehindUnknown {
+		return "", false
+	}
+	dirty := len(result.Dirty)
+	switch {
+	case result.Ahead > 0 && result.Behind > 0:
+		return fmt.Sprintf("diverged from remote (ahead %d, behind %d); run `our doctor` and reconcile manually", result.Ahead, result.Behind), true
+	case dirty > 0 && result.Behind > 0:
+		return fmt.Sprintf("behind remote by %d with %d uncommitted file(s); commit or stash, then run `our sync`", result.Behind, dirty), true
+	case dirty > 0:
+		return fmt.Sprintf("%d uncommitted file(s); run `our sync` to review and publish", dirty), true
+	case result.Ahead > 0:
+		return fmt.Sprintf("ahead of remote by %d unpublished commit(s); run `our sync` to publish", result.Ahead), true
+	case result.Behind > 0:
+		return fmt.Sprintf("behind remote by %d; run `our sync`", result.Behind), true
+	}
+	return "", false
 }
 
 func autoRefreshTTL() time.Duration {
@@ -6467,7 +6579,7 @@ func (a app) printManifestUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
   our manifests add <name> <git-url> [--home DIR] [--json]
   our manifests list [--home DIR] [--json]
-  our manifests sync <name...> | --all [--home DIR] [--print] [--json]
+  our manifests sync <name...> | --all [--home DIR] [--umbrella DIR] [--no-derived] [--print] [--json]
   our manifests validate <name|path> [--home DIR] [--json]`)
 }
 
@@ -6523,15 +6635,19 @@ func (a app) runManifestList(args []string) error {
 
 func (a app) runManifestSync(args []string) error {
 	var home string
+	var umbrellaRoot string
 	var all bool
+	var noDerived bool
 	var printOnly bool
 	var jsonOut bool
 	fs := newFlagSet("our manifests sync", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
+	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root for derived reconciliation")
 	fs.BoolVar(&all, "all", false, "sync every registered manifest")
+	fs.BoolVar(&noDerived, "no-derived", false, "skip guidance and skill reconciliation after manifest changes")
 	fs.BoolVar(&printOnly, "print", false, "print planned git commands without changing files")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
-	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
+	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true, "umbrella": true})
 	if err != nil {
 		return err
 	}
@@ -6539,8 +6655,10 @@ func (a app) runManifestSync(args []string) error {
 	if err != nil {
 		return err
 	}
+	derivedManifest, derived, derivedNotices, derivedErr := a.manifestSyncDerived(home, umbrellaRoot, results, printOnly || noDerived)
+	wrapped := wrapManifestSyncResults(results, derivedManifest, derived, derivedNotices)
 	if jsonOut {
-		if err := printJSON(a.stdout, results); err != nil {
+		if err := printJSON(a.stdout, wrapped); err != nil {
 			return err
 		}
 	} else {
@@ -6554,11 +6672,157 @@ func (a app) runManifestSync(args []string) error {
 			}
 			fmt.Fprintln(a.stdout, line)
 		}
+		if derived != nil {
+			a.printDerivedReconcileReport(*derived)
+		}
+		printManifestSyncDerivedNotices(a.stdout, results, derivedNotices)
 	}
 	if manifestResultsFailed(results) {
 		return fmt.Errorf("one or more manifest syncs failed")
 	}
+	if derivedErr != nil {
+		return derivedErr
+	}
+	if derivedReportFailed(derived) {
+		return fmt.Errorf("one or more derived reconciliation operations failed")
+	}
 	return nil
+}
+
+type manifestSyncCommandResult struct {
+	manifest.SyncResult
+	Derived        *derivedReconcileReport `json:"derived,omitempty"`
+	DerivedStatus  string                  `json:"derived_status,omitempty"`
+	DerivedMessage string                  `json:"derived_message,omitempty"`
+}
+
+type manifestSyncDerivedNotice struct {
+	Status  string
+	Message string
+}
+
+func wrapManifestSyncResults(results []manifest.SyncResult, derivedManifest string, derived *derivedReconcileReport, notices map[string]manifestSyncDerivedNotice) []manifestSyncCommandResult {
+	wrapped := make([]manifestSyncCommandResult, 0, len(results))
+	attached := false
+	for _, result := range results {
+		item := manifestSyncCommandResult{SyncResult: result}
+		if derived != nil && !attached && result.Name == derivedManifest {
+			item.Derived = derived
+			attached = true
+		}
+		if notice, ok := notices[result.Name]; ok {
+			item.DerivedStatus = notice.Status
+			item.DerivedMessage = notice.Message
+		}
+		wrapped = append(wrapped, item)
+	}
+	return wrapped
+}
+
+func printManifestSyncDerivedNotices(w io.Writer, results []manifest.SyncResult, notices map[string]manifestSyncDerivedNotice) {
+	if len(notices) == 0 {
+		return
+	}
+	printed := map[string]bool{}
+	for _, result := range results {
+		if printed[result.Name] {
+			continue
+		}
+		notice, ok := notices[result.Name]
+		if !ok {
+			continue
+		}
+		fmt.Fprintf(w, "derived\tmanifest:%s\t%s\t%s\n", result.Name, notice.Status, notice.Message)
+		printed[result.Name] = true
+	}
+}
+
+func (a app) manifestSyncDerived(home, umbrellaRoot string, results []manifest.SyncResult, skip bool) (string, *derivedReconcileReport, map[string]manifestSyncDerivedNotice, error) {
+	notices := map[string]manifestSyncDerivedNotice{}
+	if skip || manifestResultsFailed(results) {
+		return "", nil, notices, nil
+	}
+	changed := changedManifestSyncResults(results)
+	if len(changed) == 0 {
+		return "", nil, notices, nil
+	}
+	if len(changed) != 1 {
+		for _, manifestName := range changed {
+			message, err := manifestSyncDerivedSkipMessage(home, umbrellaRoot, manifestName, "multiple changed manifests")
+			if err != nil {
+				return manifestName, nil, notices, err
+			}
+			notices[manifestName] = manifestSyncDerivedNotice{Status: "skipped", Message: message}
+		}
+		return "", nil, notices, nil
+	}
+	manifestName := changed[0]
+	root, hasRoot, err := existingUmbrellaRoot(home, manifestName, umbrellaRoot)
+	if err != nil {
+		if message, ok := manifestSyncUmbrellaMismatchMessage(err); ok {
+			notices[manifestName] = manifestSyncDerivedNotice{Status: "skipped", Message: message}
+			return manifestName, nil, notices, nil
+		}
+		return manifestName, nil, notices, err
+	}
+	if !hasRoot {
+		notices[manifestName] = manifestSyncDerivedNotice{
+			Status:  "skipped",
+			Message: manifestSyncSetupRemediation("no existing umbrella found", manifestName, root),
+		}
+		return manifestName, nil, notices, nil
+	}
+	report, err := a.reconcileDerived(home, manifestName, root)
+	if err != nil {
+		return manifestName, nil, notices, err
+	}
+	return manifestName, &report, notices, nil
+}
+
+func manifestSyncDerivedSkipMessage(home, umbrellaRoot, manifestName, reason string) (string, error) {
+	root, hasRoot, err := existingUmbrellaRoot(home, manifestName, umbrellaRoot)
+	if err != nil {
+		if message, ok := manifestSyncUmbrellaMismatchMessage(err); ok {
+			return reason + "; " + message, nil
+		}
+		return "", err
+	}
+	if !hasRoot {
+		return manifestSyncSetupRemediation(reason+"; no existing umbrella found", manifestName, root), nil
+	}
+	return manifestSyncSetupRemediation(reason, manifestName, root), nil
+}
+
+func manifestSyncUmbrellaMismatchMessage(err error) (string, bool) {
+	var mismatch umbrellaManifestMismatchError
+	if !errors.As(err, &mismatch) {
+		return "", false
+	}
+	return fmt.Sprintf("umbrella %s uses manifest %q, not %q; pass --umbrella for the %s umbrella or run our setup --manifest %s", mismatch.Root, mismatch.Have, mismatch.Want, mismatch.Want, mismatch.Want), true
+}
+
+func manifestSyncSetupRemediation(reason, manifestName, root string) string {
+	args := []string{"our", "setup", "--manifest", manifestName}
+	if root != "" {
+		args = append(args, "--umbrella", root)
+	}
+	return reason + "; run " + strings.Join(args, " ")
+}
+
+func changedManifestSyncResults(results []manifest.SyncResult) []string {
+	seen := map[string]bool{}
+	var names []string
+	for _, result := range results {
+		if !result.Changed || result.Name == "" {
+			continue
+		}
+		if seen[result.Name] {
+			continue
+		}
+		seen[result.Name] = true
+		names = append(names, result.Name)
+	}
+	return names
 }
 
 func (a app) runManifestValidate(args []string) error {
@@ -7667,7 +7931,7 @@ func collectStaleSkillRemovalResults(opts skillsCommandOpts, hs []harness.Harnes
 			continue
 		}
 		for _, existing := range installed {
-			if declaredNames[existing.Skill] || !existing.Managed {
+			if declaredNames[existing.Skill] || !existing.Managed || isSelfSkillMaterialization(existing) {
 				continue
 			}
 			res := skills.Uninstall(existing.Skill, h, installOpts)
@@ -7701,7 +7965,7 @@ func filesystemPurgeTargets(declared []skills.Skill, installed []skills.Installe
 	if len(refs) == 0 {
 		var targets []skillRemovalTarget
 		for _, existing := range installed {
-			if existing.Managed {
+			if existing.Managed && !isSelfSkillMaterialization(existing) {
 				targets = append(targets, skillRemovalTarget{Name: existing.Skill, CanonicalID: existing.CanonicalID})
 			}
 		}
@@ -7722,6 +7986,9 @@ func filesystemPurgeTargets(declared []skills.Skill, installed []skills.Installe
 			targets = append(targets, skillRemovalTarget{Name: s.Name, CanonicalID: s.CanonicalID})
 		}
 		for _, existing := range installedMatches {
+			if isSelfSkillMaterialization(existing) {
+				continue
+			}
 			targets = append(targets, skillRemovalTarget{Name: existing.Skill, CanonicalID: existing.CanonicalID})
 		}
 		if len(declaredMatches) == 0 && len(installedMatches) == 0 {
@@ -7729,6 +7996,10 @@ func filesystemPurgeTargets(declared []skills.Skill, installed []skills.Installe
 		}
 	}
 	return dedupeRemovalTargets(targets), nil
+}
+
+func isSelfSkillMaterialization(existing skills.InstalledSkill) bool {
+	return existing.CanonicalID == selfskill.CanonicalID
 }
 
 func declaredOrRawRemovalTargets(declared []skills.Skill, refs []string) []skillRemovalTarget {

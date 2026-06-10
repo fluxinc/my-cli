@@ -95,7 +95,10 @@ func Ensure(root, organization, manifestRef string) (Workspace, State, error) {
 	if err := os.MkdirAll(filepath.Join(rootAbs, DirName), 0o755); err != nil {
 		return Workspace{}, State{}, err
 	}
-	for _, dir := range []string{"personal", "products"} {
+	if err := migrateLegacyProducts(rootAbs); err != nil {
+		return Workspace{}, State{}, err
+	}
+	for _, dir := range []string{"personal", "repos"} {
 		if err := os.MkdirAll(filepath.Join(rootAbs, dir), 0o755); err != nil {
 			return Workspace{}, State{}, err
 		}
@@ -235,8 +238,52 @@ func MountPath(root, id string) string {
 }
 
 // ProductPath returns the filesystem path for one selected product clone.
+// New clones default to repos/<id>; an existing legacy products/<id> checkout
+// keeps resolving until it is migrated.
 func ProductPath(root, id string) string {
-	return filepath.Join(root, "products", id)
+	preferred := filepath.Join(root, "repos", id)
+	if _, err := os.Stat(preferred); err == nil {
+		return preferred
+	}
+	legacy := filepath.Join(root, "products", id)
+	if _, err := os.Stat(legacy); err == nil {
+		return legacy
+	}
+	return preferred
+}
+
+// migrateLegacyProducts moves clones from the legacy products/ directory into
+// repos/ and removes products/ once it is empty. Entries that already exist
+// under repos/ are left in place.
+func migrateLegacyProducts(root string) error {
+	legacyDir := filepath.Join(root, "products")
+	entries, err := os.ReadDir(legacyDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Join(root, "repos"), 0o755); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		target := filepath.Join(root, "repos", entry.Name())
+		if _, err := os.Stat(target); err == nil {
+			continue
+		}
+		if err := os.Rename(filepath.Join(legacyDir, entry.Name()), target); err != nil {
+			return err
+		}
+	}
+	remaining, err := os.ReadDir(legacyDir)
+	if err != nil {
+		return err
+	}
+	if len(remaining) == 0 {
+		return os.Remove(legacyDir)
+	}
+	return nil
 }
 
 func workspacePath(root string) string {

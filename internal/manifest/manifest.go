@@ -39,6 +39,7 @@ type SyncResult struct {
 	GitURL    string `json:"git_url"`
 	LocalPath string `json:"local_path"`
 	Status    string `json:"status"`
+	Changed   bool   `json:"changed,omitempty"`
 	Message   string `json:"message,omitempty"`
 	Error     string `json:"error,omitempty"`
 }
@@ -573,6 +574,7 @@ func syncOne(ref Ref, dryRun bool, runner Runner) SyncResult {
 			res.Error = err.Error()
 			return res
 		}
+		before, beforeErr := gitHead(ref.LocalPath, runner)
 		out, err := runner("git", "-C", ref.LocalPath, "pull", "--ff-only")
 		if err != nil {
 			res.Status = "failed"
@@ -583,6 +585,10 @@ func syncOne(ref Ref, dryRun bool, runner Runner) SyncResult {
 			return res
 		}
 		res.Status = "synced"
+		after, afterErr := gitHead(ref.LocalPath, runner)
+		if beforeErr != nil || afterErr != nil || before != after {
+			res.Changed = true
+		}
 		res.Message = strings.TrimSpace(string(out))
 		return res
 	}
@@ -611,8 +617,17 @@ func syncOne(ref Ref, dryRun bool, runner Runner) SyncResult {
 		return res
 	}
 	res.Status = "synced"
+	res.Changed = true
 	res.Message = strings.TrimSpace(string(out))
 	return res
+}
+
+func gitHead(path string, runner Runner) (string, error) {
+	out, err := runner("git", "-C", path, "rev-parse", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 func validateOrgManifest(doc Document, result *ValidationResult) {
