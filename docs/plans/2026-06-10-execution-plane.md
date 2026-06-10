@@ -119,6 +119,7 @@ mapping is close to 1:1:
 | tools + org MCP servers     | managed/mediated tool plane                |
 | members / roles             | agent identity + persona seed              |
 | catalog products            | repo mounts                                |
+| services (role-granted)     | surface grants + mediated tool wiring      |
 
 A future `our launch compile [--role R]` (verb TBD) emits the org-side launch
 artifacts — contract text, role-scoped mount list, tool grants, MCP server
@@ -132,10 +133,35 @@ container has its own filesystem.
 
 Mode B implies manifest extensions that are useful standalone:
 
-- `roles`: named role definitions — guidance fragments, mount scoping, tool
-  and skill grants;
-- `mcp_servers`: organization MCP servers, exposed to interactive harness
-  setups and to the mediated tool plane alike.
+- `roles`: named role definitions — guidance fragments, mount scoping, tool,
+  skill, and **service grants** (roles grant services; services do not name
+  roles).
+- `services`: the organization's remote surfaces — APIs, MCP servers, gated
+  brokers — the analog of container surface descriptions. Per entry: id,
+  kind (`http`, `mcp`, …), purpose, base URL or discovery, `describe_ref`
+  (a self-description endpoint or a checked-in description file;
+  descriptions are **references by default**, with fetched snapshots cached
+  as derived local state under `.our`, never silently promoted to manifest
+  truth), and auth split into three orthogonal fields: `auth_ref` (a name,
+  never a secret), requested grant/scope, and resolver mode (`env`,
+  `governance-proxy`, `gated-broker`, `none`). An MCP server is simply a
+  service of kind `mcp`. Skills may declare `service:<id>` dependencies
+  alongside `workspace:` and `tool:`.
+
+Two gated-service shapes anchor the services design, and both are consumed
+identically by human and AI operators — gating is a property of the
+service, not of the consumer: a **credential broker** (asking is free; each
+read requires a push approval on the operator's phone; one-time scoped
+secrets, nothing at rest) and a **communications platform** (agents draft
+freely; every send passes human review through an approval-gated,
+idempotent pipeline).
+
+Surfacing is mode-aware and conservative. In Mode A, `our setup`
+materializes harness MCP config and guidance opt-in, only for services
+visible to the current role/operator, never fetching describe endpoints by
+default, with doctor warnings for unresolved auth references. In Mode B,
+compilation emits topology and grants only — never credentials or fetched
+schemas; refresh belongs to the runtime/governance plane.
 
 ### Immediate safety patch (independent of mode work)
 
@@ -219,7 +245,8 @@ The combined path:
    worktrees, first-class registry, sync session-awareness), with `our ai`
    defaulting into a fresh session, explicit resume only, and `--no-session`
    as the escape hatch.
-3. **v0.15** — manifest `roles` + `mcp_servers`; org-side launch-artifact
+3. **v0.15** — manifest `roles` + `services` (MCP servers fold in as
+   `kind: mcp`); org-side launch-artifact
    compilation for contained runners.
 4. Later — gnit backend for sessions once umbrellas bootstrap as gnit
    control workspaces; managed read-only base mounts for contained launches.
