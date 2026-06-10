@@ -74,3 +74,15 @@ install hints; it does not silently install tools.
 This repository is the public mechanism. Organization content belongs in a
 private manifest or workspace repo. Public fixtures should stay generic:
 `acme`, `example`, and `sampleco`.
+
+## Where our sits in the stack
+
+`our` is the organization layer of a broader agentic toolchain: it owns
+manifest semantics, workspace materialization, and safe publish. Multi-repo
+publish delegates to [gnit](https://github.com/mostlydev/gnit) when the
+umbrella is a gnit control workspace. For unattended fleet agents, manifest
+roles compile into [clawdapus](https://github.com/mostlydev/clawdapus)
+containers whose model and tool access is mediated by the cllama governance
+proxy — the `our` CLI rides inside as a governed work surface, with only the
+operational verb set reachable. `our` never becomes a container runtime or a
+policy engine; it speaks those tools' formats at the boundary.

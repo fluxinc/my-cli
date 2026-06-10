@@ -76,6 +76,19 @@ The organization manifest lives in its own private repository outside the
 umbrella — the workspace is a mount of things the manifest defines, and
 day-to-day work never edits the manifest itself.
 
+## Part of a Toolchain
+
+`our` is the organization layer of a broader agentic stack: org context and
+knowledge for every agent and human, from one manifest. It composes with
+[gnit](https://github.com/mostlydev/gnit) (git-native multi-repo workspaces,
+the umbrella's publish substrate) and
+[clawdapus](https://github.com/mostlydev/clawdapus) (governed agent
+containers whose cognition is mediated by the cllama proxy) — manifest roles
+compile into contained fleet agents that carry the `our` CLI as a governed
+work surface. Gated organization services (credential brokers,
+human-reviewed communications) are declared in the manifest and consumed the
+same way by human and AI operators.
+
 Start with the [quickstart](/guide/quickstart), then read
 [the model](/guide/the-model) for the boundary between the public CLI and a
 private organization manifest.

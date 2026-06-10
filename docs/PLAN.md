@@ -25,8 +25,6 @@ audiences:
 rewrites mount URLs, and pushes. The umbrella (`~/<org>`) is not itself a
 Git repository; it is the per-user operating envelope containing `.our/`,
 mounts, product clones under `repos/`, and local scratch under `personal/`.
-A conflated single-repo layout (manifest + content in one repo) remains
-supported for compatibility with a single shared checkout.
 
 ## Current Baseline (v0.13.0)
 
@@ -40,7 +38,7 @@ supported for compatibility with a single shared checkout.
 - Manifest-declared static and tool-provided skills; bundled `our`
   self-skill kept current by the binary and installer.
 - Umbrella creation and guidance generation; sparse scoped mounts via
-  `include_paths` (skipped for conflated self-mounts).
+  `include_paths`.
 - Catalog: products (opt-in clones under `repos/<id>`) and customers.
 - Markdown-first content commands: meetings, support, fleet (registry with
   in-place updates), with qmd-first search when available.

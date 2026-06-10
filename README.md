@@ -321,6 +321,37 @@ reported rather than touched.
 Missing harnesses are skipped silently — `our` configures what is present and
 never fails because a harness is absent.
 
+## The Toolchain Around `our`
+
+`our` is the organization layer of a broader agentic toolchain. Each piece is
+its own project with one job, and they compose without depending on each
+other's internals:
+
+- **`our` (this repo)** — org tooling, primarily for agents: the manifest
+  defines the organization; umbrellas and workspaces materialize it so humans
+  and AI operators work from the same context with the same commands.
+- **[gnit](https://github.com/mostlydev/gnit)** — git-native multi-repo
+  workspaces. The umbrella's publish substrate for mounts: cross-repo
+  changes, ordered push, reproducible pins.
+- **[clawdapus](https://github.com/mostlydev/clawdapus)** — materialization:
+  governed agent containers ("claws") compiled from declarative pod files.
+  The compile target for turning manifest roles into contained fleet agents,
+  with the `our` CLI inside as a governed work surface.
+- **cllama** (part of clawdapus) — containment: the governance proxy that
+  holds real provider credentials and mediates every model and tool call.
+  Agents get scoped bearer tokens, never keys.
+- **Policy and audit** sit behind that proxy: behavioral rules compiled from
+  the organization's manifest, enforced outside the agent process, with every
+  intervention auditable.
+- **Gated organization services** — credential brokers and human-reviewed
+  communication pipelines — are declared in the manifest and consumed
+  identically by human and AI operators: gating is a property of the service,
+  not of who is asking.
+
+The shared design principle: external, inward-facing mechanisms (directories,
+mounts, proxies, repos) govern agents at boundaries they cannot avoid — never
+through any harness's internal machinery.
+
 ## Public/Private Boundary
 
 **This repository is the generic mechanism and is public-safe. It must never

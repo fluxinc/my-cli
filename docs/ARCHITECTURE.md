@@ -136,12 +136,7 @@ which content repos mount where. Keeping the planes in separate repositories
 is what lets write access differ (admins vs everyone) and guarantees an agent
 grepping the umbrella can never read — or dirty — the manifest.
 
-A **conflated layout** (one private repo serving as both manifest source and
-content mount) remains supported for compatibility: `our` keeps a single
-checkout for it, skips sparse-checkout on it, and syncs it as one merged
-entry. New organizations get the separated layout.
-
-**Mount scoping** narrows external content mounts. A mount may declare
+**Mount scoping** narrows content mounts. A mount may declare
 `include_paths`; `our` then clones with `git clone --sparse` and applies
 `git sparse-checkout set --no-cone <paths>`, so only the listed directories
 appear in the umbrella. The same scoping mechanism is the forward path for

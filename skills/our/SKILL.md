@@ -102,9 +102,7 @@ only when the user wants the organization shared: it creates private remotes
 (`<org>-manifest`, `<org>-workspace`), rewrites the manifest's local mount
 URLs to the published repos, and pushes both. Never hand-edit mount URLs and
 never push a manifest that still references local paths — `our sync` holds it
-and `our doctor` names the offending mounts. A mount `git_url` of `"."` (or
-the manifest's own URL) is a legacy conflated layout: supported, single
-checkout, but not what init generates.
+and `our doctor` names the offending mounts.
 
 `root`, `ai`, and `setup` make a best-effort, TTL-gated refresh of clean
 manifest/content checkouts before reading workspace context. They do not touch
