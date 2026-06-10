@@ -1,6 +1,6 @@
-# What is our?
+# What is Our AI?
 
-`our` is a small Go CLI for bootstrapping AI agent workspaces from an
+Our AI is a small Go CLI, `our`, that bootstraps AI agent workspaces from an
 organization manifest.
 
 It installs declared skills into supported AI harnesses, creates a local

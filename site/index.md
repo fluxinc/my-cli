@@ -3,11 +3,11 @@ layout: home
 
 hero:
   name: Our AI
-  text: Manifest-backed AI workspace tooling
-  tagline: One command gives every installed AI harness the same skills, generated guidance, mounts, and local operating context.
+  text: Your team's AI, set up once
+  tagline: One organization manifest gives every AI harness the same skills, generated guidance, mounts, and local operating context — on any machine, with one command.
   image:
     src: /our-ai-glyph.svg
-    alt: Our AI
+    alt: Our AI mark
   actions:
     - theme: brand
       text: Install
@@ -19,22 +19,22 @@ hero:
 features:
   - icon: "01"
     title: One manifest
-    details: Skills, mounts, catalog, tools, and generated guidance come from a single organization source of truth.
+    details: Skills, mounts, catalog, tools, and generated guidance flow from a single organization source of truth.
   - icon: "02"
     title: Every harness
-    details: Claude Code, Codex, OpenCode, and Gemini receive the same declared capabilities without per-harness setup.
+    details: Claude Code, Codex, OpenCode, and Gemini get the same declared capabilities — no per-harness setup.
   - icon: "03"
     title: Local umbrella
-    details: Each operator gets a deterministic workspace envelope with synced content, products, state, and scratch.
+    details: Every operator gets the same deterministic workspace, with synced content, products, state, and scratch.
   - icon: "04"
     title: Operational by default
-    details: Read, inspect, launch, diagnose, and materialize local skills without mutating shared source of truth.
+    details: Read, inspect, launch, diagnose, and materialize local skills without mutating the shared source of truth.
   - icon: "05"
     title: Admin when explicit
     details: Manifest authoring, onboarding, mounts, and content writes live under the admin surface with clear write targets.
   - icon: "06"
     title: Public mechanism
-    details: The CLI stays generic and public-safe. Organization knowledge lives in private manifest and workspace repos.
+    details: The CLI stays generic and open. Organization knowledge lives in your private manifest and workspace repos.
 ---
 
 ## Install

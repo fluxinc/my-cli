@@ -1,11 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="our">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Our AI mark">
   <defs>
-    <linearGradient id="our-a" x1="40" y1="28" x2="220" y2="228" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#14b8a6"/>
+    <linearGradient id="og-t" x1="49" y1="78" x2="149" y2="178" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#0d9488"/>
+    </linearGradient>
+    <linearGradient id="og-b" x1="107" y1="78" x2="207" y2="178" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60a5fa"/>
       <stop offset="1" stop-color="#2563eb"/>
     </linearGradient>
+    <radialGradient id="og-a" cx="128" cy="128" r="124" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14b8a6" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#14b8a6" stop-opacity="0"/>
+    </radialGradient>
   </defs>
   <rect width="256" height="256" rx="56" fill="#071412"/>
-  <path d="M70 66h118v39H113v31h63v38h-63v58H70V66Z" fill="url(#our-a)"/>
-  <path d="M113 105h75v39h-75v-39Zm0 69h63v38h-63v-38Z" fill="#0f172a" opacity=".18"/>
+  <rect width="256" height="256" rx="56" fill="url(#og-a)"/>
+  <g fill="none" stroke-width="21">
+    <circle cx="99" cy="128" r="50" stroke="url(#og-t)"/>
+    <circle cx="157" cy="128" r="50" stroke="url(#og-b)"/>
+    <path d="M142.3 153A50 50 0 0 1 109.4 176.9" stroke="url(#og-t)"/>
+  </g>
 </svg>
