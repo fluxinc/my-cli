@@ -64,6 +64,8 @@ type app struct {
 	updateNow            func() time.Time
 	updateCurrentVersion string
 	updateTargetPath     string
+	// publishRunner overrides external gh invocations during our publish.
+	publishRunner manifest.Runner
 }
 
 func (a app) runStartupMaintenance(args []string) {
@@ -133,6 +135,8 @@ func (a app) run(args []string) error {
 		return a.runUpdate(args[2:])
 	case "init":
 		return a.runInit(args[2:])
+	case "publish":
+		return a.runPublish(args[2:])
 	case "skills":
 		return a.runSkills(args[2:])
 	case "setup":
@@ -189,6 +193,7 @@ Usage:
   our ai [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
   our update [--check] [--version X.Y.Z] [--json] [--yes]
   our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
+  our publish [--manifest NAME] [--home DIR] [--print] [--json]
   our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
   our skills self install|uninstall|status ...
   our skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
@@ -252,7 +257,7 @@ type initResult struct {
 	OrganizationID   string                `json:"organization_id"`
 	OrganizationName string                `json:"organization_name"`
 	RepoPath         string                `json:"repo_path"`
-	SelfMount        string                `json:"self_mount"`
+	ContentPath      string                `json:"content_path"`
 	Manifest         manifest.Ref          `json:"manifest"`
 	Sync             []manifest.SyncResult `json:"sync"`
 	NextCommands     []initNextCommand     `json:"next_commands"`
@@ -267,7 +272,7 @@ func (a app) runInit(args []string) error {
 	var opts initOptions
 	fs := newFlagSet("our init", a.stderr)
 	fs.StringVar(&opts.orgName, "name", "", "organization display name")
-	fs.StringVar(&opts.repoPath, "path", "", "manifest repository path")
+	fs.StringVar(&opts.repoPath, "path", "", "content repository path")
 	fs.StringVar(&opts.umbrellaPath, "umbrella", "", "recommended umbrella path")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	fs.BoolVar(&opts.setup, "setup", false, "run our setup after creating and syncing the manifest")
@@ -317,12 +322,14 @@ func (a app) printInitUsage() {
 	fmt.Fprintln(a.stderr, `Usage of our init:
   our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
 
-Creates a small local manifest repository, commits it, registers it, and syncs
-the manifest cache so our setup can run immediately.
+Creates two local repositories and registers the organization: a private
+manifest repository (the control plane: manifest, catalog, skills) and a
+content repository mounted in the umbrella (the workspace handbook). Both are
+local-only until our publish creates their remotes.
 
 Examples:
   our init acme --name "Acme"
-  our init acme --path ~/acme-workspace
+  our init acme --path ~/acme/handbook
 
 Options:`)
 }
@@ -344,40 +351,49 @@ func (a app) createInitScaffold(opts initOptions) (initResult, error) {
 	if umbrellaPath == "" {
 		umbrellaPath = "~/" + opts.orgID
 	}
-	repoPath := opts.repoPath
-	if repoPath == "" {
-		// The org repository is its own only checkout: scaffold it directly
-		// at the canonical umbrella workspace path.
-		repoPath = umbrella.WorkspacePath(expandUserPath(homeDir, umbrellaPath))
-	} else {
-		repoPath = expandUserPath(homeDir, repoPath)
-	}
-	repoPath, err = filepath.Abs(repoPath)
+	// Control plane: the private manifest repository at the registry path.
+	manifestPath, err := manifest.DefaultCachePath(opts.home, opts.orgID)
 	if err != nil {
 		return initResult{}, err
 	}
-	if err := ensureInitTarget(repoPath); err != nil {
+	// Data plane: the content repository mounted visibly in the umbrella.
+	contentPath := opts.repoPath
+	if contentPath == "" {
+		contentPath = umbrella.MountPath(expandUserPath(homeDir, umbrellaPath), initMountID)
+	} else {
+		contentPath = expandUserPath(homeDir, contentPath)
+	}
+	contentPath, err = filepath.Abs(contentPath)
+	if err != nil {
+		return initResult{}, err
+	}
+	if err := ensureInitTarget(manifestPath); err != nil {
+		return initResult{}, err
+	}
+	if err := ensureInitTarget(contentPath); err != nil {
 		return initResult{}, err
 	}
 	orgName := strings.TrimSpace(opts.orgName)
 	if orgName == "" {
 		orgName = displayNameFromID(opts.orgID)
 	}
-	doc := initManifestDocument(opts.orgID, orgName, umbrellaPath)
-	if err := writeInitScaffold(repoPath, doc); err != nil {
+	doc := initManifestDocument(opts.orgID, orgName, umbrellaPath, contentPath)
+	if err := writeInitManifestScaffold(manifestPath, doc); err != nil {
 		return initResult{}, err
 	}
-	if validation := manifest.ValidateFile(repoPath); len(validation.Errors) != 0 {
+	if err := writeInitContentScaffold(contentPath, opts.orgID, orgName); err != nil {
+		return initResult{}, err
+	}
+	if validation := manifest.ValidateFile(manifestPath); len(validation.Errors) != 0 {
 		return initResult{}, fmt.Errorf("generated manifest is invalid: %s", strings.Join(validation.Errors, "; "))
 	}
-	if err := gitInitCommit(repoPath); err != nil {
+	if err := gitInitCommit(manifestPath); err != nil {
 		return initResult{}, err
 	}
-	if _, err := manifest.Add(opts.home, opts.orgID, repoPath); err != nil {
+	if err := gitInitCommit(contentPath); err != nil {
 		return initResult{}, err
 	}
-	// The scaffold checkout is canonical; never keep a duplicate cache clone.
-	ref, err := manifest.SetLocalPath(opts.home, opts.orgID, repoPath)
+	ref, err := manifest.Add(opts.home, opts.orgID, manifestPath)
 	if err != nil {
 		return initResult{}, err
 	}
@@ -391,20 +407,22 @@ func (a app) createInitScaffold(opts initOptions) (initResult, error) {
 	result := initResult{
 		OrganizationID:   opts.orgID,
 		OrganizationName: orgName,
-		RepoPath:         repoPath,
-		SelfMount:        manifest.SelfMountGitURL,
+		RepoPath:         manifestPath,
+		ContentPath:      contentPath,
 		Manifest:         ref,
 		Sync:             syncResults,
 	}
-	result.NextCommands = initNextCommands(opts.home, opts.orgID, repoPath)
+	result.NextCommands = initNextCommands(opts.home, opts.orgID)
 	return result, nil
 }
 
-// initMountID is the mount id of the self-mounted org repository scaffolded
-// by our init; the scaffold lives at the umbrella mount path for this id.
-const initMountID = "handbook"
+// initMountID names the content mount our init declares: the org workspace,
+// "the actual content" — distinct from the private manifest (control plane).
+// The content repo lives at the umbrella mount path for this id and is
+// published as <org>-workspace.
+const initMountID = "workspace"
 
-func initManifestDocument(orgID, orgName, umbrellaPath string) manifest.Document {
+func initManifestDocument(orgID, orgName, umbrellaPath, contentGitURL string) manifest.Document {
 	return manifest.Document{
 		ManifestVersion: 1,
 		Organization: manifest.Organization{
@@ -429,24 +447,16 @@ func initManifestDocument(orgID, orgName, umbrellaPath string) manifest.Document
 					"decisions",
 					"workspace",
 				},
-				Requires: []string{"workspace:handbook"},
+				Requires: []string{"workspace:" + initMountID},
 			},
 		},
 		Mounts: []manifest.Mount{
 			{
-				ID:     initMountID,
-				Kind:   "handbook",
-				GitURL: manifest.SelfMountGitURL,
+				ID: initMountID,
+				Kind: "handbook",
+				// Local until our publish rewrites it to the hosted remote.
+				GitURL: contentGitURL,
 				Mode:   "default",
-				IncludePaths: []string{
-					"meetings",
-					"support",
-					"fleet",
-					"decisions",
-					"projects",
-					"policy",
-					"people",
-				},
 			},
 		},
 	}
@@ -473,25 +483,37 @@ func ensureInitTarget(path string) error {
 	return nil
 }
 
-func writeInitScaffold(root string, doc manifest.Document) error {
+func writeInitManifestScaffold(root string, doc manifest.Document) error {
 	if err := manifest.SaveDocument(root, doc); err != nil {
 		return err
 	}
 	orgID := doc.Organization.ID
 	orgName := doc.Organization.Name
 	files := map[string]string{
-		"README.md": initRootREADME(orgID, orgName),
+		"README.md": initManifestREADME(orgID, orgName),
 		filepath.Join("agent-guidance", orgID+".md"):           initAgentGuidance(orgName),
 		filepath.Join("skills", orgID+"-handbook", "SKILL.md"): initSkillDoc(orgID, orgName),
 		filepath.Join("catalog", "customers.json"):             "[]\n",
 		filepath.Join("catalog", "products.json"):              "[]\n",
-		filepath.Join("meetings", "README.md"):                 initSectionREADME("Meetings", "Record meeting notes with our meetings add, then publish with our sync."),
-		filepath.Join("support", "README.md"):                  initSectionREADME("Support", "Record anonymized problem-to-solution notes with our support add."),
-		filepath.Join("fleet", "README.md"):                    initSectionREADME("Fleet", "Track deployed instances or devices with our fleet add and our fleet set."),
-		filepath.Join("decisions", "README.md"):                initSectionREADME("Decisions", "Keep durable decisions and their context here."),
-		filepath.Join("projects", "README.md"):                 initSectionREADME("Projects", "Keep project notes that agents should be able to read."),
-		filepath.Join("policy", "README.md"):                   initSectionREADME("Policy", "Keep operating policies and rules of engagement here."),
-		filepath.Join("people", "README.md"):                   initSectionREADME("People", "Keep public-safe team role notes here."),
+	}
+	for path, content := range files {
+		if err := writeInitFile(filepath.Join(root, path), content); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeInitContentScaffold(root, orgID, orgName string) error {
+	files := map[string]string{
+		"README.md":                              initContentREADME(orgName),
+		filepath.Join("meetings", "README.md"):   initSectionREADME("Meetings", "Record meeting notes with our meetings add, then publish with our sync."),
+		filepath.Join("support", "README.md"):    initSectionREADME("Support", "Record anonymized problem-to-solution notes with our support add."),
+		filepath.Join("fleet", "README.md"):      initSectionREADME("Fleet", "Track deployed instances or devices with our fleet add and our fleet set."),
+		filepath.Join("decisions", "README.md"):  initSectionREADME("Decisions", "Keep durable decisions and their context here."),
+		filepath.Join("projects", "README.md"):   initSectionREADME("Projects", "Keep project notes that agents should be able to read."),
+		filepath.Join("policy", "README.md"):     initSectionREADME("Policy", "Keep operating policies and rules of engagement here."),
+		filepath.Join("people", "README.md"):     initSectionREADME("People", "Keep public-safe team role notes here."),
 	}
 	for path, content := range files {
 		if err := writeInitFile(filepath.Join(root, path), content); err != nil {
@@ -508,10 +530,13 @@ func writeInitFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
-func initRootREADME(orgID, orgName string) string {
-	return fmt.Sprintf(`# %s Our AI Workspace
+func initManifestREADME(orgID, orgName string) string {
+	return fmt.Sprintf(`# %s Our AI Manifest
 
-This repository is the private manifest and handbook source for %s.
+This private repository is the %s organization manifest: the control plane
+that defines mounts, skills, the catalog, and agent guidance. Day-to-day
+workspace content lives in the mounted content repositories it declares, not
+here. Restrict write access to workspace administrators.
 
 ## Joining %s
 
@@ -524,18 +549,23 @@ our setup
 our ai codex
 `+"```"+`
 
-The manifest is in `+"`manifest.json`"+`. The default handbook mount points back to
-this repository and includes the content directories in this checkout.
-
 ## Publish
 
-When the local scaffold is ready to share, create a private Git repository and
-push it:
+Run `+"`our publish`"+` from any directory to create the private remotes for
+this manifest and its content repositories, rewrite local mount URLs, and
+push everything. Do not push this repository while mounts still reference
+local paths.
+`, orgName, orgName, orgName, orgID, orgID)
+}
 
-`+"```sh"+`
-gh repo create %s-workspace --private --source . --push
-`+"```"+`
-`, orgName, orgName, orgName, orgID, orgID, orgID)
+func initContentREADME(orgName string) string {
+	return fmt.Sprintf(`# %s Handbook
+
+Workspace content for %s: meetings, support records, fleet records,
+decisions, projects, policy, and people notes. Record entries with the our
+CLI (our meetings add, our support add, our fleet add) and publish with
+our sync.
+`, orgName, orgName)
 }
 
 func initAgentGuidance(orgName string) string {
@@ -594,124 +624,19 @@ func runGit(root string, args ...string) error {
 	return fmt.Errorf("git %s: %s", strings.Join(args, " "), message)
 }
 
-// workspaceCheckout classifies one local checkout of the org repository for
-// single-checkout migration decisions.
-type workspaceCheckout struct {
-	path      string
-	dirty     []string
-	hasWork   bool // dirty, ahead of upstream, or unverifiable
-	deletable bool // clean, not ahead, and on the manifest's remote
-}
-
-func classifyWorkspaceCheckout(path, refGitURL string) workspaceCheckout {
-	c := workspaceCheckout{path: path}
-	dirty, err := gitDirtyFiles(path)
-	if err != nil {
-		c.hasWork = true
-		return c
-	}
-	c.dirty = dirty
-	ahead, aheadKnown := gitAheadCount(path)
-	origin, _ := gitCmdOutput(path, "remote", "get-url", "origin")
-	sameRemote := manifest.SameRemote(origin, refGitURL)
-	c.hasWork = len(dirty) != 0 || ahead > 0 || !aheadKnown
-	c.deletable = !c.hasWork && sameRemote
-	return c
-}
-
-// ensureCanonicalWorkspace converges a self-mounted manifest onto one
-// canonical checkout at <umbrella>/workspace: it keeps the checkout that
-// carries local work, removes verified-clean duplicates, and re-points the
-// registry. It refuses (with exact paths and files) when more than one
-// checkout has local work.
-func ensureCanonicalWorkspace(home string, doc registeredDoc, root string) (manifest.Ref, error) {
-	ref := doc.ref
-	if _, selfMounted := selfMountContentPaths(ref, doc.doc); !selfMounted {
-		return ref, nil
-	}
-	canonical := umbrella.WorkspacePath(root)
-	cachePath, err := manifest.DefaultCachePath(home, ref.Name)
-	if err != nil {
-		return ref, err
-	}
-	candidates := []string{canonical, ref.LocalPath}
-	for _, mount := range manifest.EffectiveMounts(doc.doc) {
-		if mount.GitURL == manifest.SelfMountGitURL || manifest.SameRemote(mount.GitURL, ref.GitURL) {
-			candidates = append(candidates, umbrella.MountPath(root, mount.ID))
-		}
-	}
-	seen := map[string]bool{}
-	var existing []workspaceCheckout
-	for _, path := range candidates {
-		if path == "" || seen[path] {
-			continue
-		}
-		seen[path] = true
-		if !isGitCheckout(path) {
-			continue
-		}
-		existing = append(existing, classifyWorkspaceCheckout(path, ref.GitURL))
-	}
-	if len(existing) == 0 {
-		// Nothing cloned yet; future clones should land at the canonical path.
-		if ref.LocalPath != canonical {
-			return manifest.SetLocalPath(home, ref.Name, canonical)
-		}
-		return ref, nil
-	}
-	var withWork []workspaceCheckout
-	for _, c := range existing {
-		if c.hasWork {
-			withWork = append(withWork, c)
-		}
-	}
-	if len(withWork) > 1 {
-		lines := make([]string, 0, len(withWork))
-		for _, c := range withWork {
-			detail := strings.Join(c.dirty, ", ")
-			if detail == "" {
-				detail = "unpublished or unverifiable commits"
-			}
-			lines = append(lines, fmt.Sprintf("  %s: %s", c.path, detail))
-		}
-		return ref, fmt.Errorf("multiple checkouts of %s have local work:\n%s\npublish or stash the changes in all but one checkout, then run our setup again", ref.GitURL, strings.Join(lines, "\n"))
-	}
-	winner := existing[0]
-	if len(withWork) == 1 {
-		winner = withWork[0]
-	}
-	for _, c := range existing {
-		if c.path == winner.path {
-			continue
-		}
-		if !c.deletable {
-			return ref, fmt.Errorf("duplicate checkout %s of %s cannot be removed automatically; remove or repoint it, then run our setup again", c.path, ref.GitURL)
-		}
-		if err := os.RemoveAll(c.path); err != nil {
-			return ref, fmt.Errorf("remove duplicate checkout %s: %w", c.path, err)
-		}
-	}
-	target := winner.path
-	// Relocate only checkouts in our managed locations; a deliberately
-	// custom path stays where the operator put it.
-	movable := winner.path == cachePath || pathWithinDir(winner.path, root)
-	if winner.path != canonical && movable {
-		if err := os.MkdirAll(filepath.Dir(canonical), 0o755); err != nil {
-			return ref, err
-		}
-		if err := os.Rename(winner.path, canonical); err != nil {
-			return ref, fmt.Errorf("move %s to %s: %w", winner.path, canonical, err)
-		}
-		target = canonical
-	}
-	if ref.LocalPath != target {
-		return manifest.SetLocalPath(home, ref.Name, target)
-	}
-	return ref, nil
-}
-
 func isGitCheckout(path string) bool {
 	_, err := os.Stat(filepath.Join(path, ".git"))
+	return err == nil
+}
+
+func isBareGitRepo(path string) bool {
+	if isGitCheckout(path) {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(path, "HEAD")); err != nil {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(path, "objects"))
 	return err == nil
 }
 
@@ -738,29 +663,191 @@ func gitDirtyFiles(dir string) ([]string, error) {
 	return files, nil
 }
 
-// gitAheadCount returns commits ahead of upstream; known=false when there is
-// no upstream to compare against.
-func gitAheadCount(dir string) (int, bool) {
-	out, err := gitCmdOutput(dir, "rev-list", "--count", "@{u}..HEAD")
-	if err != nil {
-		return 0, false
-	}
-	n, err := strconv.Atoi(out)
-	if err != nil {
-		return 0, false
-	}
-	return n, true
+type publishStep struct {
+	Target  string `json:"target"`
+	Repo    string `json:"repo,omitempty"`
+	Action  string `json:"action"`
+	URL     string `json:"url,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
-func pathWithinDir(path, dir string) bool {
-	rel, err := filepath.Rel(dir, path)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+type publishResult struct {
+	Manifest        string        `json:"manifest"`
+	Steps           []publishStep `json:"steps"`
+	TeammateCommand string        `json:"teammate_command,omitempty"`
 }
 
-func initNextCommands(home, orgID, repoPath string) []initNextCommand {
+func (a app) runPublish(args []string) error {
+	var home string
+	var manifestName string
+	var printOnly bool
+	var jsonOut bool
+	fs := newFlagSet("our publish", a.stderr)
+	fs.StringVar(&home, "home", "", "override home directory")
+	fs.StringVar(&manifestName, "manifest", "", "publish one registered manifest")
+	fs.BoolVar(&printOnly, "print", false, "print the planned actions without creating or pushing anything")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	fs.Usage = func() {
+		fmt.Fprintln(a.stderr, `Usage of our publish:
+  our publish [--manifest NAME] [--home DIR] [--print] [--json]
+
+Publishes the organization: creates private remotes for content repositories
+and the manifest repository when they have none, rewrites local mount URLs to
+the published remotes, commits that manifest change, and pushes everything.
+Idempotent; existing remotes are adopted and pushed, never recreated.
+
+Options:`)
+		fs.PrintDefaults()
+	}
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home":     true,
+		"manifest": true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("publish does not accept positional arguments")
+	}
+	doc, err := loadSingleRegisteredDoc(home, manifestName)
+	if err != nil {
+		return err
+	}
+	result, err := a.publishOrg(home, doc, printOnly)
+	if jsonOut {
+		if printErr := printJSON(a.stdout, result); printErr != nil {
+			return printErr
+		}
+		return err
+	}
+	for _, step := range result.Steps {
+		line := fmt.Sprintf("publish\t%s\t%s", step.Target, step.Action)
+		if step.URL != "" {
+			line += "\t" + step.URL
+		}
+		if step.Message != "" {
+			line += "\t" + step.Message
+		}
+		fmt.Fprintln(a.stdout, line)
+	}
+	if result.TeammateCommand != "" {
+		fmt.Fprintf(a.stdout, "next\tjoin\t%s\n", result.TeammateCommand)
+	}
+	return err
+}
+
+func (a app) publishOrg(home string, doc registeredDoc, printOnly bool) (publishResult, error) {
+	runner := a.publishRunner
+	if runner == nil {
+		runner = func(name string, args ...string) ([]byte, error) {
+			return exec.Command(name, args...).CombinedOutput()
+		}
+	}
+	orgID := doc.doc.Organization.ID
+	result := publishResult{Manifest: doc.ref.Name}
+	newDoc := doc.doc
+	rewritten := false
+	for i := range newDoc.Mounts {
+		mount := newDoc.Mounts[i]
+		if mount.GitURL == manifest.SelfMountGitURL || !filepath.IsAbs(mount.GitURL) {
+			continue
+		}
+		sourcePath := mount.GitURL
+		if isBareGitRepo(sourcePath) {
+			// Already a served remote (e.g. a local bare repository).
+			continue
+		}
+		if !isGitCheckout(sourcePath) {
+			result.Steps = append(result.Steps, publishStep{Target: "content:" + mount.ID, Action: "failed", Message: "mount source " + sourcePath + " is not a git repository"})
+			return result, fmt.Errorf("mount %q source %s is not a git repository", mount.ID, sourcePath)
+		}
+		repoName := orgID + "-" + mount.ID
+		url, step, err := a.ensurePublishedRepo(sourcePath, repoName, "content:"+mount.ID, printOnly, runner)
+		result.Steps = append(result.Steps, step)
+		if err != nil {
+			return result, err
+		}
+		if !printOnly && url != "" {
+			newDoc.Mounts[i].GitURL = url
+			rewritten = true
+		}
+	}
+	if rewritten {
+		if err := manifest.SaveDocument(doc.ref.LocalPath, newDoc); err != nil {
+			return result, err
+		}
+		if err := runGit(doc.ref.LocalPath, "add", "--", "manifest.json"); err != nil {
+			return result, err
+		}
+		// Commit only the URL rewrite so unrelated admin edits stay local.
+		if err := runGit(doc.ref.LocalPath, "commit", "--quiet", "-m", "Point mounts at published repositories", "--", "manifest.json"); err != nil {
+			if identityErr := runGit(doc.ref.LocalPath, "-c", "user.name=Our AI", "-c", "user.email=our-ai@example.invalid", "commit", "--quiet", "-m", "Point mounts at published repositories", "--", "manifest.json"); identityErr != nil {
+				return result, identityErr
+			}
+		}
+		result.Steps = append(result.Steps, publishStep{Target: "manifest", Action: "rewrote-mounts"})
+	}
+	manifestURL, step, err := a.ensurePublishedRepo(doc.ref.LocalPath, orgID+"-manifest", "manifest", printOnly, runner)
+	result.Steps = append(result.Steps, step)
+	if err != nil {
+		return result, err
+	}
+	if !printOnly && manifestURL != "" {
+		if filepath.IsAbs(doc.ref.GitURL) && !manifest.SameRemote(doc.ref.GitURL, manifestURL) {
+			if _, err := manifest.Add(home, doc.ref.Name, manifestURL); err != nil {
+				return result, err
+			}
+			if _, err := manifest.SetLocalPath(home, doc.ref.Name, doc.ref.LocalPath); err != nil {
+				return result, err
+			}
+		}
+		result.TeammateCommand = "our manifests add " + doc.ref.Name + " " + manifestURL
+	}
+	return result, nil
+}
+
+// ensurePublishedRepo adopts an existing origin remote (verifying GitHub
+// repositories are private) or creates a private remote for the checkout,
+// then pushes; it never recreates an existing remote.
+func (a app) ensurePublishedRepo(path, repoName, target string, printOnly bool, runner manifest.Runner) (string, publishStep, error) {
+	origin, err := gitCmdOutput(path, "remote", "get-url", "origin")
+	if err == nil && origin != "" {
+		if printOnly {
+			return origin, publishStep{Target: target, Repo: repoName, Action: "would push", URL: origin}, nil
+		}
+		if _, ok := githubRepoSlug(origin); ok {
+			visibility, visErr := a.githubRepoVisibility(origin)
+			if visErr != nil {
+				return "", publishStep{Target: target, Action: "failed", URL: origin, Message: "cannot verify repository visibility"}, fmt.Errorf("cannot verify visibility of %s: %v; check gh auth status and repository access", origin, visErr)
+			}
+			if !strings.EqualFold(visibility, "PRIVATE") {
+				return "", publishStep{Target: target, Action: "failed", URL: origin, Message: "repository is not private"}, fmt.Errorf("%s is %s; make it private or point origin at a private repository before publishing", origin, strings.ToLower(visibility))
+			}
+		}
+		if err := runGit(path, "push", "origin", "HEAD"); err != nil {
+			return "", publishStep{Target: target, Action: "failed", URL: origin, Message: err.Error()}, err
+		}
+		return origin, publishStep{Target: target, Repo: repoName, Action: "pushed", URL: origin}, nil
+	}
+	if printOnly {
+		return "", publishStep{Target: target, Repo: repoName, Action: "would create", Message: "gh repo create " + repoName + " --private --source " + path + " --push"}, nil
+	}
+	out, err := runner("gh", "repo", "create", repoName, "--private", "--source", path, "--remote", "origin", "--push")
+	if err != nil {
+		message := strings.TrimSpace(string(out))
+		if message == "" {
+			message = err.Error()
+		}
+		return "", publishStep{Target: target, Repo: repoName, Action: "failed", Message: message}, fmt.Errorf("gh repo create %s: %s", repoName, message)
+	}
+	origin, err = gitCmdOutput(path, "remote", "get-url", "origin")
+	if err != nil || origin == "" {
+		return "", publishStep{Target: target, Repo: repoName, Action: "failed", Message: "origin remote missing after gh repo create"}, fmt.Errorf("origin remote missing after gh repo create %s", repoName)
+	}
+	return origin, publishStep{Target: target, Repo: repoName, Action: "created", URL: origin}, nil
+}
+
+func initNextCommands(home, orgID string) []initNextCommand {
 	manifestFlag := ""
 	if initManifestFlagNeeded(home) {
 		manifestFlag = " --manifest " + shellQuote(orgID)
@@ -769,7 +856,7 @@ func initNextCommands(home, orgID, repoPath string) []initNextCommand {
 		{Action: "setup", Command: "our setup" + manifestFlag},
 		{Action: "launch", Command: "our ai" + manifestFlag + " claude"},
 		{Action: "launch", Command: "our ai" + manifestFlag + " codex"},
-		{Action: "publish", Command: "cd " + shellQuote(repoPath) + " && gh repo create " + shellQuote(orgID+"-workspace") + " --private --source . --push"},
+		{Action: "publish", Command: "our publish" + manifestFlag},
 	}
 }
 
@@ -780,9 +867,10 @@ func initManifestFlagNeeded(home string) bool {
 
 func (a app) printInitResult(result initResult) {
 	fmt.Fprintf(a.stdout, "manifest-repo\tcreated\t%s\n", result.RepoPath)
+	fmt.Fprintf(a.stdout, "content-repo\tcreated\t%s\n", result.ContentPath)
 	fmt.Fprintf(a.stdout, "manifest\tregistered\t%s\t%s\n", result.Manifest.Name, result.Manifest.LocalPath)
 	for _, item := range result.Sync {
-		fmt.Fprintf(a.stdout, "manifest-cache\t%s\t%s\n", item.Status, item.LocalPath)
+		fmt.Fprintf(a.stdout, "manifest-sync\t%s\t%s\n", item.Status, item.LocalPath)
 	}
 	for _, next := range result.NextCommands {
 		fmt.Fprintf(a.stdout, "next\t%s\t%s\n", next.Action, next.Command)
@@ -7789,11 +7877,6 @@ func (a app) runOnboard(args []string) error {
 			return err
 		}
 		ws = ensured
-		if migrated, err := ensureCanonicalWorkspace(opts.home, doc, root); err != nil {
-			return err
-		} else {
-			doc.ref = migrated
-		}
 		a.maybeAutoRefresh(opts.home, doc.ref.Name, root, root, opts.noRefresh)
 		a.maybeUpdateNotice(opts.home, opts.noUpdateCheck)
 		refreshed, err := loadSingleRegisteredDoc(opts.home, doc.ref.Name)

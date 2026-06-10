@@ -63,6 +63,30 @@ func TestRunHoldsDuplicateRemoteWhenBothCheckoutsHavePendingChanges(t *testing.T
 	}
 }
 
+func TestRunReportsLocalOnlyRepoWithoutOrigin(t *testing.T) {
+	repo := t.TempDir()
+	writeFile(t, filepath.Join(repo, "meetings", "README.md"), "seed\n")
+	runGit(t, repo, "init", "-q")
+	configGitUser(t, repo)
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "-q", "-m", "seed")
+
+	report := Run([]Entry{
+		{ID: "workspace", Role: "content", Kind: "handbook", GitURL: repo, LocalPath: repo, ContentPaths: []string{"meetings"}},
+	}, Options{
+		Publish:    "auto",
+		Visibility: privateVisibility,
+	})
+
+	result := findResult(t, report, "workspace")
+	if result.Status != "local-only" {
+		t.Fatalf("result = %#v, want local-only (unpublished init repo must not fail)", result)
+	}
+	if !strings.Contains(result.Message, "no origin remote") {
+		t.Fatalf("message = %q, want no-origin explanation", result.Message)
+	}
+}
+
 func TestRunGnitDryRunPlansApprovedContentThroughGnit(t *testing.T) {
 	remote, content, _ := setupTwoCheckoutRemote(t)
 	gnitRoot := filepath.Dir(content)

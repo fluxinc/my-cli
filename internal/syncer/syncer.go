@@ -331,6 +331,11 @@ func inspectWithMode(entry Entry, opts Options, runner Runner, mode inspectMode)
 		in.result.Message = "not cloned; run our mounts sync or our setup first"
 		return in
 	}
+	if _, err := git(runner, entry.LocalPath, "remote", "get-url", "origin"); err != nil {
+		in.result.Status = "local-only"
+		in.result.Message = "no origin remote configured; nothing to pull or push until the repository is published (run our publish)"
+		return in
+	}
 	fetchFailed := false
 	if mode.fetch {
 		if out, err := git(runner, entry.LocalPath, "fetch", "origin"); err != nil {

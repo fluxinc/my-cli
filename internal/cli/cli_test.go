@@ -87,14 +87,14 @@ func TestSyncContentPathsIncludesSupport(t *testing.T) {
 
 func TestInitCreatesManifestRepoAndRegisters(t *testing.T) {
 	home := t.TempDir()
-	repo := filepath.Join(t.TempDir(), "acme-workspace")
+	content := filepath.Join(t.TempDir(), "acme-handbook")
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
 		"our", "init", "acme",
 		"--name", "Acme Example",
-		"--path", repo,
+		"--path", content,
 		"--home", home,
 		"--json",
 	}); err != nil {
@@ -110,13 +110,17 @@ func TestInitCreatesManifestRepoAndRegisters(t *testing.T) {
 	if result.OrganizationID != "acme" || result.OrganizationName != "Acme Example" {
 		t.Fatalf("organization = %q/%q", result.OrganizationID, result.OrganizationName)
 	}
-	if result.RepoPath != repo {
-		t.Fatalf("repo path = %q, want %q", result.RepoPath, repo)
+	manifestRepo, err := manifest.DefaultCachePath(home, "acme")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if result.SelfMount != manifest.SelfMountGitURL {
-		t.Fatalf("self mount = %q", result.SelfMount)
+	if result.RepoPath != manifestRepo {
+		t.Fatalf("manifest repo path = %q, want private %q", result.RepoPath, manifestRepo)
 	}
-	if result.Manifest.Name != "acme" || result.Manifest.GitURL != repo {
+	if result.ContentPath != content {
+		t.Fatalf("content repo path = %q, want %q", result.ContentPath, content)
+	}
+	if result.Manifest.Name != "acme" || result.Manifest.GitURL != manifestRepo {
 		t.Fatalf("manifest ref = %#v", result.Manifest)
 	}
 	if len(result.Sync) != 1 || result.Sync[0].Status != "local-only" {
@@ -126,13 +130,14 @@ func TestInitCreatesManifestRepoAndRegisters(t *testing.T) {
 		{Action: "setup", Command: "our setup"},
 		{Action: "launch", Command: "our ai claude"},
 		{Action: "launch", Command: "our ai codex"},
+		{Action: "publish", Command: "our publish"},
 	} {
 		if !initResultHasNext(result, want) {
 			t.Fatalf("next commands = %#v, missing %#v", result.NextCommands, want)
 		}
 	}
 
-	doc, _, err := manifest.LoadDocument(repo)
+	doc, _, err := manifest.LoadDocument(manifestRepo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,35 +147,54 @@ func TestInitCreatesManifestRepoAndRegisters(t *testing.T) {
 	if doc.Umbrella.RecommendedPath != "~/acme" {
 		t.Fatalf("umbrella path = %q", doc.Umbrella.RecommendedPath)
 	}
-	if len(doc.Mounts) != 1 || doc.Mounts[0].GitURL != manifest.SelfMountGitURL {
-		t.Fatalf("mounts = %#v", doc.Mounts)
+	if len(doc.Mounts) != 1 || doc.Mounts[0].GitURL != content {
+		t.Fatalf("mounts = %#v, want git_url pointing at the local content repo %q", doc.Mounts, content)
 	}
 	if len(doc.Skills) != 1 || doc.Skills[0].ID != "acme:handbook" {
 		t.Fatalf("skills = %#v", doc.Skills)
 	}
-	if validation := manifest.ValidateFile(repo); len(validation.Errors) != 0 {
+	if validation := manifest.ValidateFile(manifestRepo); len(validation.Errors) != 0 {
 		t.Fatalf("generated manifest invalid: %#v", validation.Errors)
 	}
+	// Control plane stays in the private manifest repo.
 	for _, path := range []string{
-		filepath.Join(repo, ".git"),
-		filepath.Join(repo, "README.md"),
-		filepath.Join(repo, "agent-guidance", "acme.md"),
-		filepath.Join(repo, "skills", "acme-handbook", "SKILL.md"),
-		filepath.Join(repo, "catalog", "customers.json"),
+		filepath.Join(manifestRepo, ".git"),
+		filepath.Join(manifestRepo, "README.md"),
+		filepath.Join(manifestRepo, "agent-guidance", "acme.md"),
+		filepath.Join(manifestRepo, "skills", "acme-handbook", "SKILL.md"),
+		filepath.Join(manifestRepo, "catalog", "customers.json"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s: %v", path, err)
 		}
 	}
-	if result.Manifest.LocalPath != repo {
-		t.Fatalf("registry LocalPath = %q, want the scaffold checkout %q", result.Manifest.LocalPath, repo)
+	// Content lives only in the visible content repo.
+	for _, path := range []string{
+		filepath.Join(content, ".git"),
+		filepath.Join(content, "README.md"),
+		filepath.Join(content, "meetings", "README.md"),
+		filepath.Join(content, "support", "README.md"),
+		filepath.Join(content, "fleet", "README.md"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected %s: %v", path, err)
+		}
 	}
-	if _, err := os.Stat(filepath.Join(home, ".local", "share", "our", "manifests", "acme")); !os.IsNotExist(err) {
-		t.Fatalf("init created a duplicate manifest cache checkout: %v", err)
+	for _, path := range []string{
+		filepath.Join(content, "manifest.json"),
+		filepath.Join(content, "catalog"),
+		filepath.Join(manifestRepo, "meetings"),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("control/data plane mixed: %s exists: %v", path, err)
+		}
+	}
+	if result.Manifest.LocalPath != manifestRepo {
+		t.Fatalf("registry LocalPath = %q, want %q", result.Manifest.LocalPath, manifestRepo)
 	}
 }
 
-func TestInitDefaultsToUmbrellaMountPath(t *testing.T) {
+func TestInitDefaultsContentRepoToUmbrellaMountPath(t *testing.T) {
 	home := t.TempDir()
 
 	var stdout, stderr bytes.Buffer
@@ -182,18 +206,22 @@ func TestInitDefaultsToUmbrellaMountPath(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode init JSON: %v\n%s", err, stdout.String())
 	}
-	want := filepath.Join(home, "acme", "workspace")
-	if result.RepoPath != want {
-		t.Fatalf("repo path = %q, want umbrella workspace path %q", result.RepoPath, want)
+	wantContent := filepath.Join(home, "acme", "workspace")
+	if result.ContentPath != wantContent {
+		t.Fatalf("content path = %q, want umbrella mount path %q", result.ContentPath, wantContent)
 	}
-	if result.Manifest.LocalPath != want {
-		t.Fatalf("registry LocalPath = %q, want %q", result.Manifest.LocalPath, want)
+	if _, err := os.Stat(filepath.Join(wantContent, ".git")); err != nil {
+		t.Fatalf("content checkout missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(want, ".git")); err != nil {
-		t.Fatalf("scaffold checkout missing: %v", err)
+	manifestRepo, err := manifest.DefaultCachePath(home, "acme")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".local", "share", "our", "manifests", "acme")); !os.IsNotExist(err) {
-		t.Fatalf("init created a duplicate manifest cache checkout: %v", err)
+	if result.Manifest.LocalPath != manifestRepo {
+		t.Fatalf("registry LocalPath = %q, want private %q", result.Manifest.LocalPath, manifestRepo)
+	}
+	if _, err := os.Stat(filepath.Join(manifestRepo, ".git")); err != nil {
+		t.Fatalf("manifest checkout missing: %v", err)
 	}
 }
 
@@ -296,14 +324,17 @@ func initCommitAuthor(t *testing.T, repo string) string {
 
 func TestInitScaffoldREADMETeachesTeammateFirstRun(t *testing.T) {
 	home := t.TempDir()
-	repo := filepath.Join(t.TempDir(), "acme-workspace")
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "init", "acme", "--path", repo, "--home", home}); err != nil {
+	if err := a.run([]string{"our", "init", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(repo, "README.md"))
+	manifestRepo, err := manifest.DefaultCachePath(home, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(manifestRepo, "README.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,161 +343,141 @@ func TestInitScaffoldREADMETeachesTeammateFirstRun(t *testing.T) {
 		"our manifests add acme",
 		"our manifests sync acme",
 		"our setup",
-		"gh repo create",
+		"our publish",
 	} {
 		if !strings.Contains(readme, want) {
-			t.Fatalf("README missing %q:\n%s", want, readme)
+			t.Fatalf("manifest README missing %q:\n%s", want, readme)
 		}
 	}
 }
 
-func seedLegacyOrgRepo(t *testing.T) string {
+// fakeGH emulates gh repo create by provisioning a local bare repository and
+// wiring it as origin, mirroring what gh does against GitHub.
+func fakeGH(t *testing.T, remotesDir string, calls *[]string) manifest.Runner {
 	t.Helper()
-	seedHome := t.TempDir()
-	seed := filepath.Join(t.TempDir(), "acme-seed")
+	return func(name string, args ...string) ([]byte, error) {
+		*calls = append(*calls, name+" "+strings.Join(args, " "))
+		if name != "gh" || len(args) < 3 || args[0] != "repo" || args[1] != "create" {
+			return nil, fmt.Errorf("unexpected command: %s %s", name, strings.Join(args, " "))
+		}
+		repoName := args[2]
+		var source string
+		for i, arg := range args {
+			if arg == "--source" && i+1 < len(args) {
+				source = args[i+1]
+			}
+		}
+		if source == "" {
+			return nil, fmt.Errorf("missing --source in %v", args)
+		}
+		bare := filepath.Join(remotesDir, repoName+".git")
+		runCLIGit(t, remotesDir, "init", "--bare", "-q", bare)
+		runCLIGit(t, source, "remote", "add", "origin", bare)
+		runCLIGit(t, source, "push", "-q", "origin", "HEAD:master")
+		return []byte("https://example.invalid/" + repoName + "\n"), nil
+	}
+}
+
+func TestPublishCreatesRemotesRewritesMountsAndRegistry(t *testing.T) {
+	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "init", "acme", "--path", seed, "--home", seedHome}); err != nil {
-		t.Fatalf("seed init: %v", err)
+	if err := a.run([]string{"our", "init", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
 	}
-	return seed
-}
+	remotes := t.TempDir()
+	var calls []string
+	a.publishRunner = fakeGH(t, remotes, &calls)
 
-func cloneTestRepo(t *testing.T, source, target string) {
-	t.Helper()
-	out, err := exec.Command("git", "clone", "--quiet", source, target).CombinedOutput()
-	if err != nil {
-		t.Fatalf("git clone %s -> %s: %v\n%s", source, target, err, out)
+	stdout.Reset()
+	if err := a.run([]string{"our", "publish", "--home", home}); err != nil {
+		t.Fatalf("publish: %v\nstderr: %s\nstdout: %s", err, stderr.String(), stdout.String())
 	}
-}
-
-func TestSetupMigratesLegacyDuplicateSelfMountCheckout(t *testing.T) {
-	seed := seedLegacyOrgRepo(t)
-	home := t.TempDir()
-	ref, err := manifest.Add(home, "acme", seed)
+	if len(calls) != 2 {
+		t.Fatalf("gh calls = %#v, want content + manifest repo creation", calls)
+	}
+	for _, want := range []string{"repo create acme-workspace --private", "repo create acme-manifest --private"} {
+		found := false
+		for _, call := range calls {
+			if strings.Contains(call, want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("gh calls = %#v, missing %q", calls, want)
+		}
+	}
+	manifestRepo, err := manifest.DefaultCachePath(home, "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
-	cloneTestRepo(t, seed, ref.LocalPath)
-	legacyMount := filepath.Join(home, "acme", "handbook")
-	cloneTestRepo(t, seed, legacyMount)
-
-	var stdout, stderr bytes.Buffer
-	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "setup", "--home", home, "claude"}); err != nil {
-		t.Fatalf("setup: %v\nstderr: %s", err, stderr.String())
+	doc, _, err := manifest.LoadDocument(manifestRepo)
+	if err != nil {
+		t.Fatal(err)
 	}
-	canonical := filepath.Join(home, "acme", "workspace")
-	found, ok, err := manifest.Find(home, "acme")
+	contentRemote := filepath.Join(remotes, "acme-workspace.git")
+	if len(doc.Mounts) != 1 || doc.Mounts[0].GitURL != contentRemote {
+		t.Fatalf("mounts = %#v, want rewritten to %q", doc.Mounts, contentRemote)
+	}
+	// The rewrite must be committed and pushed, so teammates never see local paths.
+	out, err := exec.Command("git", "-C", manifestRepo, "status", "--porcelain").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "manifest.json") {
+		t.Fatalf("manifest.json left uncommitted after publish: %q", out)
+	}
+	ref, ok, err := manifest.Find(home, "acme")
 	if err != nil || !ok {
-		t.Fatalf("Find: ok=%v err=%v", ok, err)
+		t.Fatalf("Find: %v %v", ok, err)
 	}
-	if found.LocalPath != canonical {
-		t.Fatalf("registry LocalPath = %q, want migrated %q", found.LocalPath, canonical)
+	if ref.GitURL != filepath.Join(remotes, "acme-manifest.git") {
+		t.Fatalf("registry GitURL = %q, want published manifest remote", ref.GitURL)
 	}
-	if _, err := os.Stat(filepath.Join(canonical, ".git")); err != nil {
-		t.Fatalf("canonical checkout missing: %v", err)
+	if !strings.Contains(stdout.String(), "our manifests add acme") {
+		t.Fatalf("stdout = %q, want teammate instructions", stdout.String())
 	}
-	if _, err := os.Stat(ref.LocalPath); !os.IsNotExist(err) {
-		t.Fatalf("legacy cache checkout still exists at %s: %v", ref.LocalPath, err)
+
+	// Idempotent: a second publish pushes but never recreates remotes.
+	calls = nil
+	if err := a.run([]string{"our", "publish", "--home", home}); err != nil {
+		t.Fatalf("second publish: %v", err)
 	}
-	if _, err := os.Stat(legacyMount); !os.IsNotExist(err) {
-		t.Fatalf("legacy mount checkout still exists at %s: %v", legacyMount, err)
+	if len(calls) != 0 {
+		t.Fatalf("second publish invoked gh again: %#v", calls)
 	}
 }
 
-func TestSetupRelocatesLegacyCacheWhenUmbrellaCheckoutMissing(t *testing.T) {
-	seed := seedLegacyOrgRepo(t)
+func TestPublishPrintPlansWithoutChanges(t *testing.T) {
 	home := t.TempDir()
-	ref, err := manifest.Add(home, "acme", seed)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "init", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	a.publishRunner = fakeGH(t, t.TempDir(), &calls)
+
+	stdout.Reset()
+	if err := a.run([]string{"our", "publish", "--home", home, "--print"}); err != nil {
+		t.Fatalf("publish --print: %v", err)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("print mode invoked gh: %#v", calls)
+	}
+	manifestRepo, err := manifest.DefaultCachePath(home, "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
-	cloneTestRepo(t, seed, ref.LocalPath)
-	dirty := filepath.Join(ref.LocalPath, "support", "2026-06-10-draft.md")
-	writeCLITestFile(t, dirty, "draft\n")
-
-	var stdout, stderr bytes.Buffer
-	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "setup", "--home", home, "claude"}); err != nil {
-		t.Fatalf("setup: %v\nstderr: %s", err, stderr.String())
-	}
-	canonical := filepath.Join(home, "acme", "workspace")
-	found, ok, err := manifest.Find(home, "acme")
-	if err != nil || !ok || found.LocalPath != canonical {
-		t.Fatalf("registry LocalPath = %q (ok=%v err=%v), want relocated %q", found.LocalPath, ok, err, canonical)
-	}
-	if _, err := os.Stat(filepath.Join(canonical, ".git")); err != nil {
-		t.Fatalf("relocated checkout missing: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(canonical, "support", "2026-06-10-draft.md")); err != nil {
-		t.Fatalf("relocation lost uncommitted work: %v", err)
-	}
-	if _, err := os.Stat(ref.LocalPath); !os.IsNotExist(err) {
-		t.Fatalf("legacy cache checkout still exists at %s: %v", ref.LocalPath, err)
-	}
-}
-
-func TestSetupMigratesDirtyCacheOverCleanDuplicate(t *testing.T) {
-	seed := seedLegacyOrgRepo(t)
-	home := t.TempDir()
-	ref, err := manifest.Add(home, "acme", seed)
+	doc, _, err := manifest.LoadDocument(manifestRepo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cloneTestRepo(t, seed, ref.LocalPath)
-	legacyMount := filepath.Join(home, "acme", "handbook")
-	cloneTestRepo(t, seed, legacyMount)
-	writeCLITestFile(t, filepath.Join(ref.LocalPath, "catalog", "customers.json"), "[{\"id\":\"edited\"}]\n")
-
-	var stdout, stderr bytes.Buffer
-	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "setup", "--home", home, "claude"}); err != nil {
-		t.Fatalf("setup: %v\nstderr: %s", err, stderr.String())
+	if len(doc.Mounts) != 1 || !filepath.IsAbs(doc.Mounts[0].GitURL) {
+		t.Fatalf("print mode rewrote mounts: %#v", doc.Mounts)
 	}
-	canonical := filepath.Join(home, "acme", "workspace")
-	found, ok, err := manifest.Find(home, "acme")
-	if err != nil || !ok || found.LocalPath != canonical {
-		t.Fatalf("registry LocalPath = %q (ok=%v err=%v), want %q", found.LocalPath, ok, err, canonical)
-	}
-	data, err := os.ReadFile(filepath.Join(canonical, "catalog", "customers.json"))
-	if err != nil || !strings.Contains(string(data), "edited") {
-		t.Fatalf("migration lost the dirty admin edit: %v %q", err, data)
-	}
-	if _, err := os.Stat(legacyMount); !os.IsNotExist(err) {
-		t.Fatalf("clean duplicate checkout still exists at %s: %v", legacyMount, err)
-	}
-}
-
-func TestSetupRefusesMigrationWhenBothCheckoutsHaveLocalWork(t *testing.T) {
-	seed := seedLegacyOrgRepo(t)
-	home := t.TempDir()
-	ref, err := manifest.Add(home, "acme", seed)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cloneTestRepo(t, seed, ref.LocalPath)
-	legacyMount := filepath.Join(home, "acme", "handbook")
-	cloneTestRepo(t, seed, legacyMount)
-	writeCLITestFile(t, filepath.Join(ref.LocalPath, "catalog", "customers.json"), "[{\"id\":\"edited\"}]\n")
-	writeCLITestFile(t, filepath.Join(legacyMount, "meetings", "2026-06-10-sync.md"), "note\n")
-
-	var stdout, stderr bytes.Buffer
-	a := app{stdout: &stdout, stderr: &stderr}
-	err = a.run([]string{"our", "setup", "--home", home, "claude"})
-	if err == nil {
-		t.Fatalf("setup succeeded despite two checkouts with local work\nstderr: %s", stderr.String())
-	}
-	for _, want := range []string{"catalog/customers.json", "meetings/2026-06-10-sync.md", ref.LocalPath, legacyMount} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("err = %q, missing %q", err.Error(), want)
-		}
-	}
-	if _, err := os.Stat(filepath.Join(ref.LocalPath, ".git")); err != nil {
-		t.Fatalf("refused migration must not touch the cache checkout: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(legacyMount, ".git")); err != nil {
-		t.Fatalf("refused migration must not touch the mount checkout: %v", err)
+	if !strings.Contains(stdout.String(), "would create") {
+		t.Fatalf("stdout = %q, want plan output", stdout.String())
 	}
 }
 
