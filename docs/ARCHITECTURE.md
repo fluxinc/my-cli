@@ -25,7 +25,7 @@ interactively:
 - **Machine-parseable everything.** Every command takes `--json`.
 - **Structured failure.** Errors are `{error, message, remediation}` with a
   concrete next command. An agent that hits a wall can self-recover.
-- **Idempotent and re-runnable.** `onboard` and `sync` can be run repeatedly
+- **Idempotent and re-runnable.** `setup` and `sync` can be run repeatedly
   and safely; they converge, they don't accumulate.
 
 Humans own agency — products, goals, decisions, ownership. That belongs in
@@ -35,10 +35,10 @@ CLI deliberately does not grow human-workflow verbs; it grows content kinds.
 ## 3. The seven concepts
 
 **Manifest** — an org's configuration in a Git repo, cached locally on
-`manifest add` + `manifest sync`. The single source of truth for what skills
+`manifests add` + `manifests sync`. The single source of truth for what skills
 exist, what mounts exist, what products are in the catalog, what tools the org
 expects, and the default `our sync` publish policy. Validated by a schema
-(`manifest validate`).
+(`manifests validate`).
 
 **Skill** — a capability installed into harness skill directories. Two kinds:
 
@@ -69,17 +69,17 @@ repositories remain ordinary Git checkouts.
 ├── .gnit/                optional Gnit control metadata for multi-repo sync
 ├── <handbook mount>/    manifest-declared content
 ├── <other mounts>/
-├── products/            opted-in catalog products (detached clones)
+├── repos/               opted-in catalog product repositories
 ├── personal/            local-only, never synced — agent + human scratch
 ├── AGENTS.md            generated workspace instructions for agents
 └── CLAUDE.md            alias for harnesses that read Claude-specific names
 ```
 
-`personal/` and `products/` always exist after `onboard`. Entity commands
+`personal/` and `repos/` always exist after `setup`. Entity commands
 (`our meetings ...`) resolve against the umbrella by walking up from the
 working directory to find `.our/workspace.json`. If the caller is outside the
 umbrella, meeting commands use the single configured registered manifest's
-recommended umbrella when it has been onboarded.
+recommended umbrella when it has been set up.
 
 **Mount** — a Git-backed content folder cloned into the umbrella. Kinds include
 handbook, meetings, support, fleet, policy, docs, repo. Modes: `required`, `default`,
@@ -91,7 +91,7 @@ the CLI).
 product records its source-code `git_url`, a short purpose, and any related
 manifest skill IDs that help agents work in that repo. Products are *not*
 mounted by default; a user opts one in with `our mounts add product:<id>`, which
-clones it under `products/<id>` and records it in umbrella state. This keeps the
+clones it under `repos/<id>` and records it in umbrella state. This keeps the
 default umbrella small and lets each operator pull only what they work on.
 `related_skills` are references to skills declared by the manifest; mounting a
 product repo does not let that repo inject new org-namespaced skills. Customer
@@ -152,14 +152,14 @@ outside its own tree.
    the tool's installer). Provenance is recorded; a directory `our` did not
    place is never overwritten.
 4. Create/repair the umbrella: `.our/workspace.json`, `.our/state.json`,
-   `personal/`, `products/`.
+   `personal/`, `repos/`.
 5. Generate root `AGENTS.md` from the embedded public baseline plus
    `agent_guidance.paths` declared by the manifest, and make `CLAUDE.md` point
    at it where the platform permits symlinks.
 6. Sync `required` and `default` mounts (scoped by `include_paths` if present).
 7. Re-sync any previously selected catalog products recorded in umbrella state.
 
-Every step is convergent: re-running `onboard` reconciles rather than
+Every step is convergent: re-running `setup` reconciles rather than
 duplicates.
 
 Startup commands (`our root`, `our ai`, and `our setup`) use the same

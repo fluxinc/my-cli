@@ -17,10 +17,22 @@ our admin skills remove acme:my-skill \
   --manifest-dir ~/src/acme-workspace
 ```
 
+On `add`, `--install-slug SLUG` renames the install directory inside the
+manifest, and `--keep-original`/`--remove-original` decides whether the
+imported source directory stays or is deleted. On `remove`, `--delete-source`
+also deletes the skill's source directory; `--prune-related` drops catalog
+`related_skills` references to the removed skill; `--prune-orphans` removes
+tools and allowed namespaces left orphaned by the removal.
+
 They refuse dirty checkouts unless `--force` is supplied, never commit or push,
 and print follow-up `git status` and `git diff` commands. Removal reports
 now-orphaned tools and allowed namespaces by default; add `--prune-orphans` to
 remove them in the same write.
+
+After an admin edit, only the maintainer checkout has changed: review with
+`git status` and `git diff`, then commit and push yourself. Teammates pick the
+change up via `our manifests sync`, which reconciles generated guidance and
+manifest skills automatically.
 
 ## Tool hints
 
@@ -44,6 +56,11 @@ our admin tools remove gnit \
 ```
 
 Tool removal refuses declarations still referenced by manifest skills.
+
+`add` and `edit` also accept skill-install hints — `--skill-install-command`
+and repeatable `--skill-install-arg` — for tools that materialize their own
+skills; `edit` clears them with `--clear-skill-install` (and install commands
+or docs URLs with the matching `--clear-*` flags).
 
 ## Admin aliases
 

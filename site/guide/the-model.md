@@ -40,12 +40,18 @@ Pins remain available for deliberate recorded workspace states.
 A Git-backed content folder cloned into the umbrella. Mounts can be required,
 default, or optional. Common content kinds include handbook, meetings, support,
 fleet, policy, docs, and repo. Sparse include paths keep private manifest internals out
-of the operating workspace.
+of the operating workspace. Support content holds anonymized problem-to-solution
+records with frontmatter attribution (customer id, repeatable identifiers,
+claimed_by/observed_by/approved_by), searched via `our support`. Fleet content
+holds one record per deployed instance, updated in place via `our fleet set`;
+any identifier resolves via `our fleet get`.
 
 ## Catalog
 
 JSON inventories for products and canonical customers. Product repos are
-opted in on demand with `our mounts add product:<id>`.
+opted in on demand with `our mounts add product:<id>` and cloned under
+`repos/<id>` in the umbrella; legacy `products/` checkouts migrate
+automatically at `our setup`.
 
 ## Guidance
 

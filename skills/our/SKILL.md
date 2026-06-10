@@ -80,8 +80,9 @@ our setup [--manifest NAME] [--no-refresh] [--no-update-check]
                                     # create umbrella, write guidance, install skills, sync mounts
 our root [--product ID] [--no-refresh] [--no-update-check]
                                     # print the umbrella (or product) path
-our ai [--setup] [--no-refresh] [--no-update-check] [harness]
+our ai [--product ID] [--setup] [--no-refresh] [--no-update-check] [harness]
                                     # verify guidance is current, then start a harness
+                                    # --setup reconciles the umbrella first when guidance is stale or missing
 our doctor [--no-fetch] [--fix]   # git freshness, derived drift, last sync, manifests, tools
 ```
 
@@ -89,7 +90,16 @@ our doctor [--no-fetch] [--fix]   # git freshness, derived drift, last sync, man
 manifest/content checkouts before reading workspace context. They do not touch
 dirty, diverged, product, or remote-unknown repositories. Use `--no-refresh`
 for one command, `OUR_NO_AUTO_REFRESH=1` globally, or `OUR_REFRESH_TTL=30m`
-to tune the default six-hour window.
+to tune the default six-hour window. `our ai` also ensures the bundled `our`
+self-skill is installed for the selected filesystem harness before exec.
+
+When the refresh cannot converge a checkout, these commands print a stderr
+line per repository in the form `notice\t<repo>\t<state>; run ...` (dirty,
+ahead, behind, or diverged, with the reconciling command). On seeing one,
+finish the current step, then run the suggested command — usually `our sync`,
+or `our doctor` for diverged checkouts. Product clones live under
+`repos/<id>` (legacy `products/<id>` keeps resolving until `our setup`
+migrates it).
 
 These startup commands also make a best-effort, stderr-only check for a newer
 Our AI release. The notice never changes stdout, so `cd "$(our root)"` remains
@@ -158,10 +168,22 @@ divergent branches, and unsafe duplicate-remote checkouts are held back.
 ```sh
 our sync --print                  # plan only: show what would pull/push/hold (always safe)
 our sync                          # reconcile + publish per the auto policy
+our sync --scope repos            # limit to product clones (all|local|content|manifest|repos)
 our sync --no-derived             # skip skill/guidance reconcile after manifest changes
 our sync --publish never          # explicit local-only reconcile
 our sync --publish pr             # currently holds changes and reports PR-mode follow-up
 ```
+
+"Derived" means the artifacts generated from the manifest: root guidance
+(`AGENTS.md` plus the `CLAUDE.md` pointer) and manifest-declared skills. Sync
+reconciles them automatically after a manifest checkout changes.
+
+Rule of thumb for the three similar verbs: `our sync` converges everything
+(use it by default), `our doctor` diagnoses and explains held-back state
+without changing it, and `our manifests sync` refreshes the registered
+manifest cache. Use `our manifests sync` before an umbrella exists or for
+multi-manifest administration; when exactly one manifest changes and an
+umbrella is known, it also reconciles generated guidance and manifest skills.
 
 `our sync` uses **Gnit** as its multi-repo publish backend once the umbrella is
 a Gnit control workspace; otherwise it uses a guarded built-in Git path. Run

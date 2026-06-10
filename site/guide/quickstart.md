@@ -33,7 +33,8 @@ our manifests sync acme
 ```
 
 Private GitHub manifests use your normal Git credentials. For HTTPS private
-repos, authenticate with `gh auth login` before a real fetch.
+repos, make sure `gh auth login` (or your usual Git credentials) works before
+running `our manifests sync` against a private repo.
 
 ## Onboard the workspace
 
@@ -43,7 +44,8 @@ our setup --manifest acme
 
 Onboarding is safe to re-run. It validates the manifest, installs declared
 skills, creates the umbrella, writes generated guidance, and syncs default
-content.
+content. Re-running `our setup` is idempotent, and opted-in product clones
+live under `repos/<id>` in the umbrella.
 
 ## Start an agent from the umbrella
 
@@ -63,6 +65,15 @@ Use `--print` when you want the command without executing it:
 ```sh
 our ai --manifest acme --print codex
 ```
+
+`our root` is the shell-integration form: it just prints the path. `our ai`
+verifies generated guidance before launching a harness; pass `--setup` to
+reconcile the umbrella first.
+
+At startup, `our root`, `our ai`, and `our setup` print stderr-only `notice`
+lines for checkouts auto-refresh cannot converge (dirty, ahead, behind, or
+diverged), each naming the repository and the command to run, such as
+`our sync` or `our doctor`. Stdout stays clean, so `cd "$(our root)"` is safe.
 
 ## Update our
 

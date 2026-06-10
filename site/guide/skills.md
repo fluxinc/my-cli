@@ -10,8 +10,8 @@ boundary:
 - **The `our` self-skill** ships *inside the CLI binary*. It is
   organization-neutral — it only teaches harnesses how to drive `our` itself —
   so it is safe to install anywhere and carries no company content. The binary
-  owns its lifecycle (`install.sh`, `our setup`, and a quiet refresh on human
-  CLI runs, including after `our update`); manage it explicitly with
+  owns its lifecycle (`install.sh`, `our setup`, `our ai`, and a quiet refresh
+  on human CLI runs, including after `our update`); manage it explicitly with
   `our skills self ...`.
 - **Organization skills** are declared in an org's *manifest repo* and land only
   once you `our manifests add` / `our manifests sync` that manifest. Because they
@@ -33,7 +33,8 @@ our skills self uninstall codex
 
 The `our` self-skill is bundled with the CLI and teaches harnesses how to use
 Our AI itself. `install.sh` installs it into existing harnesses, `our setup`
-refreshes it with the selected harnesses, and normal human CLI runs quietly
+refreshes it with the selected harnesses, `our ai` ensures it exists for the
+selected filesystem harness before launch, and normal human CLI runs quietly
 align already-installed file-based copies with the running binary.
 
 ## Inspect declared skills
@@ -59,7 +60,13 @@ Manifest `install`, `uninstall`, `sync`, and `purge` operate on local harness
 materializations. They do not edit the manifest.
 
 `sync` installs or updates declared skills and prunes stale Our AI-managed
-targets by default. Pass `--no-prune` to only install or update.
+manifest targets by default. It leaves the bundled `our` self-skill to
+`our skills self ...`. Only the canonical id `our:self` is protected from
+pruning; a manifest-declared skill that happens to be named `our` is ordinary
+and removable. Pass `--no-prune` to only install or update. When the
+manifest itself changes, `our manifests sync` refreshes generated guidance and
+manifest skills for an existing matching umbrella unless `--no-derived` is
+passed.
 
 ## Provenance
 

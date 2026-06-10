@@ -3,13 +3,32 @@
 Run `our --help` for the authoritative surface. This page groups the current
 commands by job.
 
+## Which command do I run?
+
+Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
+
+- **`our sync`** converges the whole workspace. It pulls every registered
+  repository (manifest cache, content mounts, product clones), reconciles
+  generated guidance and skills when the manifest changed, and publishes
+  local content that is safe to publish. This is the one routine verb — when
+  a startup notice says something is stale or unpublished, run this.
+- **`our doctor`** explains without changing anything: manifest validity,
+  per-checkout Git freshness, derived guidance/skill drift, and the last sync
+  audit. Reach for it when `our sync` held something back and you want the
+  why. `--fix` applies only the safe subset of what sync already does.
+- **`our manifests sync`** refreshes the registered manifest cache. You need
+  it before an umbrella exists (bootstrap) or when managing several
+  registered manifests; when exactly one manifest changes and an umbrella is
+  known, it also reconciles generated guidance and manifest skills. Once an
+  umbrella is set up, plain `our sync` is still the routine command.
+
 ## Setup and launch
 
 ```sh
-our setup [harness...] | --all [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 our root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-our ai [--product ID] [--setup] [--print] [--manifest NAME] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
-our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|products] [--no-derived] [--print] [--json]
+our ai [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
 our doctor [--no-fetch] [--fix] [--json]
 our update [--check] [--version X.Y.Z] [--json] [--yes]
 our version
@@ -18,45 +37,53 @@ our version
 ## Skills
 
 ```sh
-our skills self install [harness...] | --all [--copy] [--link] [--force] [--json]
-our skills self uninstall [harness...] | --all [--force] [--json]
-our skills self status [harness...] | --all [--json]
+our skills self install [harness...] | --all [--home DIR] [--copy] [--link] [--force] [--json]
+our skills self uninstall [harness...] | --all [--home DIR] [--force] [--json]
+our skills self status [harness...] | --all [--home DIR] [--json]
 
 our skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
 our skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
 our skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
-our skills install [harness...] | --all [--skill ID_OR_SLUG] [--copy] [--link] [--force]
-our skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--force]
-our skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--copy] [--link]
-our skills purge <harness...> | --all [--skill ID_OR_SLUG] [--force]
+our skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+our skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
+our skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+our skills purge <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
 ```
+
+`--manifest NAME` reads skills from a synced manifest (the default when one is
+registered); `--source DIR` reads them from a local directory instead. With no
+harness arguments, install targets every supported harness and silently skips
+ones that are not present.
 
 ## Admin
 
 ```sh
-our admin skills add <skill-dir> --id namespace:name --manifest-dir DIR
-our admin skills remove <id|slug> --manifest-dir DIR [--prune-orphans]
+our admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
+our admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
 our admin setup ...
 our admin manifests add|sync|validate ...
 our admin mounts add|remove|sync ...
 our admin meetings add ...
 our admin support add ...
 our admin customers add|edit <id> --manifest-dir DIR
-our admin tools add|edit|remove <id> --manifest-dir DIR
+our admin tools add|edit|remove <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
 ```
+
+See the [admin guide](./admin.md) for the full flag set and the
+review-commit-push workflow that follows every admin edit.
 
 ## Manifests, mounts, and workspace
 
 ```sh
 our manifests add <name> <git-url>
 our manifests list
-our manifests sync <name...> | --all [--print]
+our manifests sync <name...> | --all [--home DIR] [--umbrella DIR] [--no-derived] [--print] [--json]
 our manifests validate <name|path>
 
-our mounts list [--manifest NAME]
-our mounts add <kind:id|id> [--manifest NAME]
-our mounts sync <mount...> | --all [--manifest NAME] [--print]
-our mounts remove <mount...> [--print] [--force]
+our mounts list [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+our mounts add <kind:id|id> [--manifest NAME] [--home DIR] [--umbrella DIR] [--print] [--json]
+our mounts sync <mount...> | --all [--manifest NAME] [--home DIR] [--umbrella DIR] [--print] [--json]
+our mounts remove <mount...> [--home DIR] [--umbrella DIR] [--print] [--force] [--json]
 
 our workspaces list [--manifest NAME]
 our workspaces sync <workspace...> | --all [--manifest NAME] [--print]
@@ -104,8 +131,10 @@ after manifest checkout changes unless `--no-derived` is passed.
 `our root`, `our ai`, and `our setup` run a best-effort, TTL-gated
 refresh for clean manifest/content checkouts before using workspace context.
 They leave dirty, diverged, product, and remote-unknown repositories untouched.
-Use `--no-refresh` for one command, `OUR_NO_AUTO_REFRESH=1` globally, or
-`OUR_REFRESH_TTL=30m` to tune the default six-hour window.
+`our ai` also ensures the bundled `our` self-skill exists for the selected
+filesystem harness before launching it. Use `--no-refresh` for one command,
+`OUR_NO_AUTO_REFRESH=1` globally, or `OUR_REFRESH_TTL=30m` to tune the default
+six-hour window.
 
 Those startup commands also emit a stderr-only notice when a newer Our AI release
 is available. Stdout remains clean for command substitutions such as

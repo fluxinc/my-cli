@@ -31,8 +31,11 @@ The command converges local state. Re-run it when the manifest changes.
 - Generated agent guidance.
 - Git-backed content mounts.
 - Product and customer catalog inspection.
-- Meeting-note operations.
+- Meeting-note, support-record, and fleet-registry operations.
 - Tool diagnostics and install hints.
+- Best-effort TTL-gated auto-refresh of clean manifest/content checkouts at
+  startup (tunable via `--no-refresh`, `OUR_NO_AUTO_REFRESH`, `OUR_REFRESH_TTL`),
+  with stderr freshness notices for anything it cannot converge.
 
 ## What our does not own
 

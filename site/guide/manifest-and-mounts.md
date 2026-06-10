@@ -15,6 +15,13 @@ our manifests validate acme
 The synced cache is disposable derived state. Admin authoring commands should
 write a maintainer checkout through `--manifest-dir`.
 
+When `our manifests sync` pulls or clones exactly one manifest, it also
+reconciles generated guidance and manifest skills for an existing matching
+umbrella. Derived state means the generated guidance (`AGENTS.md` and the
+`CLAUDE.md` pointer) and manifest-declared skills. Use `--no-derived` for a
+cache-only refresh when you know derived state is already current, or
+`--umbrella DIR` to target a specific umbrella.
+
 Manifests can also set the default sync publish policy:
 
 ```json
@@ -27,6 +34,9 @@ Manifests can also set the default sync publish policy:
 
 Allowed values are `auto`, `never`, and `pr`. The setting applies when
 `our sync` is run without `--publish`; an explicit CLI flag overrides it.
+`our sync --scope all|local|content|manifest|repos` limits a run to local-only
+changes, content mounts, manifest checkouts, or product clones (`repos`; the
+older `products` spelling still works).
 
 ## Mount lifecycle
 
@@ -39,7 +49,9 @@ our mounts remove handbook --print
 ```
 
 Required and default mounts are synced during onboarding. Optional mounts are
-selected on demand and recorded in umbrella state.
+selected on demand and recorded in umbrella state. Product mounts keep the
+`product:<id>` syntax, but clones land under `repos/<id>` (legacy `products/`
+checkouts auto-migrate at `our setup`).
 
 Content mounts can be broad, such as a handbook, or narrow, such as meetings or
 support. A support mount is intended for private anonymized records that capture

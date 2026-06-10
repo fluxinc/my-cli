@@ -86,7 +86,9 @@ touching dirty, diverged, product, or remote-unknown repositories. Use
 `--no-refresh` for one command, `OUR_NO_AUTO_REFRESH=1` globally, or
 `OUR_REFRESH_TTL=30m` to tune the default six-hour refresh window.
 
-These startup commands also check, at most once per day, whether a newer Our AI
+Startup commands also print stderr `notice` lines for dirty, ahead, behind, or
+diverged checkouts, each with the remediation command, keeping stdout clean.
+They additionally check, at most once per day, whether a newer Our AI
 release exists. Notices are stderr-only so `cd "$(our root)"` stays path-pure.
 Use `--no-update-check` for one command, `OUR_NO_UPDATE_CHECK=1` globally, or
 `OUR_UPDATE_CHECK_TTL=12h` to tune the check window.
@@ -109,10 +111,15 @@ prints the matching follow-up, such as `brew upgrade our`,
 
 ```sh
 our manifests add <name> <git-url>          # register an org manifest
-our manifests sync <name...> | --all        # fetch/refresh the manifest cache
+our manifests sync <name...> | --all        # refresh cache and derived artifacts
 our manifests list                          # list registered manifests
 our manifests validate <name|path>          # schema + reference checks
 ```
+
+When a non-print manifest sync pulls or clones exactly one manifest, `our`
+reconciles derived workspace artifacts for an existing matching umbrella:
+generated guidance and manifest skills. Pass `--no-derived` for a cache-only
+refresh or `--umbrella DIR` when the intended umbrella is not the current one.
 
 ### Skills
 
@@ -129,17 +136,18 @@ our skills purge <harness...> | --all      # remove Our AI-managed materializati
 ```
 
 `our skills self ...` manages the bundled, public-safe `our` CLI skill. It is
-installed by `install.sh`, refreshed during `our setup`, and quietly kept
-current for already-installed file-based harness copies when a newer binary
-runs.
+installed by `install.sh`, refreshed during `our setup`, ensured for the
+selected filesystem harness before `our ai` execs it, and quietly kept current
+for already-installed file-based harness copies when a newer binary runs.
 
 Use `--skill ID_OR_SLUG` on manifest skill `install`, `uninstall`, `sync`,
 `purge`, or `status` to target a single declared skill. Manifest skills install
 as symlinks by default (`--copy` to vendor a copy). `our` records provenance
 and refuses to clobber a directory it did not place. `skills sync` prunes stale
-Our AI-managed skills by default; pass `--no-prune` to only install/update. Skill
-commands only refresh harness skill directories; rerun `our setup` when
-manifest guidance or the generated umbrella `AGENTS.md` should change too.
+Our AI-managed manifest skills by default, but does not remove the bundled
+`our` self-skill; pass `--no-prune` to only install/update. Skill commands only
+refresh harness skill directories; run `our setup` when manifest guidance or
+the generated umbrella `AGENTS.md` should change without a manifest sync.
 
 Manifest authoring is explicit admin work:
 
@@ -187,12 +195,16 @@ our mounts sync <mount...> | --all          # clone or fast-forward mounts
 our mounts remove <mount...> [--force]
 ```
 
+Product clones land under `repos/<id>` in the umbrella; legacy `products/`
+checkouts migrate automatically at `our setup`.
+
 ### Sync
 
 ```sh
 our sync --print                           # plan inbound refresh and outbound publish
 our sync [--backend auto|gnit|builtin]         # auto prefers Gnit once the umbrella is initialized
 our sync --publish auto|never|direct|pr    # explicit override; direct is CLI-only
+our sync --scope all|local|content|manifest|repos  # limit to one repo class; repos = product clones
 our sync --no-derived                      # skip skill/guidance reconcile after manifest changes
 ```
 
