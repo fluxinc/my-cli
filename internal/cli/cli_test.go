@@ -3146,7 +3146,7 @@ func TestRootAutoRefreshNoticesHeldDirtyMountOnStderr(t *testing.T) {
 	}
 }
 
-func TestSyncScopeReposIsAcceptedAsProductsAlias(t *testing.T) {
+func TestSyncScopeReposAcceptedAndProductsRejected(t *testing.T) {
 	home, _, _, _, _ := setupCLITrackedManifestBody(t, `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -3156,6 +3156,12 @@ func TestSyncScopeReposIsAcceptedAsProductsAlias(t *testing.T) {
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{"our", "sync", "--backend", "builtin", "--scope", "repos", "--print", "--manifest", "acme", "--home", home, "--json"}); err != nil {
 		t.Fatalf("sync --scope repos failed: %v", err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	err := a.run([]string{"our", "sync", "--backend", "builtin", "--scope", "products", "--print", "--manifest", "acme", "--home", home, "--json"})
+	if err == nil || !strings.Contains(err.Error(), "--scope must be one of") {
+		t.Fatalf("err = %v, want products scope rejected", err)
 	}
 }
 

@@ -954,7 +954,7 @@ func (a app) runRoot(args []string) error {
 	a.maybeUpdateNotice(home, noUpdateCheck)
 	target := root
 	if legacyProductID != "" {
-		return a.maybeJSONError(false, structuredCommandError{
+		return a.maybePrintStructuredCommandError(structuredCommandError{
 			code:        "product_flag_removed",
 			message:     "products are business catalog entries, not checkouts; --product was removed from our root",
 			remediation: "use our root --repo " + legacyProductID + " (see our repos list)",
@@ -1530,7 +1530,6 @@ func (a app) runSync(args []string) error {
 	if !validSyncPublish(publish) {
 		return fmt.Errorf("--publish must be one of auto, never, direct, or pr")
 	}
-	scope = normalizeSyncScope(scope)
 	if !validSyncScope(scope) {
 		return fmt.Errorf("--scope must be one of all, local, content, manifest, or repos")
 	}
@@ -1798,14 +1797,6 @@ func validSyncScope(value string) bool {
 	default:
 		return false
 	}
-}
-
-// normalizeSyncScope maps the removed products spelling onto repos.
-func normalizeSyncScope(value string) string {
-	if value == "products" {
-		return "repos"
-	}
-	return value
 }
 
 func (a app) collectSyncEntries(home, manifestName, umbrellaRoot, scope string) ([]syncer.Entry, error) {

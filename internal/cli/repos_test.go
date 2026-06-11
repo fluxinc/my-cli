@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -219,7 +220,10 @@ func TestRootProductFlagRemoved(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	err := a.run([]string{"our", "root", "--product", "sample-service", "--home", home, "--umbrella", umbrellaRoot})
-	if err == nil || !strings.Contains(err.Error(), "--product was removed") {
-		t.Fatalf("err = %v, want product-flag-removed error", err)
+	if !errors.Is(err, errAlreadyPrinted) {
+		t.Fatalf("err = %v, want errAlreadyPrinted", err)
+	}
+	if !strings.Contains(stderr.String(), "--product was removed") || !strings.Contains(stderr.String(), "--repo") {
+		t.Fatalf("stderr = %q, want product-flag-removed remediation", stderr.String())
 	}
 }
