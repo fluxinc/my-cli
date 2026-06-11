@@ -29,7 +29,6 @@ type Entry struct {
 	LocalPath    string   `json:"local_path"`
 	UmbrellaRoot string   `json:"umbrella_root,omitempty"`
 	SourceRef    string   `json:"source_ref,omitempty"`
-	SelfMount    bool     `json:"self_mount,omitempty"`
 }
 
 // SyncResult describes one workspace sync action.
@@ -98,27 +97,17 @@ func ListMounts(home, manifestName, umbrellaRoot string) ([]Entry, error) {
 			return nil, err
 		}
 		for _, mount := range manifest.EffectiveMounts(doc) {
-			gitURL := mount.GitURL
-			localPath := umbrella.MountPath(root, mount.ID)
-			selfMount := gitURL == manifest.SelfMountGitURL || manifest.SameRemote(gitURL, ref.GitURL)
-			if selfMount {
-				gitURL = ref.GitURL
-				// A self-mount is the manifest repository itself; reuse the
-				// registered checkout instead of cloning a duplicate.
-				localPath = ref.LocalPath
-			}
 			entries = append(entries, Entry{
 				Manifest:     ref.Name,
 				Organization: doc.Organization.ID,
 				ID:           mount.ID,
 				Kind:         mount.Kind,
 				Mode:         mount.Mode,
-				GitURL:       gitURL,
+				GitURL:       mount.GitURL,
 				IncludePaths: mount.IncludePaths,
-				LocalPath:    localPath,
+				LocalPath:    umbrella.MountPath(root, mount.ID),
 				UmbrellaRoot: root,
 				SourceRef:    "manifest:" + ref.Name + ":" + mount.ID,
-				SelfMount:    selfMount,
 			})
 		}
 	}
@@ -298,9 +287,7 @@ func syncOne(entry Entry, dryRun bool, runner Runner) SyncResult {
 		return res
 	}
 
-	// A self-mount shares its working tree with the whole manifest repository;
-	// narrowing it with sparse-checkout would hide manifest and catalog files.
-	sparse := len(entry.IncludePaths) != 0 && !entry.SelfMount
+	sparse := len(entry.IncludePaths) != 0
 	if isGitDir(entry.LocalPath) {
 		if dryRun {
 			res.Status = "dry-run"

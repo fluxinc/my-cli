@@ -29,7 +29,8 @@ pushes; `our sync` refuses to publish a manifest that still references local
 paths, and `our doctor` names each such mount.
 
 For a fuller neutral reference, browse the
-[Acme example workspace](https://github.com/fluxinc/our-ai/tree/master/examples/acme-workspace).
+[Acme example workspace](https://github.com/fluxinc/our-ai/tree/master/examples/acme-workspace),
+which keeps the manifest fixture and content fixture in separate directories.
 
 When `our manifests sync` pulls or clones exactly one manifest, it also
 reconciles generated guidance and manifest skills for an existing matching

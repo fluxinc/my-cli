@@ -44,18 +44,18 @@ silently:
 
 ```sh
 our admin tools add gnit \
-  --manifest-dir ~/src/acme-workspace \
+  --manifest-dir ~/src/acme-manifest \
   --mode required \
   --purpose "Multi-repo workspace publishing" \
   --install-command "curl -fsSL https://raw.githubusercontent.com/mostlydev/gnit/master/install.sh | sh" \
   --docs-url https://github.com/mostlydev/gnit
 
 our admin tools edit gnit \
-  --manifest-dir ~/src/acme-workspace \
+  --manifest-dir ~/src/acme-manifest \
   --purpose "Gnit workspace publishing"
 
 our admin tools remove gnit \
-  --manifest-dir ~/src/acme-workspace
+  --manifest-dir ~/src/acme-manifest
 ```
 
 Tool removal refuses declarations still referenced by manifest skills.
@@ -79,8 +79,8 @@ our admin manifests validate acme
 our admin mounts add product:sample-product
 our admin meetings add sampleco-followup --workspace handbook
 our admin support add routing-timeout --workspace handbook
-our admin customers add sampleco.example.com --manifest-dir ~/src/acme-workspace
-our admin tools add qmd --manifest-dir ~/src/acme-workspace --mode optional --purpose "Markdown search"
+our admin customers add sampleco.example.com --manifest-dir ~/src/acme-manifest
+our admin tools add qmd --manifest-dir ~/src/acme-manifest --mode optional --purpose "Markdown search"
 ```
 
 The top-level forms remain quiet compatibility aliases in this release.

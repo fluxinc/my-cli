@@ -18,9 +18,6 @@ const (
 	registryVersion = 1
 	appDir          = "our"
 	manifestFile    = "manifest.json"
-
-	// SelfMountGitURL means "use the Git URL this manifest was registered with".
-	SelfMountGitURL = "."
 )
 
 // Registry records configured organization manifests on this machine.
@@ -826,11 +823,12 @@ func validateMount(m Mount, result *ValidationResult) {
 	if !validMountMode(m.Mode) {
 		result.Errors = append(result.Errors, fmt.Sprintf("mount %q mode %q is unsupported", m.ID, m.Mode))
 	}
-	if strings.TrimSpace(m.GitURL) == "" {
+	gitURL := strings.TrimSpace(m.GitURL)
+	if gitURL == "" {
 		result.Errors = append(result.Errors, fmt.Sprintf("mount %q git_url is required", m.ID))
-	} else if m.GitURL == SelfMountGitURL {
-		// Resolved by workspace planning from the registered manifest ref.
-	} else if strings.HasPrefix(m.GitURL, "git@") {
+	} else if gitURL == "." {
+		result.Errors = append(result.Errors, fmt.Sprintf("mount %q git_url must point at a separate content repository; \".\" self-mounts are no longer supported", m.ID))
+	} else if strings.HasPrefix(gitURL, "git@") {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("mount %q uses SSH URL; gh auth login does not configure SSH keys", m.ID))
 	}
 	for _, includePath := range m.IncludePaths {

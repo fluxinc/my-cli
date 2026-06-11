@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Removed the conflated self-mount compatibility path: mount `git_url: "."`
+  is now invalid, mounts always materialize as separate umbrella checkouts,
+  and sync emits separate manifest/content entries instead of a merged
+  workspace role.
+- Restructured `examples/acme-workspace` into separate `manifest/` and
+  `content/` fixture directories.
+
 ## 0.13.1 - 2026-06-10
 
 ### Added

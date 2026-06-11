@@ -247,10 +247,9 @@ org wants review-gated support content — do not build it now.
 
 ### Fixture nit
 
-`examples/acme-workspace/support/2026-06-10-routing-timeout.md` says "a study
-delivery timed out" — "study" is medical-imaging domain vocabulary in an
-otherwise fully synthetic fixture (`sample-product`, "synthetic data").
-Neutralize to "file delivery" or "job delivery".
+Resolved: `examples/acme-workspace/content/support/2026-06-10-routing-timeout.md`
+now uses "file delivery" instead of medical-imaging domain vocabulary in the
+otherwise fully synthetic fixture.
 
 ### Cosmetic
 

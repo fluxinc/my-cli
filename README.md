@@ -383,8 +383,8 @@ rationale.
   index (active / shipped / superseded). Start with
   [the execution plane](docs/plans/2026-06-10-execution-plane.md) for where
   the CLI is headed: sessions, contained runners, and organization services.
-- [examples/acme-workspace](examples/acme-workspace) — neutral manifest,
-  catalog, skill, and handbook fixture for local development.
+- [examples/acme-workspace](examples/acme-workspace) — neutral split
+  manifest/content fixture for local development.
 
 ## Dependencies
 

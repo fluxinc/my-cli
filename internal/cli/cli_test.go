@@ -2130,14 +2130,13 @@ func TestDoctorFixReinstallsAbsentSelfSkill(t *testing.T) {
 	}
 }
 
-func TestSyncEmitsSingleWorkspaceEntryForSelfMount(t *testing.T) {
-	home, umbrellaRoot, manifestCache, _, _ := setupCLITrackedManifestBody(t, `{
+func TestSyncEmitsSeparateManifestAndContentEntries(t *testing.T) {
+	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
   "umbrella": { "recommended_path": "~/acme" },
   "mounts": [
-    { "id": "handbook", "kind": "handbook", "git_url": ".", "mode": "required" },
-    { "id": "notes", "kind": "meetings", "git_url": ".", "mode": "default", "include_paths": ["meetings"] }
+    { "id": "handbook", "kind": "handbook", "git_url": "https://github.com/acme/acme-handbook.git", "mode": "required" }
   ]
 }`)
 	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
@@ -2158,25 +2157,22 @@ func TestSyncEmitsSingleWorkspaceEntryForSelfMount(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatalf("decode sync JSON: %v\n%s", err, stdout.String())
 	}
-	if len(report.Results) != 1 {
-		t.Fatalf("results = %#v, want exactly one entry for the single checkout", report.Results)
+	var roles []string
+	for _, result := range report.Results {
+		roles = append(roles, result.Role+":"+result.ID)
 	}
-	result := report.Results[0]
-	if result.Role != "workspace" {
-		t.Fatalf("role = %q, want workspace (manifest and self-mounts share one checkout)", result.Role)
-	}
-	if result.LocalPath != manifestCache {
-		t.Fatalf("local path = %q, want the registered checkout %q", result.LocalPath, manifestCache)
+	if strings.Join(roles, ",") != "manifest:acme,content:handbook" {
+		t.Fatalf("results = %#v, want separate manifest and content entries", report.Results)
 	}
 }
 
-func TestChangedManifestForDerivedIncludesWorkspaceRole(t *testing.T) {
+func TestChangedManifestForDerivedUsesManifestRole(t *testing.T) {
 	report := syncer.Report{Results: []syncer.Result{
-		{Manifest: "acme", ID: "acme", Role: "workspace", Status: "pulled"},
+		{Manifest: "acme", ID: "acme", Role: "manifest", Status: "pulled"},
 	}}
 	name, ok := changedManifestForDerived(report)
 	if !ok || name != "acme" {
-		t.Fatalf("changedManifestForDerived = %q, %v; want acme, true (workspace pulls must reconcile derived state)", name, ok)
+		t.Fatalf("changedManifestForDerived = %q, %v; want acme, true", name, ok)
 	}
 }
 
@@ -4458,7 +4454,7 @@ func setupAdminCustomerManifest(t *testing.T) string {
 	t.Helper()
 	manifestDir := t.TempDir()
 	writeAdminManifest(t, manifestDir, "")
-	data, err := os.ReadFile(filepath.Join("..", "..", "examples", "acme-workspace", "catalog", "customers.json"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "examples", "acme-workspace", "manifest", "catalog", "customers.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

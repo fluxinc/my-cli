@@ -79,10 +79,18 @@ Replaces the printed raw `gh` commands. Idempotently:
 Guard: a manifest whose mounts reference local paths is **local-only**;
 sync/doctor refuse to treat it as publishable and point at `our publish`.
 
-### Compatibility: conflated self-mount repos
+### Retired: conflated self-mount repos
+
+The compatibility path below was superseded after v0.13.1 when the operator
+decided no deployed organization needed the conflated layout. The current
+implementation rejects mount `git_url: "."`, materializes mounts as separate
+umbrella checkouts, and does not merge manifest/content sync entries.
+
+Historical context from the earlier decision packet:
 
 Existing orgs whose manifest repo also carries content (the v0.12 layout and
-fluxinc today) remain supported but are no longer the recommended layout:
+fluxinc at the time) were going to remain supported but were no longer the
+recommended layout:
 
 - self-mounts (`"."` or an explicit URL equal to the manifest remote) resolve
   to the single registered checkout (no duplicate clone, sparse-checkout

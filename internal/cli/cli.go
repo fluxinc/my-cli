@@ -852,7 +852,7 @@ func (a app) ensurePublishedRepo(path, repoName, target string, printOnly bool, 
 
 func localMountGitURL(gitURL string) bool {
 	gitURL = strings.TrimSpace(gitURL)
-	if gitURL == "" || gitURL == manifest.SelfMountGitURL {
+	if gitURL == "" {
 		return false
 	}
 	if filepath.IsAbs(gitURL) {
@@ -1584,9 +1584,7 @@ func changedManifestForDerived(report syncer.Report) (string, bool) {
 	seen := map[string]bool{}
 	var names []string
 	for _, result := range report.Results {
-		// A workspace entry is the manifest checkout merged with its
-		// self-mounted content; changes there affect derived state too.
-		if result.Role != "manifest" && result.Role != "workspace" {
+		if result.Role != "manifest" {
 			continue
 		}
 		if !syncManifestResultChanged(result) {
@@ -1680,31 +1678,15 @@ func (a app) collectSyncEntries(home, manifestName, umbrellaRoot, scope string) 
 	for _, doc := range docs {
 		manifestWanted := scope == "all" || scope == "local" || scope == "manifest"
 		contentWanted := scope == "all" || scope == "local" || scope == "content"
-		// A self-mounted manifest shares one checkout between the manifest
-		// and its content mounts; emit it once as a workspace entry instead
-		// of one entry per role.
-		selfPaths, selfMounted := selfMountContentPaths(doc.ref, doc.doc)
-		if manifestWanted || contentWanted {
-			if selfMounted {
-				entries = append(entries, syncer.Entry{
-					Manifest:     doc.ref.Name,
-					ID:           doc.ref.Name,
-					Role:         "workspace",
-					Kind:         "workspace",
-					GitURL:       doc.ref.GitURL,
-					LocalPath:    doc.ref.LocalPath,
-					ContentPaths: selfPaths,
-				})
-			} else if manifestWanted {
-				entries = append(entries, syncer.Entry{
-					Manifest:  doc.ref.Name,
-					ID:        doc.ref.Name,
-					Role:      "manifest",
-					Kind:      "manifest",
-					GitURL:    doc.ref.GitURL,
-					LocalPath: doc.ref.LocalPath,
-				})
-			}
+		if manifestWanted {
+			entries = append(entries, syncer.Entry{
+				Manifest:  doc.ref.Name,
+				ID:        doc.ref.Name,
+				Role:      "manifest",
+				Kind:      "manifest",
+				GitURL:    doc.ref.GitURL,
+				LocalPath: doc.ref.LocalPath,
+			})
 		}
 		if contentWanted {
 			mounts, err := workspace.ListMounts(home, doc.ref.Name, umbrellaRoot)
@@ -1712,9 +1694,6 @@ func (a app) collectSyncEntries(home, manifestName, umbrellaRoot, scope string) 
 				return nil, err
 			}
 			for _, mount := range mounts {
-				if mount.SelfMount {
-					continue
-				}
 				entries = append(entries, syncer.Entry{
 					Manifest:     mount.Manifest,
 					ID:           mount.ID,
@@ -1799,27 +1778,6 @@ func mountContentPaths(kind string, includePaths []string) []string {
 	default:
 		return nil
 	}
-}
-
-// selfMountContentPaths reports whether the manifest mounts its own
-// repository and returns the union of those mounts' content paths.
-func selfMountContentPaths(ref manifest.Ref, doc manifest.Document) ([]string, bool) {
-	var paths []string
-	seen := map[string]bool{}
-	found := false
-	for _, mount := range manifest.EffectiveMounts(doc) {
-		if mount.GitURL != manifest.SelfMountGitURL && !manifest.SameRemote(mount.GitURL, ref.GitURL) {
-			continue
-		}
-		found = true
-		for _, path := range mountContentPaths(mount.Kind, mount.IncludePaths) {
-			if !seen[path] {
-				seen[path] = true
-				paths = append(paths, path)
-			}
-		}
-	}
-	return paths, found
 }
 
 func dedupeSyncEntries(entries []syncer.Entry) []syncer.Entry {

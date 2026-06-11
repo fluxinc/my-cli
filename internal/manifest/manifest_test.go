@@ -321,7 +321,7 @@ func TestValidateManifestCatchesInvalidMounts(t *testing.T) {
 	}
 }
 
-func TestValidateManifestAllowsSelfMountGitURL(t *testing.T) {
+func TestValidateManifestRejectsSelfMountGitURL(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `{
   "manifest_version": 1,
@@ -336,8 +336,8 @@ func TestValidateManifestAllowsSelfMountGitURL(t *testing.T) {
   ]
 }`)
 	result := ValidateFile(dir)
-	if len(result.Errors) != 0 {
-		t.Fatalf("errors = %#v", result.Errors)
+	if len(result.Errors) != 1 || !strings.Contains(result.Errors[0], "self-mounts are no longer supported") {
+		t.Fatalf("errors = %#v, want self-mount rejection", result.Errors)
 	}
 }
 
@@ -419,7 +419,7 @@ func TestValidateManifestAllowsWorkspaceRequirementFromMount(t *testing.T) {
 }
 
 func TestSaveDocumentRoundTripsExampleManifest(t *testing.T) {
-	source := filepath.Join("..", "..", "examples", "acme-workspace", "manifest.json")
+	source := filepath.Join("..", "..", "examples", "acme-workspace", "manifest", "manifest.json")
 	original, err := os.ReadFile(source)
 	if err != nil {
 		t.Fatal(err)
