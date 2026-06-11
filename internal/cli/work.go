@@ -528,3 +528,68 @@ func sessionMountSpecs(home, manifestName, root string) ([]worksession.MountSpec
 	}
 	return specs, nil
 }
+
+// doctorSessions reports work-session health under root: live state for each
+// active session and a single archived count for finished/discarded records.
+func doctorSessions(root string) []doctorItem {
+	sessions, err := worksession.List(root)
+	if err != nil {
+		return []doctorItem{{Name: "registry", Status: "error", Message: err.Error()}}
+	}
+	var items []doctorItem
+	finished, discarded := 0, 0
+	for _, session := range sessions {
+		switch session.Status {
+		case worksession.StatusFinished:
+			finished++
+		case worksession.StatusDiscarded:
+			discarded++
+		default:
+			items = append(items, doctorSessionItem(session))
+		}
+	}
+	if finished+discarded > 0 {
+		items = append(items, doctorItem{
+			Name:    "archived",
+			Status:  "ok",
+			Message: fmt.Sprintf("finished=%d discarded=%d", finished, discarded),
+		})
+	}
+	return items
+}
+
+func doctorSessionItem(session worksession.Session) doctorItem {
+	item := doctorItem{Name: session.ID, Path: session.Path}
+	for _, mount := range session.Mounts {
+		if _, err := os.Stat(mount.WorktreePath); err != nil {
+			item.Status = "error"
+			item.Message = "worktree missing for mount " + mount.ID
+			item.Details = append(item.Details, "discard the session record with: our work finish "+session.ID+" --discard")
+			return item
+		}
+	}
+	status, err := worksession.Inspect(session, nil)
+	if err != nil {
+		item.Status = "error"
+		item.Message = err.Error()
+		return item
+	}
+	dirty, unlanded := 0, 0
+	for _, mount := range status.Mounts {
+		if mount.Error != "" {
+			item.Status = "error"
+			item.Message = mount.ID + ": " + mount.Error
+			return item
+		}
+		dirty += len(mount.Dirty)
+		unlanded += mount.Unlanded
+	}
+	if dirty == 0 && unlanded == 0 {
+		item.Status = "ok"
+		item.Message = "active, clean"
+		return item
+	}
+	item.Status = "warning"
+	item.Message = fmt.Sprintf("active: %d dirty, %d unlanded; finish with: our work finish %s --land", dirty, unlanded, session.ID)
+	return item
+}

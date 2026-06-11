@@ -135,6 +135,148 @@ func TestWorkStartWithoutEligibleMountsFails(t *testing.T) {
 	}
 }
 
+type doctorSessionsReport struct {
+	Sessions []struct {
+		Name    string `json:"name"`
+		Status  string `json:"status"`
+		Path    string `json:"path"`
+		Message string `json:"message"`
+	} `json:"sessions"`
+}
+
+func startCLIDoctorSession(t *testing.T, a *app, home string) worksession.Session {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	starter := app{stdout: &stdout, stderr: &stderr}
+	if err := starter.run([]string{"our", "work", "start", "--slug", "notes", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
+	}
+	var session worksession.Session
+	if err := json.Unmarshal(stdout.Bytes(), &session); err != nil {
+		t.Fatalf("parse JSON: %v\nstdout: %s", err, stdout.String())
+	}
+	return session
+}
+
+func TestDoctorReportsActiveSessionDirty(t *testing.T) {
+	home, _ := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Join(home, "acme")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	session := startCLIDoctorSession(t, &a, home)
+	writeCLITestFile(t, filepath.Join(session.Mounts[0].WorktreePath, "notes.md"), "draft\n")
+
+	if err := a.run([]string{"our", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
+		t.Fatalf("doctor: %v\nstderr: %s", err, stderr.String())
+	}
+	var report doctorSessionsReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("parse JSON: %v\nstdout: %s", err, stdout.String())
+	}
+	if len(report.Sessions) != 1 {
+		t.Fatalf("sessions = %#v", report.Sessions)
+	}
+	item := report.Sessions[0]
+	if item.Name != session.ID || item.Status != "warning" || item.Path != session.Path {
+		t.Fatalf("item = %#v", item)
+	}
+	if !strings.Contains(item.Message, "1 dirty") || !strings.Contains(item.Message, "our work finish "+session.ID) {
+		t.Fatalf("message = %q", item.Message)
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"our", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "session\t"+session.ID+"\twarning") {
+		t.Fatalf("human output = %q", stdout.String())
+	}
+}
+
+func TestDoctorReportsCleanActiveSessionOK(t *testing.T) {
+	home, _ := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Join(home, "acme")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	session := startCLIDoctorSession(t, &a, home)
+
+	if err := a.run([]string{"our", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
+		t.Fatalf("doctor: %v\nstderr: %s", err, stderr.String())
+	}
+	var report doctorSessionsReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Sessions) != 1 || report.Sessions[0].Status != "ok" || report.Sessions[0].Name != session.ID {
+		t.Fatalf("sessions = %#v", report.Sessions)
+	}
+}
+
+func TestDoctorReportsSessionMissingWorktree(t *testing.T) {
+	home, _ := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Join(home, "acme")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	session := startCLIDoctorSession(t, &a, home)
+	if err := os.RemoveAll(session.Mounts[0].WorktreePath); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.run([]string{"our", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
+		t.Fatalf("doctor: %v\nstderr: %s", err, stderr.String())
+	}
+	var report doctorSessionsReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Sessions) != 1 || report.Sessions[0].Status != "error" {
+		t.Fatalf("sessions = %#v", report.Sessions)
+	}
+	if !strings.Contains(report.Sessions[0].Message, "worktree missing") {
+		t.Fatalf("message = %q", report.Sessions[0].Message)
+	}
+}
+
+func TestDoctorCountsArchivedSessions(t *testing.T) {
+	home, _ := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Join(home, "acme")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	session := startCLIDoctorSession(t, &a, home)
+	if err := a.run([]string{"our", "work", "finish", session.ID, "--discard", "--home", home}); err != nil {
+		t.Fatalf("work finish --discard: %v\nstderr: %s", err, stderr.String())
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"our", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
+		t.Fatalf("doctor: %v\nstderr: %s", err, stderr.String())
+	}
+	var report doctorSessionsReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Sessions) != 1 {
+		t.Fatalf("sessions = %#v", report.Sessions)
+	}
+	item := report.Sessions[0]
+	if item.Name != "archived" || item.Status != "ok" || !strings.Contains(item.Message, "discarded=1") {
+		t.Fatalf("item = %#v", item)
+	}
+}
+
+func TestDoctorOmitsSessionsWhenNone(t *testing.T) {
+	home, _ := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Join(home, "acme")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
+		t.Fatalf("doctor: %v\nstderr: %s", err, stderr.String())
+	}
+	if strings.Contains(stdout.String(), `"sessions"`) {
+		t.Fatalf("doctor JSON has sessions section without sessions: %s", stdout.String())
+	}
+}
+
 func TestWorkStatusReportsActiveSessionState(t *testing.T) {
 	home, _ := setupCLIRecordWorkspace(t)
 	var stdout, stderr bytes.Buffer

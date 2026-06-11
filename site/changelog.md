@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `our ai` no longer creates an orphan work session when the requested
+  harness binary is missing from PATH: the binary is resolved before a new
+  default session is created, and the error says no session was created.
+  Resume (`--session`) and base (`--no-session`) launches still print the
+  exact fallback command. `our ai --print` keeps creating a session, as
+  documented.
+
+### Added
+
+- `our doctor` now reports work sessions: each active session shows its
+  live state (`ok` when clean, `warning` with dirty/unlanded counts and the
+  matching `our work finish` command, `error` when a worktree is missing or
+  git inspection fails), and finished/discarded registry records roll up
+  into a single archived count. The JSON report gains a `sessions` section.
+
 ## 0.15.0 - 2026-06-11
 
 ### Changed

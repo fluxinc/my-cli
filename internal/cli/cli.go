@@ -4149,6 +4149,7 @@ type doctorReport struct {
 	Derived    []doctorItem `json:"derived,omitempty"`
 	Fixes      []doctorItem `json:"fixes,omitempty"`
 	LastSync   []doctorItem `json:"last_sync,omitempty"`
+	Sessions   []doctorItem `json:"sessions,omitempty"`
 	Workspaces []doctorItem `json:"workspaces"`
 	Tools      []doctorItem `json:"tools"`
 }
@@ -4231,6 +4232,7 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 	}
 	if root != "" {
 		report.LastSync = append(report.LastSync, doctorLastSync(root))
+		report.Sessions = append(report.Sessions, doctorSessions(root)...)
 	}
 	return report
 }
@@ -5091,6 +5093,7 @@ func (a app) printDoctorReport(report doctorReport) {
 	printItems("derived", report.Derived)
 	printItems("fix", report.Fixes)
 	printItems("last-sync", report.LastSync)
+	printItems("session", report.Sessions)
 	printItems("workspace", report.Workspaces)
 	printItems("tool", report.Tools)
 	if fixable > 0 {
