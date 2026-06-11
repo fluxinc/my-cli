@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added `our record adopt <path>` to mark an existing file under a declared
+  content mount as intentional publish content using Git intent-to-add.
+
+### Changed
+
+- `our meetings add`, `our support add`, and `our fleet add` now mark created
+  records with Git intent-to-add so `our sync` can distinguish Our-created
+  records from stray untracked drafts.
+- `our sync` now holds plain untracked (`??`) files under content paths and
+  names the `our record adopt <path>` remediation instead of auto-committing
+  arbitrary new files.
+
 ## 0.13.0 - 2026-06-10
 
 ### Added

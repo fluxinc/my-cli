@@ -2180,6 +2180,52 @@ func TestChangedManifestForDerivedIncludesWorkspaceRole(t *testing.T) {
 	}
 }
 
+func TestMeetingsAddMarksCreatedRecordIntentToAdd(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+
+	if err := a.run([]string{
+		"our", "meetings", "add", "sampleco-followup",
+		"--manifest", "acme",
+		"--workspace", "handbook",
+		"--home", home,
+		"--date", "2026-06-12",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	status := strings.TrimRight(gitCLIOutput(t, workspaceRoot, "status", "--porcelain", "--", "meetings/2026-06-12-sampleco-followup.md"), "\n")
+	if !strings.HasPrefix(status, " A ") {
+		t.Fatalf("git status = %q, want intent-to-add status", status)
+	}
+}
+
+func TestRecordAdoptMarksContentFileIntentToAdd(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	path := filepath.Join(workspaceRoot, "meetings", "manual-note.md")
+	writeCLITestFile(t, path, "manual\n")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+
+	if err := a.run([]string{
+		"our", "record", "adopt", path,
+		"--manifest", "acme",
+		"--workspace", "handbook",
+		"--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	status := strings.TrimRight(gitCLIOutput(t, workspaceRoot, "status", "--porcelain", "--", "meetings/manual-note.md"), "\n")
+	if !strings.HasPrefix(status, " A ") {
+		t.Fatalf("git status = %q, want intent-to-add status", status)
+	}
+	if !strings.Contains(stdout.String(), path) {
+		t.Fatalf("stdout = %q, want adopted path", stdout.String())
+	}
+}
+
 func TestSyncPersistsLastSyncAuditAndDoctorReportsIt(t *testing.T) {
 	home, umbrellaRoot, _, _ := setupCLITrackedManifest(t)
 	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
@@ -4462,6 +4508,52 @@ func setupCLILaunchFixture(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	return home, filepath.Join(home, "acme")
+}
+
+func setupCLIRecordWorkspace(t *testing.T) (string, string) {
+	t.Helper()
+	home := t.TempDir()
+	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	umbrellaRoot := filepath.Join(home, "acme")
+	workspaceRoot := filepath.Join(umbrellaRoot, "handbook")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": "https://github.com/acme/acme-handbook.git",
+      "mode": "default"
+    }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(workspaceRoot, "README.md"), "seed\n")
+	initCLIGitRepo(t, workspaceRoot)
+	_, state, err := umbrella.Ensure(umbrellaRoot, "acme", "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state = umbrella.UpsertMount(state, umbrella.MountStatus{
+		ID:        "handbook",
+		Kind:      "handbook",
+		SourceRef: "manifest:acme:handbook",
+		Status:    "synced",
+	})
+	if err := umbrella.SaveState(umbrellaRoot, state); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "manifests", "add", "acme",
+		"https://github.com/acme/acme-ai-manifest.git",
+		"--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return home, workspaceRoot
 }
 
 func setupCLITrackedManifest(t *testing.T) (string, string, string, string) {

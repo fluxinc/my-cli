@@ -95,10 +95,16 @@ type inspection struct {
 	upstream     string
 	remoteKey    string
 	dirty        []string
+	dirtyDetails []dirtyFile
 	changed      []string
 	contentOnly  bool
 	private      bool
 	visibilityOK bool
+}
+
+type dirtyFile struct {
+	status string
+	path   string
 }
 
 type inspectMode struct {
@@ -240,6 +246,10 @@ func runGnit(entries []Entry, opts Options) Report {
 			continue
 		}
 		if opts.Publish == "auto" {
+			if in.entry.Role != "content" {
+				hold(in, "auto publish only applies to content mounts")
+				continue
+			}
 			if !in.contentOnly {
 				hold(in, "not content-only inside declared content paths")
 				continue
@@ -251,6 +261,9 @@ func runGnit(entries []Entry, opts Options) Report {
 		}
 		if !in.contentOnly && len(in.dirty) != 0 {
 			hold(in, "dirty changes are outside declared content paths")
+			continue
+		}
+		if holdUnadoptedContent(in) {
 			continue
 		}
 		if !pathWithin(in.entry.LocalPath, opts.GnitRoot) {
@@ -395,8 +408,9 @@ func inspectWithMode(entry Entry, opts Options, runner Runner, mode inspectMode)
 		in.result.Error = err.Error()
 		return in
 	}
-	in.dirty = dirty
-	in.result.Dirty = dirty
+	in.dirtyDetails = dirty
+	in.dirty = dirtyFilePaths(dirty)
+	in.result.Dirty = in.dirty
 	if ahead > 0 {
 		changed, err := changedFiles(entry.LocalPath, upstream, runner)
 		if err != nil {
@@ -407,7 +421,7 @@ func inspectWithMode(entry Entry, opts Options, runner Runner, mode inspectMode)
 		in.changed = changed
 		in.result.Changed = changed
 	}
-	allChanged := unique(append(append([]string{}, dirty...), in.changed...))
+	allChanged := unique(append(append([]string{}, in.dirty...), in.changed...))
 	in.contentOnly = len(allChanged) != 0 && pathsWithin(allChanged, entry.ContentPaths)
 	if opts.Visibility != nil {
 		visibility, err := opts.Visibility(entry.GitURL)
@@ -457,6 +471,10 @@ func reconcile(in *inspection, all []inspection, opts Options, runner Runner) {
 		return
 	}
 	if opts.Publish == "auto" {
+		if in.entry.Role != "content" {
+			hold(in, "auto publish only applies to content mounts")
+			return
+		}
 		if !in.contentOnly {
 			hold(in, "not content-only inside declared content paths")
 			return
@@ -468,6 +486,9 @@ func reconcile(in *inspection, all []inspection, opts Options, runner Runner) {
 	}
 	if !in.contentOnly && len(in.dirty) != 0 {
 		hold(in, "dirty changes are outside declared content paths")
+		return
+	}
+	if holdUnadoptedContent(in) {
 		return
 	}
 	if opts.DryRun {
@@ -540,6 +561,32 @@ func reconcileInbound(in *inspection, opts Options, runner Runner) bool {
 func hold(in *inspection, reason string) {
 	in.result.Status = "held back"
 	in.result.Message = reason
+}
+
+func holdUnadoptedContent(in *inspection) bool {
+	paths := unadoptedContentPaths(in)
+	if len(paths) == 0 {
+		return false
+	}
+	hold(in, unadoptedContentMessage(paths))
+	return true
+}
+
+func unadoptedContentPaths(in *inspection) []string {
+	var paths []string
+	for _, file := range in.dirtyDetails {
+		if file.status == "??" && pathsWithin([]string{file.path}, in.entry.ContentPaths) {
+			paths = append(paths, file.path)
+		}
+	}
+	return unique(paths)
+}
+
+func unadoptedContentMessage(paths []string) string {
+	if len(paths) == 1 {
+		return fmt.Sprintf("unadopted untracked content file %s; run our record adopt %s", paths[0], paths[0])
+	}
+	return fmt.Sprintf("unadopted untracked content files: %s; run our record adopt <path> for each file to publish", strings.Join(paths, ", "))
 }
 
 func markDuplicatePending(inspections []inspection) {
@@ -685,12 +732,12 @@ func aheadBehind(repo, upstream string, runner Runner) (int, int, error) {
 	return behind, ahead, nil
 }
 
-func dirtyFiles(repo string, runner Runner) ([]string, error) {
-	out, err := git(runner, repo, "status", "--porcelain")
+func dirtyFiles(repo string, runner Runner) ([]dirtyFile, error) {
+	out, err := git(runner, repo, "status", "--porcelain=v1", "-z", "--untracked-files=all")
 	if err != nil {
 		return nil, fmt.Errorf("status: %s", commandError(out, err))
 	}
-	return parseStatusPaths(string(out)), nil
+	return parseStatusFiles(string(out)), nil
 }
 
 func changedFiles(repo, upstream string, runner Runner) ([]string, error) {
@@ -701,20 +748,36 @@ func changedFiles(repo, upstream string, runner Runner) ([]string, error) {
 	return nonemptyLines(string(out)), nil
 }
 
-func parseStatusPaths(text string) []string {
-	var paths []string
-	for _, line := range strings.Split(text, "\n") {
-		if len(line) < 4 {
+func parseStatusFiles(text string) []dirtyFile {
+	var files []dirtyFile
+	seen := map[string]bool{}
+	parts := strings.Split(text, "\x00")
+	for i := 0; i < len(parts); i++ {
+		part := parts[i]
+		if len(part) < 4 {
 			continue
 		}
-		path := strings.TrimSpace(line[3:])
-		if i := strings.LastIndex(path, " -> "); i >= 0 {
-			path = strings.TrimSpace(path[i+4:])
+		status := part[:2]
+		path := part[3:]
+		if path == "" {
+			continue
 		}
-		path = strings.Trim(path, `"`)
-		if path != "" {
-			paths = append(paths, filepath.ToSlash(path))
+		path = filepath.ToSlash(path)
+		if !seen[path] {
+			files = append(files, dirtyFile{status: status, path: path})
+			seen[path] = true
 		}
+		if status[0] == 'R' || status[0] == 'C' || status[1] == 'R' || status[1] == 'C' {
+			i++
+		}
+	}
+	return files
+}
+
+func dirtyFilePaths(files []dirtyFile) []string {
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		paths = append(paths, file.path)
 	}
 	return unique(paths)
 }

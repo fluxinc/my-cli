@@ -168,14 +168,15 @@ schemas; refresh belongs to the runtime/governance plane.
 
 `our sync` stops auto-publishing arbitrary dirty content files:
 
-- **Untracked** files under content paths auto-publish only with explicit
-  provenance: created by `our meetings/support/fleet add` (recorded in
-  umbrella state at creation) or adopted with `our record adopt <path>`.
-  Everything else is held and **named** in the sync report with the adopt /
-  explicit-publish remediation. Schema validity is deliberately not enough —
-  an agent half-draft can be schema-valid.
+- **Untracked** files under content paths publish only when the Git index
+  already records adoption: `our meetings/support/fleet add` runs
+  `git add -N` after creating the record, `our record adopt <path>` does the
+  same for a manually created file, and an explicit human `git add <path>`
+  also counts. Plain `??` paths are held and **named** in the sync report
+  with the adopt remediation. Schema validity is deliberately not enough — an
+  agent half-draft can be schema-valid.
 - **Modifications to tracked files** publish as today; the human
-  edit-a-record flow is untouched. This is a compatibility compromise, not
+  edit-a-record flow is untouched. This is a transition compromise, not
   full isolation: the patch buys immediate safety for new stray files, while
   default sessions are what prevent tracked-file half-edits from being made in
   the base checkout.
@@ -212,14 +213,15 @@ is. The plan adopts accordingly.
   emits each harness's native config dialect (`.mcp.json` with `${VAR}`
   placeholders, `.vscode/mcp.json` with inputs, etc.), never secret values —
   exactly what org MCP registries (e.g. GitHub Copilot's) already do.
-- **The adoption verb copies Jujutsu.** jj hit this exact litter problem
-  (it auto-snapshots like our sync auto-publishes) and solved it with
-  `snapshot.auto-track = "none()"` plus `jj file track`. `our record adopt`
-  is the same verb; sync reports held files (named, with remediation)
-  instead of hiding them. Provenance is recorded out-of-band by the
-  creating CLI command — never as in-file markers, which the `@generated`
-  convention proves are forgeable by the agent being gated (the in-toto
-  trust lesson: the creator attests, not the artifact).
+- **The adoption verb copies Jujutsu and speaks Git.** jj hit this exact
+  litter problem (it auto-snapshots like our sync auto-publishes) and solved
+  it with `snapshot.auto-track = "none()"` plus `jj file track`. `our record adopt`
+  is the same polarity, implemented with Git's own intent-to-add bit:
+  `git add -N` records local adoption without staging file content. Sync
+  reports plain `??` files (named, with remediation) instead of hiding them.
+  No in-file markers are trusted; the `@generated` convention proves those
+  are forgeable by the agent being gated. Explicit `git add <path>` is also
+  adoption, which preserves human symmetry.
 - **Session conventions imitate the field, without harness coupling.**
   Worktree-per-session is now mainstream harness UX, which validates the
   model — but `our work` deliberately does NOT integrate with any harness's
@@ -255,11 +257,6 @@ multi-repo substrate remains in-house (gnit) by design.
   single-repo; Conductor's linked-directories multi-repo is documented as
   "not yet perfect". One session spanning worktrees of N writable mounts,
   with a registry consulted by org-level sync, exists nowhere.
-- **The provenance ledger** (paths + creating command, written only by
-  blessed CLI verbs, consulted at publish): every existing gate keys on
-  path, pattern, schema, or self-asserted markers — all non-discriminating
-  here, since a blessed record and an agent half-draft can be byte-identical
-  in location and shape.
 - **The services grant/policy envelope**: requested grant + role-granted
   visibility in a git-native, serverless registry consumed identically by
   humans and agents. server.json stops at `isSecret`; org-registry products
@@ -267,15 +264,14 @@ multi-repo substrate remains in-house (gnit) by design.
 - **Mode-aware compile policy** (refusing local secret references in
   container artifacts) — the property no off-the-shelf resolver has.
 
-### Simplification worth deciding (operator call)
+### Simplification adopted for v0.13.1
 
 jj's history suggests auto-publishing untracked files is the unusual
-feature, not the gate. The more conventional end state may be **"never
-auto-publish untracked; adopt or finish to publish"** — which eliminates
-the provenance ledger for the auto path entirely (records created by
-`our ... add` are adopted implicitly at creation; everything else waits for
-`our record adopt` or `our work finish`). Same UX for the happy path,
-strictly less state.
+feature, not the gate. v0.13.1 adopts **"never auto-publish plain `??`
+content; adopt or finish to publish"**. Records created by `our ... add` are
+adopted at creation via `git add -N`; everything else waits for
+`our record adopt`, explicit `git add`, or future `our work finish`. Same UX
+for the happy path, no separate provenance ledger.
 
 ## Boundary with container tooling ("our speaks claw")
 
@@ -303,8 +299,8 @@ is a compile target, not a vocabulary source.**
 - Pro: fast, narrow; closes the litter-publishing hole immediately.
 - Pro: preserves human direct edits to tracked records.
 - Con: agents still share one checkout — tracked-file half-edits,
-  cross-pollution, and inheritance remain; introduces provenance state to
-  explain and maintain.
+  cross-pollution, and inheritance remain; introduces an adoption rule that
+  depends on Git index state.
 - When it wins: as v0.13.1, while the execution plane is built.
 
 ### O2 — Patch + sessions, opt-in (`our work start`, `our ai --session`)
@@ -356,8 +352,8 @@ is a compile target, not a vocabulary source.**
 
 The combined path:
 
-1. **v0.13.1** — provenance-gated publishing for untracked content files,
-   plus `our record adopt`.
+1. **v0.13.1** — Git intent-to-add gated publishing for untracked content
+   files, plus `our record adopt`.
 2. **v0.14** — `our work` sessions (visible `work/<id>`, plain git
    worktrees, first-class registry, sync session-awareness), with `our ai`
    defaulting into a fresh session, explicit resume only, and `--no-session`

@@ -128,6 +128,8 @@ our fleet get <id|identifier|path>
 our fleet add <id>
 our fleet set <id> KEY=VALUE...
 
+our record adopt <path>
+
 our customers list
 our products list
 our tools list
@@ -138,15 +140,19 @@ our tools info <name>
 when the umbrella is initialized as a Gnit control workspace; Our AI keeps the
 bootstrap, policy, duplicate-remote, and PR layers. `--publish direct` can
 publish existing local commits directly, but dirty non-content/admin files are
-still held back for explicit admin or review handling. A manifest can set
-top-level `sync.publish_policy` to `auto`, `never`, or `pr` as the default when
-`--publish` is omitted; an explicit CLI flag always wins. Non-print syncs write
-`.our/last-sync.json`; `our doctor` reports that audit, per-checkout Git
-freshness, and derived skill/guidance drift. Doctor fetches refs before
-behind/ahead checks unless `--no-fetch` is passed for an offline view. `doctor
---fix` fast-forwards only clean stale manifest/content checkouts and reconciles
-derived guidance plus manifest skills. Sync performs the same derived reconcile
-after manifest checkout changes unless `--no-derived` is passed.
+still held back for explicit admin or review handling. Plain untracked (`??`)
+files under declared content paths are also held; create records with
+`our meetings add`, `our support add`, or `our fleet add`, or run
+`our record adopt <path>` to mark a manually created file as intentional
+publish content. A manifest can set top-level `sync.publish_policy` to `auto`,
+`never`, or `pr` as the default when `--publish` is omitted; an explicit CLI
+flag always wins. Non-print syncs write `.our/last-sync.json`; `our doctor`
+reports that audit, per-checkout Git freshness, and derived skill/guidance
+drift. Doctor fetches refs before behind/ahead checks unless `--no-fetch` is
+passed for an offline view. `doctor --fix` fast-forwards only clean stale
+manifest/content checkouts and reconciles derived guidance plus manifest
+skills. Sync performs the same derived reconcile after manifest checkout
+changes unless `--no-derived` is passed.
 
 `our root`, `our ai`, and `our setup` run a best-effort, TTL-gated
 refresh for clean manifest/content checkouts before using workspace context.

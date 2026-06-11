@@ -12,6 +12,7 @@ import (
 func TestRunAutoPushesPrivateContentAndPullsCleanSibling(t *testing.T) {
 	remote, content, manifest := setupTwoCheckoutRemote(t)
 	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
+	adoptFile(t, content, "meetings/2026-06-08-sync.md")
 
 	report := Run([]Entry{
 		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
@@ -35,6 +36,72 @@ func TestRunAutoPushesPrivateContentAndPullsCleanSibling(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(manifest, "meetings", "2026-06-08-sync.md")); err != nil {
 		t.Fatalf("manifest checkout missed pushed content: %v", err)
+	}
+}
+
+func TestRunHoldsUnadoptedUntrackedContent(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-draft.md"), "draft\n")
+
+	report := Run([]Entry{
+		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
+	}, Options{
+		Publish:    "auto",
+		Message:    "Add meeting note",
+		Visibility: privateVisibility,
+	})
+
+	result := findResult(t, report, "handbook")
+	if result.Status != "held back" || !strings.Contains(result.Message, "unadopted untracked content") {
+		t.Fatalf("result = %#v, want unadopted content hold", result)
+	}
+	if !strings.Contains(result.Message, "meetings/2026-06-08-draft.md") ||
+		!strings.Contains(result.Message, "our record adopt") {
+		t.Fatalf("message = %q, want file name and adopt remediation", result.Message)
+	}
+	if log := gitOut(t, content, "log", "--oneline", "--all"); strings.Contains(log, "Add meeting note") {
+		t.Fatalf("content change was committed despite unadopted hold:\n%s", log)
+	}
+}
+
+func TestRunPublishesExplicitlyStagedNewContent(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
+	runGit(t, content, "add", "meetings/2026-06-08-sync.md")
+
+	report := Run([]Entry{
+		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
+	}, Options{
+		Publish:    "auto",
+		Message:    "Add meeting note",
+		Visibility: privateVisibility,
+	})
+
+	result := findResult(t, report, "handbook")
+	if result.Status != "pushed" {
+		t.Fatalf("result = %#v, want staged new content to publish", result)
+	}
+}
+
+func TestRunAutoHoldsWorkspaceRoleEvenWhenContentIsAdopted(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
+	adoptFile(t, content, "meetings/2026-06-08-sync.md")
+
+	report := Run([]Entry{
+		{ID: "workspace", Role: "workspace", Kind: "workspace", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
+	}, Options{
+		Publish:    "auto",
+		Message:    "Add meeting note",
+		Visibility: privateVisibility,
+	})
+
+	result := findResult(t, report, "workspace")
+	if result.Status != "held back" || !strings.Contains(result.Message, "content mounts") {
+		t.Fatalf("result = %#v, want workspace role held", result)
+	}
+	if log := gitOut(t, content, "log", "--oneline", "--all"); strings.Contains(log, "Add meeting note") {
+		t.Fatalf("workspace-role change was committed despite auto hold:\n%s", log)
 	}
 }
 
@@ -92,6 +159,7 @@ func TestRunGnitDryRunPlansApprovedContentThroughGnit(t *testing.T) {
 	gnitRoot := filepath.Dir(content)
 	writeFile(t, filepath.Join(gnitRoot, ".gnit", "roster.yaml"), "version: 1\nmode: shared\nmembers:\n- id: handbook\n  path: content\n")
 	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
+	adoptFile(t, content, "meetings/2026-06-08-sync.md")
 
 	report := Run([]Entry{
 		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
@@ -121,6 +189,7 @@ func TestRunGnitDryRunPlansApprovedContentThroughGnit(t *testing.T) {
 func TestRunGnitPublishesWithWorkspaceRelativePathsAndCommit(t *testing.T) {
 	remote, gnitRoot, content, _ := setupGnitWorkspaceWithDuplicateRemote(t)
 	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
+	adoptFile(t, content, "meetings/2026-06-08-sync.md")
 	var calls []string
 
 	report := Run([]Entry{
@@ -193,6 +262,7 @@ func TestRunGnitHoldsWhenWorkspaceIsNotInitialized(t *testing.T) {
 func TestRunGnitAllowsCanonicalContentWithCleanDuplicateSibling(t *testing.T) {
 	remote, gnitRoot, content, manifest := setupGnitWorkspaceWithDuplicateRemote(t)
 	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
+	adoptFile(t, content, "meetings/2026-06-08-sync.md")
 
 	report := Run([]Entry{
 		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
@@ -407,4 +477,9 @@ func runGit(t *testing.T, dir string, args ...string) string {
 		t.Fatalf("git %s failed in %s: %v\n%s", strings.Join(args, " "), dir, err, out)
 	}
 	return string(out)
+}
+
+func adoptFile(t *testing.T, dir, path string) {
+	t.Helper()
+	runGit(t, dir, "add", "-N", path)
 }

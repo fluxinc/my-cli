@@ -192,6 +192,13 @@ our sync --publish never          # explicit local-only reconcile
 our sync --publish pr             # currently holds changes and reports PR-mode follow-up
 ```
 
+Plain untracked (`??`) files under declared content paths are held instead of
+auto-published. Use `our meetings add`, `our support add`, or `our fleet add`
+for new records; those commands mark the created file with Git intent-to-add.
+For a manually created file that should publish, run `our record adopt <path>`
+after checking that it belongs in the shared content repo. Explicit `git add`
+also counts as adoption.
+
 "Derived" means the artifacts generated from the manifest: root guidance
 (`AGENTS.md` plus the `CLAUDE.md` pointer) and manifest-declared skills. Sync
 reconciles them automatically after a manifest checkout changes.
