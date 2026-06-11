@@ -26,7 +26,7 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
 
 ## The Model
 
-`our` has seven concepts. Everything in the CLI is one of these:
+`our` has eight concepts. Everything in the CLI is one of these:
 
 - **Manifest** — an organization's configuration in its own private Git repo:
   declares skills, mounts, catalog, and tool hints. The single source of
@@ -42,6 +42,11 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   from here so they pick up the generated `AGENTS.md` context.
 - **Mount** — a Git-backed content folder cloned into the umbrella (handbook,
   meeting notes, policy, docs).
+- **Session** — an isolated unit of work under `<umbrella>/work/<id>`: a git
+  worktree per content mount on a fresh `our/work/<id>` branch, plus
+  session-local `scratch/`, with a registry record under `.our/sessions/`.
+  `our ai` starts one by default; work leaves a session only through
+  `our work finish --land | --publish | --discard`.
 - **Catalog** — JSON inventories for products and canonical customers.
 - **Guidance** — the generated root `AGENTS.md` (and `CLAUDE.md` pointer) built
   from a public baseline plus manifest fragments.
@@ -58,7 +63,9 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   `our fleet list/search/get`,
   `our customers list`,
   `our products list`, `our tools list/info`, `our root`,
-  `our ai`, `our doctor`, `our manifests list`, `our mounts list`, and
+  `our ai`, `our doctor`, `our manifests list`, `our mounts list`,
+  `our work start/status/resume/finish` (sessions are local execution-plane
+  state; `finish --publish` only publishes what the sync policy allows), and
   `our sync --print`.
   `our update --check` is also safe for inspection. Run `our update` itself
   only when the user explicitly asks to update the local CLI binary.
@@ -131,6 +138,26 @@ These startup commands also make a best-effort, stderr-only check for a newer
 Our AI release. The notice never changes stdout, so `cd "$(our root)"` remains
 safe. Use `--no-update-check`, `OUR_NO_UPDATE_CHECK=1`, or
 `OUR_UPDATE_CHECK_TTL=12h` when the user needs deterministic/offline startup.
+
+Work in sessions:
+
+```sh
+our work start [--slug SLUG]      # create an isolated session: worktree per content mount + scratch/
+our work status [--all]           # list sessions with per-mount dirty and unlanded state
+our work resume [session-id]      # print the cd command for an active session
+our work finish [session-id] --land     # commit session content, merge into base, remove worktrees
+our work finish [session-id] --publish  # land, then publish landed content per the sync policy
+our work finish [session-id] --discard  # delete the session's worktrees, branches, and directory
+```
+
+If you are running inside a session (the working directory is under
+`<umbrella>/work/<id>`), keep all edits in the session's mount worktrees and
+`scratch/`; never edit the base mounts directly. Finish is the only exit:
+`--land` holds unadopted `??` files and non-content changes instead of
+committing them, so adopt records first (`our meetings/support/fleet add` do
+this automatically). While a session is dirty or unlanded, `our sync` holds
+outbound publish of that mount and names the session — finish or discard the
+session rather than working around the hold.
 
 Update Our AI when explicitly requested:
 
@@ -236,8 +263,10 @@ remote-unknown checkouts instead of touching them.
 
 ## Tips
 
-- Launch harnesses from the umbrella root (`cd "$(our root)"`) so generated
-  guidance is in scope.
+- Launch harnesses with `our ai <harness>`: it starts from a fresh work
+  session by default so generated guidance is in scope and the base umbrella
+  stays clean. Reserve `cd "$(our root)"` plus `our ai --no-session` for
+  inspection/admin/debug.
 - Data-returning commands accept `--json`; structured errors carry a concrete
   remediation command — read it and follow it.
 - To record what happened in a meeting, use `our meetings add` and then

@@ -1,6 +1,6 @@
 # The Model
 
-`our` has seven concepts. Every command works against one of them.
+`our` has eight concepts. Every command works against one of them.
 
 ## Manifest
 
@@ -51,6 +51,18 @@ records with frontmatter attribution (customer id, repeatable identifiers,
 claimed_by/observed_by/approved_by), searched via `our support`. Fleet content
 holds one record per deployed instance, updated in place via `our fleet set`;
 any identifier resolves via `our fleet get`.
+
+## Session
+
+An isolated unit of work under `<umbrella>/work/<id>`: a git worktree of each
+content mount on a fresh `our/work/<id>` branch, session-local `scratch/`, a
+`SESSION.md` summary, and generated session guidance, recorded in a registry
+under `.our/sessions/`. `our ai` starts a fresh session by default, so
+concurrent and successive agent runs cannot pollute each other or the base
+umbrella; humans can `cd` into a session and take over with plain git. Work
+leaves a session only through `our work finish --land | --publish |
+--discard`, and `our sync` holds outbound publish of a mount while an active
+session on it is dirty or unlanded.
 
 ## Catalog
 

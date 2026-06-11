@@ -81,10 +81,14 @@ live under `repos/<id>` in the umbrella.
 our ai codex
 ```
 
-That's it: `our ai` verifies generated guidance, then launches the harness
-from the umbrella. Pass `--print` to see the command without executing it,
-or `--setup` to reconcile the umbrella first. If you prefer plain shell, the
-equivalent is `cd "$(our root)" && codex`.
+That's it: `our ai` verifies generated guidance, creates a fresh work session
+under `work/<id>` (a git worktree per content mount, isolated from the base
+umbrella), and launches the harness there. When the work is done,
+`our work finish --land | --publish | --discard` is how it leaves the
+session. Pass `--session <id>` to resume an active session, `--no-session`
+to launch from the base umbrella for inspection or admin, `--print` to see
+the command without executing it, or `--setup` to reconcile the umbrella
+first.
 
 At startup, `our root`, `our ai`, and `our setup` print stderr-only `notice`
 lines for checkouts auto-refresh cannot converge (dirty, ahead, behind, or

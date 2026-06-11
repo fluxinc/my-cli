@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The bundled `our` self-skill and the docs site now document work sessions
+  fully: the Session concept in the model, the `our work
+  start/status/resume/finish` verbs in the skill's operational surface and
+  task list, and quickstart/launch guidance reflecting that `our ai` starts
+  in a fresh session by default.
+
 ## 0.14.0 - 2026-06-11
 
 ### Added
