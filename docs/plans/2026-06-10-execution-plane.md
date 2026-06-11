@@ -358,8 +358,8 @@ The combined path:
    worktrees, first-class registry, sync session-awareness), with `our ai`
    defaulting into a fresh session, explicit resume only, and `--no-session`
    as the escape hatch.
-3. **v0.15** — manifest `roles` + `services` (MCP servers fold in as
-   `kind: mcp`); org-side launch-artifact
-   compilation for contained runners.
+3. **Next** — manifest `roles` + `services` (MCP servers fold in as
+   `kind: mcp`); org-side launch-artifact compilation for contained
+   runners.
 4. Later — gnit backend for sessions once umbrellas bootstrap as gnit
    control workspaces; managed read-only base mounts for contained launches.
