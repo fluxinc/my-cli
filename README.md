@@ -393,12 +393,12 @@ indexed in [docs/plans/](docs/plans/README.md):
   `our sync`, and `our ai` defaulting into a fresh session so concurrent and
   successive agent runs cannot pollute each other or the base workspace.
   Plan: [execution plane](docs/plans/2026-06-10-execution-plane.md), Mode A.
-- **Next — products/repos split.** Catalog products become pure business
-  entities (no `git_url`); organization repositories get their own
-  `catalog/repos.json` inventory, an `our repos` noun, and `--repo` launch
-  flags, with clones under `repos/<id>` as today. Plan:
+- **Shipped — products/repos split (v0.15.0).** Catalog products are pure
+  business entities (no `git_url`) that may link implementing repos;
+  organization repositories live in `catalog/repos.json` with an `our repos`
+  noun and `--repo` launch flags, cloned under `repos/<id>`. Plan:
   [products/repos split](docs/plans/2026-06-11-products-repos-split.md).
-- **Planned — roles and services (v0.15).** Manifest `roles` and `services`
+- **Next — roles and services.** Manifest `roles` and `services`
   extensions describing the organization's remote surfaces (APIs, MCP
   servers, gated brokers), harness MCP config materialization, and org-side
   launch-artifact compilation for contained runners. Plan:

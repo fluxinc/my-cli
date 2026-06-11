@@ -1,8 +1,8 @@
 # Products are not repos: split the catalog from code checkouts
 
-Status: decided (operator-directed 2026-06-11; design converged in-room
-between Claude and Codex); slices A-C implemented on master, slice D
-(fluxinc private manifest migration) pending.
+Status: shipped (v0.15.0, 2026-06-11). Operator-directed; design converged
+in-room between Claude and Codex; all four slices landed, including the
+private fluxinc manifest migration.
 
 ## Problem
 
