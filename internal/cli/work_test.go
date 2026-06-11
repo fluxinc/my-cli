@@ -189,6 +189,27 @@ func TestWorkStatusEmptyWithoutSessions(t *testing.T) {
 	}
 }
 
+func TestWorkResumePrintsSessionPath(t *testing.T) {
+	home, _ := setupCLIRecordWorkspace(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "work", "start", "--slug", "resume", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work start: %v", err)
+	}
+	var session worksession.Session
+	if err := json.Unmarshal(stdout.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"our", "work", "resume", session.ID, "--home", home}); err != nil {
+		t.Fatalf("work resume: %v\nstderr: %s", err, stderr.String())
+	}
+	if stdout.String() != "cd "+session.Path+"\n" {
+		t.Fatalf("resume stdout = %q, want session path", stdout.String())
+	}
+}
+
 func TestSyncHoldsContentMountWithActiveSession(t *testing.T) {
 	home, workspaceRoot := setupCLIRecordWorkspace(t)
 	remote := filepath.Join(home, "remote.git")
@@ -425,6 +446,22 @@ func TestWorkFinishDiscardRemovesSession(t *testing.T) {
 	}
 	if _, err := os.Stat(session.Path); !os.IsNotExist(err) {
 		t.Fatalf("session path remains after discard: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"our", "work", "status", "--all", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work status --all: %v\nstderr: %s", err, stderr.String())
+	}
+	var statuses []worksession.SessionStatus
+	if err := json.Unmarshal(stdout.Bytes(), &statuses); err != nil {
+		t.Fatalf("parse status JSON: %v\nstdout: %s", err, stdout.String())
+	}
+	if len(statuses) != 1 || statuses[0].Status != worksession.StatusDiscarded {
+		t.Fatalf("statuses = %#v, want discarded session", statuses)
+	}
+	if len(statuses[0].Mounts) != 1 || statuses[0].Mounts[0].Error != "" {
+		t.Fatalf("archived mounts = %#v, want registry-only mount without probe error", statuses[0].Mounts)
 	}
 }
 

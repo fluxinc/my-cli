@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/fluxinc/our-ai/internal/fleet"
+	"github.com/fluxinc/our-ai/internal/guidance"
 	"github.com/fluxinc/our-ai/internal/harness"
 	"github.com/fluxinc/our-ai/internal/manifest"
 	"github.com/fluxinc/our-ai/internal/meetings"
@@ -24,6 +25,7 @@ import (
 	"github.com/fluxinc/our-ai/internal/support"
 	"github.com/fluxinc/our-ai/internal/syncer"
 	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/our-ai/internal/worksession"
 	"github.com/fluxinc/our-ai/internal/workspace"
 )
 
@@ -3218,6 +3220,7 @@ func TestLaunchPrintsResolvedCommandWithoutCheckingGuidance(t *testing.T) {
 		"our", "ai",
 		"--manifest", "acme",
 		"--home", home,
+		"--no-session",
 		"--product", "sample-product",
 		"--print",
 		"codex", "--model", "gpt-5",
@@ -3228,6 +3231,36 @@ func TestLaunchPrintsResolvedCommandWithoutCheckingGuidance(t *testing.T) {
 	want := "cd " + filepath.Join(home, "acme", "repos", "sample-product") + " && codex --model gpt-5\n"
 	if stdout.String() != want {
 		t.Fatalf("launch --print stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestLaunchPrintStartsSessionByDefault(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "ai",
+		"--manifest", "acme",
+		"--home", home,
+		"--print",
+		"codex", "--model", "gpt-5",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := worksession.List(umbrellaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0].Status != worksession.StatusActive {
+		t.Fatalf("sessions = %#v, want one active session", sessions)
+	}
+	want := "cd " + sessions[0].Path + " && codex --model gpt-5\n"
+	if stdout.String() != want {
+		t.Fatalf("launch --print stdout = %q, want %q", stdout.String(), want)
+	}
+	if _, err := os.Stat(filepath.Join(sessions[0].Path, "handbook")); err != nil {
+		t.Fatalf("session handbook worktree missing: %v", err)
 	}
 }
 
@@ -3273,7 +3306,7 @@ func TestLaunchOnboardThenExecsWithArgs(t *testing.T) {
 			return nil
 		},
 	}
-	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--setup", "codex", "--model", "gpt-5", "--full-auto"})
+	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--setup", "--no-session", "codex", "--model", "gpt-5", "--full-auto"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3323,7 +3356,7 @@ func TestLaunchInstallsAbsentSelfSkillBeforeExec(t *testing.T) {
 	}
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "codex"}); err != nil {
+	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--no-session", "codex"}); err != nil {
 		t.Fatal(err)
 	}
 	if gotPath != "/test/bin/codex" || gotDir != umbrellaRoot {
@@ -3354,13 +3387,107 @@ func TestLaunchMissingHarnessPrintsFallbackAndFails(t *testing.T) {
 			return "", exec.ErrNotFound
 		},
 	}
-	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "codex", "--model", "gpt-5"})
+	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--no-session", "codex", "--model", "gpt-5"})
 	if !errors.Is(err, errAlreadyPrinted) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}
 	wantLine := "cd " + umbrellaRoot + " && codex --model gpt-5"
 	if !strings.Contains(stderr.String(), "codex not found on PATH") || !strings.Contains(stderr.String(), wantLine) {
 		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestLaunchDefaultsToNewSession(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+	var stdout, stderr bytes.Buffer
+	var gotPath, gotDir string
+	var gotArgs []string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			return "/test/bin/codex", nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotPath = path
+			gotArgs = append([]string(nil), args...)
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check", "codex", "--model", "gpt-5"}); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := worksession.List(umbrellaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || gotDir != sessions[0].Path {
+		t.Fatalf("gotDir=%q sessions=%#v, want launch from new session", gotDir, sessions)
+	}
+	if gotPath != "/test/bin/codex" || strings.Join(gotArgs, " ") != "--model gpt-5" {
+		t.Fatalf("exec path=%q args=%#v", gotPath, gotArgs)
+	}
+}
+
+func TestLaunchResumesExplicitSession(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "work", "start", "--slug", "resume", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work start: %v", err)
+	}
+	var session worksession.Session
+	if err := json.Unmarshal(stdout.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	var gotDir string
+	stdout.Reset()
+	stderr.Reset()
+	a = app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--session", session.ID, "--no-refresh", "--no-update-check", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := worksession.List(umbrellaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || gotDir != session.Path {
+		t.Fatalf("gotDir=%q sessions=%#v, want existing session only", gotDir, sessions)
+	}
+}
+
+func TestLaunchProductRequiresNoSession(t *testing.T) {
+	home, _ := setupCLILaunchFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--product", "sample-product", "--print", "codex"})
+	if !errors.Is(err, errAlreadyPrinted) {
+		t.Fatalf("err = %v, want errAlreadyPrinted", err)
+	}
+	if !strings.Contains(stderr.String(), "default session mode does not include product worktrees") ||
+		!strings.Contains(stderr.String(), "pass --no-session") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	if stdout.String() != "" {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
 	}
 }
 
@@ -4508,6 +4635,21 @@ func registerCLIManifest(t *testing.T, a app, home string) {
 		"--home", home,
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func ensureCLIGuidance(t *testing.T, home, umbrellaRoot string) {
+	t.Helper()
+	doc, err := loadSingleRegisteredDoc(home, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := guidance.Ensure(umbrellaRoot, doc.ref.LocalPath, doc.doc, guidance.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status == "blocked" {
+		t.Fatalf("guidance blocked: %#v", result)
 	}
 }
 

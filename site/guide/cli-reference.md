@@ -32,7 +32,7 @@ our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--se
 our publish [--manifest NAME] [--home DIR] [--print] [--json]
 our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 our root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-our ai [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+our ai [--session ID|--no-session] [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
 our doctor [--no-fetch] [--fix] [--json]
 our update [--check] [--version X.Y.Z] [--json] [--yes]
@@ -110,6 +110,7 @@ our workspaces sync <workspace...> | --all [--manifest NAME] [--print]
 
 our work start [--slug SLUG] [--json]
 our work status [--all] [--json]
+our work resume [session-id] [--json]
 our work finish [session-id] --land|--publish|--discard [--message TEXT] [--json]
 ```
 
@@ -162,7 +163,10 @@ changes unless `--no-derived` is passed.
 refresh for clean manifest/content checkouts before using workspace context.
 They leave dirty, diverged, product, and remote-unknown repositories untouched.
 `our ai` also ensures the bundled `our` self-skill exists for the selected
-filesystem harness before launching it. Use `--no-refresh` for one command,
+filesystem harness before launching it. By default it creates a fresh
+`work/<id>` session and launches from there; use `--session <id>` to resume,
+or `--no-session` for base inspection/admin/debug. Product launches currently
+require `--no-session --product <id>`. Use `--no-refresh` for one command,
 `OUR_NO_AUTO_REFRESH=1` globally, or `OUR_REFRESH_TTL=30m` to tune the default
 six-hour window.
 

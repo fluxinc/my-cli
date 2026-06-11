@@ -21,9 +21,9 @@ our setup
 our ai codex
 ```
 
-That's the whole setup. Launch AI harnesses from the umbrella root so they see
-the generated workspace context; `our ai codex` performs
-the same root resolution and verifies the generated guidance before starting.
+That's the whole setup. `our ai codex` resolves the umbrella, verifies the
+generated guidance, creates a fresh isolated work session under `work/`, and
+starts Codex there.
 `our init` creates two local repos — a private manifest repo (the control
 plane: manifest, catalog, skills) and a content repo at `~/acme/workspace`
 (the actual workspace) — registers them, and works offline. When ready to
@@ -77,14 +77,18 @@ our setup [harness...] | --all   # create umbrella, write guidance, install skil
 ```sh
 our root [--product ID] [--no-refresh] [--no-update-check]
                                              # print the umbrella or product path
-our ai [--product ID] [--setup] [--no-refresh] [--no-update-check] [harness]
-                                             # verify guidance, then start a harness
+our ai [--session ID|--no-session] [--product ID] [--setup] [--no-refresh] [--no-update-check] [harness]
+                                             # verify guidance, then start a harness in a fresh session
 our ai codex --model gpt-5              # pass harness flags after the harness name
-our ai --print codex                    # print cd <umbrella> && codex
+our ai --session 2026-06-11-work-ab12 codex
+our ai --no-session --product sample-product codex
+our ai --print codex                    # create a session and print cd <session> && codex
 ```
 
 `ai` refuses to start against missing or stale generated guidance. Pass
-`--setup` to reconcile first, or run `our setup` directly.
+`--setup` to reconcile first, or run `our setup` directly. Use `--session` to
+resume an active session and `--no-session` for base inspection/admin/debug;
+product launches currently require `--no-session`.
 `root`, `ai`, and `setup` also run a best-effort, TTL-gated refresh of
 clean manifest/content checkouts so startup sees current context without
 touching dirty, diverged, product, or remote-unknown repositories. Use

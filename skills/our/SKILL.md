@@ -87,8 +87,8 @@ our setup [--manifest NAME] [--no-refresh] [--no-update-check]
                                     # create umbrella, write guidance, install skills, sync mounts
 our root [--product ID] [--no-refresh] [--no-update-check]
                                     # print the umbrella (or product) path
-our ai [--product ID] [--setup] [--no-refresh] [--no-update-check] [harness]
-                                    # verify guidance is current, then start a harness
+our ai [--session ID|--no-session] [--product ID] [--setup] [--no-refresh] [--no-update-check] [harness]
+                                    # verify guidance is current, then start a harness in a fresh work session by default
                                     # --setup reconciles the umbrella first when guidance is stale or missing
 our doctor [--no-fetch] [--fix]   # git freshness, derived drift, last sync, manifests, tools
 ```
@@ -110,6 +110,14 @@ dirty, diverged, product, or remote-unknown repositories. Use `--no-refresh`
 for one command, `OUR_NO_AUTO_REFRESH=1` globally, or `OUR_REFRESH_TTL=30m`
 to tune the default six-hour window. `our ai` also ensures the bundled `our`
 self-skill is installed for the selected filesystem harness before exec.
+
+By default, `our ai` creates a fresh session under `<umbrella>/work/<id>` and
+starts the harness there. Treat the base umbrella as inspection/admin space; do
+not create shared content directly in base mounts unless the operator explicitly
+asks for a base edit. Use `our ai --session <id> <harness>` to resume an active
+session, and `our ai --no-session <harness>` for base inspection/admin/debug.
+Product launches are base checkouts in this release, so use
+`our ai --no-session --product <id> <harness>` for them.
 
 When the refresh cannot converge a checkout, these commands print a stderr
 line per repository in the form `notice\t<repo>\t<state>; run ...` (dirty,

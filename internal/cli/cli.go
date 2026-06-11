@@ -29,6 +29,7 @@ import (
 	"github.com/fluxinc/our-ai/internal/support"
 	"github.com/fluxinc/our-ai/internal/syncer"
 	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/our-ai/internal/worksession"
 	"github.com/fluxinc/our-ai/internal/workspace"
 )
 
@@ -194,7 +195,7 @@ func (a app) printUsage() {
 Usage:
   our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   our root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-  our ai [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+  our ai [--session ID|--no-session] [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
   our update [--check] [--version X.Y.Z] [--json] [--yes]
   our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
   our publish [--manifest NAME] [--home DIR] [--print] [--json]
@@ -967,6 +968,8 @@ type launchCommandOpts struct {
 	manifestName  string
 	umbrellaRoot  string
 	productID     string
+	sessionID     string
+	noSession     bool
 	onboard       bool
 	printOnly     bool
 	noRefresh     bool
@@ -991,12 +994,20 @@ func (a app) runLaunch(args []string) error {
 	if err != nil {
 		return err
 	}
-	targetDir := root
-	if opts.productID != "" {
-		targetDir = umbrella.ProductPath(root, opts.productID)
+	if err := validateLaunchSessionOptions(opts); err != nil {
+		var structured structuredCommandError
+		if errors.As(err, &structured) {
+			a.printStructuredCommandError(structured)
+			return errAlreadyPrinted
+		}
+		return err
 	}
-	line := shellCommandLine(targetDir, commandName, harnessArgs)
 	if opts.printOnly {
+		targetDir, err := a.launchTargetDir(opts, root)
+		if err != nil {
+			return a.maybePrintStructuredCommandError(err)
+		}
+		line := shellCommandLine(targetDir, commandName, harnessArgs)
 		fmt.Fprintln(a.stdout, line)
 		return nil
 	}
@@ -1037,12 +1048,92 @@ func (a app) runLaunch(args []string) error {
 		return err
 	}
 
+	targetDir, err := a.launchTargetDir(opts, root)
+	if err != nil {
+		return a.maybePrintStructuredCommandError(err)
+	}
+	line := shellCommandLine(targetDir, commandName, harnessArgs)
 	binary, err := a.lookupPath(commandName)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "%s not found on PATH; run:\n%s\n", commandName, line)
 		return errAlreadyPrinted
 	}
 	return a.runHarness(binary, harnessArgs, targetDir)
+}
+
+func validateLaunchSessionOptions(opts launchCommandOpts) error {
+	if opts.noSession && opts.sessionID != "" {
+		return fmt.Errorf("--session cannot be combined with --no-session")
+	}
+	if opts.productID != "" && !opts.noSession {
+		if opts.sessionID != "" {
+			return structuredCommandError{
+				code:        "product_requires_no_session",
+				message:     "our ai --product cannot be combined with --session; product worktrees are not included in work sessions yet",
+				remediation: "pass --no-session for a base product launch, or omit --product to resume the content session",
+			}
+		}
+		return structuredCommandError{
+			code:        "product_requires_no_session",
+			message:     "our ai --product launches the base product checkout; default session mode does not include product worktrees yet",
+			remediation: "pass --no-session for a base product launch, or omit --product to start a content session",
+		}
+	}
+	return nil
+}
+
+func (a app) printStructuredCommandError(err structuredCommandError) {
+	fmt.Fprintln(a.stderr, err.message)
+	if err.remediation != "" {
+		fmt.Fprintln(a.stderr, err.remediation)
+	}
+}
+
+func (a app) maybePrintStructuredCommandError(err error) error {
+	var structured structuredCommandError
+	if errors.As(err, &structured) {
+		a.printStructuredCommandError(structured)
+		return errAlreadyPrinted
+	}
+	return err
+}
+
+func (a app) launchTargetDir(opts launchCommandOpts, root string) (string, error) {
+	if opts.noSession {
+		if opts.productID != "" {
+			return umbrella.ProductPath(root, opts.productID), nil
+		}
+		return root, nil
+	}
+	if opts.sessionID != "" {
+		session, err := worksession.Load(root, opts.sessionID)
+		if err != nil {
+			return "", err
+		}
+		if session.Status != worksession.StatusActive {
+			return "", fmt.Errorf("session %s is %s; choose an active session or pass --no-session", session.ID, session.Status)
+		}
+		return session.Path, nil
+	}
+	specs, err := sessionMountSpecs(opts.home, opts.manifestName, root)
+	if err != nil {
+		return "", err
+	}
+	if len(specs) == 0 {
+		return "", structuredCommandError{
+			code:        "no_session_mounts",
+			message:     "no synced content mounts eligible for a session worktree under " + root,
+			remediation: "run our setup to clone the manifest's content mounts first, or pass --no-session for a base umbrella launch",
+		}
+	}
+	session, err := worksession.Start(worksession.StartOptions{
+		Root:   root,
+		Mounts: specs,
+	})
+	if err != nil {
+		return "", err
+	}
+	return session.Path, nil
 }
 
 func (a app) ensureLaunchSelfSkill(h harness.Harness, home string) error {
@@ -1090,25 +1181,29 @@ func (a app) printLaunchSelfSkillBlock(result skills.Result) {
 
 func (a app) printLaunchUsage() {
 	fmt.Fprintln(a.stderr, `Usage of our ai:
-  our ai [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+  our ai [--session ID|--no-session] [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 
-Harness defaults to claude-code. Harness flags go after the harness name.
+Harness defaults to claude-code. By default, filesystem harnesses launch from a
+fresh work session. Harness flags go after the harness name.
 
 Examples:
   our ai claude-code
   our ai codex --model gpt-5
-  our ai --product sample-product codex
+  our ai --session 2026-06-11-work-ab12 codex
+  our ai --no-session --product sample-product codex
   our ai --print codex
 
 Options:
   --home DIR        override home directory
   --manifest NAME   use a registered manifest when no umbrella is found
   --umbrella DIR    override umbrella root
-  --product ID      run from repos/<id> under the umbrella (legacy products/<id> still resolves)
+  --session ID      resume an active work session instead of creating one
+  --no-session      launch from the base umbrella or product checkout
+  --product ID      with --no-session, run from repos/<id> under the umbrella
   --setup           reconcile the umbrella first if guidance is stale or missing
   --no-refresh      skip best-effort auto-refresh
   --no-update-check skip best-effort update notice
-  --print           print the resolved launch command without checking or execing`)
+  --print           print the resolved launch command without execing; in session mode this creates the session`)
 }
 
 func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, error) {
@@ -1130,11 +1225,13 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			opts.onboard = true
 		case arg == "--print":
 			opts.printOnly = true
+		case arg == "--no-session":
+			opts.noSession = true
 		case arg == "--no-refresh":
 			opts.noRefresh = true
 		case arg == "--no-update-check":
 			opts.noUpdateCheck = true
-		case arg == "--home" || arg == "--manifest" || arg == "--umbrella" || arg == "--product":
+		case arg == "--home" || arg == "--manifest" || arg == "--umbrella" || arg == "--product" || arg == "--session":
 			i++
 			if i >= len(args) {
 				return opts, "", nil, false, fmt.Errorf("missing value for %s", arg)
@@ -1148,6 +1245,8 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			opts.umbrellaRoot = strings.TrimPrefix(arg, "--umbrella=")
 		case strings.HasPrefix(arg, "--product="):
 			opts.productID = strings.TrimPrefix(arg, "--product=")
+		case strings.HasPrefix(arg, "--session="):
+			opts.sessionID = strings.TrimPrefix(arg, "--session=")
 		case isFlagArg(arg):
 			return opts, "", nil, false, fmt.Errorf("unknown our ai flag %q; put harness flags after the harness name", arg)
 		default:
@@ -1167,6 +1266,8 @@ func setLaunchValue(opts *launchCommandOpts, name, value string) {
 		opts.umbrellaRoot = value
 	case "product":
 		opts.productID = value
+	case "session":
+		opts.sessionID = value
 	}
 }
 

@@ -19,6 +19,10 @@
   while any active session on it has dirty files or unlanded commits, naming
   the session id, path, and the `our work finish` remediation. Inbound
   fast-forward pulls are unaffected.
+- `our ai` now launches from a fresh work session by default, supports
+  `--session <id>` for explicit resume, and requires `--no-session` for base
+  umbrella or product checkout launches. Added `our work resume [session-id]`
+  to print a resumable session path.
 
 ## 0.13.2 - 2026-06-10
 

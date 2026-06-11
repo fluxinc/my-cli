@@ -41,17 +41,19 @@ func workValueFlags() map[string]bool {
 
 func (a app) runWork(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: our work start|status|finish [flags]")
+		return fmt.Errorf("usage: our work start|status|resume|finish [flags]")
 	}
 	switch args[0] {
 	case "start":
 		return a.runWorkStart(args[1:])
 	case "status":
 		return a.runWorkStatus(args[1:])
+	case "resume":
+		return a.runWorkResume(args[1:])
 	case "finish":
 		return a.runWorkFinish(args[1:])
 	default:
-		return fmt.Errorf("unknown work subcommand %q (expected start|status|finish)", args[0])
+		return fmt.Errorf("unknown work subcommand %q (expected start|status|resume|finish)", args[0])
 	}
 }
 
@@ -132,6 +134,10 @@ func (a app) runWorkStatus(args []string) error {
 		if !all && session.Status != worksession.StatusActive {
 			continue
 		}
+		if session.Status != worksession.StatusActive {
+			statuses = append(statuses, archivedWorkSessionStatus(session))
+			continue
+		}
 		status, err := worksession.Inspect(session, nil)
 		if err != nil {
 			return a.maybeJSONError(opts.jsonOut, err)
@@ -155,6 +161,47 @@ func (a app) runWorkStatus(args []string) error {
 			fmt.Fprintln(a.stdout, line)
 		}
 	}
+	return nil
+}
+
+func archivedWorkSessionStatus(session worksession.Session) worksession.SessionStatus {
+	status := worksession.SessionStatus{Session: session}
+	for _, mount := range session.Mounts {
+		status.Mounts = append(status.Mounts, worksession.MountStatus{Mount: mount})
+	}
+	return status
+}
+
+func (a app) runWorkResume(args []string) error {
+	var opts workCommonOpts
+	fs := newFlagSet("our work resume", a.stderr)
+	bindWorkCommonFlags(fs, &opts)
+	rest, err := parseInterspersed(fs, args, workValueFlags())
+	if err != nil {
+		return err
+	}
+	if len(rest) > 1 {
+		return fmt.Errorf("usage: our work resume [session-id] [--json]")
+	}
+	root, err := resolveWorkUmbrella(opts.home, opts.manifestName, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	sessionID, err := selectWorkSessionID(root, rest)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	session, err := worksession.Load(root, sessionID)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	if session.Status != worksession.StatusActive {
+		return a.maybeJSONError(opts.jsonOut, fmt.Errorf("session %s is %s", session.ID, session.Status))
+	}
+	if opts.jsonOut {
+		return printJSON(a.stdout, session)
+	}
+	fmt.Fprintf(a.stdout, "cd %s\n", shellQuote(session.Path))
 	return nil
 }
 
