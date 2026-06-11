@@ -10,6 +10,10 @@
   a `SESSION.md` summary, and a first-class session registry under
   `.our/sessions/`. Repo-kind mounts and selected products are not included
   in session worktrees yet.
+- Added `our work finish [session-id] --land|--publish|--discard`. Landing
+  commits intentional dirty session content, rejects unadopted `??` files and
+  non-content changes, merges clean session branches into the base checkout,
+  removes session worktrees/branches, and records the session outcome.
 
 ## 0.13.2 - 2026-06-10
 

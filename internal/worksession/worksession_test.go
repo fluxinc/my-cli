@@ -244,6 +244,158 @@ func TestInspectReportsDirtyAndUnlanded(t *testing.T) {
 	}
 }
 
+func TestLandCommitsDirtyContentMergesAndMarksFinished(t *testing.T) {
+	root, repo := setupUmbrellaWithMount(t, "handbook")
+	session, err := Start(StartOptions{
+		Root: root,
+		Now:  time.Date(2026, 6, 11, 1, 2, 3, 0, time.UTC),
+		Rand: bytes.NewReader([]byte{0xab, 0xcd}),
+		Mounts: []MountSpec{
+			{ID: "handbook", Kind: "handbook", RepoPath: repo, ContentPaths: []string{"meetings"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktree := session.Mounts[0].WorktreePath
+	writeFile(t, filepath.Join(worktree, "meetings", "note.md"), "land me\n")
+	runGit(t, worktree, "add", "-N", "meetings/note.md")
+
+	result, err := Land(LandOptions{
+		Root:    root,
+		ID:      session.ID,
+		Message: "Land session note",
+		Now:     time.Date(2026, 6, 11, 2, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Session.Status != StatusFinished || result.Session.Outcome != OutcomeLanded || result.Session.FinishedAt == "" {
+		t.Fatalf("finished session = %#v", result.Session)
+	}
+	if len(result.Mounts) != 1 || result.Mounts[0].Status != "landed" || result.Mounts[0].Commit == "" {
+		t.Fatalf("mount results = %#v", result.Mounts)
+	}
+	if got := strings.TrimSpace(readFile(t, filepath.Join(repo, "meetings", "note.md"))); got != "land me" {
+		t.Fatalf("landed file = %q", got)
+	}
+	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
+		t.Fatalf("worktree still exists after land: %v", err)
+	}
+	if branches := runGit(t, repo, "branch", "--list", session.Mounts[0].Branch); strings.TrimSpace(branches) != "" {
+		t.Fatalf("session branch remains: %q", branches)
+	}
+	if log := runGit(t, repo, "log", "--oneline", "-1"); !strings.Contains(log, "Land session note") {
+		t.Fatalf("base log = %q", log)
+	}
+	loaded, err := Load(root, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != StatusFinished || loaded.Outcome != OutcomeLanded {
+		t.Fatalf("registry session = %#v", loaded)
+	}
+}
+
+func TestLandHoldsUnadoptedUntrackedContent(t *testing.T) {
+	root, repo := setupUmbrellaWithMount(t, "handbook")
+	session, err := Start(StartOptions{
+		Root: root,
+		Now:  time.Date(2026, 6, 11, 1, 2, 3, 0, time.UTC),
+		Rand: bytes.NewReader([]byte{0xab, 0xce}),
+		Mounts: []MountSpec{
+			{ID: "handbook", Kind: "handbook", RepoPath: repo, ContentPaths: []string{"meetings"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktree := session.Mounts[0].WorktreePath
+	writeFile(t, filepath.Join(worktree, "meetings", "draft.md"), "draft\n")
+
+	_, err = Land(LandOptions{Root: root, ID: session.ID})
+	if err == nil || !strings.Contains(err.Error(), "unadopted untracked content file meetings/draft.md") {
+		t.Fatalf("err = %v, want unadopted hold", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(repo, "meetings", "draft.md")); !os.IsNotExist(statErr) {
+		t.Fatalf("unadopted file landed in base: %v", statErr)
+	}
+	if _, statErr := os.Stat(worktree); statErr != nil {
+		t.Fatalf("worktree removed despite hold: %v", statErr)
+	}
+	loaded, loadErr := Load(root, session.ID)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if loaded.Status != StatusActive {
+		t.Fatalf("session status = %q, want active", loaded.Status)
+	}
+}
+
+func TestLandHoldsCommittedNonContentChanges(t *testing.T) {
+	root, repo := setupUmbrellaWithMount(t, "handbook")
+	session, err := Start(StartOptions{
+		Root: root,
+		Now:  time.Date(2026, 6, 11, 1, 2, 3, 0, time.UTC),
+		Rand: bytes.NewReader([]byte{0xab, 0xcf}),
+		Mounts: []MountSpec{
+			{ID: "handbook", Kind: "handbook", RepoPath: repo, ContentPaths: []string{"meetings"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktree := session.Mounts[0].WorktreePath
+	writeFile(t, filepath.Join(worktree, "README.md"), "not content\n")
+	runGit(t, worktree, "add", "README.md")
+	runGit(t, worktree, "commit", "-q", "-m", "Change README")
+
+	_, err = Land(LandOptions{Root: root, ID: session.ID})
+	if err == nil || !strings.Contains(err.Error(), "committed changes outside declared content paths") {
+		t.Fatalf("err = %v, want non-content hold", err)
+	}
+	if got := strings.TrimSpace(readFile(t, filepath.Join(repo, "README.md"))); got != "seed" {
+		t.Fatalf("base README = %q, want seed", got)
+	}
+}
+
+func TestDiscardRemovesWorktreeBranchAndMarksDiscarded(t *testing.T) {
+	root, repo := setupUmbrellaWithMount(t, "handbook")
+	session, err := Start(StartOptions{
+		Root: root,
+		Now:  time.Date(2026, 6, 11, 1, 2, 3, 0, time.UTC),
+		Rand: bytes.NewReader([]byte{0xde, 0xad}),
+		Mounts: []MountSpec{
+			{ID: "handbook", Kind: "handbook", RepoPath: repo},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(session.Mounts[0].WorktreePath, "meetings", "draft.md"), "draft\n")
+
+	result, err := Discard(DiscardOptions{Root: root, ID: session.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Session.Status != StatusDiscarded || result.Session.Outcome != OutcomeDiscarded {
+		t.Fatalf("discarded session = %#v", result.Session)
+	}
+	if _, err := os.Stat(session.Path); !os.IsNotExist(err) {
+		t.Fatalf("session path remains after discard: %v", err)
+	}
+	if branches := runGit(t, repo, "branch", "--list", session.Mounts[0].Branch); strings.TrimSpace(branches) != "" {
+		t.Fatalf("session branch remains: %q", branches)
+	}
+	loaded, err := Load(root, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != StatusDiscarded || loaded.Outcome != OutcomeDiscarded {
+		t.Fatalf("registry session = %#v", loaded)
+	}
+}
+
 func setupUmbrellaWithMount(t *testing.T, mountID string) (string, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -267,6 +419,15 @@ func writeFile(t *testing.T, path, body string) {
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 func runGit(t *testing.T, dir string, args ...string) string {

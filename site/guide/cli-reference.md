@@ -107,6 +107,10 @@ our mounts remove <mount...> [--home DIR] [--umbrella DIR] [--print] [--force] [
 
 our workspaces list [--manifest NAME]
 our workspaces sync <workspace...> | --all [--manifest NAME] [--print]
+
+our work start [--slug SLUG] [--json]
+our work status [--all] [--json]
+our work finish [session-id] --land|--publish|--discard [--message TEXT] [--json]
 ```
 
 ## Content and diagnostics

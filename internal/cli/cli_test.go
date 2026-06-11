@@ -4616,6 +4616,9 @@ func setupCLITrackedManifestBody(t *testing.T, body string) (string, string, str
 func initCLIGitRepo(t *testing.T, dir string) {
 	t.Helper()
 	runCLIGit(t, dir, "init", "-q")
+	runCLIGit(t, dir, "config", "user.name", "Example Test")
+	runCLIGit(t, dir, "config", "user.email", "our-test@example.com")
+	runCLIGit(t, dir, "config", "commit.gpgsign", "false")
 	runCLIGit(t, dir, "add", ".")
 	runCLIGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=our-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed repository")
 }

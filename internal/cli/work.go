@@ -5,7 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
+	"github.com/fluxinc/our-ai/internal/syncer"
 	"github.com/fluxinc/our-ai/internal/umbrella"
 	"github.com/fluxinc/our-ai/internal/worksession"
 	"github.com/fluxinc/our-ai/internal/workspace"
@@ -31,20 +35,23 @@ func workValueFlags() map[string]bool {
 		"manifest": true,
 		"umbrella": true,
 		"slug":     true,
+		"message":  true,
 	}
 }
 
 func (a app) runWork(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: our work start|status [flags]")
+		return fmt.Errorf("usage: our work start|status|finish [flags]")
 	}
 	switch args[0] {
 	case "start":
 		return a.runWorkStart(args[1:])
 	case "status":
 		return a.runWorkStatus(args[1:])
+	case "finish":
+		return a.runWorkFinish(args[1:])
 	default:
-		return fmt.Errorf("unknown work subcommand %q (expected start|status)", args[0])
+		return fmt.Errorf("unknown work subcommand %q (expected start|status|finish)", args[0])
 	}
 }
 
@@ -151,6 +158,221 @@ func (a app) runWorkStatus(args []string) error {
 	return nil
 }
 
+type workFinishCommandReport struct {
+	Mode   string                   `json:"mode"`
+	Finish worksession.FinishResult `json:"finish"`
+	Sync   *syncer.Report           `json:"sync,omitempty"`
+}
+
+func (a app) runWorkFinish(args []string) error {
+	var opts workCommonOpts
+	var land bool
+	var publish bool
+	var discard bool
+	var message string
+	fs := newFlagSet("our work finish", a.stderr)
+	bindWorkCommonFlags(fs, &opts)
+	fs.BoolVar(&land, "land", false, "merge the session into the base checkouts")
+	fs.BoolVar(&publish, "publish", false, "land the session and publish landed content")
+	fs.BoolVar(&discard, "discard", false, "discard the session worktrees and branches")
+	fs.StringVar(&message, "message", "", "commit message for dirty session content")
+	rest, err := parseInterspersed(fs, args, workValueFlags())
+	if err != nil {
+		return err
+	}
+	if len(rest) > 1 {
+		return fmt.Errorf("usage: our work finish [session-id] --land|--publish|--discard")
+	}
+	modeCount := boolCount(land, publish, discard)
+	if modeCount != 1 {
+		return fmt.Errorf("choose exactly one of --land, --publish, or --discard")
+	}
+	if discard && strings.TrimSpace(message) != "" {
+		return fmt.Errorf("--message cannot be used with --discard")
+	}
+
+	root, err := resolveWorkUmbrella(opts.home, opts.manifestName, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	sessionID, err := selectWorkSessionID(root, rest)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+
+	mode := "land"
+	var finish worksession.FinishResult
+	if discard {
+		mode = "discard"
+		finish, err = worksession.Discard(worksession.DiscardOptions{Root: root, ID: sessionID})
+	} else {
+		if publish {
+			mode = "publish"
+		}
+		finish, err = worksession.Land(worksession.LandOptions{
+			Root:    root,
+			ID:      sessionID,
+			Message: message,
+			Outcome: worksession.OutcomeLanded,
+		})
+	}
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+
+	report := workFinishCommandReport{Mode: mode, Finish: finish}
+	if publish {
+		syncReport, err := a.syncFinishedSessionMounts(opts.home, opts.manifestName, root, finish.Session, message)
+		report.Sync = &syncReport
+		if err == nil && syncReportFullyPublished(syncReport) {
+			session, markErr := worksession.MarkOutcome(root, finish.Session.ID, worksession.OutcomePublished, time.Time{})
+			if markErr != nil {
+				return a.maybeJSONError(opts.jsonOut, markErr)
+			}
+			report.Finish.Session = session
+			finish.Session = session
+		}
+		if opts.jsonOut {
+			if printErr := printJSON(a.stdout, report); printErr != nil {
+				return printErr
+			}
+		} else {
+			a.printWorkFinishReport(report)
+		}
+		if err != nil {
+			return a.maybeJSONError(opts.jsonOut, err)
+		}
+		return nil
+	}
+
+	if opts.jsonOut {
+		return printJSON(a.stdout, report)
+	}
+	a.printWorkFinishReport(report)
+	return nil
+}
+
+func boolCount(values ...bool) int {
+	var count int
+	for _, value := range values {
+		if value {
+			count++
+		}
+	}
+	return count
+}
+
+func selectWorkSessionID(root string, args []string) (string, error) {
+	if len(args) == 1 {
+		return args[0], nil
+	}
+	sessions, err := worksession.List(root)
+	if err != nil {
+		return "", err
+	}
+	var active []worksession.Session
+	for _, session := range sessions {
+		if session.Status == worksession.StatusActive {
+			active = append(active, session)
+		}
+	}
+	switch len(active) {
+	case 1:
+		return active[0].ID, nil
+	case 0:
+		return "", fmt.Errorf("no active sessions")
+	default:
+		return "", fmt.Errorf("multiple active sessions; pass a session id")
+	}
+}
+
+func (a app) syncFinishedSessionMounts(home, manifestName, root string, session worksession.Session, message string) (syncer.Report, error) {
+	entries, err := a.collectSyncEntries(home, manifestName, root, "content")
+	if err != nil {
+		return syncer.Report{}, err
+	}
+	sessionRepos := map[string]bool{}
+	for _, mount := range session.Mounts {
+		abs, err := filepath.Abs(mount.RepoPath)
+		if err != nil {
+			return syncer.Report{}, err
+		}
+		sessionRepos[abs] = true
+	}
+	var selected []syncer.Entry
+	for _, entry := range entries {
+		abs, err := filepath.Abs(entry.LocalPath)
+		if err != nil {
+			return syncer.Report{}, err
+		}
+		if sessionRepos[abs] {
+			selected = append(selected, entry)
+		}
+	}
+	if len(selected) == 0 {
+		return syncer.Report{}, fmt.Errorf("no content sync entries matched session %s", session.ID)
+	}
+	gnitRoot := findGnitWorkspaceRoot(root)
+	backend := "builtin"
+	if gnitRoot != "" {
+		backend = "gnit"
+	}
+	report := syncer.Run(selected, syncer.Options{
+		Backend:    backend,
+		GnitRoot:   gnitRoot,
+		Publish:    "auto",
+		Message:    message,
+		Visibility: a.githubRepoVisibility,
+	})
+	if err := a.saveLastSyncReport(home, manifestName, root, report); err != nil {
+		return report, err
+	}
+	return report, nil
+}
+
+func syncReportFullyPublished(report syncer.Report) bool {
+	if len(report.Results) == 0 {
+		return false
+	}
+	for _, result := range report.Results {
+		switch result.Status {
+		case "pushed", "already landed":
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func (a app) printWorkFinishReport(report workFinishCommandReport) {
+	session := report.Finish.Session
+	fmt.Fprintf(a.stdout, "session\t%s\t%s", session.ID, session.Status)
+	if session.Outcome != "" {
+		fmt.Fprintf(a.stdout, "\t%s", session.Outcome)
+	}
+	fmt.Fprintln(a.stdout)
+	for _, mount := range report.Finish.Mounts {
+		line := fmt.Sprintf("mount\t%s\t%s\t%s", mount.ID, mount.Branch, mount.Status)
+		if mount.Commit != "" {
+			line += "\tcommit=" + mount.Commit
+		}
+		if len(mount.Dirty) != 0 {
+			line += "\tdirty=" + strings.Join(mount.Dirty, ",")
+		}
+		if len(mount.Changed) != 0 {
+			line += "\tchanged=" + strings.Join(mount.Changed, ",")
+		}
+		if mount.Message != "" {
+			line += "\t" + strings.ReplaceAll(mount.Message, "\n", " ")
+		}
+		fmt.Fprintln(a.stdout, line)
+	}
+	if report.Sync != nil {
+		a.printSyncReport(*report.Sync)
+	}
+}
+
 // resolveWorkUmbrella locates the umbrella root for work commands: explicit
 // flag, walk-up discovery, then the configured root of registered manifests.
 func resolveWorkUmbrella(home, manifestName, explicit string) (string, error) {
@@ -211,9 +433,10 @@ func sessionMountSpecs(home, manifestName, root string) ([]worksession.MountSpec
 		}
 		seen[mount.LocalPath] = true
 		specs = append(specs, worksession.MountSpec{
-			ID:       mount.ID,
-			Kind:     mount.Kind,
-			RepoPath: mount.LocalPath,
+			ID:           mount.ID,
+			Kind:         mount.Kind,
+			RepoPath:     mount.LocalPath,
+			ContentPaths: syncContentPaths(mount),
 		})
 	}
 	return specs, nil
