@@ -1064,17 +1064,30 @@ func (a app) runLaunch(args []string) error {
 		return err
 	}
 
-	targetDir, err := a.launchTargetDir(opts, root)
-	if err != nil {
-		return a.maybePrintStructuredCommandError(err)
+	createsNewSession := launchCreatesNewSession(opts)
+	var targetDir string
+	if !createsNewSession {
+		targetDir, err = a.launchTargetDir(opts, root)
+		if err != nil {
+			return a.maybePrintStructuredCommandError(err)
+		}
 	}
-	line := shellCommandLine(targetDir, commandName, harnessArgs)
 	binary, err := a.lookupPath(commandName)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "%s not found on PATH; run:\n%s\n", commandName, line)
+		a.printLaunchMissingHarness(commandName, targetDir, harnessArgs, createsNewSession)
 		return errAlreadyPrinted
 	}
+	if createsNewSession {
+		targetDir, err = a.launchTargetDir(opts, root)
+		if err != nil {
+			return a.maybePrintStructuredCommandError(err)
+		}
+	}
 	return a.runHarness(binary, harnessArgs, targetDir)
+}
+
+func launchCreatesNewSession(opts launchCommandOpts) bool {
+	return !opts.noSession && opts.sessionID == ""
 }
 
 func validateLaunchSessionOptions(opts launchCommandOpts) error {
@@ -1119,6 +1132,16 @@ func (a app) maybePrintStructuredCommandError(err error) error {
 		return errAlreadyPrinted
 	}
 	return err
+}
+
+func (a app) printLaunchMissingHarness(commandName, targetDir string, args []string, newSession bool) {
+	if newSession {
+		fmt.Fprintf(a.stderr, "%s not found on PATH; no work session was created\n", commandName)
+		fmt.Fprintf(a.stderr, "install %s, then rerun the same our ai command\n", commandName)
+		return
+	}
+	line := shellCommandLine(targetDir, commandName, args)
+	fmt.Fprintf(a.stderr, "%s not found on PATH; run:\n%s\n", commandName, line)
 }
 
 func (a app) launchTargetDir(opts launchCommandOpts, root string) (string, error) {

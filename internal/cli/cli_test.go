@@ -3399,6 +3399,39 @@ func TestLaunchMissingHarnessPrintsFallbackAndFails(t *testing.T) {
 	}
 }
 
+func TestLaunchMissingHarnessDoesNotCreateDefaultSession(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			return "", exec.ErrNotFound
+		},
+	}
+	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check", "codex"})
+	if !errors.Is(err, errAlreadyPrinted) {
+		t.Fatalf("err = %v, want errAlreadyPrinted", err)
+	}
+	if !strings.Contains(stderr.String(), "codex not found on PATH") ||
+		!strings.Contains(stderr.String(), "no work session was created") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	sessions, err := worksession.List(umbrellaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("sessions = %#v, want none", sessions)
+	}
+}
+
 func TestLaunchDefaultsToNewSession(t *testing.T) {
 	home, workspaceRoot := setupCLIRecordWorkspace(t)
 	umbrellaRoot := filepath.Dir(workspaceRoot)
