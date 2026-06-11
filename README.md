@@ -400,6 +400,12 @@ indexed in [docs/plans/](docs/plans/README.md):
   organization repositories live in `catalog/repos.json` with an `our repos`
   noun and `--repo` launch flags, cloned under `repos/<id>`. Plan:
   [products/repos split](docs/plans/2026-06-11-products-repos-split.md).
+- **Shipped — session stability and ergonomics (v0.16.0).** Hardening of the
+  Mode A session loop: `our ai` no longer leaves an orphan session when the
+  harness binary is missing, `our doctor` reports work-session health
+  (active state, missing worktrees, archived counts), and `our work list`
+  plus session-specific follow-up commands round out the session surface.
+  Plan: [execution plane](docs/plans/2026-06-10-execution-plane.md), Mode A.
 - **Next — roles and services.** Manifest `roles` and `services`
   extensions describing the organization's remote surfaces (APIs, MCP
   servers, gated brokers), harness MCP config materialization, and org-side
