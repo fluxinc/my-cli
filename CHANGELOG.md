@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added `our work start [--slug]` and `our work status [--all]`: isolated work
+  sessions as visible `work/<id>/` directories with a git worktree per synced
+  content mount on a fresh `our/work/<id>` branch, session-local `scratch/`,
+  a `SESSION.md` summary, and a first-class session registry under
+  `.our/sessions/`. Repo-kind mounts and selected products are not included
+  in session worktrees yet.
+
 ## 0.13.2 - 2026-06-10
 
 ### Changed

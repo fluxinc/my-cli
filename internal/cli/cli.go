@@ -171,6 +171,8 @@ func (a app) run(args []string) error {
 		return a.runFleet(args[2:])
 	case "record":
 		return a.runRecord(args[2:])
+	case "work":
+		return a.runWork(args[2:])
 	case "customers":
 		return a.runCustomers(args[2:])
 	case "products":
@@ -240,6 +242,8 @@ Usage:
   our fleet add <id>
   our fleet set <id> KEY=VALUE...
   our record adopt <path>
+  our work start [--slug SLUG] [--json]
+  our work status [--all] [--json]
   our customers list
   our products list
   our doctor [--no-fetch] [--fix] [--json]
