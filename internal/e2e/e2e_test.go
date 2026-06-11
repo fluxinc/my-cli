@@ -48,16 +48,23 @@ EOF
 	}
 	writeFile(t, filepath.Join(productSource, "README.md"), "# Sample Product\n")
 	initGitRepo(t, productSource)
-	writeFile(t, filepath.Join(manifestRoot, "catalog", "products.json"), fmt.Sprintf(`[
+	writeFile(t, filepath.Join(manifestRoot, "catalog", "repos.json"), fmt.Sprintf(`[
+  {
+    "id": "sample-service",
+    "git_url": %q,
+    "description": "Sample service source"
+  }
+]`, productSource))
+	writeFile(t, filepath.Join(manifestRoot, "catalog", "products.json"), `[
   {
     "id": "sample-product",
     "name": "Sample Product",
-    "git_url": %q,
     "description": "Sample service",
     "purpose": "Synthetic product source for public fixture tests",
+    "repos": ["sample-service"],
     "related_skills": ["acme:handbook"]
   }
-]`, productSource))
+]`)
 	writeFile(t, filepath.Join(manifestRoot, "agent-guidance", "acme.md"), `# Acme Agent Defaults
 
 Acme operators should check the local handbook before answering operational questions.
@@ -184,30 +191,30 @@ status: finalized
 		}
 	}
 
-	addProductOut := runOurDir(t, bin, home, umbrellaRoot, "mounts", "add", "product:sample-product", "--home", home, "--json")
-	for _, want := range []string{"product:sample-product", "synced"} {
-		if !strings.Contains(addProductOut, want) {
-			t.Fatalf("mount add product output = %q, missing %q", addProductOut, want)
+	addRepoOut := runOurDir(t, bin, home, umbrellaRoot, "repos", "add", "sample-service", "--home", home, "--json")
+	for _, want := range []string{"repo:sample-service", "synced"} {
+		if !strings.Contains(addRepoOut, want) {
+			t.Fatalf("repos add output = %q, missing %q", addRepoOut, want)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(umbrellaRoot, "repos", "sample-product", ".git")); err != nil {
-		t.Fatalf("product was not cloned: %v", err)
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, "repos", "sample-service", ".git")); err != nil {
+		t.Fatalf("repo was not cloned: %v", err)
 	}
-	mountListOut := runOurDir(t, bin, home, umbrellaRoot, "mounts", "list", "--home", home, "--json")
-	if !strings.Contains(mountListOut, "product:sample-product") || !strings.Contains(mountListOut, `"kind": "product"`) {
-		t.Fatalf("mount list output = %q", mountListOut)
+	reposListOut := runOurDir(t, bin, home, umbrellaRoot, "repos", "list", "--home", home, "--json")
+	if !strings.Contains(reposListOut, `"id": "sample-service"`) || !strings.Contains(reposListOut, `"cloned": true`) {
+		t.Fatalf("repos list output = %q", reposListOut)
 	}
 	state, err := os.ReadFile(filepath.Join(umbrellaRoot, ".our", "state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"sample-product"`, `"product:sample-product"`} {
+	for _, want := range []string{`"sample-service"`, `"repo:sample-service"`} {
 		if !strings.Contains(string(state), want) {
 			t.Fatalf("state = %s, missing %q", state, want)
 		}
 	}
-	runOurDir(t, bin, home, umbrellaRoot, "mounts", "add", "product:sample-product", "--home", home)
-	runOurDir(t, bin, home, umbrellaRoot, "mounts", "sync", "product:sample-product", "--home", home)
+	runOurDir(t, bin, home, umbrellaRoot, "repos", "add", "sample-service", "--home", home)
+	runOurDir(t, bin, home, umbrellaRoot, "mounts", "sync", "repo:sample-service", "--home", home)
 }
 
 func runOur(t *testing.T, bin, home string, args ...string) string {

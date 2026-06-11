@@ -1158,7 +1158,6 @@ func TestAdminSkillsRemoveBlocksThenPrunesRelatedProducts(t *testing.T) {
   {
     "id": "demo-product",
     "name": "Demo Product",
-    "git_url": "https://github.com/acme/demo-product.git",
     "description": "Demo",
     "related_skills": ["acme:demo-skill", "acme:other-skill"]
   }
@@ -1699,12 +1698,19 @@ func TestMountAddProductRecordsState(t *testing.T) {
   "organization": { "id": "acme", "name": "Acme Example" },
   "umbrella": { "recommended_path": "~/acme" }
 }`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "repos.json"), `[
+  {
+    "id": "sample-service",
+    "git_url": "`+productSource+`",
+    "description": "Sample service source"
+  }
+]`)
 	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "products.json"), `[
   {
     "id": "sample-product",
     "name": "Sample Product",
-    "git_url": "`+productSource+`",
-    "description": "Sample service"
+    "description": "Sample service",
+    "repos": ["sample-service"]
   }
 ]`)
 
@@ -1721,7 +1727,7 @@ func TestMountAddProductRecordsState(t *testing.T) {
 	if err := a.run([]string{"our", "products", "list", "--manifest", "acme", "--home", home, "--json"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), `"id": "sample-product"`) {
+	if !strings.Contains(stdout.String(), `"id": "sample-product"`) || !strings.Contains(stdout.String(), `"sample-service"`) {
 		t.Fatalf("catalog list stdout = %q", stdout.String())
 	}
 	stdout.Reset()
@@ -1731,64 +1737,51 @@ func TestMountAddProductRecordsState(t *testing.T) {
 
 	stdout.Reset()
 	umbrellaRoot := filepath.Join(home, "acme")
-	if err := a.run([]string{"our", "mounts", "add", "product:sample-product", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"our", "mounts", "add", "repo:sample-service", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(home, "acme", "repos", "sample-product", ".git")); err != nil {
-		t.Fatalf("product was not cloned: %v", err)
+	if _, err := os.Stat(filepath.Join(home, "acme", "repos", "sample-service", ".git")); err != nil {
+		t.Fatalf("repo was not cloned: %v", err)
 	}
 	state, err := os.ReadFile(filepath.Join(home, "acme", ".our", "state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"sample-product"`, `"product:sample-product"`, `"kind": "product"`} {
+	for _, want := range []string{`"sample-service"`, `"repo:sample-service"`, `"kind": "repo"`} {
 		if !strings.Contains(string(state), want) {
 			t.Fatalf("state = %s, missing %q", state, want)
 		}
 	}
 	stdout.Reset()
-	if err := a.run([]string{"our", "mounts", "list", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(stdout.String(), "product:sample-product\tproduct") {
-		t.Fatalf("mount list stdout = %q", stdout.String())
-	}
-	stdout.Reset()
 	if err := a.run([]string{"our", "mounts", "list", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--json"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), `"id": "product:sample-product"`) || !strings.Contains(stdout.String(), `"kind": "product"`) {
+	if !strings.Contains(stdout.String(), `"id": "repo:sample-service"`) || !strings.Contains(stdout.String(), `"kind": "repo"`) {
 		t.Fatalf("mount list json stdout = %q", stdout.String())
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "mounts", "add", "product:sample-product", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"our", "mounts", "sync", "repo:sample-service", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	stdout.Reset()
-	if err := a.run([]string{"our", "mounts", "sync", "product:sample-product", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
-		t.Fatal(err)
+	err = a.run([]string{"our", "mounts", "add", "product:sample-product", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot})
+	if err == nil || !strings.Contains(err.Error(), "business catalog entries") {
+		t.Fatalf("err = %v, want product mount removal error", err)
 	}
 	stdout.Reset()
-	if err := a.run([]string{"our", "mounts", "remove", "product:sample-product", "--umbrella", umbrellaRoot, "--home", home, "--force"}); err != nil {
+	if err := a.run([]string{"our", "repos", "remove", "sample-service", "--force", "--umbrella", umbrellaRoot, "--home", home}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(home, "acme", "repos", "sample-product")); !os.IsNotExist(err) {
-		t.Fatalf("product dir still exists or stat failed unexpectedly: %v", err)
+	if _, err := os.Stat(filepath.Join(home, "acme", "repos", "sample-service")); !os.IsNotExist(err) {
+		t.Fatalf("repo dir still exists or stat failed unexpectedly: %v", err)
 	}
 	state, err = os.ReadFile(filepath.Join(home, "acme", ".our", "state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(state), "sample-product") {
-		t.Fatalf("state still references removed product: %s", state)
-	}
-	stdout.Reset()
-	if err := a.run([]string{"our", "mounts", "list", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(stdout.String(), "product:sample-product") {
-		t.Fatalf("mount list still shows removed product: %q", stdout.String())
+	if strings.Contains(string(state), "sample-service") {
+		t.Fatalf("state still references removed repo: %s", state)
 	}
 }
 
@@ -1802,13 +1795,16 @@ func TestCatalogListHumanFormatting(t *testing.T) {
     { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
   ]
 }`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "repos.json"), `[
+  { "id": "sample-service", "git_url": "https://github.com/acme/sample-service.git" }
+]`)
 	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "products.json"), `[
   {
     "id": "sample-product",
     "name": "Sample Product",
-    "git_url": "https://github.com/acme/sample-product.git",
     "description": "Sample service",
     "purpose": "Synthetic source used by tests.",
+    "repos": ["sample-service"],
     "related_skills": ["acme:handbook"]
   }
 ]`)
@@ -1829,7 +1825,7 @@ func TestCatalogListHumanFormatting(t *testing.T) {
 	out := stdout.String()
 	for _, want := range []string{
 		"sample-product - Sample Product\n",
-		"  source: https://github.com/acme/sample-product.git\n",
+		"  repos: sample-service\n",
 		"  purpose: Synthetic source used by tests.\n",
 		"  skills: acme:handbook\n",
 	} {
@@ -1863,11 +1859,11 @@ func TestMountAddProductUnknownJSON(t *testing.T) {
 	}
 
 	stdout.Reset()
-	err := a.run([]string{"our", "mounts", "add", "product:missing", "--manifest", "acme", "--home", home, "--umbrella", filepath.Join(home, "acme"), "--json"})
+	err := a.run([]string{"our", "repos", "add", "missing", "--manifest", "acme", "--home", home, "--umbrella", filepath.Join(home, "acme"), "--json"})
 	if !errors.Is(err, errAlreadyPrinted) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}
-	if !strings.Contains(stdout.String(), `"error": "unknown_product"`) || !strings.Contains(stdout.String(), "our products list") {
+	if !strings.Contains(stdout.String(), `"error": "unknown_repo"`) || !strings.Contains(stdout.String(), "our repos list") {
 		t.Fatalf("stdout = %q", stdout.String())
 	}
 }
@@ -1955,12 +1951,12 @@ func TestRootCommandPrintsUmbrellaAndProductPaths(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "root", "--manifest", "acme", "--home", home, "--product", "sample-product"}); err != nil {
+	if err := a.run([]string{"our", "root", "--manifest", "acme", "--home", home, "--repo", "sample-service"}); err != nil {
 		t.Fatal(err)
 	}
-	wantProduct := filepath.Join(umbrellaRoot, "repos", "sample-product")
-	if strings.TrimSpace(stdout.String()) != wantProduct {
-		t.Fatalf("root --product stdout = %q, want %q", stdout.String(), wantProduct)
+	wantRepo := filepath.Join(umbrellaRoot, "repos", "sample-service")
+	if strings.TrimSpace(stdout.String()) != wantRepo {
+		t.Fatalf("root --repo stdout = %q, want %q", stdout.String(), wantRepo)
 	}
 }
 
@@ -2418,14 +2414,14 @@ func TestDoctorFixSkipsStaleProduct(t *testing.T) {
   "organization": { "id": "acme", "name": "Acme Example" },
   "umbrella": { "recommended_path": "~/acme" }
 }`)
-	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "products.json"), `[
-  { "id": "sample-product", "name": "Sample Product", "git_url": "`+remote+`" }
+	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "repos.json"), `[
+  { "id": "sample-product", "git_url": "`+remote+`" }
 ]`)
 	_, state, err := umbrella.Ensure(umbrellaRoot, "acme", "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
-	state = umbrella.AddSelectedProduct(state, "sample-product")
+	state = umbrella.AddSelectedRepo(state, "sample-product")
 	if err := umbrella.SaveState(umbrellaRoot, state); err != nil {
 		t.Fatal(err)
 	}
@@ -2445,8 +2441,8 @@ func TestDoctorFixSkipsStaleProduct(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "fix\tacme:product:product:sample-product\tskipped") ||
-		!strings.Contains(out, "product repositories are never fixed by doctor") {
+	if !strings.Contains(out, "fix\tacme:repo:repo:sample-product\tskipped") ||
+		!strings.Contains(out, "repo checkouts are never fixed by doctor") {
 		t.Fatalf("doctor stdout = %q", out)
 	}
 	if _, err := os.Stat(filepath.Join(productPath, "remote.md")); !os.IsNotExist(err) {
@@ -3060,14 +3056,14 @@ func TestRootAutoRefreshSkipsDirtyDivergedAndProductRepos(t *testing.T) {
     { "id": "diverged", "kind": "handbook", "git_url": "`+divergedRemote+`", "mode": "required" }
   ]
 }`)
-	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "products.json"), `[
-  { "id": "sample-product", "name": "Sample Product", "git_url": "`+productRemote+`" }
+	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "repos.json"), `[
+  { "id": "sample-product", "git_url": "`+productRemote+`" }
 ]`)
 	_, state, err := umbrella.Ensure(umbrellaRoot, "acme", "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
-	state = umbrella.AddSelectedProduct(state, "sample-product")
+	state = umbrella.AddSelectedRepo(state, "sample-product")
 	if err := umbrella.SaveState(umbrellaRoot, state); err != nil {
 		t.Fatal(err)
 	}
@@ -3221,14 +3217,14 @@ func TestLaunchPrintsResolvedCommandWithoutCheckingGuidance(t *testing.T) {
 		"--manifest", "acme",
 		"--home", home,
 		"--no-session",
-		"--product", "sample-product",
+		"--repo", "sample-service",
 		"--print",
 		"codex", "--model", "gpt-5",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "cd " + filepath.Join(home, "acme", "repos", "sample-product") + " && codex --model gpt-5\n"
+	want := "cd " + filepath.Join(home, "acme", "repos", "sample-service") + " && codex --model gpt-5\n"
 	if stdout.String() != want {
 		t.Fatalf("launch --print stdout = %q, want %q", stdout.String(), want)
 	}
@@ -3474,7 +3470,24 @@ func TestLaunchResumesExplicitSession(t *testing.T) {
 	}
 }
 
-func TestLaunchProductRequiresNoSession(t *testing.T) {
+func TestLaunchRepoRequiresNoSession(t *testing.T) {
+	home, _ := setupCLILaunchFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--repo", "sample-service", "--print", "codex"})
+	if !errors.Is(err, errAlreadyPrinted) {
+		t.Fatalf("err = %v, want errAlreadyPrinted", err)
+	}
+	if !strings.Contains(stderr.String(), "default session mode does not include repo worktrees") ||
+		!strings.Contains(stderr.String(), "pass --no-session") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	if stdout.String() != "" {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+}
+
+func TestLaunchProductFlagRemoved(t *testing.T) {
 	home, _ := setupCLILaunchFixture(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
@@ -3482,12 +3495,9 @@ func TestLaunchProductRequiresNoSession(t *testing.T) {
 	if !errors.Is(err, errAlreadyPrinted) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}
-	if !strings.Contains(stderr.String(), "default session mode does not include product worktrees") ||
-		!strings.Contains(stderr.String(), "pass --no-session") {
+	if !strings.Contains(stderr.String(), "--product was removed") ||
+		!strings.Contains(stderr.String(), "--repo") {
 		t.Fatalf("stderr = %q", stderr.String())
-	}
-	if stdout.String() != "" {
-		t.Fatalf("stdout = %q, want empty", stdout.String())
 	}
 }
 

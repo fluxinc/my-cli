@@ -55,10 +55,10 @@ func TestWorkStartCreatesSessionAndRegistry(t *testing.T) {
 	}
 }
 
-func TestWorkStartExcludesRepoKindAndMissingMounts(t *testing.T) {
+func TestWorkStartExcludesCatalogReposAndMissingMounts(t *testing.T) {
 	home, _ := setupCLIRecordWorkspace(t)
-	manifestPath := filepath.Join(home, ".local", "share", "our", "manifests", "acme", "manifest.json")
-	writeCLITestFile(t, manifestPath, `{
+	manifestDir := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestDir, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
   "umbrella": { "recommended_path": "~/acme" },
@@ -70,12 +70,6 @@ func TestWorkStartExcludesRepoKindAndMissingMounts(t *testing.T) {
       "mode": "default"
     },
     {
-      "id": "tools-repo",
-      "kind": "repo",
-      "git_url": "https://github.com/acme/acme-tools.git",
-      "mode": "default"
-    },
-    {
       "id": "notes",
       "kind": "docs",
       "git_url": "https://github.com/acme/acme-notes.git",
@@ -83,7 +77,10 @@ func TestWorkStartExcludesRepoKindAndMissingMounts(t *testing.T) {
     }
   ]
 }`)
-	toolsRepo := filepath.Join(home, "acme", "tools-repo")
+	writeCLITestFile(t, filepath.Join(manifestDir, "catalog", "repos.json"), `[
+  { "id": "tools", "git_url": "https://github.com/acme/acme-tools.git" }
+]`)
+	toolsRepo := filepath.Join(home, "acme", "repos", "tools")
 	writeCLITestFile(t, filepath.Join(toolsRepo, "main.go"), "package main\n")
 	initCLIGitRepo(t, toolsRepo)
 
@@ -100,8 +97,8 @@ func TestWorkStartExcludesRepoKindAndMissingMounts(t *testing.T) {
 	if len(session.Mounts) != 1 || session.Mounts[0].ID != "handbook" {
 		t.Fatalf("mounts = %#v, want handbook only", session.Mounts)
 	}
-	if _, err := os.Stat(filepath.Join(session.Path, "tools-repo")); !os.IsNotExist(err) {
-		t.Fatalf("repo-kind mount got a session worktree: %v", err)
+	if _, err := os.Stat(filepath.Join(session.Path, "tools")); !os.IsNotExist(err) {
+		t.Fatalf("catalog repo got a session worktree: %v", err)
 	}
 }
 

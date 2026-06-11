@@ -47,7 +47,9 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   session-local `scratch/`, with a registry record under `.our/sessions/`.
   `our ai` starts one by default; work leaves a session only through
   `our work finish --land | --publish | --discard`.
-- **Catalog** — JSON inventories for products and canonical customers.
+- **Catalog** — JSON inventories: products (business entities, which may link
+  repos), canonical customers, and repos (the organization's repositories,
+  cloned on demand under `repos/<id>` via `our repos add`).
 - **Guidance** — the generated root `AGENTS.md` (and `CLAUDE.md` pointer) built
   from a public baseline plus manifest fragments.
 - **Tool** — an external executable the org depends on; `our` reports presence
@@ -62,7 +64,7 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   `our meetings list/search/get`, `our support list/search/get`,
   `our fleet list/search/get`,
   `our customers list`,
-  `our products list`, `our tools list/info`, `our root`,
+  `our products list`, `our repos list/add/remove`, `our tools list/info`, `our root`,
   `our ai`, `our doctor`, `our manifests list`, `our mounts list`,
   `our work start/status/resume/finish` (sessions are local execution-plane
   state; `finish --publish` only publishes what the sync policy allows), and
@@ -92,9 +94,9 @@ our publish [--manifest NAME] [--print]
                                     # create private remotes, rewrite local mount URLs, push both repos
 our setup [--manifest NAME] [--no-refresh] [--no-update-check]
                                     # create umbrella, write guidance, install skills, sync mounts
-our root [--product ID] [--no-refresh] [--no-update-check]
-                                    # print the umbrella (or product) path
-our ai [--session ID|--no-session] [--product ID] [--setup] [--no-refresh] [--no-update-check] [harness]
+our root [--repo ID] [--no-refresh] [--no-update-check]
+                                    # print the umbrella (or repo) path
+our ai [--session ID|--no-session] [--repo ID] [--setup] [--no-refresh] [--no-update-check] [harness]
                                     # verify guidance is current, then start a harness in a fresh work session by default
                                     # --setup reconciles the umbrella first when guidance is stale or missing
 our doctor [--no-fetch] [--fix]   # git freshness, derived drift, last sync, manifests, tools
@@ -123,8 +125,10 @@ starts the harness there. Treat the base umbrella as inspection/admin space; do
 not create shared content directly in base mounts unless the operator explicitly
 asks for a base edit. Use `our ai --session <id> <harness>` to resume an active
 session, and `our ai --no-session <harness>` for base inspection/admin/debug.
-Product launches are base checkouts in this release, so use
-`our ai --no-session --product <id> <harness>` for them.
+Repo launches are base checkouts in this release, so use
+`our ai --no-session --repo <id> <harness>` for them. Products are business
+catalog entries, not checkouts: records reference them with `--product`,
+while code lives in catalog repos managed by `our repos`.
 
 When the refresh cannot converge a checkout, these commands print a stderr
 line per repository in the form `notice\t<repo>\t<state>; run ...` (dirty,
@@ -221,7 +225,7 @@ divergent branches, and unsafe duplicate-remote checkouts are held back.
 ```sh
 our sync --print                  # plan only: show what would pull/push/hold (always safe)
 our sync                          # reconcile + publish per the auto policy
-our sync --scope repos            # limit to product clones (all|local|content|manifest|repos)
+our sync --scope repos            # limit to catalog repo clones (all|local|content|manifest|repos)
 our sync --no-derived             # skip skill/guidance reconcile after manifest changes
 our sync --publish never          # explicit local-only reconcile
 our sync --publish pr             # currently holds changes and reports PR-mode follow-up

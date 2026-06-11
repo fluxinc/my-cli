@@ -4,6 +4,23 @@
 
 ### Changed
 
+- Split catalog products from repository checkouts: products in
+  `catalog/products.json` are now pure business entities (no `git_url`) that
+  may link implementing repos via `repos: ["<repo-id>"]`, and the
+  organization's repositories live in a new `catalog/repos.json` inventory.
+  New `our repos list|add|remove` verbs manage clones under `repos/<id>`
+  (`add` is idempotent: an existing clone of the same remote is adopted;
+  conflicting paths hold with remediation). `our root`/`our ai` take `--repo`
+  (`--product` now errors with the migration hint); `our mounts add
+  product:<id>` is removed; the sync scope is `repos` (the `products`
+  spelling is gone); sync/doctor report repo checkouts with the `repo` role.
+  Records keep `--product` as a business reference. Umbrella state migrates
+  automatically (`selected_products` to `selected_repos`, `product:` mount
+  entries to `repo:`); clones under `repos/<id>` are untouched. Manifest
+  mount kind `repo` is removed — repos.json is the single declaration path.
+  A product entry still carrying `git_url` fails validation with the
+  migration message, so migrate private manifests before installing this
+  release.
 - The bundled `our` self-skill and the docs site now document work sessions
   fully: the Session concept in the model, the `our work
   start/status/resume/finish` verbs in the skill's operational surface and

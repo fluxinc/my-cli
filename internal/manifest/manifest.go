@@ -112,14 +112,25 @@ type Mount struct {
 	IncludePaths []string `json:"include_paths,omitempty"`
 }
 
-// Product describes one catalog product that can be opted into an umbrella.
+// Product describes one catalog product: a business entity the organization
+// sells or operates. Products may link to the repos that implement them; they
+// are never checkouts themselves.
 type Product struct {
 	ID            string   `json:"id"`
 	Name          string   `json:"name"`
-	GitURL        string   `json:"git_url"`
 	Description   string   `json:"description"`
 	Purpose       string   `json:"purpose,omitempty"`
+	Repos         []string `json:"repos,omitempty"`
 	RelatedSkills []string `json:"related_skills,omitempty"`
+}
+
+// Repo describes one organization repository that can be cloned into an
+// umbrella under repos/<id>.
+type Repo struct {
+	ID          string `json:"id"`
+	GitURL      string `json:"git_url"`
+	Description string `json:"description,omitempty"`
+	Default     bool   `json:"default,omitempty"`
 }
 
 // Customer describes one canonical customer identity.
@@ -332,6 +343,7 @@ func ValidateFile(path string) ValidationResult {
 		return result
 	}
 	validateOrgManifest(doc, &result)
+	validateRepoCatalog(filepath.Dir(resolved), &result)
 	validateProductCatalog(filepath.Dir(resolved), doc, &result)
 	validateCustomerCatalog(filepath.Dir(resolved), &result)
 	return result
@@ -343,6 +355,7 @@ func ValidateDocument(root string, doc Document) ValidationResult {
 	result := ValidationResult{Path: root}
 	validateOrgManifest(doc, &result)
 	if root != "" {
+		validateRepoCatalog(root, &result)
 		validateProductCatalog(root, doc, &result)
 		validateCustomerCatalog(root, &result)
 	}
@@ -408,11 +421,18 @@ func LoadCatalog(home, manifestName string) ([]Product, error) {
 	if err := json.Unmarshal(data, &products); err != nil {
 		return nil, fmt.Errorf("read product catalog %s: invalid JSON%s: %w", path, jsonErrorOffset(err), err)
 	}
+	if err := detectLegacyProductGitURL(path, data); err != nil {
+		return nil, err
+	}
 	doc, _, err := LoadDocument(ref.LocalPath)
 	if err != nil {
 		return nil, fmt.Errorf("load manifest for product catalog %s: %w", path, err)
 	}
-	if err := validateProducts(path, products, manifestSkillIDs(doc)); err != nil {
+	repos, err := readRepoCatalog(RepoCatalogPath(ref))
+	if err != nil {
+		return nil, err
+	}
+	if err := validateProducts(path, products, manifestSkillIDs(doc), repoIDSet(repos)); err != nil {
 		return nil, err
 	}
 	return products, nil
@@ -472,6 +492,47 @@ func FindProduct(home, manifestName, id string) (Product, bool, error) {
 	return Product{}, false, nil
 }
 
+// LoadRepoCatalog reads catalog/repos.json from a registered manifest repo.
+func LoadRepoCatalog(home, manifestName string) ([]Repo, error) {
+	ref, err := singleRef(home, manifestName)
+	if err != nil {
+		return nil, err
+	}
+	return readRepoCatalog(RepoCatalogPath(ref))
+}
+
+// FindRepo looks one repo up by id in a registered manifest's repo catalog.
+func FindRepo(home, manifestName, id string) (Repo, bool, error) {
+	repos, err := LoadRepoCatalog(home, manifestName)
+	if err != nil {
+		return Repo{}, false, err
+	}
+	for _, repo := range repos {
+		if repo.ID == id {
+			return repo, true, nil
+		}
+	}
+	return Repo{}, false, nil
+}
+
+func readRepoCatalog(path string) ([]Repo, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return []Repo{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var repos []Repo
+	if err := json.Unmarshal(data, &repos); err != nil {
+		return nil, fmt.Errorf("read repo catalog %s: invalid JSON%s: %w", path, jsonErrorOffset(err), err)
+	}
+	if err := validateRepos(path, repos); err != nil {
+		return nil, err
+	}
+	return repos, nil
+}
+
 // ManifestPath returns the expected manifest.json path for a registered ref.
 func ManifestPath(ref Ref) string {
 	return filepath.Join(ref.LocalPath, manifestFile)
@@ -485,6 +546,11 @@ func ProductCatalogPath(ref Ref) string {
 // CustomerCatalogPath returns the expected catalog/customers.json path for a registered ref.
 func CustomerCatalogPath(ref Ref) string {
 	return filepath.Join(ref.LocalPath, "catalog", "customers.json")
+}
+
+// RepoCatalogPath returns the expected catalog/repos.json path for a registered ref.
+func RepoCatalogPath(ref Ref) string {
+	return filepath.Join(ref.LocalPath, "catalog", "repos.json")
 }
 
 // EffectiveMounts returns native mounts plus legacy workspaces projected into
@@ -763,7 +829,23 @@ func validateProductCatalog(root string, doc Document, result *ValidationResult)
 		result.Errors = append(result.Errors, fmt.Sprintf("read product catalog %s: invalid JSON%s: %v", path, jsonErrorOffset(err), err))
 		return
 	}
-	if err := validateProducts(path, products, manifestSkillIDs(doc)); err != nil {
+	if err := detectLegacyProductGitURL(path, data); err != nil {
+		result.Errors = append(result.Errors, err.Error())
+		return
+	}
+	// Repo-catalog errors are reported once by validateRepoCatalog; here a
+	// broken repo catalog only suppresses repo-link validation.
+	repos, err := readRepoCatalog(filepath.Join(root, "catalog", "repos.json"))
+	if err != nil {
+		return
+	}
+	if err := validateProducts(path, products, manifestSkillIDs(doc), repoIDSet(repos)); err != nil {
+		result.Errors = append(result.Errors, err.Error())
+	}
+}
+
+func validateRepoCatalog(root string, result *ValidationResult) {
+	if _, err := readRepoCatalog(filepath.Join(root, "catalog", "repos.json")); err != nil {
 		result.Errors = append(result.Errors, err.Error())
 	}
 }
@@ -917,9 +999,11 @@ func validateTool(t Tool, result *ValidationResult) {
 	}
 }
 
+// validMountKind accepts content mount kinds only. Code repositories are not
+// mounts: declare them in catalog/repos.json and clone with our repos add.
 func validMountKind(kind string) bool {
 	switch kind {
-	case "handbook", "meetings", "support", "fleet", "policy", "docs", "repo":
+	case "handbook", "meetings", "support", "fleet", "policy", "docs":
 		return true
 	default:
 		return false
@@ -963,7 +1047,7 @@ func validateWorkspace(w Workspace, result *ValidationResult) {
 	}
 }
 
-func validateProducts(path string, products []Product, knownSkillIDs map[string]bool) error {
+func validateProducts(path string, products []Product, knownSkillIDs, knownRepoIDs map[string]bool) error {
 	seen := map[string]bool{}
 	for _, product := range products {
 		if !portableID(product.ID) {
@@ -973,8 +1057,10 @@ func validateProducts(path string, products []Product, knownSkillIDs map[string]
 			return fmt.Errorf("product catalog %s: duplicate product id %q", path, product.ID)
 		}
 		seen[product.ID] = true
-		if strings.TrimSpace(product.GitURL) == "" {
-			return fmt.Errorf("product catalog %s: product %q git_url is required", path, product.ID)
+		for _, repoID := range product.Repos {
+			if knownRepoIDs == nil || !knownRepoIDs[repoID] {
+				return fmt.Errorf("product catalog %s: product %q links repo %q that is not declared in catalog/repos.json", path, product.ID, repoID)
+			}
 		}
 		for _, skillID := range product.RelatedSkills {
 			if !portableNamespacedID(skillID) {
@@ -986,6 +1072,51 @@ func validateProducts(path string, products []Product, knownSkillIDs map[string]
 		}
 	}
 	return nil
+}
+
+func validateRepos(path string, repos []Repo) error {
+	seen := map[string]bool{}
+	for _, repo := range repos {
+		if !portableID(repo.ID) {
+			return fmt.Errorf("repo catalog %s: repo id %q must be lowercase kebab-case", path, repo.ID)
+		}
+		if seen[repo.ID] {
+			return fmt.Errorf("repo catalog %s: duplicate repo id %q", path, repo.ID)
+		}
+		seen[repo.ID] = true
+		if strings.TrimSpace(repo.GitURL) == "" {
+			return fmt.Errorf("repo catalog %s: repo %q git_url is required", path, repo.ID)
+		}
+	}
+	return nil
+}
+
+// detectLegacyProductGitURL rejects product entries that still carry git_url,
+// naming the repos.json migration: products are business entities, not
+// checkouts.
+func detectLegacyProductGitURL(path string, data []byte) error {
+	var raw []map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil // shape errors are reported by the typed unmarshal
+	}
+	for _, entry := range raw {
+		if _, ok := entry["git_url"]; ok {
+			id := ""
+			if rawID, idOK := entry["id"]; idOK {
+				_ = json.Unmarshal(rawID, &id)
+			}
+			return fmt.Errorf("product catalog %s: product %q carries git_url; products are business entities — move the repository to catalog/repos.json and link it via repos: [\"<repo-id>\"]", path, id)
+		}
+	}
+	return nil
+}
+
+func repoIDSet(repos []Repo) map[string]bool {
+	ids := make(map[string]bool, len(repos))
+	for _, repo := range repos {
+		ids[repo.ID] = true
+	}
+	return ids
 }
 
 func validateCustomers(path string, customers []Customer) error {

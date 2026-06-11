@@ -38,7 +38,7 @@ so agents know how to use the CLI itself.
 
 ## The Model
 
-`our` has seven concepts. Everything in the CLI is one of these:
+`our` has eight concepts. Everything in the CLI is one of these:
 
 | Concept | What it is |
 |---|---|
@@ -46,7 +46,8 @@ so agents know how to use the CLI itself.
 | **Skill** | A capability installed into harness skill directories. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer). The CLI also ships one public, organization-neutral *self-skill* named `our`, embedded in the binary, that teaches harnesses how to use `our` itself. |
 | **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.our/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Gnit control workspace so multi-repo commits and pushes have one substrate. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
-| **Catalog** | JSON inventories for products and canonical customers. Users opt specific products into their umbrella on demand. |
+| **Session** | An isolated unit of work under `work/<id>`: a git worktree per content mount on a fresh branch, plus session-local scratch. `our ai` starts one by default; work leaves only through `our work finish --land\|--publish\|--discard`. |
+| **Catalog** | JSON inventories for products (business entities, which may link repos), repos (the organization's repositories), and canonical customers. Users opt specific repos into their umbrella on demand. |
 | **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared fragments. `CLAUDE.md` points to the same file. |
 | **Tool** | An external executable the org depends on. `our` reports presence and install hints — it never silently installs tools. |
 
@@ -75,23 +76,23 @@ our setup [harness...] | --all   # create umbrella, write guidance, install skil
 ### Startup
 
 ```sh
-our root [--product ID] [--no-refresh] [--no-update-check]
-                                             # print the umbrella or product path
-our ai [--session ID|--no-session] [--product ID] [--setup] [--no-refresh] [--no-update-check] [harness]
+our root [--repo ID] [--no-refresh] [--no-update-check]
+                                             # print the umbrella or repo path
+our ai [--session ID|--no-session] [--repo ID] [--setup] [--no-refresh] [--no-update-check] [harness]
                                              # verify guidance, then start a harness in a fresh session
 our ai codex --model gpt-5              # pass harness flags after the harness name
 our ai --session 2026-06-11-work-ab12 codex
-our ai --no-session --product sample-product codex
+our ai --no-session --repo sample-service codex
 our ai --print codex                    # create a session and print cd <session> && codex
 ```
 
 `ai` refuses to start against missing or stale generated guidance. Pass
 `--setup` to reconcile first, or run `our setup` directly. Use `--session` to
 resume an active session and `--no-session` for base inspection/admin/debug;
-product launches currently require `--no-session`.
+repo launches currently require `--no-session`.
 `root`, `ai`, and `setup` also run a best-effort, TTL-gated refresh of
 clean manifest/content checkouts so startup sees current context without
-touching dirty, diverged, product, or remote-unknown repositories. Use
+touching dirty, diverged, repo, or remote-unknown checkouts. Use
 `--no-refresh` for one command, `OUR_NO_AUTO_REFRESH=1` globally, or
 `OUR_REFRESH_TTL=30m` to tune the default six-hour refresh window.
 

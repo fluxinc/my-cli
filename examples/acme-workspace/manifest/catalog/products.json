@@ -2,9 +2,11 @@
   {
     "id": "sample-product",
     "name": "Sample Product",
-    "git_url": "https://github.com/example/sample-product.git",
     "description": "Example product used by public our fixtures.",
-    "purpose": "Synthetic product source for exercising opt-in product clones.",
+    "purpose": "Synthetic product source for exercising opt-in repo clones.",
+    "repos": [
+      "sample-service"
+    ],
     "related_skills": [
       "acme:handbook"
     ]

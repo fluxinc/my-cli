@@ -1,7 +1,8 @@
 # Products are not repos: split the catalog from code checkouts
 
-Status: draft under debate (operator-directed 2026-06-11); design converging
-in-room between Claude and Codex.
+Status: decided (operator-directed 2026-06-11; design converged in-room
+between Claude and Codex); slices A-C implemented on master, slice D
+(fluxinc private manifest migration) pending.
 
 ## Problem
 
@@ -85,13 +86,16 @@ Removed: `our mounts add/remove product:<id>`, `--product` on `root`/`ai`
 4. **D — fluxinc migration:** update the private manifest (products.json /
    repos.json), verify `~/flux` resolves all four existing clones.
 
-## Open questions (in debate)
+## Resolved questions
 
-- Does `our repos add <id>` clone immediately or only select for the next
-  `setup`/`sync`? (Lean: clone immediately; selection-only adds a surprising
-  delay.)
-- Should `repos.json` support `default: true` entries cloned at `our setup`,
-  mirroring mount modes? (Lean: yes, minimal — a bool, not the full mode
-  enum.)
+- `our repos add <id>` clones immediately and is idempotent: an existing
+  clone of the same remote is adopted and selected; a mismatched remote or a
+  non-git directory holds with explicit remediation.
+- `repos.json` supports a minimal `default: true` bool (no mode enum) for
+  setup-time cloning.
+- `our root`/`our ai --product` get one release of a precise structured
+  error pointing at `--repo`; no silent alias. Records keep `--product`.
+- Release sequencing: the fluxinc private manifest must be migrated before
+  installing a released binary that hard-rejects product `git_url`.
 - Future: sessions may include repo worktrees (`our ai --repo` inside a
   session) — out of scope here, tracked by the execution-plane plan.

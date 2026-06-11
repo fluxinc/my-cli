@@ -76,7 +76,6 @@ our init acme --name "Acme"
 our admin manifests add acme <git-url>
 our admin manifests sync acme
 our admin manifests validate acme
-our admin mounts add product:sample-product
 our admin meetings add sampleco-followup --workspace handbook
 our admin support add routing-timeout --workspace handbook
 our admin customers add sampleco.example.com --manifest-dir ~/src/acme-manifest

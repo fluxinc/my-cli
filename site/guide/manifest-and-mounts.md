@@ -52,23 +52,23 @@ Manifests can also set the default sync publish policy:
 Allowed values are `auto`, `never`, and `pr`. The setting applies when
 `our sync` is run without `--publish`; an explicit CLI flag overrides it.
 `our sync --scope all|local|content|manifest|repos` limits a run to local-only
-changes, content mounts, manifest checkouts, or product clones (`repos`; the
-older `products` spelling still works).
+changes, content mounts, manifest checkouts, or catalog repo clones
+(`repos`).
 
 ## Mount lifecycle
 
 ```sh
 our mounts list
 our mounts add handbook
-our mounts add product:sample-product
 our mounts sync --all
 our mounts remove handbook --print
 ```
 
 Required and default mounts are synced during onboarding. Optional mounts are
-selected on demand and recorded in umbrella state. Product mounts keep the
-`product:<id>` syntax, but clones land under `repos/<id>` (legacy `products/`
-checkouts auto-migrate at `our setup`).
+selected on demand and recorded in umbrella state. Code repositories are not
+mounts: they live in `catalog/repos.json` and are cloned under `repos/<id>`
+with `our repos add <id>` (legacy `products/` checkouts auto-migrate at
+`our setup`).
 
 Content mounts can be broad, such as a handbook, or narrow, such as meetings or
 support. A support mount is intended for private anonymized records that capture
@@ -88,8 +88,12 @@ lands in the umbrella.
 
 ```sh
 our products list
+our repos list
 our customers list
 ```
 
-Product catalog entries can reference related manifest skills. Mounting a
-product repo does not let the repo inject organization-namespaced skills.
+Products are business catalog entries; each may link the repos that implement
+it (`repos: ["<repo-id>"]`) and reference related manifest skills. Repos are
+the organization's repositories in `catalog/repos.json`, cloned on demand with
+`our repos add <id>`. Cloning a catalog repo does not let that repo inject
+organization-namespaced skills.

@@ -8,7 +8,7 @@ commands by job.
 Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
 
 - **`our sync`** converges the whole workspace. It pulls every registered
-  repository (manifest cache, content mounts, product clones), reconciles
+  repository (manifest cache, content mounts, catalog repo clones), reconciles
   generated guidance and skills when the manifest changed, and publishes
   local content that is safe to publish. This is the one routine verb — when
   a startup notice says something is stale or unpublished, run this.
@@ -17,7 +17,7 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
   guidance/skill drift, and the last sync audit, marking every repairable
   finding with `would ...` and a closing fixable count. Nothing changes until
   you re-run with `--fix`, which applies exactly that plan; findings `--fix`
-  cannot repair (dirty, diverged, product checkouts) keep their explanatory
+  cannot repair (dirty, diverged, repo checkouts) keep their explanatory
   remediation text instead.
 - **`our manifests sync`** refreshes the registered manifest cache. You need
   it before an umbrella exists (bootstrap) or when managing several
@@ -31,8 +31,8 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
 our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
 our publish [--manifest NAME] [--home DIR] [--print] [--json]
 our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-our root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-our ai [--session ID|--no-session] [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+our root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+our ai [--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
 our doctor [--no-fetch] [--fix] [--json]
 our update [--check] [--version X.Y.Z] [--json] [--yes]
@@ -137,6 +137,9 @@ our record adopt <path>
 
 our customers list
 our products list
+our repos list [--json]
+our repos add <id> [--print] [--json]
+our repos remove <id> [--force] [--json]
 our tools list
 our tools info <name>
 ```
@@ -161,12 +164,12 @@ changes unless `--no-derived` is passed.
 
 `our root`, `our ai`, and `our setup` run a best-effort, TTL-gated
 refresh for clean manifest/content checkouts before using workspace context.
-They leave dirty, diverged, product, and remote-unknown repositories untouched.
+They leave dirty, diverged, repo, and remote-unknown checkouts untouched.
 `our ai` also ensures the bundled `our` self-skill exists for the selected
 filesystem harness before launching it. By default it creates a fresh
 `work/<id>` session and launches from there; use `--session <id>` to resume,
 or `--no-session` for base inspection/admin/debug. Product launches currently
-require `--no-session --product <id>`. Use `--no-refresh` for one command,
+require `--no-session --repo <id>`. Use `--no-refresh` for one command,
 `OUR_NO_AUTO_REFRESH=1` globally, or `OUR_REFRESH_TTL=30m` to tune the default
 six-hour window.
 

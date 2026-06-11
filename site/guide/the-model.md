@@ -66,10 +66,11 @@ session on it is dirty or unlanded.
 
 ## Catalog
 
-JSON inventories for products and canonical customers. Product repos are
-opted in on demand with `our mounts add product:<id>` and cloned under
-`repos/<id>` in the umbrella; legacy `products/` checkouts migrate
-automatically at `our setup`.
+JSON inventories for products, canonical customers, and repos. Products are
+business entities (no `git_url`) that may link the repos implementing them.
+Repos in `catalog/repos.json` are the organization's repositories, opted in
+on demand with `our repos add <id>` and cloned under `repos/<id>` in the
+umbrella; legacy `products/` checkouts migrate automatically at `our setup`.
 
 ## Guidance
 

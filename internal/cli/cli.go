@@ -178,6 +178,8 @@ func (a app) run(args []string) error {
 		return a.runCustomers(args[2:])
 	case "products":
 		return a.runProducts(args[2:])
+	case "repos":
+		return a.runRepos(args[2:])
 	case "admin":
 		return a.runAdmin(args[2:])
 	default:
@@ -194,8 +196,8 @@ func (a app) printUsage() {
 
 Usage:
   our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-  our root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-  our ai [--session ID|--no-session] [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+  our root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  our ai [--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
   our update [--check] [--version X.Y.Z] [--json] [--yes]
   our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
   our publish [--manifest NAME] [--home DIR] [--print] [--json]
@@ -248,6 +250,9 @@ Usage:
   our work finish [session-id] --land|--publish|--discard [--message TEXT] [--json]
   our customers list
   our products list
+  our repos list [--json]
+  our repos add <id>
+  our repos remove <id> [--force]
   our doctor [--no-fetch] [--fix] [--json]
   our version`)
 }
@@ -912,14 +917,16 @@ func (a app) runRoot(args []string) error {
 	var home string
 	var manifestName string
 	var umbrellaRoot string
-	var productID string
+	var repoID string
+	var legacyProductID string
 	var noRefresh bool
 	var noUpdateCheck bool
 	fs := newFlagSet("our root", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "use a registered manifest when no umbrella is found")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
-	fs.StringVar(&productID, "product", "", "print this product's path under the umbrella")
+	fs.StringVar(&repoID, "repo", "", "print this repo's path under the umbrella")
+	fs.StringVar(&legacyProductID, "product", "", "removed: use --repo")
 	fs.BoolVar(&noRefresh, "no-refresh", false, "skip best-effort auto-refresh")
 	fs.BoolVar(&noUpdateCheck, "no-update-check", false, "skip best-effort update notice")
 	fs.Usage = func() {
@@ -930,6 +937,7 @@ func (a app) runRoot(args []string) error {
 		"home":     true,
 		"manifest": true,
 		"umbrella": true,
+		"repo":     true,
 		"product":  true,
 	})
 	if err != nil {
@@ -945,8 +953,15 @@ func (a app) runRoot(args []string) error {
 	a.maybeAutoRefresh(home, manifestName, root, root, noRefresh)
 	a.maybeUpdateNotice(home, noUpdateCheck)
 	target := root
-	if productID != "" {
-		target = umbrella.ProductPath(root, productID)
+	if legacyProductID != "" {
+		return a.maybeJSONError(false, structuredCommandError{
+			code:        "product_flag_removed",
+			message:     "products are business catalog entries, not checkouts; --product was removed from our root",
+			remediation: "use our root --repo " + legacyProductID + " (see our repos list)",
+		})
+	}
+	if repoID != "" {
+		target = umbrella.RepoPath(root, repoID)
 	}
 	fmt.Fprintln(a.stdout, target)
 	return nil
@@ -954,11 +969,11 @@ func (a app) runRoot(args []string) error {
 
 func (a app) printRootUsage() {
 	fmt.Fprintln(a.stderr, `Usage of our root:
-  our root [--product ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  our root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 
 Examples:
   cd "$(our root)" && claude
-  cd "$(our root --product sample-product)" && codex
+  cd "$(our root --repo sample-service)" && codex
 
 Options:`)
 }
@@ -967,7 +982,8 @@ type launchCommandOpts struct {
 	home          string
 	manifestName  string
 	umbrellaRoot  string
-	productID     string
+	repoID        string
+	legacyProduct string
 	sessionID     string
 	noSession     bool
 	onboard       bool
@@ -1065,18 +1081,25 @@ func validateLaunchSessionOptions(opts launchCommandOpts) error {
 	if opts.noSession && opts.sessionID != "" {
 		return fmt.Errorf("--session cannot be combined with --no-session")
 	}
-	if opts.productID != "" && !opts.noSession {
+	if opts.legacyProduct != "" {
+		return structuredCommandError{
+			code:        "product_flag_removed",
+			message:     "products are business catalog entries, not checkouts; --product was removed from our ai",
+			remediation: "use our ai --no-session --repo " + opts.legacyProduct + " (see our repos list)",
+		}
+	}
+	if opts.repoID != "" && !opts.noSession {
 		if opts.sessionID != "" {
 			return structuredCommandError{
-				code:        "product_requires_no_session",
-				message:     "our ai --product cannot be combined with --session; product worktrees are not included in work sessions yet",
-				remediation: "pass --no-session for a base product launch, or omit --product to resume the content session",
+				code:        "repo_requires_no_session",
+				message:     "our ai --repo cannot be combined with --session; repo worktrees are not included in work sessions yet",
+				remediation: "pass --no-session for a base repo launch, or omit --repo to resume the content session",
 			}
 		}
 		return structuredCommandError{
-			code:        "product_requires_no_session",
-			message:     "our ai --product launches the base product checkout; default session mode does not include product worktrees yet",
-			remediation: "pass --no-session for a base product launch, or omit --product to start a content session",
+			code:        "repo_requires_no_session",
+			message:     "our ai --repo launches the base repo checkout; default session mode does not include repo worktrees yet",
+			remediation: "pass --no-session for a base repo launch, or omit --repo to start a content session",
 		}
 	}
 	return nil
@@ -1100,8 +1123,8 @@ func (a app) maybePrintStructuredCommandError(err error) error {
 
 func (a app) launchTargetDir(opts launchCommandOpts, root string) (string, error) {
 	if opts.noSession {
-		if opts.productID != "" {
-			return umbrella.ProductPath(root, opts.productID), nil
+		if opts.repoID != "" {
+			return umbrella.RepoPath(root, opts.repoID), nil
 		}
 		return root, nil
 	}
@@ -1181,7 +1204,7 @@ func (a app) printLaunchSelfSkillBlock(result skills.Result) {
 
 func (a app) printLaunchUsage() {
 	fmt.Fprintln(a.stderr, `Usage of our ai:
-  our ai [--session ID|--no-session] [--product ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+  our ai [--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 
 Harness defaults to claude-code. By default, filesystem harnesses launch from a
 fresh work session. Harness flags go after the harness name.
@@ -1190,7 +1213,7 @@ Examples:
   our ai claude-code
   our ai codex --model gpt-5
   our ai --session 2026-06-11-work-ab12 codex
-  our ai --no-session --product sample-product codex
+  our ai --no-session --repo sample-service codex
   our ai --print codex
 
 Options:
@@ -1199,7 +1222,7 @@ Options:
   --umbrella DIR    override umbrella root
   --session ID      resume an active work session instead of creating one
   --no-session      launch from the base umbrella or product checkout
-  --product ID      with --no-session, run from repos/<id> under the umbrella
+  --repo ID         with --no-session, run from repos/<id> under the umbrella
   --setup           reconcile the umbrella first if guidance is stale or missing
   --no-refresh      skip best-effort auto-refresh
   --no-update-check skip best-effort update notice
@@ -1231,7 +1254,7 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			opts.noRefresh = true
 		case arg == "--no-update-check":
 			opts.noUpdateCheck = true
-		case arg == "--home" || arg == "--manifest" || arg == "--umbrella" || arg == "--product" || arg == "--session":
+		case arg == "--home" || arg == "--manifest" || arg == "--umbrella" || arg == "--repo" || arg == "--product" || arg == "--session":
 			i++
 			if i >= len(args) {
 				return opts, "", nil, false, fmt.Errorf("missing value for %s", arg)
@@ -1243,8 +1266,10 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			opts.manifestName = strings.TrimPrefix(arg, "--manifest=")
 		case strings.HasPrefix(arg, "--umbrella="):
 			opts.umbrellaRoot = strings.TrimPrefix(arg, "--umbrella=")
+		case strings.HasPrefix(arg, "--repo="):
+			opts.repoID = strings.TrimPrefix(arg, "--repo=")
 		case strings.HasPrefix(arg, "--product="):
-			opts.productID = strings.TrimPrefix(arg, "--product=")
+			opts.legacyProduct = strings.TrimPrefix(arg, "--product=")
 		case strings.HasPrefix(arg, "--session="):
 			opts.sessionID = strings.TrimPrefix(arg, "--session=")
 		case isFlagArg(arg):
@@ -1264,8 +1289,10 @@ func setLaunchValue(opts *launchCommandOpts, name, value string) {
 		opts.manifestName = value
 	case "umbrella":
 		opts.umbrellaRoot = value
+	case "repo":
+		opts.repoID = value
 	case "product":
-		opts.productID = value
+		opts.legacyProduct = value
 	case "session":
 		opts.sessionID = value
 	}
@@ -1766,17 +1793,17 @@ func validSyncPublish(value string) bool {
 
 func validSyncScope(value string) bool {
 	switch value {
-	case "all", "local", "content", "manifest", "products":
+	case "all", "local", "content", "manifest", "repos":
 		return true
 	default:
 		return false
 	}
 }
 
-// normalizeSyncScope maps the repos alias onto the internal products scope.
+// normalizeSyncScope maps the removed products spelling onto repos.
 func normalizeSyncScope(value string) string {
-	if value == "repos" {
-		return "products"
+	if value == "products" {
+		return "repos"
 	}
 	return value
 }
@@ -1817,8 +1844,8 @@ func (a app) collectSyncEntries(home, manifestName, umbrellaRoot, scope string) 
 				})
 			}
 		}
-		if scope == "all" || scope == "local" || scope == "products" {
-			productEntries, err := a.collectSyncProductEntries(home, doc, umbrellaRoot)
+		if scope == "all" || scope == "local" || scope == "repos" {
+			productEntries, err := a.collectSyncRepoEntries(home, doc, umbrellaRoot)
 			if err != nil {
 				return nil, err
 			}
@@ -1832,7 +1859,7 @@ func (a app) collectSyncEntries(home, manifestName, umbrellaRoot, scope string) 
 	return entries, nil
 }
 
-func (a app) collectSyncProductEntries(home string, doc registeredDoc, umbrellaRoot string) ([]syncer.Entry, error) {
+func (a app) collectSyncRepoEntries(home string, doc registeredDoc, umbrellaRoot string) ([]syncer.Entry, error) {
 	root, err := umbrella.ResolveRoot(home, "", umbrellaRoot, doc.doc)
 	if err != nil {
 		return nil, err
@@ -1845,19 +1872,19 @@ func (a app) collectSyncProductEntries(home string, doc registeredDoc, umbrellaR
 		return nil, err
 	}
 	var entries []syncer.Entry
-	for _, id := range state.SelectedProducts {
-		product, ok, err := manifest.FindProduct(home, doc.ref.Name, id)
+	for _, id := range state.SelectedRepos {
+		repo, ok, err := manifest.FindRepo(home, doc.ref.Name, id)
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
 			continue
 		}
-		entry := productEntry(doc, root, product)
+		entry := repoEntry(doc, root, repo)
 		entries = append(entries, syncer.Entry{
 			Manifest:  entry.Manifest,
 			ID:        entry.ID,
-			Role:      "product",
+			Role:      "repo",
 			Kind:      entry.Kind,
 			GitURL:    entry.GitURL,
 			LocalPath: entry.LocalPath,
@@ -4547,9 +4574,9 @@ func doctorFixFreshnessItem(entry syncer.Entry, result syncer.Result) (doctorIte
 		item.Message = result.Error
 		return item, false, true
 	}
-	if result.Role == "product" && result.Behind > 0 {
+	if result.Role == "repo" && result.Behind > 0 {
 		item.Status = "skipped"
-		item.Message = "product repositories are never fixed by doctor"
+		item.Message = "repo checkouts are never fixed by doctor"
 		return item, false, true
 	}
 	if len(result.Dirty) != 0 {
@@ -5335,7 +5362,9 @@ func (a app) printProducts(products []manifest.Product) {
 			fmt.Fprintf(a.stdout, " - %s", product.Name)
 		}
 		fmt.Fprintln(a.stdout)
-		printHumanField(a.stdout, "source", product.GitURL)
+		if len(product.Repos) != 0 {
+			printHumanField(a.stdout, "repos", strings.Join(product.Repos, ", "))
+		}
 		if product.Purpose != "" {
 			printHumanField(a.stdout, "purpose", product.Purpose)
 		} else if product.Description != "" {
@@ -5626,7 +5655,7 @@ func recordMountResultsByRoot(results []workspace.SyncResult) error {
 	return nil
 }
 
-func recordProductResults(root string, ids []string, results []workspace.SyncResult) error {
+func recordRepoResults(root string, ids []string, results []workspace.SyncResult) error {
 	state, err := umbrella.LoadState(root)
 	if errors.Is(err, os.ErrNotExist) {
 		state = umbrella.State{SchemaVersion: umbrella.SchemaVersion}
@@ -5634,7 +5663,7 @@ func recordProductResults(root string, ids []string, results []workspace.SyncRes
 		return err
 	}
 	for _, id := range ids {
-		state = umbrella.AddSelectedProduct(state, id)
+		state = umbrella.AddSelectedRepo(state, id)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, result := range results {
@@ -5647,7 +5676,7 @@ func recordProductResults(root string, ids []string, results []workspace.SyncRes
 		}
 		state = umbrella.UpsertMount(state, umbrella.MountStatus{
 			ID:        result.Workspace,
-			Kind:      "product",
+			Kind:      "repo",
 			SourceRef: result.SourceRef,
 			Status:    status,
 			LastSync:  lastSync,
@@ -5657,7 +5686,7 @@ func recordProductResults(root string, ids []string, results []workspace.SyncRes
 	return umbrella.SaveState(root, state)
 }
 
-func removeMountsFromState(root string, mountIDs []string, productIDs []string) error {
+func removeMountsFromState(root string, mountIDs []string, repoIDs []string) error {
 	state, err := umbrella.LoadState(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -5668,9 +5697,9 @@ func removeMountsFromState(root string, mountIDs []string, productIDs []string) 
 	for _, id := range mountIDs {
 		state = umbrella.RemoveMount(state, id)
 	}
-	for _, id := range productIDs {
-		state = umbrella.RemoveSelectedProduct(state, id)
-		state = umbrella.RemoveMount(state, productMountID(id))
+	for _, id := range repoIDs {
+		state = umbrella.RemoveSelectedRepo(state, id)
+		state = umbrella.RemoveMount(state, repoMountID(id))
 	}
 	return umbrella.SaveState(root, state)
 }
@@ -5828,7 +5857,14 @@ func (a app) runMountAdd(args []string) error {
 	}
 	kind, id := splitMountRef(rest[0])
 	if kind == "product" {
-		return a.runMountAddProduct(home, manifestName, umbrellaRoot, id, printOnly, jsonOut)
+		return a.maybeJSONError(jsonOut, structuredCommandError{
+			code:        "product_mounts_removed",
+			message:     "products are business catalog entries, not checkouts; mount product:" + id + " was removed",
+			remediation: "use our repos add " + id + " (declared in catalog/repos.json)",
+		})
+	}
+	if kind == "repo" {
+		return a.repoAddByID(home, manifestName, umbrellaRoot, id, printOnly, jsonOut)
 	}
 	entries, err := workspace.ListMounts(home, manifestName, umbrellaRoot)
 	if err != nil {
@@ -5860,9 +5896,9 @@ func (a app) runMountAdd(args []string) error {
 	return nil
 }
 
-func (a app) runMountAddProduct(home, manifestName, umbrellaRoot, id string, printOnly bool, jsonOut bool) error {
+func (a app) repoAddByID(home, manifestName, umbrellaRoot, id string, printOnly bool, jsonOut bool) error {
 	if !portableMountID(id) {
-		return fmt.Errorf("product id %q must be lowercase kebab-case", id)
+		return fmt.Errorf("repo id %q must be lowercase kebab-case", id)
 	}
 	doc, err := loadSingleRegisteredDoc(home, manifestName)
 	if err != nil {
@@ -5872,26 +5908,29 @@ func (a app) runMountAddProduct(home, manifestName, umbrellaRoot, id string, pri
 	if err != nil {
 		return a.maybeJSONError(jsonOut, err)
 	}
-	product, ok, err := manifest.FindProduct(home, doc.ref.Name, id)
+	repo, ok, err := manifest.FindRepo(home, doc.ref.Name, id)
 	if err != nil {
 		return a.maybeJSONError(jsonOut, err)
 	}
 	if !ok {
 		return a.maybeJSONError(jsonOut, structuredCommandError{
-			code:        "unknown_product",
-			message:     fmt.Sprintf("product %q is not in catalog for manifest %q", id, doc.ref.Name),
-			remediation: "our products list --manifest " + doc.ref.Name,
+			code:        "unknown_repo",
+			message:     fmt.Sprintf("repo %q is not in catalog/repos.json for manifest %q", id, doc.ref.Name),
+			remediation: "our repos list --manifest " + doc.ref.Name,
 		})
+	}
+	if err := checkRepoCloneTarget(umbrella.RepoPath(root, id), repo.GitURL); err != nil {
+		return a.maybeJSONError(jsonOut, err)
 	}
 	if !printOnly {
 		if _, _, err := umbrella.Ensure(root, doc.doc.Organization.ID, doc.ref.Name); err != nil {
 			return err
 		}
 	}
-	results := []workspace.SyncResult{workspace.SyncEntry(productEntry(doc, root, product), printOnly, nil)}
-	normalizeProductResults(results)
+	results := []workspace.SyncResult{workspace.SyncEntry(repoEntry(doc, root, repo), printOnly, nil)}
+	normalizeRepoResults(results)
 	if !printOnly {
-		if err := recordProductResults(root, []string{id}, results); err != nil {
+		if err := recordRepoResults(root, []string{id}, results); err != nil {
 			return err
 		}
 	}
@@ -5930,7 +5969,7 @@ func (a app) runMountSync(args []string) error {
 	if err != nil {
 		return err
 	}
-	mountRefs, productIDs, err := splitMountSyncRefs(rest, all)
+	mountRefs, repoIDs, err := splitMountSyncRefs(rest, all)
 	if err != nil {
 		return err
 	}
@@ -5940,14 +5979,14 @@ func (a app) runMountSync(args []string) error {
 		if err != nil {
 			return a.maybeJSONError(jsonOut, err)
 		}
-	} else if len(productIDs) == 0 {
+	} else if len(repoIDs) == 0 {
 		return fmt.Errorf("select a mount ID or pass --all")
 	}
-	productResults, err := a.syncProductMounts(home, manifestName, umbrellaRoot, productIDs, all, printOnly)
+	repoResults, err := a.syncRepoMounts(home, manifestName, umbrellaRoot, repoIDs, all, printOnly)
 	if err != nil {
 		return a.maybeJSONError(jsonOut, err)
 	}
-	results = append(results, productResults...)
+	results = append(results, repoResults...)
 	if !printOnly {
 		if err := recordMountResultsByRoot(results); err != nil {
 			return err
@@ -5966,8 +6005,8 @@ func (a app) runMountSync(args []string) error {
 	return nil
 }
 
-func (a app) syncProductMounts(home, manifestName, umbrellaRoot string, productIDs []string, all bool, printOnly bool) ([]workspace.SyncResult, error) {
-	if !all && len(productIDs) == 0 {
+func (a app) syncRepoMounts(home, manifestName, umbrellaRoot string, repoIDs []string, all bool, printOnly bool) ([]workspace.SyncResult, error) {
+	if !all && len(repoIDs) == 0 {
 		return nil, nil
 	}
 	root, err := resolveUmbrellaRoot(home, umbrellaRoot)
@@ -5989,30 +6028,33 @@ func (a app) syncProductMounts(home, manifestName, umbrellaRoot string, productI
 		return nil, err
 	}
 	if all {
-		productIDs = append([]string(nil), state.SelectedProducts...)
+		repoIDs = append([]string(nil), state.SelectedRepos...)
 	}
-	if len(productIDs) == 0 {
+	if len(repoIDs) == 0 {
 		return nil, nil
 	}
-	entries := make([]workspace.Entry, 0, len(productIDs))
-	for _, id := range productIDs {
-		entry, err := productEntryFromState(home, ws.ManifestRef, root, state, id)
+	entries := make([]workspace.Entry, 0, len(repoIDs))
+	for _, id := range repoIDs {
+		entry, err := repoEntryFromState(home, ws.ManifestRef, root, state, id)
 		if err != nil {
 			return nil, err
 		}
 		entries = append(entries, entry)
 	}
 	results := workspace.SyncEntries(entries, printOnly, nil)
-	normalizeProductResults(results)
+	normalizeRepoResults(results)
 	if !printOnly {
-		if err := recordProductResults(root, productIDs, results); err != nil {
+		if err := recordRepoResults(root, repoIDs, results); err != nil {
 			return nil, err
 		}
 	}
 	return results, nil
 }
 
-func (a app) syncSelectedProducts(home string, doc registeredDoc, root string, printOnly bool) ([]workspace.SyncResult, error) {
+// syncSelectedRepos clones or refreshes the umbrella's selected catalog
+// repos at setup time, plus any catalog repo marked default that is not yet
+// selected.
+func (a app) syncSelectedRepos(home string, doc registeredDoc, root string, printOnly bool) ([]workspace.SyncResult, error) {
 	state, err := umbrella.LoadState(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -6020,70 +6062,80 @@ func (a app) syncSelectedProducts(home string, doc registeredDoc, root string, p
 	if err != nil {
 		return nil, err
 	}
-	if len(state.SelectedProducts) == 0 {
+	catalog, err := manifest.LoadRepoCatalog(home, doc.ref.Name)
+	if err != nil {
+		return nil, err
+	}
+	ids := append([]string(nil), state.SelectedRepos...)
+	for _, repo := range catalog {
+		if repo.Default && !stringInSlice(ids, repo.ID) {
+			ids = append(ids, repo.ID)
+		}
+	}
+	if len(ids) == 0 {
 		return nil, nil
 	}
-	entries := make([]workspace.Entry, 0, len(state.SelectedProducts))
-	for _, id := range state.SelectedProducts {
-		product, ok, err := manifest.FindProduct(home, doc.ref.Name, id)
+	entries := make([]workspace.Entry, 0, len(ids))
+	for _, id := range ids {
+		repo, ok, err := manifest.FindRepo(home, doc.ref.Name, id)
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
 			return nil, structuredCommandError{
-				code:        "unknown_product",
-				message:     fmt.Sprintf("product %q is not in catalog for manifest %q", id, doc.ref.Name),
-				remediation: "our products list --manifest " + doc.ref.Name,
+				code:        "unknown_repo",
+				message:     fmt.Sprintf("repo %q is not in catalog/repos.json for manifest %q", id, doc.ref.Name),
+				remediation: "our repos list --manifest " + doc.ref.Name,
 			}
 		}
-		entries = append(entries, productEntry(doc, root, product))
+		entries = append(entries, repoEntry(doc, root, repo))
 	}
 	results := workspace.SyncEntries(entries, printOnly, nil)
-	normalizeProductResults(results)
+	normalizeRepoResults(results)
 	if !printOnly {
-		if err := recordProductResults(root, state.SelectedProducts, results); err != nil {
+		if err := recordRepoResults(root, ids, results); err != nil {
 			return nil, err
 		}
 	}
 	return results, nil
 }
 
-func productEntryFromState(home, manifestName, root string, state umbrella.State, id string) (workspace.Entry, error) {
-	mountID := productMountID(id)
+func repoEntryFromState(home, manifestName, root string, state umbrella.State, id string) (workspace.Entry, error) {
+	mountID := repoMountID(id)
 	for _, mount := range state.Mounts {
-		if mount.ID == mountID && mount.Kind == "product" && mount.SourceRef != "" {
+		if mount.ID == mountID && mount.Kind == "repo" && mount.SourceRef != "" {
 			return workspace.Entry{
 				Manifest:     manifestName,
 				ID:           mountID,
-				Kind:         "product",
+				Kind:         "repo",
 				Mode:         "optional",
 				GitURL:       mount.SourceRef,
-				LocalPath:    umbrella.ProductPath(root, id),
+				LocalPath:    umbrella.RepoPath(root, id),
 				UmbrellaRoot: root,
 				SourceRef:    mount.SourceRef,
 			}, nil
 		}
 	}
-	product, ok, err := manifest.FindProduct(home, manifestName, id)
+	repo, ok, err := manifest.FindRepo(home, manifestName, id)
 	if err != nil {
 		return workspace.Entry{}, err
 	}
 	if !ok {
 		return workspace.Entry{}, structuredCommandError{
-			code:        "unknown_product",
-			message:     fmt.Sprintf("product %q is not in catalog for manifest %q", id, manifestName),
-			remediation: "our products list --manifest " + manifestName,
+			code:        "unknown_repo",
+			message:     fmt.Sprintf("repo %q is not in catalog/repos.json for manifest %q", id, manifestName),
+			remediation: "our repos list --manifest " + manifestName,
 		}
 	}
 	return workspace.Entry{
 		Manifest:     manifestName,
 		ID:           mountID,
-		Kind:         "product",
+		Kind:         "repo",
 		Mode:         "optional",
-		GitURL:       product.GitURL,
-		LocalPath:    umbrella.ProductPath(root, id),
+		GitURL:       repo.GitURL,
+		LocalPath:    umbrella.RepoPath(root, id),
 		UmbrellaRoot: root,
-		SourceRef:    product.GitURL,
+		SourceRef:    repo.GitURL,
 	}, nil
 }
 
@@ -6123,9 +6175,12 @@ func (a app) runMountRemove(args []string) error {
 	}
 	var results []removeResult
 	var removedMountIDs []string
-	var removedProductIDs []string
+	var removedRepoIDs []string
 	for _, ref := range rest {
 		kind, id := splitMountRef(ref)
+		if kind == "product" {
+			return fmt.Errorf("products are business catalog entries, not checkouts; use repo:%s (see our repos list)", id)
+		}
 		if !portableMountID(id) {
 			return fmt.Errorf("mount id %q must be lowercase kebab-case", id)
 		}
@@ -6137,8 +6192,8 @@ func (a app) runMountRemove(args []string) error {
 			result.Status = "failed"
 		} else {
 			result.Status = "removed"
-			if kind == "product" {
-				removedProductIDs = append(removedProductIDs, id)
+			if kind == "repo" {
+				removedRepoIDs = append(removedRepoIDs, id)
 			} else {
 				removedMountIDs = append(removedMountIDs, id)
 			}
@@ -6146,7 +6201,7 @@ func (a app) runMountRemove(args []string) error {
 		results = append(results, result)
 	}
 	if !printOnly {
-		if err := removeMountsFromState(root, removedMountIDs, removedProductIDs); err != nil {
+		if err := removeMountsFromState(root, removedMountIDs, removedRepoIDs); err != nil {
 			return err
 		}
 	}
@@ -6184,54 +6239,95 @@ func splitMountSyncRefs(refs []string, all bool) ([]string, []string, error) {
 		return nil, nil, fmt.Errorf("--all cannot be combined with explicit mount IDs")
 	}
 	var mountRefs []string
-	var productIDs []string
+	var repoIDs []string
 	for _, ref := range refs {
 		kind, id := splitMountRef(ref)
 		if kind == "product" {
+			return nil, nil, fmt.Errorf("products are business catalog entries, not checkouts; use repo:%s (see our repos list)", id)
+		}
+		if kind == "repo" {
 			if !portableMountID(id) {
-				return nil, nil, fmt.Errorf("product id %q must be lowercase kebab-case", id)
+				return nil, nil, fmt.Errorf("repo id %q must be lowercase kebab-case", id)
 			}
-			productIDs = append(productIDs, id)
+			repoIDs = append(repoIDs, id)
 			continue
 		}
 		mountRefs = append(mountRefs, ref)
 	}
-	return mountRefs, productIDs, nil
+	return mountRefs, repoIDs, nil
 }
 
-func productMountID(id string) string {
-	return "product:" + id
+// checkRepoCloneTarget guards an idempotent repo add: an existing clone of
+// the same remote is adopted, anything else at the path is a structured hold.
+func checkRepoCloneTarget(path, gitURL string) error {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return structuredCommandError{
+			code:        "repo_path_conflict",
+			message:     fmt.Sprintf("repo path %s exists and is not a directory", path),
+			remediation: "move the conflicting file aside, then rerun our repos add",
+		}
+	}
+	if !isGitCheckout(path) {
+		if entries, readErr := os.ReadDir(path); readErr == nil && len(entries) == 0 {
+			return nil
+		}
+		return structuredCommandError{
+			code:        "repo_path_conflict",
+			message:     fmt.Sprintf("repo path %s exists but is not a git checkout", path),
+			remediation: "move the conflicting directory aside, then rerun our repos add",
+		}
+	}
+	origin, _ := gitCmdOutput(path, "remote", "get-url", "origin")
+	if origin != "" && origin != gitURL {
+		return structuredCommandError{
+			code:        "repo_remote_mismatch",
+			message:     fmt.Sprintf("repo path %s tracks %s, not the declared %s", path, origin, gitURL),
+			remediation: "reconcile or move the existing checkout, then rerun our repos add",
+		}
+	}
+	return nil
+}
+
+func repoMountID(id string) string {
+	return "repo:" + id
 }
 
 func mountRemoveTarget(root, kind, id string) string {
-	if kind == "product" {
-		return umbrella.ProductPath(root, id)
+	if kind == "repo" {
+		return umbrella.RepoPath(root, id)
 	}
 	return filepath.Join(root, id)
 }
 
 func stateMountPath(root string, mount umbrella.MountStatus) string {
-	if mount.Kind == "product" && strings.HasPrefix(mount.ID, "product:") {
-		return umbrella.ProductPath(root, strings.TrimPrefix(mount.ID, "product:"))
+	if mount.Kind == "repo" && strings.HasPrefix(mount.ID, "repo:") {
+		return umbrella.RepoPath(root, strings.TrimPrefix(mount.ID, "repo:"))
 	}
 	return umbrella.MountPath(root, mount.ID)
 }
 
-func productEntry(doc registeredDoc, root string, product manifest.Product) workspace.Entry {
+func repoEntry(doc registeredDoc, root string, repo manifest.Repo) workspace.Entry {
 	return workspace.Entry{
 		Manifest:     doc.ref.Name,
 		Organization: doc.doc.Organization.ID,
-		ID:           productMountID(product.ID),
-		Kind:         "product",
+		ID:           repoMountID(repo.ID),
+		Kind:         "repo",
 		Mode:         "optional",
-		GitURL:       product.GitURL,
-		LocalPath:    umbrella.ProductPath(root, product.ID),
+		GitURL:       repo.GitURL,
+		LocalPath:    umbrella.RepoPath(root, repo.ID),
 		UmbrellaRoot: root,
-		SourceRef:    product.GitURL,
+		SourceRef:    repo.GitURL,
 	}
 }
 
-func normalizeProductResults(results []workspace.SyncResult) {
+func normalizeRepoResults(results []workspace.SyncResult) {
 	for i := range results {
 		if results[i].Status == "failed" && strings.Contains(results[i].Error, "gh auth login") {
 			results[i].Status = "inaccessible"
@@ -8275,11 +8371,11 @@ func (a app) runOnboard(args []string) error {
 			return fmt.Errorf("required mount %q failed: %s", result.Workspace, result.Error)
 		}
 	}
-	productResults, err := a.syncSelectedProducts(opts.home, doc, root, opts.print)
+	repoResults, err := a.syncSelectedRepos(opts.home, doc, root, opts.print)
 	if err != nil {
 		return err
 	}
-	results = append(results, productResults...)
+	results = append(results, repoResults...)
 	skillResults, err := a.collectSkillInstallResults(opts, hs, false)
 	if err != nil {
 		return err

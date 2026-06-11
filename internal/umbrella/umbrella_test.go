@@ -52,24 +52,6 @@ func TestEnsureWritesWorkspaceAndState(t *testing.T) {
 	}
 }
 
-func TestProductPathDefaultsToRepos(t *testing.T) {
-	root := t.TempDir()
-	if got, want := ProductPath(root, "sample"), filepath.Join(root, "repos", "sample"); got != want {
-		t.Fatalf("ProductPath = %q, want %q", got, want)
-	}
-}
-
-func TestProductPathPrefersExistingLegacyProductsClone(t *testing.T) {
-	root := t.TempDir()
-	legacy := filepath.Join(root, "products", "sample")
-	if err := os.MkdirAll(legacy, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if got := ProductPath(root, "sample"); got != legacy {
-		t.Fatalf("ProductPath = %q, want legacy %q", got, legacy)
-	}
-}
-
 func TestEnsureMigratesLegacyProductsToRepos(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "our")
 	legacyFile := filepath.Join(root, "products", "sample", "README.md")
@@ -101,15 +83,15 @@ func TestUpsertMount(t *testing.T) {
 
 func TestProductStateHelpers(t *testing.T) {
 	state := State{SchemaVersion: SchemaVersion}
-	state = AddSelectedProduct(state, "sample-product")
-	state = AddSelectedProduct(state, "sample-product")
-	if len(state.SelectedProducts) != 1 {
+	state = AddSelectedRepo(state, "sample-product")
+	state = AddSelectedRepo(state, "sample-product")
+	if len(state.SelectedRepos) != 1 {
 		t.Fatalf("state = %#v", state)
 	}
 	state = UpsertMount(state, MountStatus{ID: "product:sample-product", Kind: "product"})
-	state = RemoveSelectedProduct(state, "sample-product")
+	state = RemoveSelectedRepo(state, "sample-product")
 	state = RemoveMount(state, "product:sample-product")
-	if len(state.SelectedProducts) != 0 || len(state.Mounts) != 0 {
+	if len(state.SelectedRepos) != 0 || len(state.Mounts) != 0 {
 		t.Fatalf("state = %#v", state)
 	}
 }

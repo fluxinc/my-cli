@@ -1,0 +1,7 @@
+[
+  {
+    "id": "sample-service",
+    "git_url": "https://github.com/example/sample-service.git",
+    "description": "Example service source used by public our fixtures."
+  }
+]

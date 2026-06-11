@@ -480,7 +480,6 @@ func TestLoadCatalogReadsProducts(t *testing.T) {
   {
     "id": "sample-product",
     "name": "Sample Product",
-    "git_url": "https://github.com/acme/sample-product.git",
     "description": "Sample service",
     "purpose": "Synthetic product source for public fixture tests",
     "related_skills": ["acme:handbook"]
@@ -500,7 +499,7 @@ func TestLoadCatalogReadsProducts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok || product.GitURL == "" {
+	if !ok || product.Name != "Sample Product" {
 		t.Fatalf("product = %#v, ok=%v", product, ok)
 	}
 }
@@ -566,7 +565,6 @@ func TestValidateManifestCatchesCatalogUnknownRelatedSkill(t *testing.T) {
   {
     "id": "sample-product",
     "name": "Sample Product",
-    "git_url": "https://github.com/acme/sample-product.git",
     "related_skills": ["acme:missing"]
   }
 ]`)
@@ -620,7 +618,6 @@ func TestLoadCatalogRejectsMalformedRelatedSkill(t *testing.T) {
   {
     "id": "sample-product",
     "name": "Sample Product",
-    "git_url": "https://github.com/acme/sample-product.git",
     "related_skills": ["Acme Handbook"]
   }
 ]`)
@@ -647,7 +644,6 @@ func TestLoadCatalogRejectsUnknownRelatedSkillWhenManifestPresent(t *testing.T) 
   {
     "id": "sample-product",
     "name": "Sample Product",
-    "git_url": "https://github.com/acme/sample-product.git",
     "related_skills": ["acme:missing"]
   }
 ]`)

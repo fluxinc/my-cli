@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fluxinc/our-ai/internal/manifest"
@@ -30,9 +31,13 @@ type Workspace struct {
 
 // State is the dynamic, per-machine state for an umbrella.
 type State struct {
-	SchemaVersion    int           `json:"schema_version"`
-	SelectedProducts []string      `json:"selected_products"`
-	Mounts           []MountStatus `json:"mounts"`
+	SchemaVersion int           `json:"schema_version"`
+	SelectedRepos []string      `json:"selected_repos"`
+	Mounts        []MountStatus `json:"mounts"`
+
+	// LegacySelectedProducts holds the pre-split selected_products key; it is
+	// migrated into SelectedRepos on load and never written back.
+	LegacySelectedProducts []string `json:"selected_products,omitempty"`
 }
 
 // MountStatus records the last known state of one local mount.
@@ -128,8 +133,8 @@ func Ensure(root, organization, manifestRef string) (Workspace, State, error) {
 		return Workspace{}, State{}, err
 	}
 	state.SchemaVersion = SchemaVersion
-	if state.SelectedProducts == nil {
-		state.SelectedProducts = []string{}
+	if state.SelectedRepos == nil {
+		state.SelectedRepos = []string{}
 	}
 	if state.Mounts == nil {
 		state.Mounts = []MountStatus{}
@@ -158,7 +163,8 @@ func SaveWorkspace(root string, ws Workspace) error {
 	return writeJSON(workspacePath(root), ws)
 }
 
-// LoadState reads the dynamic state file under root.
+// LoadState reads the dynamic state file under root, migrating pre-split
+// product state (selected_products, product: mounts) to repo state.
 func LoadState(root string) (State, error) {
 	data, err := os.ReadFile(statePath(root))
 	if err != nil {
@@ -168,7 +174,36 @@ func LoadState(root string) (State, error) {
 	if err := json.Unmarshal(data, &state); err != nil {
 		return State{}, fmt.Errorf("read %s: %w", statePath(root), err)
 	}
-	return state, nil
+	return migrateProductState(state), nil
+}
+
+// migrateProductState rewrites legacy product-flavored state in place:
+// selected_products feeds selected_repos, and product mounts become repo
+// mounts. Clones under repos/<id> are untouched.
+func migrateProductState(state State) State {
+	for _, id := range state.LegacySelectedProducts {
+		found := false
+		for _, existing := range state.SelectedRepos {
+			if existing == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			state.SelectedRepos = append(state.SelectedRepos, id)
+		}
+	}
+	state.LegacySelectedProducts = nil
+	for i, mount := range state.Mounts {
+		if mount.Kind == "product" {
+			state.Mounts[i].Kind = "repo"
+		}
+		if strings.HasPrefix(mount.ID, "product:") {
+			state.Mounts[i].ID = "repo:" + strings.TrimPrefix(mount.ID, "product:")
+		}
+		state.Mounts[i].SourceRef = strings.ReplaceAll(state.Mounts[i].SourceRef, ":product:", ":repo:")
+	}
+	return state
 }
 
 // SaveState writes the dynamic state file under root.
@@ -176,12 +211,13 @@ func SaveState(root string, state State) error {
 	if state.SchemaVersion == 0 {
 		state.SchemaVersion = SchemaVersion
 	}
-	if state.SelectedProducts == nil {
-		state.SelectedProducts = []string{}
+	if state.SelectedRepos == nil {
+		state.SelectedRepos = []string{}
 	}
 	if state.Mounts == nil {
 		state.Mounts = []MountStatus{}
 	}
+	state.LegacySelectedProducts = nil
 	return writeJSON(statePath(root), state)
 }
 
@@ -209,26 +245,26 @@ func RemoveMount(state State, id string) State {
 	return state
 }
 
-// AddSelectedProduct records one selected product id idempotently.
-func AddSelectedProduct(state State, id string) State {
-	for _, existing := range state.SelectedProducts {
+// AddSelectedRepo records one selected repo id idempotently.
+func AddSelectedRepo(state State, id string) State {
+	for _, existing := range state.SelectedRepos {
 		if existing == id {
 			return state
 		}
 	}
-	state.SelectedProducts = append(state.SelectedProducts, id)
+	state.SelectedRepos = append(state.SelectedRepos, id)
 	return state
 }
 
-// RemoveSelectedProduct drops one selected product id.
-func RemoveSelectedProduct(state State, id string) State {
-	out := state.SelectedProducts[:0]
-	for _, existing := range state.SelectedProducts {
+// RemoveSelectedRepo drops one selected repo id.
+func RemoveSelectedRepo(state State, id string) State {
+	out := state.SelectedRepos[:0]
+	for _, existing := range state.SelectedRepos {
 		if existing != id {
 			out = append(out, existing)
 		}
 	}
-	state.SelectedProducts = out
+	state.SelectedRepos = out
 	return state
 }
 
@@ -237,10 +273,10 @@ func MountPath(root, id string) string {
 	return filepath.Join(root, id)
 }
 
-// ProductPath returns the filesystem path for one selected product clone.
+// RepoPath returns the filesystem path for one selected repo clone.
 // New clones default to repos/<id>; an existing legacy products/<id> checkout
 // keeps resolving until it is migrated.
-func ProductPath(root, id string) string {
+func RepoPath(root, id string) string {
 	preferred := filepath.Join(root, "repos", id)
 	if _, err := os.Stat(preferred); err == nil {
 		return preferred

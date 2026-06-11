@@ -69,11 +69,11 @@ repositories remain ordinary Git checkouts.
 ~/<org>/
 ├── .our/
 │   ├── workspace.json   identity: schema version, org, manifest ref, created_at
-│   └── state.json       dynamic: selected products, per-mount sync status
+│   └── state.json       dynamic: selected repos, per-mount sync status
 ├── .gnit/                optional Gnit control metadata for multi-repo sync
 ├── workspace/           the org content repo (its own remote), mounted
 ├── <other mounts>/
-├── repos/               opted-in catalog product repositories
+├── repos/               opted-in catalog repositories
 ├── personal/            local-only, never synced — agent + human scratch
 ├── AGENTS.md            generated workspace instructions for agents
 └── CLAUDE.md            alias for harnesses that read Claude-specific names
@@ -86,19 +86,21 @@ umbrella, meeting commands use the single configured registered manifest's
 recommended umbrella when it has been set up.
 
 **Mount** — a Git-backed content folder cloned into the umbrella. Kinds include
-handbook, meetings, support, fleet, policy, docs, repo. Modes: `required`, `default`,
+handbook, meetings, support, fleet, policy, docs. Modes: `required`, `default`,
 `optional`. Optional mounts are clone-if-accessible: if the user lacks access
 they are skipped with a warning, not a failure (RBAC by Git permissions, not by
 the CLI).
 
-**Catalog** — JSON inventories for products and canonical customers. Each
-product records its source-code `git_url`, a short purpose, and any related
-manifest skill IDs that help agents work in that repo. Products are *not*
-mounted by default; a user opts one in with `our mounts add product:<id>`, which
-clones it under `repos/<id>` and records it in umbrella state. This keeps the
-default umbrella small and lets each operator pull only what they work on.
-`related_skills` are references to skills declared by the manifest; mounting a
-product repo does not let that repo inject new org-namespaced skills. Customer
+**Catalog** — JSON inventories for products, repos, and canonical customers.
+Products are business entities: a name, description, purpose, optional links
+to the repos that implement them (`repos: ["<repo-id>"]`), and any related
+manifest skill IDs. Repos (`catalog/repos.json`) are the organization's
+repositories — each records its `git_url` and an optional `default` flag. A
+user opts a repo in with `our repos add <id>`, which clones it under
+`repos/<id>` and records it in umbrella state. This keeps the default
+umbrella small and lets each operator pull only what they work on.
+`related_skills` are references to skills declared by the manifest; cloning a
+catalog repo does not let that repo inject new org-namespaced skills. Customer
 catalog entries provide stable IDs, aliases, partner associations, and optional
 domain confirmation so meeting metadata can resolve to one canonical identity.
 

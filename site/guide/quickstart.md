@@ -72,7 +72,7 @@ our setup
 
 With one registered manifest, every command defaults to it. Onboarding is safe to re-run.
 It validates the manifest, installs declared skills, creates the umbrella,
-writes generated guidance, and syncs default content. Opted-in product clones
+writes generated guidance, and syncs default content. Opted-in catalog repo clones
 live under `repos/<id>` in the umbrella.
 
 ## Start an agent
