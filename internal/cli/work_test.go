@@ -189,6 +189,140 @@ func TestWorkStatusEmptyWithoutSessions(t *testing.T) {
 	}
 }
 
+func TestSyncHoldsContentMountWithActiveSession(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	remote := filepath.Join(home, "remote.git")
+	runCLIGit(t, home, "init", "--bare", "-q", "remote.git")
+	runCLIGit(t, workspaceRoot, "remote", "add", "origin", remote)
+	runCLIGit(t, workspaceRoot, "push", "-q", "origin", "HEAD")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "work", "start", "--slug", "hold", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
+	}
+	var session worksession.Session
+	if err := json.Unmarshal(stdout.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(session.Mounts[0].WorktreePath, "meetings", "wip.md"), "wip\n")
+	writeCLITestFile(t, filepath.Join(workspaceRoot, "meetings", "base-note.md"), "base\n")
+	runCLIGit(t, workspaceRoot, "add", "-N", "meetings/base-note.md")
+
+	stdout.Reset()
+	if err := a.run([]string{
+		"our", "sync",
+		"--backend", "builtin",
+		"--print",
+		"--manifest", "acme",
+		"--home", home,
+		"--json",
+	}); err != nil {
+		t.Fatalf("sync --print: %v\nstderr: %s", err, stderr.String())
+	}
+	var report struct {
+		Results []struct {
+			ID      string `json:"id"`
+			Role    string `json:"role"`
+			Status  string `json:"status"`
+			Message string `json:"message"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("parse JSON: %v\nstdout: %s", err, stdout.String())
+	}
+	var found bool
+	for _, result := range report.Results {
+		if result.Role != "content" || result.ID != "handbook" {
+			continue
+		}
+		found = true
+		if result.Status != "held back" ||
+			!strings.Contains(result.Message, session.ID) ||
+			!strings.Contains(result.Message, "our work finish "+session.ID) {
+			t.Fatalf("content result = %#v, want session hold naming %s", result, session.ID)
+		}
+	}
+	if !found {
+		t.Fatalf("no content result in report: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"our", "work", "finish", session.ID, "--discard", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work finish --discard: %v\nstderr: %s", err, stderr.String())
+	}
+	stdout.Reset()
+	if err := a.run([]string{
+		"our", "sync",
+		"--backend", "builtin",
+		"--print",
+		"--manifest", "acme",
+		"--home", home,
+		"--json",
+	}); err != nil {
+		t.Fatalf("second sync --print: %v\nstderr: %s", err, stderr.String())
+	}
+	if strings.Contains(stdout.String(), session.ID) {
+		t.Fatalf("discarded session still holds sync: %s", stdout.String())
+	}
+}
+
+func TestWorkFinishPublishHeldByOtherActiveSession(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	remote := filepath.Join(home, "remote.git")
+	runCLIGit(t, home, "init", "--bare", "-q", "remote.git")
+	runCLIGit(t, workspaceRoot, "remote", "add", "origin", remote)
+	runCLIGit(t, workspaceRoot, "push", "-q", "origin", "HEAD")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "work", "start", "--slug", "first", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work start: %v", err)
+	}
+	var finishing worksession.Session
+	if err := json.Unmarshal(stdout.Bytes(), &finishing); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	if err := a.run([]string{"our", "work", "start", "--slug", "second", "--home", home, "--json"}); err != nil {
+		t.Fatalf("second work start: %v", err)
+	}
+	var other worksession.Session
+	if err := json.Unmarshal(stdout.Bytes(), &other); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(finishing.Mounts[0].WorktreePath, "meetings", "done.md"), "done\n")
+	runCLIGit(t, finishing.Mounts[0].WorktreePath, "add", "-N", "meetings/done.md")
+	writeCLITestFile(t, filepath.Join(other.Mounts[0].WorktreePath, "meetings", "wip.md"), "wip\n")
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"our", "work", "finish", finishing.ID,
+		"--publish",
+		"--message", "Publish finished session",
+		"--home", home,
+		"--json",
+	}); err != nil {
+		t.Fatalf("work finish --publish: %v\nstderr: %s\nstdout: %s", err, stderr.String(), stdout.String())
+	}
+	var report workFinishCommandReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("parse JSON: %v\nstdout: %s", err, stdout.String())
+	}
+	if report.Finish.Session.Status != worksession.StatusFinished || report.Finish.Session.Outcome != worksession.OutcomeLanded {
+		t.Fatalf("session = %#v, want landed (not published) while other session is dirty", report.Finish.Session)
+	}
+	if report.Sync == nil || len(report.Sync.Results) == 0 {
+		t.Fatalf("report.Sync = %#v, want results", report.Sync)
+	}
+	result := report.Sync.Results[0]
+	if result.Status != "held back" || !strings.Contains(result.Message, other.ID) {
+		t.Fatalf("sync result = %#v, want hold naming %s", result, other.ID)
+	}
+}
+
 func TestWorkFinishLandCommitsDirtySessionContent(t *testing.T) {
 	home, workspaceRoot := setupCLIRecordWorkspace(t)
 	var stdout, stderr bytes.Buffer

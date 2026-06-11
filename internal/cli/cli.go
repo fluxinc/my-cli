@@ -1427,8 +1427,13 @@ func (a app) runSync(args []string) error {
 		entries = withoutBlockedManifestEntries(entries, localMountBlocks)
 	}
 	gnitRoot := ""
+	var sessionHolds []syncer.SessionHold
 	if root, err := resolveOurRoot(home, manifestName, umbrellaRoot); err == nil {
 		gnitRoot = findGnitWorkspaceRoot(root)
+		sessionHolds, err = collectSessionHolds(root)
+		if err != nil {
+			return a.maybeJSONError(jsonOut, err)
+		}
 	}
 	effectiveBackend := backend
 	backendMessage := ""
@@ -1445,12 +1450,13 @@ func (a app) runSync(args []string) error {
 		}
 	}
 	report := syncer.Run(entries, syncer.Options{
-		Backend:    effectiveBackend,
-		GnitRoot:   gnitRoot,
-		Publish:    publish,
-		DryRun:     printOnly,
-		Message:    message,
-		Visibility: a.githubRepoVisibility,
+		Backend:      effectiveBackend,
+		GnitRoot:     gnitRoot,
+		Publish:      publish,
+		DryRun:       printOnly,
+		Message:      message,
+		Visibility:   a.githubRepoVisibility,
+		SessionHolds: sessionHolds,
 	})
 	if backendMessage != "" && report.BackendMessage == "" {
 		report.BackendMessage = backendMessage

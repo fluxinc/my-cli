@@ -31,16 +31,29 @@ type Entry struct {
 	ContentPaths []string `json:"content_paths,omitempty"`
 }
 
+// SessionHold names one active work session with pending state on a mount
+// repository; outbound publish of that repository is held until the session
+// is finished or discarded.
+type SessionHold struct {
+	SessionID     string
+	SessionPath   string
+	MountID       string
+	RepoPath      string
+	DirtyCount    int
+	UnlandedCount int
+}
+
 // Options controls a sync run.
 type Options struct {
-	Publish    string
-	Backend    string
-	GnitRoot   string
-	DryRun     bool
-	Message    string
-	Runner     Runner
-	DirRunner  DirRunner
-	Visibility VisibilityFunc
+	Publish      string
+	Backend      string
+	GnitRoot     string
+	DryRun       bool
+	Message      string
+	Runner       Runner
+	DirRunner    DirRunner
+	Visibility   VisibilityFunc
+	SessionHolds []SessionHold
 }
 
 // InspectOptions controls report-only repository inspection.
@@ -470,6 +483,9 @@ func reconcile(in *inspection, all []inspection, opts Options, runner Runner) {
 		hold(in, "another checkout of the same remote has pending changes")
 		return
 	}
+	if holdActiveSession(in, opts) {
+		return
+	}
 	if opts.Publish == "auto" {
 		if in.entry.Role != "content" {
 			hold(in, "auto publish only applies to content mounts")
@@ -561,6 +577,51 @@ func reconcileInbound(in *inspection, opts Options, runner Runner) bool {
 func hold(in *inspection, reason string) {
 	in.result.Status = "held back"
 	in.result.Message = reason
+}
+
+// holdActiveSession holds outbound publish of a repository while an active
+// work session on it has dirty files or unlanded commits. Inbound pulls are
+// unaffected: session branches do not move when the base branch fast-forwards.
+func holdActiveSession(in *inspection, opts Options) bool {
+	for _, sessionHold := range opts.SessionHolds {
+		if !samePath(sessionHold.RepoPath, in.entry.LocalPath) {
+			continue
+		}
+		hold(in, sessionHoldMessage(sessionHold))
+		return true
+	}
+	return false
+}
+
+func sessionHoldMessage(sessionHold SessionHold) string {
+	var pending []string
+	if sessionHold.DirtyCount > 0 {
+		pending = append(pending, fmt.Sprintf("%d dirty file(s)", sessionHold.DirtyCount))
+	}
+	if sessionHold.UnlandedCount > 0 {
+		pending = append(pending, fmt.Sprintf("%d unlanded commit(s)", sessionHold.UnlandedCount))
+	}
+	detail := strings.Join(pending, " and ")
+	if detail == "" {
+		detail = "pending work"
+	}
+	location := sessionHold.SessionID
+	if sessionHold.SessionPath != "" {
+		location += " (" + sessionHold.SessionPath + ")"
+	}
+	return fmt.Sprintf(
+		"active session %s has %s on mount %s; run our work finish %s --land|--publish (or --discard), or our work status to inspect",
+		location, detail, sessionHold.MountID, sessionHold.SessionID,
+	)
+}
+
+func samePath(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return a == b
+	}
+	return absA == absB
 }
 
 func holdUnadoptedContent(in *inspection) bool {

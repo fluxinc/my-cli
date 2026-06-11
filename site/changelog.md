@@ -14,6 +14,11 @@
   commits intentional dirty session content, rejects unadopted `??` files and
   non-content changes, merges clean session branches into the base checkout,
   removes session worktrees/branches, and records the session outcome.
+- `our sync` (and the targeted sync inside `our work finish --publish`) now
+  reads the session registry and holds outbound publish of a content mount
+  while any active session on it has dirty files or unlanded commits, naming
+  the session id, path, and the `our work finish` remediation. Inbound
+  fast-forward pulls are unaffected.
 
 ## 0.13.2 - 2026-06-10
 

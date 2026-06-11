@@ -317,12 +317,17 @@ func (a app) syncFinishedSessionMounts(home, manifestName, root string, session 
 	if gnitRoot != "" {
 		backend = "gnit"
 	}
+	sessionHolds, err := collectSessionHolds(root)
+	if err != nil {
+		return syncer.Report{}, err
+	}
 	report := syncer.Run(selected, syncer.Options{
-		Backend:    backend,
-		GnitRoot:   gnitRoot,
-		Publish:    "auto",
-		Message:    message,
-		Visibility: a.githubRepoVisibility,
+		Backend:      backend,
+		GnitRoot:     gnitRoot,
+		Publish:      "auto",
+		Message:      message,
+		Visibility:   a.githubRepoVisibility,
+		SessionHolds: sessionHolds,
 	})
 	if err := a.saveLastSyncReport(home, manifestName, root, report); err != nil {
 		return report, err
@@ -371,6 +376,41 @@ func (a app) printWorkFinishReport(report workFinishCommandReport) {
 	if report.Sync != nil {
 		a.printSyncReport(*report.Sync)
 	}
+}
+
+// collectSessionHolds reports the active sessions with dirty files or
+// unlanded commits per mount repository, so sync can hold outbound publish of
+// those repositories until each session is finished or discarded.
+func collectSessionHolds(root string) ([]syncer.SessionHold, error) {
+	sessions, err := worksession.List(root)
+	if err != nil {
+		return nil, err
+	}
+	var holds []syncer.SessionHold
+	for _, session := range sessions {
+		if session.Status != worksession.StatusActive {
+			continue
+		}
+		status, err := worksession.Inspect(session, nil)
+		if err != nil {
+			return nil, err
+		}
+		for _, mount := range status.Mounts {
+			if len(mount.Dirty) == 0 && mount.Unlanded == 0 && mount.Error == "" {
+				continue
+			}
+			hold := syncer.SessionHold{
+				SessionID:     session.ID,
+				SessionPath:   session.Path,
+				MountID:       mount.ID,
+				RepoPath:      mount.RepoPath,
+				DirtyCount:    len(mount.Dirty),
+				UnlandedCount: mount.Unlanded,
+			}
+			holds = append(holds, hold)
+		}
+	}
+	return holds, nil
 }
 
 // resolveWorkUmbrella locates the umbrella root for work commands: explicit
