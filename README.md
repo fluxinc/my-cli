@@ -394,7 +394,7 @@ indexed in [docs/plans/](docs/plans/README.md):
   record adoption (`our record adopt`, Git intent-to-add). Plans:
   [single-checkout workspace](docs/plans/2026-06-10-single-checkout-workspace.md),
   [execution plane](docs/plans/2026-06-10-execution-plane.md) (safety patch).
-- **Shipped — sessions (v0.14.0, default revised after v0.16.0).** `our work start|status|list|resume|finish`: visible
+- **Shipped — sessions (v0.14.0; opt-in launch revision v0.17.0).** `our work start|status|list|resume|finish`: visible
   `work/<id>` git worktrees per session, a session registry consulted by
   `our sync`, explicit `our ai --new-session`/`--session` launch paths, and
   session-aware content commands so record writes from inside `work/<id>` stay

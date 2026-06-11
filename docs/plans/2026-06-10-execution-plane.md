@@ -4,8 +4,8 @@ Status: decision packet for operator review (drafted by Claude, critiqued and
 co-shaped by Codex), 2026-06-10. Pre-alpha: rethinking is cheap and
 encouraged. Builds on the control/data-plane split shipped in v0.13.0.
 
-Update 2026-06-11: Mode A sessions shipped, but the launch default changed
-after dogfood. `our ai` now launches from the base umbrella by default;
+Update 2026-06-11 (v0.17.0): Mode A sessions shipped, but the launch default
+changed after dogfood. `our ai` now launches from the base umbrella by default;
 sessions are opt-in with `our ai --new-session` or `our ai --session <id>`.
 When a command runs from inside an active session, content verbs resolve to the
 session mount worktree so records do not leak into the base checkout.
@@ -360,8 +360,8 @@ The combined path:
 
 1. **v0.13.1** — Git intent-to-add gated publishing for untracked content
    files, plus `our record adopt`.
-2. **v0.14-v0.16** — `our work` sessions (visible `work/<id>`, plain git
-   worktrees, first-class registry, sync session-awareness), later revised so
+2. **v0.14-v0.17** — `our work` sessions (visible `work/<id>`, plain git
+   worktrees, first-class registry, sync session-awareness), revised in v0.17.0 so
    `our ai` defaults to base launch while sessions are explicit with
    `--new-session`/`--session` and current-session cwd is honored.
 3. **Next** — manifest `roles` + `services` (MCP servers fold in as
