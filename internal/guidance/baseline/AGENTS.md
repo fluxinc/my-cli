@@ -42,6 +42,8 @@ Operating orientation:
 - Launch agent harnesses with `our ai <harness>`. By default it creates a
   fresh work session under `work/` and starts the harness there; finish or
   discard session work with `our work finish --land|--publish|--discard`.
+- Inspect active sessions with `our work status` or `our work list`; `our
+  doctor` also reports session health.
 - Treat this base umbrella as inspection/admin space. Do not draft, edit, or
   create shared workspace content directly in base mounts unless the operator
   explicitly asks for a base edit.

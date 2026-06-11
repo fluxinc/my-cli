@@ -66,7 +66,7 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   `our customers list`,
   `our products list`, `our repos list/add/remove`, `our tools list/info`, `our root`,
   `our ai`, `our doctor`, `our manifests list`, `our mounts list`,
-  `our work start/status/resume/finish` (sessions are local execution-plane
+  `our work start/status/list/resume/finish` (sessions are local execution-plane
   state; `finish --publish` only publishes what the sync policy allows), and
   `our sync --print`.
   `our update --check` is also safe for inspection. Run `our update` itself
@@ -99,7 +99,7 @@ our root [--repo ID] [--no-refresh] [--no-update-check]
 our ai [--session ID|--no-session] [--repo ID] [--setup] [--no-refresh] [--no-update-check] [harness]
                                     # verify guidance is current, then start a harness in a fresh work session by default
                                     # --setup reconciles the umbrella first when guidance is stale or missing
-our doctor [--no-fetch] [--fix]   # git freshness, derived drift, last sync, manifests, tools
+our doctor [--no-fetch] [--fix]   # git freshness, sessions, derived drift, last sync, manifests, tools
 ```
 
 Use `our init` only when the user explicitly wants to create a new
@@ -115,7 +115,7 @@ and `our doctor` names the offending mounts.
 
 `root`, `ai`, and `setup` make a best-effort, TTL-gated refresh of clean
 manifest/content checkouts before reading workspace context. They do not touch
-dirty, diverged, product, or remote-unknown repositories. Use `--no-refresh`
+dirty, diverged, repo, or remote-unknown repositories. Use `--no-refresh`
 for one command, `OUR_NO_AUTO_REFRESH=1` globally, or `OUR_REFRESH_TTL=30m`
 to tune the default six-hour window. `our ai` also ensures the bundled `our`
 self-skill is installed for the selected filesystem harness before exec.
@@ -134,7 +134,7 @@ When the refresh cannot converge a checkout, these commands print a stderr
 line per repository in the form `notice\t<repo>\t<state>; run ...` (dirty,
 ahead, behind, or diverged, with the reconciling command). On seeing one,
 finish the current step, then run the suggested command — usually `our sync`,
-or `our doctor` for diverged checkouts. Product clones live under
+or `our doctor` for diverged checkouts. Repo clones live under
 `repos/<id>` (legacy `products/<id>` keeps resolving until `our setup`
 migrates it).
 
@@ -148,6 +148,7 @@ Work in sessions:
 ```sh
 our work start [--slug SLUG]      # create an isolated session: worktree per content mount + scratch/
 our work status [--all]           # list sessions with per-mount dirty and unlanded state
+our work list [--all]             # alias for status
 our work resume [session-id]      # print the cd command for an active session
 our work finish [session-id] --land     # commit session content, merge into base, remove worktrees
 our work finish [session-id] --publish  # land, then publish landed content per the sync policy
@@ -260,10 +261,11 @@ the current CLI yet. A manifest can set top-level `sync.publish_policy` to
 explicit CLI flag always wins. A non-print sync writes `.our/last-sync.json`;
 use `our doctor` to review the last publish/sync audit. `our doctor` fetches
 refs before reporting behind/ahead counts by default; pass `--no-fetch` for an
-offline view labeled as of the last fetch. `our doctor --fix` only
-fast-forwards clean stale manifest/content checkouts and reconciles generated
-guidance plus manifest skills; it reports dirty, diverged, product, and
-remote-unknown checkouts instead of touching them.
+offline view labeled as of the last fetch. It also reports active work-session
+health, missing session worktrees, and archived session counts. `our doctor
+--fix` only fast-forwards clean stale manifest/content checkouts and reconciles
+generated guidance plus manifest skills; it reports dirty, diverged, repo,
+remote-unknown checkouts, and session work instead of touching them.
 
 ## Tips
 

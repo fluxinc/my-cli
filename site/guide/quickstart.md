@@ -88,7 +88,8 @@ umbrella), and launches the harness there. When the work is done,
 session. Pass `--session <id>` to resume an active session, `--no-session`
 to launch from the base umbrella for inspection or admin, `--print` to see
 the command without executing it, or `--setup` to reconcile the umbrella
-first.
+first. Use `our work status` or `our work list` to inspect active sessions;
+`our doctor` also reports session health.
 
 At startup, `our root`, `our ai`, and `our setup` print stderr-only `notice`
 lines for checkouts auto-refresh cannot converge (dirty, ahead, behind, or

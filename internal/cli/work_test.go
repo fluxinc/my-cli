@@ -55,6 +55,24 @@ func TestWorkStartCreatesSessionAndRegistry(t *testing.T) {
 	}
 }
 
+func TestWorkStartHumanOutputIncludesSessionFinishCommand(t *testing.T) {
+	home, _ := setupCLIRecordWorkspace(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "work", "start", "--slug", "notes", "--home", home}); err != nil {
+		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
+	}
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(lines) < 2 || !strings.HasPrefix(lines[0], "started session ") {
+		t.Fatalf("work start stdout = %q", stdout.String())
+	}
+	sessionID := strings.TrimPrefix(lines[0], "started session ")
+	want := "finish with: our work finish " + sessionID + " --land | --publish | --discard"
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("work start stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
 func TestWorkStartExcludesCatalogReposAndMissingMounts(t *testing.T) {
 	home, _ := setupCLIRecordWorkspace(t)
 	manifestDir := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
@@ -325,6 +343,31 @@ func TestWorkStatusEmptyWithoutSessions(t *testing.T) {
 	}
 	if got := strings.TrimSpace(stdout.String()); got != "[]" {
 		t.Fatalf("stdout = %q, want []", got)
+	}
+}
+
+func TestWorkListAliasesStatus(t *testing.T) {
+	home, _ := setupCLIRecordWorkspace(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "work", "start", "--slug", "list", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"our", "work", "status", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work status: %v\nstderr: %s", err, stderr.String())
+	}
+	statusOut := stdout.String()
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"our", "work", "list", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work list: %v\nstderr: %s", err, stderr.String())
+	}
+	if stdout.String() != statusOut {
+		t.Fatalf("work list stdout = %q, want status output %q", stdout.String(), statusOut)
 	}
 }
 
@@ -601,6 +644,30 @@ func TestWorkFinishDiscardRemovesSession(t *testing.T) {
 	}
 	if len(statuses[0].Mounts) != 1 || statuses[0].Mounts[0].Error != "" {
 		t.Fatalf("archived mounts = %#v, want registry-only mount without probe error", statuses[0].Mounts)
+	}
+}
+
+func TestWorkFinishHumanOutputIncludesNextCommand(t *testing.T) {
+	home, _ := setupCLIRecordWorkspace(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "work", "start", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work start: %v", err)
+	}
+	var session worksession.Session
+	if err := json.Unmarshal(stdout.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"our", "work", "finish", session.ID, "--discard", "--home", home}); err != nil {
+		t.Fatalf("work finish --discard: %v\nstderr: %s", err, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "session\t"+session.ID) ||
+		!strings.Contains(out, "next\tstatus\tour work status") {
+		t.Fatalf("work finish stdout = %q", out)
 	}
 }
 

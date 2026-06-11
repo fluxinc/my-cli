@@ -62,7 +62,9 @@ concurrent and successive agent runs cannot pollute each other or the base
 umbrella; humans can `cd` into a session and take over with plain git. Work
 leaves a session only through `our work finish --land | --publish |
 --discard`, and `our sync` holds outbound publish of a mount while an active
-session on it is dirty or unlanded.
+session on it is dirty or unlanded. `our work status` and `our work list`
+show active session state; `our doctor` includes session health alongside
+workspace diagnostics.
 
 ## Catalog
 

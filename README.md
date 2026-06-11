@@ -46,7 +46,7 @@ so agents know how to use the CLI itself.
 | **Skill** | A capability installed into harness skill directories. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer). The CLI also ships one public, organization-neutral *self-skill* named `our`, embedded in the binary, that teaches harnesses how to use `our` itself. |
 | **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.our/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Gnit control workspace so multi-repo commits and pushes have one substrate. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
-| **Session** | An isolated unit of work under `work/<id>`: a git worktree per content mount on a fresh branch, plus session-local scratch. `our ai` starts one by default; work leaves only through `our work finish --land\|--publish\|--discard`. |
+| **Session** | An isolated unit of work under `work/<id>`: a git worktree per content mount on a fresh branch, plus session-local scratch. `our ai` starts one by default; inspect it with `our work status` or `our work list`; work leaves only through `our work finish --land\|--publish\|--discard`. |
 | **Catalog** | JSON inventories for products (business entities, which may link repos), repos (the organization's repositories), and canonical customers. Users opt specific repos into their umbrella on demand. |
 | **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared fragments. `CLAUDE.md` points to the same file. |
 | **Tool** | An external executable the org depends on. `our` reports presence and install hints — it never silently installs tools. |
@@ -201,14 +201,15 @@ under their top-level commands.
 ### Umbrella mounts
 
 ```sh
-our mounts list                             # manifest mounts + opted-in products
-our mounts add <kind:id|id>                 # opt a catalog product / mount in
+our mounts list                             # manifest content mounts
+our mounts add <kind:id|id>                 # opt an optional content mount in
 our mounts sync <mount...> | --all          # clone or fast-forward mounts
 our mounts remove <mount...> [--force]
 ```
 
-Product clones land under `repos/<id>` in the umbrella; legacy `products/`
-checkouts migrate automatically at `our setup`.
+Repo clones are managed with `our repos add <id>` and land under `repos/<id>`
+in the umbrella; legacy `products/` checkouts migrate automatically at
+`our setup`.
 
 ### Sync
 
@@ -216,7 +217,7 @@ checkouts migrate automatically at `our setup`.
 our sync --print                           # plan inbound refresh and outbound publish
 our sync [--backend auto|gnit|builtin]         # auto prefers Gnit once the umbrella is initialized
 our sync --publish auto|never|direct|pr    # explicit override; direct is CLI-only
-our sync --scope all|local|content|manifest|repos  # limit to one repo class; repos = product clones
+our sync --scope all|local|content|manifest|repos  # limit to one repo class; repos = catalog repo clones
 our sync --no-derived                      # skip skill/guidance reconcile after manifest changes
 ```
 
@@ -302,17 +303,18 @@ history. The status vocabulary is organization-defined.
 ```sh
 our tools list                             # declared tools across selected manifests
 our tools info <name>                      # install hints for a declared tool
-our doctor [--no-fetch] [--fix]            # git freshness, derived drift, last sync, manifests, tools
+our doctor [--no-fetch] [--fix]            # git freshness, sessions, derived drift, last sync, manifests, tools
 ```
 
 Data-returning commands expose `--json` where shown. Structured errors use a
 machine-readable `{error, message, remediation}` with a concrete next command,
 so an agent that hits a wall can recover without a human.
 `our doctor` fetches refs before reporting behind/ahead counts by default; use
-`--no-fetch` for an offline view labeled as of the last fetch. `--fix` only
-fast-forwards clean stale manifest/content checkouts and reconciles derived
-skills/guidance; dirty, diverged, product, and remote-unknown checkouts are
-reported rather than touched.
+`--no-fetch` for an offline view labeled as of the last fetch. It also reports
+active work sessions, missing session worktrees, and archived session counts.
+`--fix` only fast-forwards clean stale manifest/content checkouts and
+reconciles derived skills/guidance; dirty, diverged, repo, remote-unknown
+checkouts, and session work are reported rather than touched.
 
 ## Supported Harnesses
 
@@ -388,7 +390,7 @@ indexed in [docs/plans/](docs/plans/README.md):
   record adoption (`our record adopt`, Git intent-to-add). Plans:
   [single-checkout workspace](docs/plans/2026-06-10-single-checkout-workspace.md),
   [execution plane](docs/plans/2026-06-10-execution-plane.md) (safety patch).
-- **Shipped — sessions (v0.14.0).** `our work start|status|resume|finish`: visible
+- **Shipped — sessions (v0.14.0).** `our work start|status|list|resume|finish`: visible
   `work/<id>` git worktrees per session, a session registry consulted by
   `our sync`, and `our ai` defaulting into a fresh session so concurrent and
   successive agent runs cannot pollute each other or the base workspace.

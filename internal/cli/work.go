@@ -41,19 +41,19 @@ func workValueFlags() map[string]bool {
 
 func (a app) runWork(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: our work start|status|resume|finish [flags]")
+		return fmt.Errorf("usage: our work start|status|list|resume|finish [flags]")
 	}
 	switch args[0] {
 	case "start":
 		return a.runWorkStart(args[1:])
-	case "status":
-		return a.runWorkStatus(args[1:])
+	case "status", "list":
+		return a.runWorkStatus(args[1:], args[0])
 	case "resume":
 		return a.runWorkResume(args[1:])
 	case "finish":
 		return a.runWorkFinish(args[1:])
 	default:
-		return fmt.Errorf("unknown work subcommand %q (expected start|status|resume|finish)", args[0])
+		return fmt.Errorf("unknown work subcommand %q (expected start|status|list|resume|finish)", args[0])
 	}
 }
 
@@ -103,14 +103,14 @@ func (a app) runWorkStart(args []string) error {
 	for _, m := range session.Mounts {
 		fmt.Fprintf(a.stdout, "  %s -> %s (from %s)\n", m.ID, m.Branch, m.BaseBranch)
 	}
-	fmt.Fprintf(a.stdout, "finish with: our work finish --land | --publish | --discard\n")
+	fmt.Fprintf(a.stdout, "finish with: our work finish %s --land | --publish | --discard\n", session.ID)
 	return nil
 }
 
-func (a app) runWorkStatus(args []string) error {
+func (a app) runWorkStatus(args []string, command string) error {
 	var opts workCommonOpts
 	var all bool
-	fs := newFlagSet("our work status", a.stderr)
+	fs := newFlagSet("our work "+command, a.stderr)
 	bindWorkCommonFlags(fs, &opts)
 	fs.BoolVar(&all, "all", false, "include finished and discarded sessions")
 	rest, err := parseInterspersed(fs, args, workValueFlags())
@@ -118,7 +118,7 @@ func (a app) runWorkStatus(args []string) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return fmt.Errorf("usage: our work status [--all] [--json]")
+		return fmt.Errorf("usage: our work %s [--all] [--json]", command)
 	}
 
 	root, err := resolveWorkUmbrella(opts.home, opts.manifestName, opts.umbrellaRoot)
@@ -422,6 +422,25 @@ func (a app) printWorkFinishReport(report workFinishCommandReport) {
 	}
 	if report.Sync != nil {
 		a.printSyncReport(*report.Sync)
+	}
+	if label, command := workFinishNextStep(report); command != "" {
+		fmt.Fprintf(a.stdout, "next\t%s\t%s\n", label, command)
+	}
+}
+
+func workFinishNextStep(report workFinishCommandReport) (string, string) {
+	switch report.Mode {
+	case "land":
+		return "publish", "our sync"
+	case "publish":
+		if report.Finish.Session.Outcome == worksession.OutcomePublished {
+			return "status", "our work status"
+		}
+		return "review", "our sync --print"
+	case "discard":
+		return "status", "our work status"
+	default:
+		return "", ""
 	}
 }
 

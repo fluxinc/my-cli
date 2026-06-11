@@ -14,11 +14,11 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
   a startup notice says something is stale or unpublished, run this.
 - **`our doctor`** is the dry run for installation and workspace repair: it
   diagnoses manifest validity, per-checkout Git freshness, derived
-  guidance/skill drift, and the last sync audit, marking every repairable
-  finding with `would ...` and a closing fixable count. Nothing changes until
-  you re-run with `--fix`, which applies exactly that plan; findings `--fix`
-  cannot repair (dirty, diverged, repo checkouts) keep their explanatory
-  remediation text instead.
+  guidance/skill drift, work-session health, and the last sync audit,
+  marking every repairable finding with `would ...` and a closing fixable
+  count. Nothing changes until you re-run with `--fix`, which applies exactly
+  that plan; findings `--fix` cannot repair (dirty, diverged, repo checkouts,
+  session work) keep their explanatory remediation text instead.
 - **`our manifests sync`** refreshes the registered manifest cache. You need
   it before an umbrella exists (bootstrap) or when managing several
   registered manifests; when exactly one manifest changes and an umbrella is
@@ -110,6 +110,7 @@ our workspaces sync <workspace...> | --all [--manifest NAME] [--print]
 
 our work start [--slug SLUG] [--json]
 our work status [--all] [--json]
+our work list [--all] [--json]
 our work resume [session-id] [--json]
 our work finish [session-id] --land|--publish|--discard [--message TEXT] [--json]
 ```
@@ -155,12 +156,13 @@ files under declared content paths are also held; create records with
 publish content. A manifest can set top-level `sync.publish_policy` to `auto`,
 `never`, or `pr` as the default when `--publish` is omitted; an explicit CLI
 flag always wins. Non-print syncs write `.our/last-sync.json`; `our doctor`
-reports that audit, per-checkout Git freshness, and derived skill/guidance
-drift. Doctor fetches refs before behind/ahead checks unless `--no-fetch` is
-passed for an offline view. `doctor --fix` fast-forwards only clean stale
-manifest/content checkouts and reconciles derived guidance plus manifest
-skills. Sync performs the same derived reconcile after manifest checkout
-changes unless `--no-derived` is passed.
+reports that audit, per-checkout Git freshness, active and archived work
+sessions, and derived skill/guidance drift. Doctor fetches refs before
+behind/ahead checks unless `--no-fetch` is passed for an offline view.
+`doctor --fix` fast-forwards only clean stale manifest/content checkouts and
+reconciles derived guidance plus manifest skills. Sync performs the same
+derived reconcile after manifest checkout changes unless `--no-derived` is
+passed.
 
 `our root`, `our ai`, and `our setup` run a best-effort, TTL-gated
 refresh for clean manifest/content checkouts before using workspace context.
@@ -168,7 +170,7 @@ They leave dirty, diverged, repo, and remote-unknown checkouts untouched.
 `our ai` also ensures the bundled `our` self-skill exists for the selected
 filesystem harness before launching it. By default it creates a fresh
 `work/<id>` session and launches from there; use `--session <id>` to resume,
-or `--no-session` for base inspection/admin/debug. Product launches currently
+or `--no-session` for base inspection/admin/debug. Repo launches currently
 require `--no-session --repo <id>`. Use `--no-refresh` for one command,
 `OUR_NO_AUTO_REFRESH=1` globally, or `OUR_REFRESH_TTL=30m` to tune the default
 six-hour window.

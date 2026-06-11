@@ -247,6 +247,8 @@ Usage:
   our record adopt <path>
   our work start [--slug SLUG] [--json]
   our work status [--all] [--json]
+  our work list [--all] [--json]
+  our work resume [session-id] [--json]
   our work finish [session-id] --land|--publish|--discard [--message TEXT] [--json]
   our customers list
   our products list

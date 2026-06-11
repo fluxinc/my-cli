@@ -18,6 +18,11 @@
   matching `our work finish` command, `error` when a worktree is missing or
   git inspection fails), and finished/discarded registry records roll up
   into a single archived count. The JSON report gains a `sessions` section.
+- Added `our work list` as an alias for `our work status`. Human work-session
+  output now includes session-specific follow-up commands: `work start`
+  prints `our work finish <id> ...`, and `work finish` prints a `next` line
+  for the natural follow-up (`our sync`, `our sync --print`, or
+  `our work status`).
 
 ## 0.15.0 - 2026-06-11
 
