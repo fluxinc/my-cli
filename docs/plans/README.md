@@ -7,7 +7,7 @@ noted successor wins on conflict).
 
 | Plan | Status | Notes |
 |---|---|---|
-| [2026-06-10-execution-plane](2026-06-10-execution-plane.md) | active | Sessions + contained runners + manifest `services`; operator-approved combined path. Adoption marker decision updated in-room to Git intent-to-add. |
+| [2026-06-10-execution-plane](2026-06-10-execution-plane.md) | active | Mode A sessions shipped in v0.14.0; contained runners plus manifest `roles`/`services` remain active. Adoption marker decision updated in-room to Git intent-to-add. |
 | [2026-06-10-single-checkout-workspace](2026-06-10-single-checkout-workspace.md) | shipped (v0.13.0) | Control/data-plane split: private manifest repo + workspace content repo, `our publish`. The file's earlier visible-single-checkout draft is superseded by its final two-repo form. |
 | [2026-06-10-fleet-registry](2026-06-10-fleet-registry.md) | shipped (v0.9.0) | `our fleet` registry: one record per deployed instance, identifier resolution. |
 | [2026-06-10-support-knowledgebase](2026-06-10-support-knowledgebase.md) | shipped (v0.9.0) | `our support` anonymized problem-to-solution records. |

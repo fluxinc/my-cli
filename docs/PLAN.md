@@ -53,16 +53,16 @@ mounts, product clones under `repos/`, and local scratch under `personal/`.
 The execution plane (see `docs/plans/2026-06-10-execution-plane.md`,
 operator-approved combined path):
 
-1. **v0.13.1** — adoption-gated publishing: `our sync` stops auto-publishing
+1. **Shipped in v0.13.1** — adoption-gated publishing: `our sync` stops auto-publishing
    untracked content files; records created by the CLI are adopted via Git
    intent-to-add, `our record adopt` (or an explicit `git add`) adopts the
    rest; held files are named with remediation.
-2. **v0.14** — sessions: visible `work/<id>` per-session git worktrees of
-   writable mounts, `our work start|status|finish`, `our ai` defaulting into
+2. **Shipped in v0.14.0** — sessions: visible `work/<id>` per-session git worktrees of
+   writable mounts, `our work start|status|resume|finish`, `our ai` defaulting into
    a fresh session, a first-class session registry consulted by sync.
    Harness-agnostic by principle: no integration with any harness's internal
    isolation mechanisms.
-3. **v0.15** — manifest `roles` + `services` (org APIs, MCP servers as
+3. **Next in v0.15** — manifest `roles` + `services` (org APIs, MCP servers as
    `kind: mcp`, gated brokers; reference-first descriptions; URI secret
    references such as `op://`); harness MCP config materialization; org-side
    launch-artifact compilation for contained runners (container tooling

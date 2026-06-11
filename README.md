@@ -387,12 +387,12 @@ indexed in [docs/plans/](docs/plans/README.md):
   record adoption (`our record adopt`, Git intent-to-add). Plans:
   [single-checkout workspace](docs/plans/2026-06-10-single-checkout-workspace.md),
   [execution plane](docs/plans/2026-06-10-execution-plane.md) (safety patch).
-- **Next — sessions (v0.14).** `our work start|status|finish`: visible
+- **Shipped — sessions (v0.14.0).** `our work start|status|resume|finish`: visible
   `work/<id>` git worktrees per session, a session registry consulted by
   `our sync`, and `our ai` defaulting into a fresh session so concurrent and
   successive agent runs cannot pollute each other or the base workspace.
   Plan: [execution plane](docs/plans/2026-06-10-execution-plane.md), Mode A.
-- **Planned — roles and services (v0.15).** Manifest `roles` and `services`
+- **Next — roles and services (v0.15).** Manifest `roles` and `services`
   extensions describing the organization's remote surfaces (APIs, MCP
   servers, gated brokers), harness MCP config materialization, and org-side
   launch-artifact compilation for contained runners. Plan:
