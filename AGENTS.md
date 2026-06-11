@@ -20,6 +20,7 @@ The documentation site is a VitePress project in `site/`, with static assets in
 - `cd site && npm ci`: install the docs-site dependencies from the lockfile.
 - `cd site && npm run dev`: serve the docs site locally.
 - `cd site && npm run build`: produce the static docs build.
+- Install a dev binary: `go build -ldflags "-X github.com/fluxinc/our-ai/internal/version.Version=<X.Y.Z>" -o ~/.local/bin/our ./cmd/our` (unstamped builds report `dev`; `our update` can hit anonymous GitHub rate limits).
 
 ## Coding Style & Naming Conventions
 
@@ -36,7 +37,9 @@ Add focused Go tests next to the package being changed, using names like
 `TestSyncPlansDirtyDuplicateCheckout`. Broaden tests when changing shared CLI
 behavior, manifest parsing, guidance generation, skill installation, or sync
 policy. For docs-site or Markdown changes, run `cd site && npm run build` when
-navigation, frontmatter, or rendered content might be affected.
+navigation, frontmatter, or rendered content might be affected. Smoke-test
+publish/sync flows in a /tmp sandbox with a stub `gh` on PATH that creates
+local bare repos — never against real GitHub.
 
 ## Commit & Pull Request Guidelines
 
@@ -58,7 +61,17 @@ The binary version comes from the git tag via goreleaser ldflags
 (`internal/version.Version`); the `VERSION` file is vestigial — do not bump it.
 This repo is plain Git, not a Gnit workspace — `gnit`/`.gnit` do not apply here.
 
+## Roadmap & Plans Upkeep
+
+README.md carries a Roadmap section (brief phases + links to detailed plans).
+Whenever a release ships, a plan's status changes, or direction changes, update
+the README Roadmap and the status index in `docs/plans/README.md` in the same
+commit. Never let them drift from reality.
+
 ## Agent-Specific Instructions
+
+This workspace uses Talking Stick (`tt`) coordination with other agents. Hold
+the stick (`tt wait`) before shared edits, commits, or releases.
 
 This public repo must remain generic mechanism code. Do not commit private
 manifest content, customer names, meeting notes, or company-specific skills.

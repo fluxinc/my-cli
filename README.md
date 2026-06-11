@@ -372,6 +372,35 @@ or agent browses is a mount of the content repositories the manifest defines.
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design
 rationale.
 
+## Roadmap
+
+`our` is pre-alpha and evolving quickly. The phases, with detailed plans
+indexed in [docs/plans/](docs/plans/README.md):
+
+- **Shipped — control/data-plane split (v0.13.x).** A private manifest repo
+  (the control plane) separate from workspace content repos (the data plane);
+  `our publish` creates the private remotes; auto-publishing is gated on
+  record adoption (`our record adopt`, Git intent-to-add). Plans:
+  [single-checkout workspace](docs/plans/2026-06-10-single-checkout-workspace.md),
+  [execution plane](docs/plans/2026-06-10-execution-plane.md) (safety patch).
+- **Next — sessions (v0.14).** `our work start|status|finish`: visible
+  `work/<id>` git worktrees per session, a session registry consulted by
+  `our sync`, and `our ai` defaulting into a fresh session so concurrent and
+  successive agent runs cannot pollute each other or the base workspace.
+  Plan: [execution plane](docs/plans/2026-06-10-execution-plane.md), Mode A.
+- **Planned — roles and services (v0.15).** Manifest `roles` and `services`
+  extensions describing the organization's remote surfaces (APIs, MCP
+  servers, gated brokers), harness MCP config materialization, and org-side
+  launch-artifact compilation for contained runners. Plan:
+  [execution plane](docs/plans/2026-06-10-execution-plane.md).
+- **Later — contained runners (Mode B) and substrate upgrades.** Compiling
+  manifests into container launch artifacts for governed fleet agents, a
+  gnit backend for sessions, and managed read-only base mounts. Plan:
+  [execution plane](docs/plans/2026-06-10-execution-plane.md).
+
+This section is kept current with every release and direction change; the
+per-plan status lives in [docs/plans/README.md](docs/plans/README.md).
+
 ## Design Documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the design: concepts, the
