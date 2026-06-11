@@ -32,7 +32,7 @@ export default defineConfig({
       { text: 'Guide', link: '/guide/what-is-our-ai' },
       { text: 'CLI', link: '/guide/cli-reference' },
       {
-        text: 'v0.13.1',
+        text: 'v0.13.2',
         items: [
           { text: 'Changelog', link: '/changelog' },
           { text: 'GitHub', link: 'https://github.com/fluxinc/our-ai' },
