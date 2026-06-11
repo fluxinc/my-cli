@@ -1,11 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.13.1 - 2026-06-10
 
 ### Added
 
 - Added `our record adopt <path>` to mark an existing file under a declared
   content mount as intentional publish content using Git intent-to-add.
+
+### Fixed
+
+- Recording commands (`our meetings/support/fleet add`) now work in a
+  freshly initialized, unpublished organization: `local-only` mounts count
+  as usable content roots instead of being skipped.
 
 ### Changed
 

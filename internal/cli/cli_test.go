@@ -2226,6 +2226,32 @@ func TestRecordAdoptMarksContentFileIntentToAdd(t *testing.T) {
 	}
 }
 
+func TestMeetingsAddWorksInLocalOnlyWorkspace(t *testing.T) {
+	// A founder's freshly initialized org is local-only (no origin remotes);
+	// recording must work before anything is published.
+	home := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "init", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.run([]string{"our", "setup", "--home", home, "claude"}); err != nil {
+		t.Fatalf("setup: %v\nstderr: %s", err, stderr.String())
+	}
+	stdout.Reset()
+	if err := a.run([]string{
+		"our", "meetings", "add", "kickoff",
+		"--home", home,
+		"--date", "2026-06-12",
+	}); err != nil {
+		t.Fatalf("meetings add in local-only workspace: %v", err)
+	}
+	record := filepath.Join(home, "acme", "workspace", "meetings", "2026-06-12-kickoff.md")
+	if _, err := os.Stat(record); err != nil {
+		t.Fatalf("record missing: %v", err)
+	}
+}
+
 func TestSyncPersistsLastSyncAuditAndDoctorReportsIt(t *testing.T) {
 	home, umbrellaRoot, _, _ := setupCLITrackedManifest(t)
 	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {

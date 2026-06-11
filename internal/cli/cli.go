@@ -3380,7 +3380,9 @@ func umbrellaContentRoots(home, workspaceID, umbrellaRoot, noun string, kinds []
 		if workspaceID != "" && mount.ID != workspaceID {
 			continue
 		}
-		if mount.Status != "synced" {
+		// local-only mounts (no origin yet, pre-publish) are present and
+		// writable; recording must work before the org is published.
+		if mount.Status != "synced" && mount.Status != "local-only" {
 			continue
 		}
 		if !record.ContainsValue(kinds, mount.Kind) {
