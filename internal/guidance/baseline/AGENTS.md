@@ -33,26 +33,30 @@ Default layout:
 - `.our/` contains workspace identity and local state.
 - `handbook/` and other mounts contain scoped organization content.
 - `repos/` contains detached clones of catalog repositories.
-- `work/` contains isolated Our AI work sessions created by `our ai` and
-  `our work start`.
+- `work/` contains isolated Our AI work sessions created by `our work start`
+  or `our ai --new-session`.
 - `personal/` is durable local-only scratch for the current user.
 
 Operating orientation:
 
-- Launch agent harnesses with `our ai <harness>`. By default it creates a
-  fresh work session under `work/` and starts the harness there; finish or
-  discard session work with `our work finish --land|--publish|--discard`.
+- Launch agent harnesses with `our ai <harness>`. By default it starts from
+  the base umbrella, or from the current active session when run inside
+  `work/<id>`. Use `our ai --new-session <harness>` for isolated content work;
+  finish or discard session work with `our work finish --land|--publish|--discard`.
 - Inspect active sessions with `our work status` or `our work list`; `our
   doctor` also reports session health.
 - Treat this base umbrella as inspection/admin space. Do not draft, edit, or
   create shared workspace content directly in base mounts unless the operator
-  explicitly asks for a base edit.
+  explicitly asks for a base edit. When your current directory is inside a
+  session, record commands such as `our meetings add`, `our support add`, and
+  `our fleet add` write to that session's mount worktree.
 - Use `our ai --session <id> <harness>` to resume a known active session, or
-  `our ai --no-session <harness>` only for base inspection/admin/debug.
+  `our ai --no-session <harness>` to ignore a current session for base
+  inspection/admin/debug.
 - For repository work, use `repos/<id>` under this umbrella. Clone catalog
   repos with `our repos add <id>` and reorient with `our root --repo <id>`;
   do not switch to a standalone clone when umbrella context matters. Repo
-  launches currently require `our ai --no-session --repo <id> <harness>`.
+  launches use `our ai --repo <id> <harness>`.
 - `CLAUDE.md` is a generated alias of this file. Do not edit either generated
   file directly; update the public baseline or manifest guidance fragments and
   rerun `our setup`.

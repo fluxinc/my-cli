@@ -4,6 +4,12 @@ Status: decision packet for operator review (drafted by Claude, critiqued and
 co-shaped by Codex), 2026-06-10. Pre-alpha: rethinking is cheap and
 encouraged. Builds on the control/data-plane split shipped in v0.13.0.
 
+Update 2026-06-11: Mode A sessions shipped, but the launch default changed
+after dogfood. `our ai` now launches from the base umbrella by default;
+sessions are opt-in with `our ai --new-session` or `our ai --session <id>`.
+When a command runs from inside an active session, content verbs resolve to the
+session mount worktree so records do not leak into the base checkout.
+
 ## Problem
 
 Agents working inside the umbrella write files: drafts, scripts, notes,
@@ -74,11 +80,10 @@ happens in **sessions** — visible, ordinary directories:
   generated session guidance. Cheap (worktrees share the object store),
   plain (a human can `cd` in, run git, take over), isolated (branches are
   per-session; the base checkout never sees uncommitted session state).
-- `our ai` **defaults into a fresh session**. Reuse is explicit only
-  (`our work resume <id>` or `our ai --session <id>`), because implicit reuse
-  recreates successive-run inheritance. `--no-session` launches on the base
-  umbrella for admin/debug. The ergonomic path must be the safe path —
-  guidance alone does not change default agent behavior.
+- `our ai --new-session` creates a fresh session; `our ai --session <id>`
+  resumes one. Plain `our ai` launches from the base umbrella, except when the
+  current directory is already inside an active session, where it keeps using
+  that session. `--no-session` ignores a current session for admin/debug.
 - `our work status` lists sessions: branch, dirty paths, age, harness.
 - `our work finish --land | --publish | --discard` is the only way work
   leaves a session: land merges to the base branch locally; publish lands
@@ -178,8 +183,8 @@ schemas; refresh belongs to the runtime/governance plane.
 - **Modifications to tracked files** publish as today; the human
   edit-a-record flow is untouched. This is a transition compromise, not
   full isolation: the patch buys immediate safety for new stray files, while
-  default sessions are what prevent tracked-file half-edits from being made in
-  the base checkout.
+  opt-in sessions plus session-aware content commands give agents an isolated
+  path when tracked-file half-edits should not touch the base checkout.
 
 ## Prior art: adopt vs build
 
@@ -303,15 +308,15 @@ is a compile target, not a vocabulary source.**
   depends on Git index state.
 - When it wins: as v0.13.1, while the execution plane is built.
 
-### O2 — Patch + sessions, opt-in (`our work start`, `our ai --session`)
+### O2 — Patch + sessions, opt-in (`our work start`, `our ai --new-session`, `our ai --session`)
 
 - Pro: structural isolation exists; daily single-command flow unchanged.
-- Con: the dangerous path stays the ergonomic default; agents won't opt in
-  reliably; partial protection in practice.
-- When it wins: if the operator decides default sessionization is too much
-  ceremony for the daily driver.
+- Con: agents must choose the session path for isolated work; partial
+  protection in practice.
+- When it wins: this became the post-dogfood direction because humans mostly
+  want base launch, while bots can carry explicit session flags.
 
-### O3 — Patch + sessions, default-on for `our ai` (recommended)
+### O3 — Patch + sessions, default-on for `our ai` (superseded)
 
 - Pro: the ergonomic path is the safe path — the only design that changes
   default agent behavior; concurrent/successive runs can't interact; base
@@ -320,7 +325,8 @@ is a compile target, not a vocabulary source.**
 - Con: adds a finish step to the flow (mitigations: `our work finish
   --publish` doubles as the session's sync; prompt on harness exit); more
   lifecycle to document and GC.
-- When it wins: default interactive use, including the operator's own.
+- When it wins: originally recommended for agent-only launch ergonomics, but
+  superseded by the 2026-06-11 opt-in decision.
 
 ### O4 — Sessions on gnit now (block on `gnit worktree add`)
 
@@ -354,10 +360,10 @@ The combined path:
 
 1. **v0.13.1** — Git intent-to-add gated publishing for untracked content
    files, plus `our record adopt`.
-2. **v0.14** — `our work` sessions (visible `work/<id>`, plain git
-   worktrees, first-class registry, sync session-awareness), with `our ai`
-   defaulting into a fresh session, explicit resume only, and `--no-session`
-   as the escape hatch.
+2. **v0.14-v0.16** — `our work` sessions (visible `work/<id>`, plain git
+   worktrees, first-class registry, sync session-awareness), later revised so
+   `our ai` defaults to base launch while sessions are explicit with
+   `--new-session`/`--session` and current-session cwd is honored.
 3. **Next** — manifest `roles` + `services` (MCP servers fold in as
    `kind: mcp`); org-side launch-artifact compilation for contained
    runners.

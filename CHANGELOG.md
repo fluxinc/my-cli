@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Recording commands (`our meetings add`, `our support add`, and
+  `our fleet add`) now detect when the current directory is inside an active
+  work session and write records to that session's mount worktree instead of
+  silently writing to the base umbrella checkout.
+
+### Changed
+
+- `our ai` now launches from the base umbrella by default. Work sessions are
+  explicit with `our ai --new-session` or `our ai --session <id>`; when run
+  from inside an active session, plain `our ai <harness>` continues launching
+  from that current session. `--no-session` remains available to ignore a
+  current session for base inspection/admin work.
+
 ## 0.16.0 - 2026-06-11
 
 ### Fixed

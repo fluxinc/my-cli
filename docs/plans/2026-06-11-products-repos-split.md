@@ -53,7 +53,7 @@ our repos list [--json]            # inventory + which are cloned locally
 our repos add <id>                 # opt in: clone under repos/<id>
 our repos remove <id>              # drop the local clone selection
 our root --repo <id>               # print repos/<id>
-our ai --no-session --repo <id>    # launch from a repo checkout
+our ai --repo <id>                 # launch from a repo checkout
 our sync --scope repos             # real scope (internal 'products' alias dies)
 our products list                  # pure catalog: business entities + linked repos
 ```

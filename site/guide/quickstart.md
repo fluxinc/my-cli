@@ -81,15 +81,15 @@ live under `repos/<id>` in the umbrella.
 our ai codex
 ```
 
-That's it: `our ai` verifies generated guidance, creates a fresh work session
-under `work/<id>` (a git worktree per content mount, isolated from the base
-umbrella), and launches the harness there. When the work is done,
-`our work finish --land | --publish | --discard` is how it leaves the
-session. Pass `--session <id>` to resume an active session, `--no-session`
-to launch from the base umbrella for inspection or admin, `--print` to see
-the command without executing it, or `--setup` to reconcile the umbrella
-first. Use `our work status` or `our work list` to inspect active sessions;
-`our doctor` also reports session health.
+That's it: `our ai` verifies generated guidance and launches the harness from
+the base umbrella. For isolated content work, use `our ai --new-session codex`
+or create one with `our work start`; when the work is done,
+`our work finish --land | --publish | --discard` is how it leaves the session.
+Pass `--session <id>` to resume an active session, `--no-session` to ignore a
+current session for base inspection or admin, `--print` to see the command
+without executing it, or `--setup` to reconcile the umbrella first. Use
+`our work status` or `our work list` to inspect active sessions; `our doctor`
+also reports session health.
 
 At startup, `our root`, `our ai`, and `our setup` print stderr-only `notice`
 lines for checkouts auto-refresh cannot converge (dirty, ahead, behind, or

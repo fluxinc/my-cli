@@ -57,14 +57,15 @@ any identifier resolves via `our fleet get`.
 An isolated unit of work under `<umbrella>/work/<id>`: a git worktree of each
 content mount on a fresh `our/work/<id>` branch, session-local `scratch/`, a
 `SESSION.md` summary, and generated session guidance, recorded in a registry
-under `.our/sessions/`. `our ai` starts a fresh session by default, so
-concurrent and successive agent runs cannot pollute each other or the base
-umbrella; humans can `cd` into a session and take over with plain git. Work
+under `.our/sessions/`. Create one with `our work start` or
+`our ai --new-session`; `our ai --session <id>` resumes it. When the current
+directory is inside an active session, content commands write to that session's
+mount worktree, so session work does not leak into the base umbrella. Work
 leaves a session only through `our work finish --land | --publish |
 --discard`, and `our sync` holds outbound publish of a mount while an active
-session on it is dirty or unlanded. `our work status` and `our work list`
-show active session state; `our doctor` includes session health alongside
-workspace diagnostics.
+session on it is dirty or unlanded. `our work status` and `our work list` show
+active session state; `our doctor` includes session health alongside workspace
+diagnostics.
 
 ## Catalog
 

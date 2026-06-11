@@ -2195,6 +2195,54 @@ func TestMeetingsAddMarksCreatedRecordIntentToAdd(t *testing.T) {
 	}
 }
 
+func TestMeetingsAddFromSessionWritesSessionMount(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "work", "start", "--slug", "meeting", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
+	}
+	var session worksession.Session
+	if err := json.Unmarshal(stdout.Bytes(), &session); err != nil {
+		t.Fatalf("parse session JSON: %v\nstdout: %s", err, stdout.String())
+	}
+	t.Chdir(session.Mounts[0].WorktreePath)
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"our", "meetings", "add", "session-note",
+		"--home", home,
+		"--date", "2026-06-11",
+	}); err != nil {
+		t.Fatalf("meetings add: %v\nstderr: %s", err, stderr.String())
+	}
+
+	rel := filepath.Join("meetings", "2026-06-11-session-note.md")
+	sessionRecord := filepath.Join(session.Mounts[0].WorktreePath, rel)
+	if got := strings.TrimSpace(stdout.String()); got != sessionRecord {
+		t.Fatalf("stdout = %q, want session record %q", stdout.String(), sessionRecord)
+	}
+	if _, err := os.Stat(sessionRecord); err != nil {
+		t.Fatalf("session record missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workspaceRoot, rel)); !os.IsNotExist(err) {
+		t.Fatalf("base record was written or stat failed: %v", err)
+	}
+	sessionStatus := strings.TrimRight(gitCLIOutput(t, session.Mounts[0].WorktreePath, "status", "--porcelain", "--", rel), "\n")
+	if !strings.HasPrefix(sessionStatus, " A ") {
+		t.Fatalf("session git status = %q, want intent-to-add", sessionStatus)
+	}
+	baseStatus := strings.TrimSpace(gitCLIOutput(t, workspaceRoot, "status", "--porcelain", "--", rel))
+	if baseStatus != "" {
+		t.Fatalf("base git status = %q, want clean", baseStatus)
+	}
+	if _, err := worksession.Load(umbrellaRoot, session.ID); err != nil {
+		t.Fatalf("session registry missing: %v", err)
+	}
+}
+
 func TestRecordAdoptMarksContentFileIntentToAdd(t *testing.T) {
 	home, workspaceRoot := setupCLIRecordWorkspace(t)
 	path := filepath.Join(workspaceRoot, "meetings", "manual-note.md")
@@ -3222,7 +3270,6 @@ func TestLaunchPrintsResolvedCommandWithoutCheckingGuidance(t *testing.T) {
 		"our", "ai",
 		"--manifest", "acme",
 		"--home", home,
-		"--no-session",
 		"--repo", "sample-service",
 		"--print",
 		"codex", "--model", "gpt-5",
@@ -3236,7 +3283,7 @@ func TestLaunchPrintsResolvedCommandWithoutCheckingGuidance(t *testing.T) {
 	}
 }
 
-func TestLaunchPrintStartsSessionByDefault(t *testing.T) {
+func TestLaunchPrintDefaultsToBaseUmbrella(t *testing.T) {
 	home, workspaceRoot := setupCLIRecordWorkspace(t)
 	umbrellaRoot := filepath.Dir(workspaceRoot)
 	var stdout, stderr bytes.Buffer
@@ -3245,6 +3292,34 @@ func TestLaunchPrintStartsSessionByDefault(t *testing.T) {
 		"our", "ai",
 		"--manifest", "acme",
 		"--home", home,
+		"--print",
+		"codex", "--model", "gpt-5",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := worksession.List(umbrellaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("sessions = %#v, want none", sessions)
+	}
+	want := "cd " + umbrellaRoot + " && codex --model gpt-5\n"
+	if stdout.String() != want {
+		t.Fatalf("launch --print stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestLaunchPrintCreatesNewSessionWhenRequested(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "ai",
+		"--manifest", "acme",
+		"--home", home,
+		"--new-session",
 		"--print",
 		"codex", "--model", "gpt-5",
 	}); err != nil {
@@ -3399,7 +3474,7 @@ func TestLaunchMissingHarnessPrintsFallbackAndFails(t *testing.T) {
 	}
 }
 
-func TestLaunchMissingHarnessDoesNotCreateDefaultSession(t *testing.T) {
+func TestLaunchMissingHarnessDefaultDoesNotCreateSession(t *testing.T) {
 	home, workspaceRoot := setupCLIRecordWorkspace(t)
 	umbrellaRoot := filepath.Dir(workspaceRoot)
 	ensureCLIGuidance(t, home, umbrellaRoot)
@@ -3419,6 +3494,40 @@ func TestLaunchMissingHarnessDoesNotCreateDefaultSession(t *testing.T) {
 	if !errors.Is(err, errAlreadyPrinted) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}
+	wantLine := "cd " + umbrellaRoot + " && codex"
+	if !strings.Contains(stderr.String(), "codex not found on PATH") ||
+		!strings.Contains(stderr.String(), wantLine) {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	sessions, err := worksession.List(umbrellaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("sessions = %#v, want none", sessions)
+	}
+}
+
+func TestLaunchMissingHarnessNewSessionDoesNotCreateSession(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			return "", exec.ErrNotFound
+		},
+	}
+	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--new-session", "--no-refresh", "--no-update-check", "codex"})
+	if !errors.Is(err, errAlreadyPrinted) {
+		t.Fatalf("err = %v, want errAlreadyPrinted", err)
+	}
 	if !strings.Contains(stderr.String(), "codex not found on PATH") ||
 		!strings.Contains(stderr.String(), "no work session was created") {
 		t.Fatalf("stderr = %q", stderr.String())
@@ -3432,7 +3541,7 @@ func TestLaunchMissingHarnessDoesNotCreateDefaultSession(t *testing.T) {
 	}
 }
 
-func TestLaunchDefaultsToNewSession(t *testing.T) {
+func TestLaunchDefaultsToBaseUmbrella(t *testing.T) {
 	home, workspaceRoot := setupCLIRecordWorkspace(t)
 	umbrellaRoot := filepath.Dir(workspaceRoot)
 	ensureCLIGuidance(t, home, umbrellaRoot)
@@ -3456,6 +3565,44 @@ func TestLaunchDefaultsToNewSession(t *testing.T) {
 		},
 	}
 	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check", "codex", "--model", "gpt-5"}); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := worksession.List(umbrellaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 || gotDir != umbrellaRoot {
+		t.Fatalf("gotDir=%q sessions=%#v, want launch from base umbrella", gotDir, sessions)
+	}
+	if gotPath != "/test/bin/codex" || strings.Join(gotArgs, " ") != "--model gpt-5" {
+		t.Fatalf("exec path=%q args=%#v", gotPath, gotArgs)
+	}
+}
+
+func TestLaunchCreatesNewSessionWhenRequested(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+	var stdout, stderr bytes.Buffer
+	var gotPath, gotDir string
+	var gotArgs []string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			return "/test/bin/codex", nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotPath = path
+			gotArgs = append([]string(nil), args...)
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--new-session", "--no-refresh", "--no-update-check", "codex", "--model", "gpt-5"}); err != nil {
 		t.Fatal(err)
 	}
 	sessions, err := worksession.List(umbrellaRoot)
@@ -3509,16 +3656,120 @@ func TestLaunchResumesExplicitSession(t *testing.T) {
 	}
 }
 
-func TestLaunchRepoRequiresNoSession(t *testing.T) {
+func TestLaunchFromInsideSessionUsesCurrentSession(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "work", "start", "--slug", "current", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work start: %v", err)
+	}
+	var session worksession.Session
+	if err := json.Unmarshal(stdout.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(session.Mounts[0].WorktreePath)
+
+	var gotDir string
+	stdout.Reset()
+	stderr.Reset()
+	a = app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"our", "ai", "--home", home, "--no-refresh", "--no-update-check", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	if gotDir != session.Path {
+		t.Fatalf("gotDir=%q, want current session path %q", gotDir, session.Path)
+	}
+}
+
+func TestLaunchNewSessionInsideSessionCreatesFreshSession(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "work", "start", "--slug", "current", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work start: %v", err)
+	}
+	var session worksession.Session
+	if err := json.Unmarshal(stdout.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(session.Mounts[0].WorktreePath)
+
+	var gotDir string
+	stdout.Reset()
+	stderr.Reset()
+	a = app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"our", "ai", "--home", home, "--new-session", "--no-refresh", "--no-update-check", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := worksession.List(umbrellaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("sessions = %#v, want a second fresh session", sessions)
+	}
+	if gotDir == session.Path {
+		t.Fatalf("gotDir=%q resumed the current session, want a fresh session", gotDir)
+	}
+	var fresh worksession.Session
+	for _, candidate := range sessions {
+		if candidate.ID != session.ID {
+			fresh = candidate
+		}
+	}
+	if gotDir != fresh.Path {
+		t.Fatalf("gotDir=%q, want fresh session path %q", gotDir, fresh.Path)
+	}
+}
+
+func TestLaunchRepoDefaultsToBaseCheckout(t *testing.T) {
 	home, _ := setupCLILaunchFixture(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--repo", "sample-service", "--print", "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "cd " + filepath.Join(home, "acme", "repos", "sample-service") + " && codex\n"
+	if stdout.String() != want {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestLaunchRepoRefusesSessionFlags(t *testing.T) {
+	home, _ := setupCLILaunchFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--new-session", "--repo", "sample-service", "--print", "codex"})
 	if !errors.Is(err, errAlreadyPrinted) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}
-	if !strings.Contains(stderr.String(), "default session mode does not include repo worktrees") ||
-		!strings.Contains(stderr.String(), "pass --no-session") {
+	if !strings.Contains(stderr.String(), "repo worktrees are not included in work sessions") ||
+		!strings.Contains(stderr.String(), "omit --new-session") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 	if stdout.String() != "" {

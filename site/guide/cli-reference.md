@@ -32,7 +32,7 @@ our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--se
 our publish [--manifest NAME] [--home DIR] [--print] [--json]
 our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 our root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-our ai [--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
 our doctor [--no-fetch] [--fix] [--json]
 our update [--check] [--version X.Y.Z] [--json] [--yes]
@@ -168,12 +168,13 @@ passed.
 refresh for clean manifest/content checkouts before using workspace context.
 They leave dirty, diverged, repo, and remote-unknown checkouts untouched.
 `our ai` also ensures the bundled `our` self-skill exists for the selected
-filesystem harness before launching it. By default it creates a fresh
-`work/<id>` session and launches from there; use `--session <id>` to resume,
-or `--no-session` for base inspection/admin/debug. Repo launches currently
-require `--no-session --repo <id>`. Use `--no-refresh` for one command,
-`OUR_NO_AUTO_REFRESH=1` globally, or `OUR_REFRESH_TTL=30m` to tune the default
-six-hour window.
+filesystem harness before launching it. By default it launches from the base
+umbrella, or from the current active session when run inside `work/<id>`. Use
+`--new-session` to create a fresh isolated session, `--session <id>` to
+resume, or `--no-session` to ignore a current session for base
+inspection/admin/debug. Repo launches use `--repo <id>`. Use `--no-refresh`
+for one command, `OUR_NO_AUTO_REFRESH=1` globally, or `OUR_REFRESH_TTL=30m`
+to tune the default six-hour window.
 
 Those startup commands also emit a stderr-only notice when a newer Our AI release
 is available. Stdout remains clean for command substitutions such as

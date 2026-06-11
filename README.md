@@ -22,8 +22,9 @@ our ai codex
 ```
 
 That's the whole setup. `our ai codex` resolves the umbrella, verifies the
-generated guidance, creates a fresh isolated work session under `work/`, and
-starts Codex there.
+generated guidance, and starts Codex in the base umbrella. Agents that need
+isolated content work opt in with `our ai --new-session codex` or resume a
+known session with `our ai --session <id> codex`.
 `our init` creates two local repos — a private manifest repo (the control
 plane: manifest, catalog, skills) and a content repo at `~/acme/workspace`
 (the actual workspace) — registers them, and works offline. When ready to
@@ -46,7 +47,7 @@ so agents know how to use the CLI itself.
 | **Skill** | A capability installed into harness skill directories. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer). The CLI also ships one public, organization-neutral *self-skill* named `our`, embedded in the binary, that teaches harnesses how to use `our` itself. |
 | **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.our/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Gnit control workspace so multi-repo commits and pushes have one substrate. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
-| **Session** | An isolated unit of work under `work/<id>`: a git worktree per content mount on a fresh branch, plus session-local scratch. `our ai` starts one by default; inspect it with `our work status` or `our work list`; work leaves only through `our work finish --land\|--publish\|--discard`. |
+| **Session** | An isolated unit of work under `work/<id>`: a git worktree per content mount on a fresh branch, plus session-local scratch. Create one with `our work start` or `our ai --new-session`; inspect it with `our work status` or `our work list`; work leaves only through `our work finish --land\|--publish\|--discard`. |
 | **Catalog** | JSON inventories for products (business entities, which may link repos), repos (the organization's repositories), and canonical customers. Users opt specific repos into their umbrella on demand. |
 | **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared fragments. `CLAUDE.md` points to the same file. |
 | **Tool** | An external executable the org depends on. `our` reports presence and install hints — it never silently installs tools. |
@@ -78,18 +79,21 @@ our setup [harness...] | --all   # create umbrella, write guidance, install skil
 ```sh
 our root [--repo ID] [--no-refresh] [--no-update-check]
                                              # print the umbrella or repo path
-our ai [--session ID|--no-session] [--repo ID] [--setup] [--no-refresh] [--no-update-check] [harness]
-                                             # verify guidance, then start a harness in a fresh session
+our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--no-refresh] [--no-update-check] [harness]
+                                             # verify guidance, then start a harness
 our ai codex --model gpt-5              # pass harness flags after the harness name
+our ai --new-session codex
 our ai --session 2026-06-11-work-ab12 codex
-our ai --no-session --repo sample-service codex
-our ai --print codex                    # create a session and print cd <session> && codex
+our ai --repo sample-service codex
+our ai --print codex                    # print cd <umbrella> && codex
 ```
 
 `ai` refuses to start against missing or stale generated guidance. Pass
-`--setup` to reconcile first, or run `our setup` directly. Use `--session` to
-resume an active session and `--no-session` for base inspection/admin/debug;
-repo launches currently require `--no-session`.
+`--setup` to reconcile first, or run `our setup` directly. By default it
+launches from the base umbrella, or from the current active work session when
+run inside `work/<id>`. Use `--new-session` to create a fresh isolated session,
+`--session` to resume a known active session, and `--no-session` to ignore a
+current session for base inspection/admin/debug.
 `root`, `ai`, and `setup` also run a best-effort, TTL-gated refresh of
 clean manifest/content checkouts so startup sees current context without
 touching dirty, diverged, repo, or remote-unknown checkouts. Use
@@ -390,10 +394,11 @@ indexed in [docs/plans/](docs/plans/README.md):
   record adoption (`our record adopt`, Git intent-to-add). Plans:
   [single-checkout workspace](docs/plans/2026-06-10-single-checkout-workspace.md),
   [execution plane](docs/plans/2026-06-10-execution-plane.md) (safety patch).
-- **Shipped — sessions (v0.14.0).** `our work start|status|list|resume|finish`: visible
+- **Shipped — sessions (v0.14.0, default revised after v0.16.0).** `our work start|status|list|resume|finish`: visible
   `work/<id>` git worktrees per session, a session registry consulted by
-  `our sync`, and `our ai` defaulting into a fresh session so concurrent and
-  successive agent runs cannot pollute each other or the base workspace.
+  `our sync`, explicit `our ai --new-session`/`--session` launch paths, and
+  session-aware content commands so record writes from inside `work/<id>` stay
+  in the session worktree instead of the base workspace.
   Plan: [execution plane](docs/plans/2026-06-10-execution-plane.md), Mode A.
 - **Shipped — products/repos split (v0.15.0).** Catalog products are pure
   business entities (no `git_url`) that may link implementing repos;

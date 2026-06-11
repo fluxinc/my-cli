@@ -45,8 +45,8 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
 - **Session** — an isolated unit of work under `<umbrella>/work/<id>`: a git
   worktree per content mount on a fresh `our/work/<id>` branch, plus
   session-local `scratch/`, with a registry record under `.our/sessions/`.
-  `our ai` starts one by default; work leaves a session only through
-  `our work finish --land | --publish | --discard`.
+  Create one with `our work start` or `our ai --new-session`; work leaves a
+  session only through `our work finish --land | --publish | --discard`.
 - **Catalog** — JSON inventories: products (business entities, which may link
   repos), canonical customers, and repos (the organization's repositories,
   cloned on demand under `repos/<id>` via `our repos add`).
@@ -96,8 +96,8 @@ our setup [--manifest NAME] [--no-refresh] [--no-update-check]
                                     # create umbrella, write guidance, install skills, sync mounts
 our root [--repo ID] [--no-refresh] [--no-update-check]
                                     # print the umbrella (or repo) path
-our ai [--session ID|--no-session] [--repo ID] [--setup] [--no-refresh] [--no-update-check] [harness]
-                                    # verify guidance is current, then start a harness in a fresh work session by default
+our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--no-refresh] [--no-update-check] [harness]
+                                    # verify guidance is current, then start a harness
                                     # --setup reconciles the umbrella first when guidance is stale or missing
 our doctor [--no-fetch] [--fix]   # git freshness, sessions, derived drift, last sync, manifests, tools
 ```
@@ -120,15 +120,17 @@ for one command, `OUR_NO_AUTO_REFRESH=1` globally, or `OUR_REFRESH_TTL=30m`
 to tune the default six-hour window. `our ai` also ensures the bundled `our`
 self-skill is installed for the selected filesystem harness before exec.
 
-By default, `our ai` creates a fresh session under `<umbrella>/work/<id>` and
-starts the harness there. Treat the base umbrella as inspection/admin space; do
-not create shared content directly in base mounts unless the operator explicitly
-asks for a base edit. Use `our ai --session <id> <harness>` to resume an active
-session, and `our ai --no-session <harness>` for base inspection/admin/debug.
-Repo launches are base checkouts in this release, so use
-`our ai --no-session --repo <id> <harness>` for them. Products are business
-catalog entries, not checkouts: records reference them with `--product`,
-while code lives in catalog repos managed by `our repos`.
+By default, `our ai` starts the harness from the base umbrella, or from the
+current active session when run inside `<umbrella>/work/<id>`. Treat the base
+umbrella as inspection/admin space; do not create shared content directly in
+base mounts unless the operator explicitly asks for a base edit. Use
+`our ai --new-session <harness>` to create an isolated content session,
+`our ai --session <id> <harness>` to resume an active session, and
+`our ai --no-session <harness>` to ignore a current session for base
+inspection/admin/debug. Repo launches are base checkouts in this release, so
+use `our ai --repo <id> <harness>` for them. Products are business catalog
+entries, not checkouts: records reference them with `--product`, while code
+lives in catalog repos managed by `our repos`.
 
 When the refresh cannot converge a checkout, these commands print a stderr
 line per repository in the form `notice\t<repo>\t<state>; run ...` (dirty,
@@ -157,7 +159,9 @@ our work finish [session-id] --discard  # delete the session's worktrees, branch
 
 If you are running inside a session (the working directory is under
 `<umbrella>/work/<id>`), keep all edits in the session's mount worktrees and
-`scratch/`; never edit the base mounts directly. Finish is the only exit:
+`scratch/`; never edit the base mounts directly. Content record commands
+(`our meetings/support/fleet add`) automatically target the current session's
+mount worktree when run from inside the session. Finish is the only exit:
 `--land` holds unadopted `??` files and non-content changes instead of
 committing them, so adopt records first (`our meetings/support/fleet add` do
 this automatically). While a session is dirty or unlanded, `our sync` holds
@@ -269,10 +273,10 @@ remote-unknown checkouts, and session work instead of touching them.
 
 ## Tips
 
-- Launch harnesses with `our ai <harness>`: it starts from a fresh work
-  session by default so generated guidance is in scope and the base umbrella
-  stays clean. Reserve `cd "$(our root)"` plus `our ai --no-session` for
-  inspection/admin/debug.
+- Launch harnesses with `our ai <harness>` for base inspection/admin work, or
+  `our ai --new-session <harness>` for isolated content work. If you are
+  already inside a session, plain `our ai <harness>` keeps launching from that
+  session; use `--no-session` only to ignore the current session.
 - Data-returning commands accept `--json`; structured errors carry a concrete
   remediation command — read it and follow it.
 - To record what happened in a meeting, use `our meetings add` and then

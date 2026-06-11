@@ -197,7 +197,7 @@ func (a app) printUsage() {
 Usage:
   our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   our root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-  our ai [--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+  our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
   our update [--check] [--version X.Y.Z] [--json] [--yes]
   our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
   our publish [--manifest NAME] [--home DIR] [--print] [--json]
@@ -987,6 +987,7 @@ type launchCommandOpts struct {
 	repoID        string
 	legacyProduct string
 	sessionID     string
+	newSession    bool
 	noSession     bool
 	onboard       bool
 	printOnly     bool
@@ -1089,32 +1090,38 @@ func (a app) runLaunch(args []string) error {
 }
 
 func launchCreatesNewSession(opts launchCommandOpts) bool {
-	return !opts.noSession && opts.sessionID == ""
+	return opts.newSession
 }
 
 func validateLaunchSessionOptions(opts launchCommandOpts) error {
 	if opts.noSession && opts.sessionID != "" {
 		return fmt.Errorf("--session cannot be combined with --no-session")
 	}
+	if opts.noSession && opts.newSession {
+		return fmt.Errorf("--new-session cannot be combined with --no-session")
+	}
+	if opts.sessionID != "" && opts.newSession {
+		return fmt.Errorf("--session cannot be combined with --new-session")
+	}
 	if opts.legacyProduct != "" {
 		return structuredCommandError{
 			code:        "product_flag_removed",
 			message:     "products are business catalog entries, not checkouts; --product was removed from our ai",
-			remediation: "use our ai --no-session --repo " + opts.legacyProduct + " (see our repos list)",
+			remediation: "use our ai --repo " + opts.legacyProduct + " (see our repos list)",
 		}
 	}
-	if opts.repoID != "" && !opts.noSession {
+	if opts.repoID != "" && (opts.sessionID != "" || opts.newSession) {
 		if opts.sessionID != "" {
 			return structuredCommandError{
 				code:        "repo_requires_no_session",
 				message:     "our ai --repo cannot be combined with --session; repo worktrees are not included in work sessions yet",
-				remediation: "pass --no-session for a base repo launch, or omit --repo to resume the content session",
+				remediation: "omit session flags for a base repo launch, or omit --repo to resume the content session",
 			}
 		}
 		return structuredCommandError{
 			code:        "repo_requires_no_session",
-			message:     "our ai --repo launches the base repo checkout; default session mode does not include repo worktrees yet",
-			remediation: "pass --no-session for a base repo launch, or omit --repo to start a content session",
+			message:     "our ai --repo launches the base repo checkout; repo worktrees are not included in work sessions yet",
+			remediation: "omit --new-session for a base repo launch, or omit --repo to start a content session",
 		}
 	}
 	return nil
@@ -1147,11 +1154,8 @@ func (a app) printLaunchMissingHarness(commandName, targetDir string, args []str
 }
 
 func (a app) launchTargetDir(opts launchCommandOpts, root string) (string, error) {
-	if opts.noSession {
-		if opts.repoID != "" {
-			return umbrella.RepoPath(root, opts.repoID), nil
-		}
-		return root, nil
+	if opts.repoID != "" {
+		return umbrella.RepoPath(root, opts.repoID), nil
 	}
 	if opts.sessionID != "" {
 		session, err := worksession.Load(root, opts.sessionID)
@@ -1162,6 +1166,18 @@ func (a app) launchTargetDir(opts launchCommandOpts, root string) (string, error
 			return "", fmt.Errorf("session %s is %s; choose an active session or pass --no-session", session.ID, session.Status)
 		}
 		return session.Path, nil
+	}
+	if !opts.noSession && !opts.newSession {
+		session, ok, err := currentActiveSession(root)
+		if err != nil {
+			return "", err
+		}
+		if ok {
+			return session.Path, nil
+		}
+	}
+	if !opts.newSession {
+		return root, nil
 	}
 	specs, err := sessionMountSpecs(opts.home, opts.manifestName, root)
 	if err != nil {
@@ -1229,29 +1245,32 @@ func (a app) printLaunchSelfSkillBlock(result skills.Result) {
 
 func (a app) printLaunchUsage() {
 	fmt.Fprintln(a.stderr, `Usage of our ai:
-  our ai [--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+  our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 
-Harness defaults to claude-code. By default, filesystem harnesses launch from a
-fresh work session. Harness flags go after the harness name.
+Harness defaults to claude-code. By default, harnesses launch from the base
+umbrella, or from the current work session when run inside one. Harness flags go
+after the harness name.
 
 Examples:
   our ai claude-code
   our ai codex --model gpt-5
+  our ai --new-session codex
   our ai --session 2026-06-11-work-ab12 codex
-  our ai --no-session --repo sample-service codex
+  our ai --repo sample-service codex
   our ai --print codex
 
 Options:
   --home DIR        override home directory
   --manifest NAME   use a registered manifest when no umbrella is found
   --umbrella DIR    override umbrella root
-  --session ID      resume an active work session instead of creating one
-  --no-session      launch from the base umbrella or product checkout
-  --repo ID         with --no-session, run from repos/<id> under the umbrella
+  --new-session     create and launch from a fresh work session
+  --session ID      resume an active work session
+  --no-session      ignore any current work session and launch from the base umbrella
+  --repo ID         run from repos/<id> under the umbrella
   --setup           reconcile the umbrella first if guidance is stale or missing
   --no-refresh      skip best-effort auto-refresh
   --no-update-check skip best-effort update notice
-  --print           print the resolved launch command without execing; in session mode this creates the session`)
+  --print           print the resolved launch command without execing; with --new-session this creates the session`)
 }
 
 func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, error) {
@@ -1273,6 +1292,8 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			opts.onboard = true
 		case arg == "--print":
 			opts.printOnly = true
+		case arg == "--new-session":
+			opts.newSession = true
 		case arg == "--no-session":
 			opts.noSession = true
 		case arg == "--no-refresh":
@@ -3405,10 +3426,20 @@ func fleetRoots(home, manifestName, workspaceID, umbrellaRoot string) ([]fleet.R
 // only changes which mount kinds participate and how empty results read.
 func contentRoots(home, manifestName, workspaceID, umbrellaRoot, noun string, kinds []string) ([]record.Root, error) {
 	if umbrellaRoot != "" {
-		return umbrellaContentRoots(home, workspaceID, umbrellaRoot, noun, kinds)
+		root, err := resolveUmbrellaRoot(home, umbrellaRoot)
+		if err != nil {
+			return nil, err
+		}
+		if roots, ok, err := currentSessionContentRoots(root, workspaceID, noun, kinds); ok || err != nil {
+			return roots, err
+		}
+		return umbrellaContentRootsForRoot(root, workspaceID, noun, kinds)
 	}
 	if root, ok := umbrella.FindRoot("."); ok {
-		return umbrellaContentRoots(home, workspaceID, root, noun, kinds)
+		if roots, ok, err := currentSessionContentRoots(root, workspaceID, noun, kinds); ok || err != nil {
+			return roots, err
+		}
+		return umbrellaContentRootsForRoot(root, workspaceID, noun, kinds)
 	}
 	if roots, ok, err := configuredUmbrellaContentRoots(home, manifestName, workspaceID, noun, kinds); ok || err != nil {
 		return roots, err
@@ -3484,6 +3515,10 @@ func umbrellaContentRoots(home, workspaceID, umbrellaRoot, noun string, kinds []
 	if err != nil {
 		return nil, err
 	}
+	return umbrellaContentRootsForRoot(root, workspaceID, noun, kinds)
+}
+
+func umbrellaContentRootsForRoot(root, workspaceID, noun string, kinds []string) ([]record.Root, error) {
 	state, err := umbrella.LoadState(root)
 	if err != nil {
 		return nil, fmt.Errorf("read umbrella state: %w", err)
@@ -3514,6 +3549,67 @@ func umbrellaContentRoots(home, workspaceID, umbrellaRoot, noun string, kinds []
 		return nil, fmt.Errorf("no %s mounts synced in umbrella %s", noun, root)
 	}
 	return roots, nil
+}
+
+func currentSessionContentRoots(root, workspaceID, noun string, kinds []string) ([]record.Root, bool, error) {
+	session, ok, err := currentActiveSession(root)
+	if err != nil || !ok {
+		return nil, ok, err
+	}
+	state, err := umbrella.LoadState(root)
+	if err != nil {
+		return nil, true, fmt.Errorf("read umbrella state: %w", err)
+	}
+	sourceRefs := map[string]string{}
+	for _, mount := range state.Mounts {
+		sourceRefs[mount.ID] = mount.SourceRef
+	}
+	var roots []record.Root
+	for _, mount := range session.Mounts {
+		if workspaceID != "" && mount.ID != workspaceID {
+			continue
+		}
+		if !record.ContainsValue(kinds, mount.Kind) {
+			continue
+		}
+		roots = append(roots, record.Root{
+			Manifest:  sourceRefs[mount.ID],
+			Workspace: mount.ID,
+			Path:      mount.WorktreePath,
+		})
+	}
+	if len(roots) == 0 {
+		if workspaceID != "" {
+			return nil, true, fmt.Errorf("workspace %q is not mounted in active session %s", workspaceID, session.ID)
+		}
+		return nil, true, fmt.Errorf("no %s mounts are available in active session %s", noun, session.ID)
+	}
+	return roots, true, nil
+}
+
+func currentActiveSession(root string) (worksession.Session, bool, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return worksession.Session{}, false, err
+	}
+	return activeSessionForPath(root, cwd)
+}
+
+func activeSessionForPath(root, path string) (worksession.Session, bool, error) {
+	workRoot := filepath.Join(root, worksession.WorkDirName)
+	if !pathWithinRoot(path, workRoot) {
+		return worksession.Session{}, false, nil
+	}
+	sessions, err := worksession.List(root)
+	if err != nil {
+		return worksession.Session{}, true, err
+	}
+	for _, session := range sessions {
+		if session.Status == worksession.StatusActive && pathWithinRoot(path, session.Path) {
+			return session, true, nil
+		}
+	}
+	return worksession.Session{}, true, fmt.Errorf("current directory is under %s but no active work session matched; run our work status or cd %s", workRoot, root)
 }
 
 func (a app) printMeetings(found []meetings.Meeting, jsonOut bool) error {
