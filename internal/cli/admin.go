@@ -36,6 +36,8 @@ func (a app) runAdmin(args []string) error {
 		return a.runAdminCustomers(args[1:])
 	case "tools":
 		return a.runAdminTools(args[1:])
+	case "contract":
+		return a.runAdminContract(args[1:])
 	case "-h", "--help", "help":
 		a.printAdminUsage()
 		return nil
@@ -54,6 +56,8 @@ func (a app) printAdminUsage() {
   our admin meetings add ...                 (alias of our meetings add)
   our admin support add ...                  (alias of our support add)
   our admin customers add|edit ...           (edit manifest customer catalog)
+  our admin contract add "RULE TEXT" --manifest-dir DIR [--force] [--json]
+  our admin contract remove <index|"RULE TEXT"> --manifest-dir DIR [--force] [--json]
   our admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
   our admin tools edit <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--clear-install-commands] [--docs-url URL|--clear-docs-url] [--skill-install-command CMD] [--skill-install-arg ARG] [--clear-skill-install] [--force] [--json]
   our admin tools remove <id> --manifest-dir DIR [--force] [--json]

@@ -169,6 +169,8 @@ func (a app) run(args []string) error {
 		return a.runServices(args[2:])
 	case "roles":
 		return a.runRoles(args[2:])
+	case "contract":
+		return a.runContract(args[2:])
 	case "admin":
 		return a.runAdmin(args[2:])
 	default:
@@ -208,6 +210,7 @@ Usage:
   our admin support add ...                  (alias of our support add)
   our admin customers add|edit ...           (edit manifest customer catalog)
   our admin tools add|edit|remove ...        (edit manifest tool hints)
+  our admin contract add|remove ...          (edit manifest contract rules)
   our manifests add <name> <git-url>
   our manifests list
   our manifests sync <name...> | --all [--umbrella DIR] [--no-derived] [--print]
@@ -248,6 +251,7 @@ Usage:
   our services get <id> [--manifest NAME] [--json]
   our roles list [--manifest NAME] [--json]
   our roles get <id> [--manifest NAME] [--json]
+  our contract list [--manifest NAME] [--json]
   our doctor [--no-fetch] [--fix] [--json]
   our version`)
 }
