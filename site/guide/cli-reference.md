@@ -90,6 +90,8 @@ our admin meetings add ...
 our admin support add ...
 our admin customers add|edit <id> --manifest-dir DIR
 our admin tools add|edit|remove <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
+our admin contract add "RULE TEXT" --manifest-dir DIR [--force] [--json]
+our admin contract remove <index|"RULE TEXT"> --manifest-dir DIR [--force] [--json]
 ```
 
 See the [admin guide](./admin.md) for the full flag set and the
@@ -150,6 +152,7 @@ our services list [--manifest NAME] [--home DIR] [--json]
 our services get <id> [--manifest NAME] [--home DIR] [--json]
 our roles list [--manifest NAME] [--home DIR] [--json]
 our roles get <id> [--manifest NAME] [--home DIR] [--json]
+our contract list [--manifest NAME] [--home DIR] [--json]
 ```
 
 `our sync` is the routine reconciliation command. `--backend auto` prefers Gnit

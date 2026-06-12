@@ -49,11 +49,26 @@ export default defineConfig({
         ],
       },
       {
-        text: 'Operate',
+        text: 'Workspace',
         items: [
-          { text: 'Skills', link: '/guide/skills' },
-          { text: 'Admin', link: '/guide/admin' },
           { text: 'Manifests and Mounts', link: '/guide/manifest-and-mounts' },
+          { text: 'Skills', link: '/guide/skills' },
+          { text: 'Guidance and Contract', link: '/guide/guidance-and-contract' },
+          { text: 'Services and Roles', link: '/guide/services-and-roles' },
+        ],
+      },
+      {
+        text: 'Daily Work',
+        items: [
+          { text: 'Records: Meetings, Support, Fleet', link: '/guide/records' },
+          { text: 'Work Sessions', link: '/guide/sessions' },
+          { text: 'Sync, Doctor, and Updates', link: '/guide/sync-and-doctor' },
+        ],
+      },
+      {
+        text: 'Administer',
+        items: [
+          { text: 'Admin', link: '/guide/admin' },
         ],
       },
       {

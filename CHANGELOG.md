@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `our contract list`: inspect the organization contract rules in force, with
+  manifest name and the 1-based index used for removal.
+- `our admin contract add "RULE" --manifest-dir DIR` and
+  `our admin contract remove <index|"RULE"> --manifest-dir DIR`: edit the
+  manifest contract through the standard admin review-commit-push flow, with
+  duplicate, empty, and multiline rules rejected.
+- Documentation: new guide pages for Guidance and Contract, Records
+  (meetings/support/fleet), Work Sessions, Services and Roles, and
+  Sync/Doctor/Updates; the site sidebar now covers the full command surface.
+
 ## 0.20.0 - 2026-06-12
 
 ### Added

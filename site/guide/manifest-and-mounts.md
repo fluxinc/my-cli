@@ -72,8 +72,11 @@ top-level `contract` list:
 Each entry must be a non-empty, single-line rule, with no duplicates. The rules
 render as an `## Organization Contract` section in generated `AGENTS.md`,
 between the public baseline and any manifest guidance fragments, so every
-harness sees them as obligations rather than background reading. Longer
-narrative guidance still belongs in `agent_guidance.paths` fragments.
+harness sees them as obligations rather than background reading. Inspect the
+rules in force with `our contract list`, and edit them with
+`our admin contract add|remove`. Longer narrative guidance still belongs in
+`agent_guidance.paths` fragments. See
+[Guidance and Contract](./guidance-and-contract.md) for the full picture.
 
 ## Mount lifecycle
 

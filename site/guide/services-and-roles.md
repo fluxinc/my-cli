@@ -1,0 +1,81 @@
+# Services and Roles
+
+Services and roles are manifest vocabulary for the organization's remote
+surfaces and operating profiles. They are declared in `manifest.json`,
+inspected with read-only verbs, and materialized locally as `.mcp.json` —
+never the other way around.
+
+```sh
+our services list [--manifest NAME] [--json]
+our services get <id> [--manifest NAME] [--json]
+our roles list [--manifest NAME] [--json]
+our roles get <id> [--manifest NAME] [--json]
+our setup --role <id>
+```
+
+## Services
+
+A service describes one remote surface — an HTTP API or an MCP server — with
+reference-first auth. Secret material is never stored in the manifest; only
+references:
+
+```json
+{
+  "services": [
+    {
+      "id": "docs-search",
+      "kind": "mcp",
+      "purpose": "Search the handbook",
+      "auth_ref": "env://ACME_DOCS_TOKEN",
+      "grant": "read",
+      "connection": {
+        "type": "stdio",
+        "command": "acme-docs-mcp",
+        "args": ["--stdio"],
+        "env": { "ACME_DOCS_TOKEN": "${ACME_DOCS_TOKEN}" }
+      }
+    }
+  ]
+}
+```
+
+`auth_ref` accepts `env://VAR`, `op://vault/item` (1Password), `broker://`
+(reserved for the gated-broker runtime), or `none`. The optional inline
+`connection` uses MCP `server.json` field names; a `describe_ref` can point
+at a checked-in descriptor file instead.
+
+## Roles
+
+A role is a named operating profile that grants mounts, skills, tools,
+services, and optional guidance fragments. Roles grant services, never the
+reverse. Select one locally:
+
+```sh
+our setup --role operator
+```
+
+The choice persists in `.our/state.json` and affects two derived outputs:
+role guidance fragments are appended to generated `AGENTS.md`, and the
+umbrella-root `.mcp.json` is scoped to MCP services visible to that role.
+Role selection never prunes mounts or hides commands.
+
+## MCP materialization
+
+`our setup` and the derived reconcile write an umbrella-root `.mcp.json` for
+MCP services that have *local* connection data — an inline `connection` or a
+checked-in descriptor. Nothing is fetched from the network, and env
+references stay references (`${VAR}` is resolved by the harness at runtime,
+not baked in). A service whose only description is a remote URL is valid but
+not materializable offline; `our doctor` calls that out.
+
+`our` keeps a sidecar copy of what it last generated, so it can tell its own
+`.mcp.json` from a hand-written one — it refuses to overwrite a file it did
+not produce unless forced.
+
+## Doctor checks
+
+`our doctor` checks every declared service: missing connection data is an
+error; an unset `env://` variable, an `op://` reference without the `op` CLI,
+or a URL-only description each get a warning naming the service and the fix.
+Skills can declare `requires: ["service:<id>"]`; `our skills show` surfaces
+those requirements.

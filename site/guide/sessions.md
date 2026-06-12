@@ -1,0 +1,53 @@
+# Work Sessions
+
+A session is an isolated unit of work under `<umbrella>/work/<id>`: a git
+worktree of each writable content mount on a fresh `our/work/<id>` branch,
+session-local `scratch/`, a `SESSION.md` summary, and generated session
+guidance. Sessions exist so concurrent agents — or one risky multi-file
+edit — cannot trample the base workspace or each other.
+
+```sh
+our work start [--slug SLUG]
+our work status [--all]
+our work list [--all]
+our work resume [session-id]
+our work finish [session-id] --land|--publish|--discard [--message TEXT]
+```
+
+## When to use one
+
+The base umbrella plus content verbs plus `our sync` is the default flow.
+Reach for a session when:
+
+- multiple agents work the same workspace concurrently,
+- a change spans many files and you want an atomic land-or-discard,
+- you are experimenting and may throw the work away.
+
+## Lifecycle
+
+Start one explicitly with `our work start`, or launch a harness straight into
+a fresh session with `our ai --new-session <harness>`. Resume with
+`our ai --session <id>` or `our work resume`. While your current directory is
+inside `work/<id>`:
+
+- record commands (`our meetings add`, `our support add`, `our fleet add`)
+  write to the session's mount worktrees, and
+- plain `our ai` resumes that session instead of the base umbrella. Use
+  `our ai --no-session` to deliberately ignore it for base inspection.
+
+Work leaves a session only through `our work finish`:
+
+- `--land` merges the session branches into the base mounts locally,
+- `--publish` lands and publishes through the normal sync policy,
+- `--discard` drops the worktrees and branches.
+
+## Guard rails
+
+`our sync` holds outbound publish of any mount that has a dirty or unlanded
+active session, naming the session and the finish command — half-done session
+work cannot leak into the published workspace. `our work status` shows what is
+active; `our doctor` reports session health (active state, missing worktrees,
+archived counts) alongside workspace diagnostics.
+
+Sessions are harness-agnostic by design: they are plain git worktrees and
+directories, no hooks into any harness's internal state.

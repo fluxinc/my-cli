@@ -103,6 +103,20 @@ for locally described MCP services granted to that role. `our doctor` reports
 URL-only descriptors, missing checked-in descriptors, unset environment
 variables, and missing optional resolver tools such as `op`.
 
+## Contract rules
+
+The organization contract — short, binding rules rendered into generated
+`AGENTS.md` — is edited the same way as customers and tools:
+
+```sh
+our admin contract add "Record decisions in the handbook before acting on them." --manifest-dir ~/src/acme-manifest
+our admin contract remove 2 --manifest-dir ~/src/acme-manifest
+```
+
+`remove` accepts the 1-based index shown by `our contract list` or the exact
+rule text. Validation rejects empty, multiline, and duplicate rules. See
+[Guidance and Contract](./guidance-and-contract.md).
+
 ## Admin aliases
 
 Use `our init` to create a new local manifest repo. Mutating or configuration
@@ -137,6 +151,7 @@ our services list
 our services get docs-search
 our roles list
 our roles get operator
+our contract list
 our meetings list
 our meetings search cleanup
 our meetings get 2026-05-13-sampleco-followup

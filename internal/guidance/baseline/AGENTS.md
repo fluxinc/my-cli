@@ -13,7 +13,8 @@ Use the `our` CLI before falling back to ad hoc file searches:
 - `our mounts list` shows mounted handbook content and selected repos.
 - `our roles list` / `our roles get <id>` show manifest-declared operating
   roles. `our services list` / `our services get <id>` show declared remote
-  surfaces such as HTTP APIs and MCP servers.
+  surfaces such as HTTP APIs and MCP servers. `our contract list` shows the
+  organization's binding contract rules.
 - `our meetings list`, `our meetings search <text>`, and
   `our meetings get <id>` query local meeting notes; use `--customer`,
   `--partner`, and `--product` filters when those axes are known.

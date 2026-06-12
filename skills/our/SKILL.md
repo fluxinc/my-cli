@@ -67,7 +67,8 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   `our fleet list/search/get`,
   `our customers list`,
   `our products list`, `our repos list/add/remove`, `our tools list/info`,
-  `our services list/get`, `our roles list/get`, `our root`,
+  `our services list/get`, `our roles list/get`, `our contract list`,
+  `our root`,
   `our ai`, `our doctor`, `our manifests list`, `our mounts list`,
   `our work start/status/list/resume/finish` (sessions are local execution-plane
   state; `finish --publish` only publishes what the sync policy allows), and
@@ -77,7 +78,7 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
 - **Admin** commands mutate the shared source of truth (the manifest, catalog,
   guidance, skills declarations). They live under `our admin ...`
   (`our admin skills add/remove`, `our admin customers add/edit`,
-  `our admin tools add/edit/remove`,
+  `our admin tools add/edit/remove`, `our admin contract add/remove`,
   `our admin manifests/mounts/meetings/support/setup`) and require explicit
   intent.
   Do not run them to "fix" something unless the user asked to change the
@@ -229,6 +230,7 @@ our tools list                    # manifest-declared external tools
 our tools info <name>             # install hints for one external tool
 our services list|get             # manifest-declared remote surfaces
 our roles list|get                # manifest-declared operating roles
+our contract list                 # binding organization contract rules
 ```
 
 ## Sync: reconcile and publish
