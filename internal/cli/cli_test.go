@@ -19,6 +19,7 @@ import (
 	"github.com/fluxinc/our-ai/internal/guidance"
 	"github.com/fluxinc/our-ai/internal/harness"
 	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/our-ai/internal/mcpconfig"
 	"github.com/fluxinc/our-ai/internal/meetings"
 	"github.com/fluxinc/our-ai/internal/selfupdate"
 	"github.com/fluxinc/our-ai/internal/skills"
@@ -5582,6 +5583,16 @@ func TestVisibleServicesHonorsSelectedRole(t *testing.T) {
 	}
 	if _, err := visibleServices(doc, "missing"); err == nil || !strings.Contains(err.Error(), "our roles list") {
 		t.Fatalf("visibleServices missing err = %v", err)
+	}
+}
+
+func TestDerivedReconcileFailedIncludesBlockedMCPConfig(t *testing.T) {
+	report := derivedReconcileReport{
+		Guidance: guidance.Result{Status: "ok"},
+		MCP:      mcpconfig.Result{Status: "blocked"},
+	}
+	if !derivedReconcileFailed(report) {
+		t.Fatal("blocked MCP config should fail derived reconcile")
 	}
 }
 

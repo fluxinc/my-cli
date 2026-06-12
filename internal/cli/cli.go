@@ -5054,6 +5054,9 @@ func derivedReconcileFailed(report derivedReconcileReport) bool {
 	if report.Guidance.Status == "blocked" {
 		return true
 	}
+	if report.MCP.Status == "blocked" {
+		return true
+	}
 	for _, result := range report.Skills {
 		if result.Status == skills.StatusFailed || result.Status == skills.StatusBlocked {
 			return true
