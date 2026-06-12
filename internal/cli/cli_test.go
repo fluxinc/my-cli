@@ -5584,3 +5584,129 @@ func TestVisibleServicesHonorsSelectedRole(t *testing.T) {
 		t.Fatalf("visibleServices missing err = %v", err)
 	}
 }
+
+func TestSetupMaterializesMCPConfigForSelectedRole(t *testing.T) {
+	home := t.TempDir()
+	umbrellaRoot := writeRoleSetupManifest(t, home)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "setup",
+		"--manifest", "acme",
+		"--home", home,
+		"--role", "operator",
+		"--no-refresh",
+		"--no-update-check",
+	}); err != nil {
+		t.Fatalf("setup --role: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	data, err := os.ReadFile(filepath.Join(umbrellaRoot, ".mcp.json"))
+	if err != nil {
+		t.Fatalf("read .mcp.json: %v", err)
+	}
+	var mcp struct {
+		Servers map[string]struct {
+			Command string `json:"command"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &mcp); err != nil {
+		t.Fatalf("parse .mcp.json: %v in:\n%s", err, data)
+	}
+	if entry, ok := mcp.Servers["docs-search"]; !ok || entry.Command != "acme-docs-mcp" {
+		t.Fatalf(".mcp.json servers = %v", mcp.Servers)
+	}
+}
+
+func TestSetupSkipsMCPConfigWhenRoleGrantsNoMCPServices(t *testing.T) {
+	home := t.TempDir()
+	umbrellaRoot := writeRoleSetupManifest(t, home)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "setup",
+		"--manifest", "acme",
+		"--home", home,
+		"--role", "auditor",
+		"--no-refresh",
+		"--no-update-check",
+	}); err != nil {
+		t.Fatalf("setup --role auditor: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, ".mcp.json")); !os.IsNotExist(err) {
+		t.Fatalf(".mcp.json should not exist for auditor role: %v", err)
+	}
+}
+
+func TestDoctorReportsServiceHealth(t *testing.T) {
+	home := t.TempDir()
+	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "services": [
+    {
+      "id": "ok-search",
+      "kind": "mcp",
+      "purpose": "Search",
+      "auth_ref": "env://OUR_TEST_SET_TOKEN",
+      "connection": { "type": "stdio", "command": "acme-docs-mcp" }
+    },
+    {
+      "id": "unset-search",
+      "kind": "mcp",
+      "purpose": "Search with missing env",
+      "auth_ref": "env://OUR_TEST_UNSET_TOKEN",
+      "connection": { "type": "stdio", "command": "acme-docs-mcp" }
+    },
+    {
+      "id": "remote-mcp",
+      "kind": "mcp",
+      "purpose": "Remote-only descriptor",
+      "auth_ref": "none",
+      "describe_ref": "https://mcp.example/server.json"
+    },
+    {
+      "id": "broken-mcp",
+      "kind": "mcp",
+      "purpose": "Missing local descriptor",
+      "auth_ref": "none",
+      "describe_ref": "services/missing.server.json"
+    }
+  ]
+}`)
+	t.Setenv("OUR_TEST_SET_TOKEN", "set")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "manifests", "add", "acme",
+		"https://github.com/acme/acme-ai-manifest.git",
+		"--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home, "--no-fetch"}); err != nil {
+		t.Fatalf("doctor: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"service\tacme:ok-search\tok",
+		"service\tacme:unset-search\twarning",
+		"service\tacme:remote-mcp\twarning",
+		"service\tacme:broken-mcp\terror",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("doctor stdout missing %q:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, "OUR_TEST_UNSET_TOKEN") {
+		t.Fatalf("doctor should name the missing env var:\n%s", out)
+	}
+	if !strings.Contains(out, "services/missing.server.json") {
+		t.Fatalf("doctor should name the missing descriptor:\n%s", out)
+	}
+}

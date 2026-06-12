@@ -21,6 +21,7 @@ import (
 	"github.com/fluxinc/our-ai/internal/guidance"
 	"github.com/fluxinc/our-ai/internal/harness"
 	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/our-ai/internal/mcpconfig"
 	"github.com/fluxinc/our-ai/internal/meetings"
 	"github.com/fluxinc/our-ai/internal/record"
 	"github.com/fluxinc/our-ai/internal/selfskill"
@@ -4258,6 +4259,7 @@ type doctorReport struct {
 	Sessions   []doctorItem `json:"sessions,omitempty"`
 	Workspaces []doctorItem `json:"workspaces"`
 	Tools      []doctorItem `json:"tools"`
+	Services   []doctorItem `json:"services,omitempty"`
 }
 
 type doctorItem struct {
@@ -4315,6 +4317,7 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 		report.Manifests = append(report.Manifests, doctorLocalMountURLs(ref, doc)...)
 		report.Workspaces = append(report.Workspaces, doctorWorkspaces(home, ref.Name, doc.Workspaces)...)
 		report.Tools = append(report.Tools, doctorTools(ref.Name, doc.Tools)...)
+		report.Services = append(report.Services, doctorServices(ref.Name, ref.LocalPath, doc.Services)...)
 	}
 	report.Freshness = append(report.Freshness, a.doctorFreshness(home, manifestName, umbrellaRoot, !opts.NoFetch, root)...)
 	report.Derived = append(report.Derived, a.doctorDerived(home, manifestName, root)...)
@@ -4960,8 +4963,9 @@ func doctorDerivedGuidance(home, root, manifestName string) doctorItem {
 }
 
 type derivedReconcileReport struct {
-	Guidance guidance.Result `json:"guidance"`
-	Skills   []skills.Result `json:"skills,omitempty"`
+	Guidance guidance.Result  `json:"guidance"`
+	Skills   []skills.Result  `json:"skills,omitempty"`
+	MCP      mcpconfig.Result `json:"mcp,omitzero"`
 }
 
 func (a app) reconcileDerived(home, manifestName, root string) (derivedReconcileReport, error) {
@@ -4996,7 +5000,19 @@ func (a app) reconcileDerived(home, manifestName, root string) (derivedReconcile
 	if err != nil {
 		return derivedReconcileReport{}, err
 	}
-	return derivedReconcileReport{Guidance: guidanceResult, Skills: skillResults}, nil
+	selectedRole, err := selectedRoleForRoot(root)
+	if err != nil {
+		return derivedReconcileReport{}, err
+	}
+	services, err := visibleServices(doc.doc, selectedRole)
+	if err != nil {
+		return derivedReconcileReport{}, err
+	}
+	mcpResult, err := mcpconfig.Ensure(root, doc.ref.LocalPath, services, false)
+	if err != nil {
+		return derivedReconcileReport{}, err
+	}
+	return derivedReconcileReport{Guidance: guidanceResult, Skills: skillResults, MCP: mcpResult}, nil
 }
 
 func (a app) printDerivedReconcileReport(report derivedReconcileReport) {
@@ -5005,6 +5021,13 @@ func (a app) printDerivedReconcileReport(report derivedReconcileReport) {
 		line += "\t" + report.Guidance.Message
 	}
 	fmt.Fprintln(a.stdout, line)
+	if report.MCP.Status != "" {
+		line := fmt.Sprintf("derived\tmcp\t%s\t%s", report.MCP.Status, report.MCP.TargetPath)
+		if report.MCP.Message != "" {
+			line += "\t" + report.MCP.Message
+		}
+		fmt.Fprintln(a.stdout, line)
+	}
 	for _, result := range report.Skills {
 		line := fmt.Sprintf("derived-skill\t%s\t%s\t%s", result.Harness, result.Skill, result.Status)
 		if result.TargetPath != "" {
@@ -5174,6 +5197,88 @@ func doctorTools(manifestName string, tools []manifest.Tool) []doctorItem {
 	return out
 }
 
+func doctorServices(manifestName, manifestRoot string, services []manifest.Service) []doctorItem {
+	out := make([]doctorItem, 0, len(services))
+	for _, service := range services {
+		item := doctorItem{Name: manifestName + ":" + service.ID, Status: "ok"}
+		warn := func(format string, args ...any) {
+			if item.Status == "ok" {
+				item.Status = "warning"
+			}
+			item.Details = append(item.Details, fmt.Sprintf(format, args...))
+		}
+		fail := func(format string, args ...any) {
+			item.Status = "error"
+			item.Details = append(item.Details, fmt.Sprintf(format, args...))
+		}
+
+		if service.Kind == "mcp" && service.Connection.IsZero() {
+			switch {
+			case service.DescribeRef == "":
+				fail("no connection data; add an inline connection or a checked-in descriptor")
+			case strings.HasPrefix(service.DescribeRef, "http://"), strings.HasPrefix(service.DescribeRef, "https://"):
+				warn("describe_ref %s is a URL; not materializable offline — add an inline connection or a checked-in descriptor", service.DescribeRef)
+			default:
+				path := filepath.Join(manifestRoot, filepath.FromSlash(service.DescribeRef))
+				if _, err := os.Stat(path); err != nil {
+					fail("descriptor %s missing at %s; add the file or an inline connection", service.DescribeRef, path)
+				}
+			}
+		}
+
+		for _, name := range serviceEnvVars(service) {
+			if _, ok := os.LookupEnv(name); !ok {
+				warn("environment variable %s is not set", name)
+			}
+		}
+		if strings.HasPrefix(service.AuthRef, "op://") {
+			if _, err := exec.LookPath("op"); err != nil {
+				warn("auth_ref %s needs the op CLI, which is not on PATH", service.AuthRef)
+			}
+		}
+
+		if item.Message == "" && len(item.Details) != 0 {
+			item.Message = item.Details[0]
+			item.Details = item.Details[1:]
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+// serviceEnvVars collects environment variable names a service expects
+// locally: an env:// auth reference plus ${VAR} placeholders in inline
+// connection env values.
+func serviceEnvVars(service manifest.Service) []string {
+	seen := map[string]bool{}
+	var names []string
+	add := func(name string) {
+		if name != "" && !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	if name, ok := strings.CutPrefix(service.AuthRef, "env://"); ok {
+		add(name)
+	}
+	for _, value := range service.Connection.Env {
+		rest := value
+		for {
+			_, after, found := strings.Cut(rest, "${")
+			if !found {
+				break
+			}
+			name, after, found := strings.Cut(after, "}")
+			if !found {
+				break
+			}
+			add(name)
+			rest = after
+		}
+	}
+	return names
+}
+
 func (a app) printDoctorReport(report doctorReport) {
 	fixable := 0
 	printItems := func(kind string, items []doctorItem) {
@@ -5206,6 +5311,7 @@ func (a app) printDoctorReport(report doctorReport) {
 	printItems("session", report.Sessions)
 	printItems("workspace", report.Workspaces)
 	printItems("tool", report.Tools)
+	printItems("service", report.Services)
 	if fixable > 0 {
 		fmt.Fprintf(a.stdout, "fixable\t%d\trun `our doctor --fix` to apply\n", fixable)
 	}
@@ -5679,18 +5785,26 @@ func roleByID(doc manifest.Document, selectedRole string) (manifest.Role, error)
 }
 
 func guidanceOptionsForSelectedRole(root string, doc manifest.Document) (guidance.Options, error) {
-	state, err := umbrella.LoadState(root)
-	if errors.Is(err, os.ErrNotExist) {
-		return guidance.Options{}, nil
-	}
+	selectedRole, err := selectedRoleForRoot(root)
 	if err != nil {
 		return guidance.Options{}, err
 	}
-	role, err := roleByID(doc, state.SelectedRole)
+	role, err := roleByID(doc, selectedRole)
 	if err != nil {
 		return guidance.Options{}, err
 	}
 	return guidance.Options{RoleGuidancePaths: role.GuidancePaths}, nil
+}
+
+func selectedRoleForRoot(root string) (string, error) {
+	state, err := umbrella.LoadState(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return state.SelectedRole, nil
 }
 
 func setupGuidanceOptions(root string, doc manifest.Document, opts skillsCommandOpts) (guidance.Options, error) {
@@ -8835,6 +8949,17 @@ func (a app) runOnboard(args []string) error {
 	if err != nil {
 		return err
 	}
+	mcpServices, err := visibleServices(doc.doc, selectedRole)
+	if err != nil {
+		return err
+	}
+	mcpResult := mcpconfig.Result{TargetPath: filepath.Join(root, ".mcp.json"), Status: "dry-run"}
+	if !opts.print {
+		mcpResult, err = mcpconfig.Ensure(root, doc.ref.LocalPath, mcpServices, opts.force)
+		if err != nil {
+			return err
+		}
+	}
 	results, err := workspace.SyncMounts(opts.home, doc.ref.Name, root, nil, false, []string{"required", "default"}, opts.print, nil)
 	if err != nil {
 		return err
@@ -8873,26 +8998,39 @@ func (a app) runOnboard(args []string) error {
 		if err := printJSON(a.stdout, struct {
 			Umbrella umbrella.Workspace     `json:"umbrella"`
 			Guidance guidance.Result        `json:"guidance"`
+			MCP      mcpconfig.Result       `json:"mcp"`
 			Mounts   []workspace.SyncResult `json:"mounts"`
 			Skills   []skills.Result        `json:"skills"`
-		}{Umbrella: ws, Guidance: guidanceResult, Mounts: results, Skills: skillResults}); err != nil {
+		}{Umbrella: ws, Guidance: guidanceResult, MCP: mcpResult, Mounts: results, Skills: skillResults}); err != nil {
 			return err
 		}
-		if guidanceResult.Status == "blocked" || resultsFailed(skillResults) {
+		if guidanceResult.Status == "blocked" || mcpResult.Status == "blocked" || resultsFailed(skillResults) {
 			return fmt.Errorf("one or more operations failed")
 		}
 		return nil
 	}
 	a.printGuidanceResult(guidanceResult)
+	a.printMCPResult(mcpResult)
 	a.printWorkspaceResults(results)
 	if err := a.printResults(skillResults, false); err != nil {
 		return err
 	}
-	if guidanceResult.Status == "blocked" {
+	if guidanceResult.Status == "blocked" || mcpResult.Status == "blocked" {
 		return fmt.Errorf("one or more operations failed")
 	}
 	a.printLaunchHints(root)
 	return nil
+}
+
+func (a app) printMCPResult(result mcpconfig.Result) {
+	if result.Status == "" || result.Status == "skipped" {
+		return
+	}
+	line := fmt.Sprintf("mcp-config\t%s\t%s", result.Status, result.TargetPath)
+	if result.Message != "" {
+		line += "\t" + result.Message
+	}
+	fmt.Fprintln(a.stdout, line)
 }
 
 func (a app) printGuidanceResult(result guidance.Result) {

@@ -18,6 +18,17 @@
 - `our setup --role <id>` persists the selected role in `.our/state.json`,
   appends role-specific guidance fragments to generated `AGENTS.md`, and
   makes the selected role available for role-scoped service materialization.
+- `our setup` (and the derived reconcile in `our sync`/`our manifests sync`)
+  now materializes an umbrella-root `.mcp.json` from MCP services with local
+  connection data (inline `connection` or a checked-in descriptor), scoped to
+  the selected role. Values pass through as `${VAR}` placeholders — never
+  resolved secrets, never network fetches. A hand-written `.mcp.json` is
+  never overwritten without `--force`.
+- `our doctor` gained a `service` section: it reports MCP services without
+  local connection data (URL-only `describe_ref`), missing checked-in
+  descriptors, unset environment variables referenced by `auth_ref` or
+  connection placeholders, and `op://` references without the op CLI on
+  PATH.
 
 ## 0.17.0 - 2026-06-11
 
