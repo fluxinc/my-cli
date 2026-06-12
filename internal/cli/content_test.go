@@ -548,6 +548,19 @@ source: fleet
 
 Routing hub for the sample site.
 `)
+	writeCLITestFile(t, filepath.Join(workspaceRoot, "fleet", "acme-box-3.md"), `---
+id: acme-box-3
+customer: sampleco.example.com
+status: staged
+identifiers:
+  - "SO 300001"
+source: fleet
+---
+
+# acme-box-3
+
+Staged routing hub.
+`)
 	writeCLITestFile(t, filepath.Join(workspaceRoot, "support", "2026-06-10-routing-timeout.md"), `---
 id: 2026-06-10-routing-timeout
 date: 2026-06-10
@@ -600,6 +613,28 @@ The delivery failed with a clear timeout.
 	if !strings.Contains(stdout.String(), "# Related support records") ||
 		!strings.Contains(stdout.String(), "2026-06-10-routing-timeout") {
 		t.Fatalf("fleet get related support missing: %q", stdout.String())
+	}
+	for _, want := range []string{
+		"# Support record next step",
+		"Continue a relevant support record above",
+		"our support add '<slug>' --customer sampleco.example.com --identifier acme-box-1 --identifier 'SO 100045' --identifier 'FL 400-123401'",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("fleet get stdout = %q, missing %q", stdout.String(), want)
+		}
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"our", "fleet", "get", "acme-box-3", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"No related support records were found",
+		"our support add '<slug>' --customer sampleco.example.com --identifier acme-box-3 --identifier 'SO 300001'",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("fleet get without related support stdout = %q, missing %q", stdout.String(), want)
+		}
 	}
 
 	stdout.Reset()

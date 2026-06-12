@@ -134,7 +134,46 @@ func (a app) runFleetGet(args []string) error {
 			fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\n", sr.Date, sr.ID, sr.Title, sr.Path)
 		}
 	}
+	fmt.Fprint(a.stdout, fleetSupportNextStep(rec, related))
 	return nil
+}
+
+func fleetSupportNextStep(rec fleet.Record, related []support.Record) string {
+	var b strings.Builder
+	b.WriteString("\n# Support record next step\n\n")
+	if len(related) != 0 {
+		b.WriteString("Continue a relevant support record above, or create a new dated support record for a distinct incident:\n\n")
+	} else {
+		b.WriteString("No related support records were found. Create a dated support record before substantive fleet work:\n\n")
+	}
+	b.WriteString("`")
+	b.WriteString(fleetSupportAddCommand(rec))
+	b.WriteString("`\n")
+	return b.String()
+}
+
+func fleetSupportAddCommand(rec fleet.Record) string {
+	parts := []string{"our", "support", "add", "<slug>"}
+	if rec.Customer != "" {
+		parts = append(parts, "--customer", rec.Customer)
+	}
+	seen := map[string]bool{}
+	for _, id := range append([]string{rec.ID}, rec.Identifiers...) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		key := strings.ToLower(id)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		parts = append(parts, "--identifier", id)
+	}
+	for i, part := range parts {
+		parts[i] = shellQuote(part)
+	}
+	return strings.Join(parts, " ")
 }
 
 func (a app) runFleetAdd(args []string) error {

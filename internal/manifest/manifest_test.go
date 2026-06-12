@@ -383,7 +383,7 @@ func TestValidateManifestAllowsContractRules(t *testing.T) {
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
   "contract": [
-    "Always create and update a support record when working on any fleet member.",
+    "Continue an existing relevant support record or create a new dated record when working on any fleet member.",
     "Record decisions in the handbook before acting on them."
   ]
 }`)
@@ -407,12 +407,13 @@ func TestValidateManifestCatchesInvalidContractRules(t *testing.T) {
   "organization": { "id": "acme", "name": "Acme Example" },
   "contract": [
     "  ",
-    "Always create and update a support record when working on any fleet member.",
-    "Always create and update a support record when working on any fleet member."
+    "Record decisions before acting.\nThen publish them.",
+    "Continue an existing relevant support record or create a new dated record when working on any fleet member.",
+    "Continue an existing relevant support record or create a new dated record when working on any fleet member."
   ]
 }`)
 	result := ValidateFile(dir)
-	if len(result.Errors) != 2 {
+	if len(result.Errors) != 3 {
 		t.Fatalf("errors = %#v", result.Errors)
 	}
 	for _, err := range result.Errors {

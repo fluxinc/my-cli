@@ -122,7 +122,7 @@ func TestComposeRendersOrganizationContract(t *testing.T) {
 	doc := manifest.Document{
 		AgentGuidance: manifest.AgentGuidance{Paths: []string{"guidance/base.md"}},
 		Contract: []string{
-			"Always create and update a support record when working on any fleet member.",
+			"Continue an existing relevant support record or create a new dated record when working on any fleet member.",
 		},
 	}
 	data, err := Compose(manifestRoot, doc)
@@ -133,7 +133,7 @@ func TestComposeRendersOrganizationContract(t *testing.T) {
 	if !strings.Contains(got, "## Organization Contract") {
 		t.Fatalf("composed guidance missing contract section:\n%s", got)
 	}
-	if !strings.Contains(got, "- Always create and update a support record when working on any fleet member.") {
+	if !strings.Contains(got, "- Continue an existing relevant support record or create a new dated record when working on any fleet member.") {
 		t.Fatalf("composed guidance missing contract rule:\n%s", got)
 	}
 	if strings.Index(got, "## Organization Contract") > strings.Index(got, "base guidance") {
@@ -148,6 +148,24 @@ func TestComposeOmitsEmptyOrganizationContract(t *testing.T) {
 	}
 	if strings.Contains(string(data), "## Organization Contract") {
 		t.Fatalf("contract section rendered with no rules:\n%s", string(data))
+	}
+}
+
+func TestComposeIncludesBaselineFleetWorkContract(t *testing.T) {
+	data, err := Compose(t.TempDir(), manifest.Document{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	for _, want := range []string{
+		"Fleet work contract:",
+		"Before substantive work on a deployed instance",
+		"Continue an existing relevant support record",
+		"repeated `--identifier` flags",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("composed guidance missing %q:\n%s", want, got)
+		}
 	}
 }
 

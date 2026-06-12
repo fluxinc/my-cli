@@ -7,8 +7,16 @@
 - Manifest `contract`: a list of short, binding organization rules rendered
   as an `## Organization Contract` section in generated `AGENTS.md`, between
   the public baseline and manifest guidance fragments. Validation rejects
-  empty and duplicate rules; existing guidance drift detection and derived
-  reconcile cover contract changes automatically.
+  empty, multiline, and duplicate rules; existing guidance drift detection and
+  derived reconcile cover contract changes automatically.
+- Added a built-in Fleet Work Contract to generated guidance and the bundled
+  `our` self-skill: agents should start substantive fleet work with
+  `our fleet get`, continue a related support record or create a new dated one
+  with `our support add`, carry fleet identifiers with repeated
+  `--identifier`, and publish through `our sync`.
+- `our fleet get` human output now ends with a support-record next step,
+  including an `our support add` command seeded with the fleet id, known
+  identifiers, and customer when available. JSON output is unchanged.
 
 ## 0.19.0 - 2026-06-12
 

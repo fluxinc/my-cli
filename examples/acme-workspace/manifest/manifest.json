@@ -105,6 +105,6 @@
     }
   ],
   "contract": [
-    "Always create and update a support record when working on any fleet member."
+    "Continue an existing relevant support record or create a new dated record when working on any fleet member."
   ]
 }

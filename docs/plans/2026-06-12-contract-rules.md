@@ -201,7 +201,8 @@ rendered, and testable.
 2. **`our fleet get` hint** (Codex design): after the related-support section
    in human output, print the concrete next step (continue listed record /
    create with `our support add ... --identifier ...`). JSON output unchanged.
-3. **Manifest `contract: []string`** (Claude design, minimized): rendered
+3. **Manifest `contract: []string`** (Claude design, minimized): short,
+   binding enforce-level obligations. Rendered
    between the baseline and any `## Manifest Guidance:` fragments as
 
    ```markdown
@@ -209,13 +210,16 @@ rendered, and testable.
 
    These rules are binding in this workspace:
 
-   - Always create and update a support record when working on any fleet member.
+   - Continue an existing relevant support record or create a new dated record
+     when working on any fleet member.
    ```
 
    Validation in `validateOrgManifest`: entries non-empty after trim, no
    duplicates. Zero rules → no section. No new CLI noun, no admin verbs, no
-   IDs, no role scoping. Drift/reconcile is free via existing composed-bytes
-   machinery.
+   IDs, no role scoping. For Clawdapus/Mode B compatibility, this list maps to
+   a generated `x-claw.include`/`enforce` contract block when Our AI compiles
+   contained agents, instead of becoming a parallel contract dialect.
+   Drift/reconcile is free via existing composed-bytes machinery.
 4. **Docs + release**: site manifest/guidance docs, skills/our/SKILL.md,
    CHANGELOG ×2, README Roadmap + plans index, release **v0.20.0**.
 

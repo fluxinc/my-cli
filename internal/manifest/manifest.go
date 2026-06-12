@@ -847,6 +847,10 @@ func validateContract(rules []string, result *ValidationResult) {
 			result.Errors = append(result.Errors, fmt.Sprintf("contract entry %d must be non-empty rule text", i))
 			continue
 		}
+		if strings.ContainsAny(trimmed, "\r\n") {
+			result.Errors = append(result.Errors, fmt.Sprintf("contract entry %d must be a single-line rule", i))
+			continue
+		}
 		if seen[trimmed] {
 			result.Errors = append(result.Errors, fmt.Sprintf("contract entry %d duplicates rule %q", i, trimmed))
 			continue

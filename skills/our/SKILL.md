@@ -305,8 +305,12 @@ them.
   operator explicitly approves the record.
 - To look up a deployed instance, prefer `our fleet get <id-or-identifier>` —
   any sales order, functional location, serial, or hostname resolves — and use
-  the related support records it lists. Record workflow transitions with
-  `our fleet set <id> status=<value>`, then publish with the suggested
-  `our sync --message` command so each transition stays a readable git commit.
+  the related support records it lists. Before substantive fleet work,
+  continue a relevant support record from that list or create a new dated
+  anonymized one with `our support add`; put the fleet record id and every
+  useful device, order, or asset identifier on the support record with repeated
+  `--identifier` flags. Record workflow transitions with `our fleet set <id>
+  status=<value>`, then publish with the suggested `our sync --message`
+  command so each transition stays a readable git commit.
 - This skill is installed and kept current by the `our` CLI itself; do not
   hand-edit the installed copy.

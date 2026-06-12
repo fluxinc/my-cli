@@ -31,6 +31,21 @@ Use the `our` CLI before falling back to ad hoc file searches:
   command.
 - Add `--json` when a harness needs structured output.
 
+Fleet work contract:
+
+- Before substantive work on a deployed instance, run
+  `our fleet get <id|identifier>` so you start from the registry record and
+  see related support history.
+- Continue an existing relevant support record when one is listed, or create a
+  new dated anonymized record with `our support add` for a distinct incident or
+  work session.
+- Put the fleet record id and every useful fleet identifier on the support
+  record with repeated `--identifier` flags, plus customer, product, and area
+  frontmatter when known.
+- Treat support records as the incident/work log. Fleet records hold registry
+  state; use `our fleet set` only for meaningful state transitions.
+- Publish the resulting content with `our sync`.
+
 Default layout:
 
 - `.our/` contains workspace identity and local state.
