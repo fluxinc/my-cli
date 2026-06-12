@@ -1,7 +1,7 @@
 # our Implementation Plan
 
 Status: public-safe working plan for the published CLI repository,
-refreshed 2026-06-12 (v0.17.0). Long-form designs live in `docs/plans/`
+refreshed 2026-06-12 (v0.18.0). Long-form designs live in `docs/plans/`
 (see the index there); this file is the short orientation.
 
 ## Repository Shape
@@ -27,7 +27,7 @@ Git repository; it is the per-user operating envelope containing `.our/`,
 mounts, catalog repo clones under `repos/`, work sessions under `work/`, and
 local scratch under `personal/`.
 
-## Current Baseline (v0.17.0)
+## Current Baseline (v0.18.0)
 
 - Go standard library only; external tools limited to git, gh, and
   manifest-declared optional tools.
@@ -52,6 +52,11 @@ local scratch under `personal/`.
   --new-session|--session <id>`); content commands and plain `our ai` are
   session-aware when run inside one; `our doctor` reports session health;
   `our sync` holds mounts with dirty or unlanded active sessions.
+- Manifest `services` and `roles`: remote surfaces with reference-only auth
+  (`op://`, `env://`, `broker://`, `none`) and server.json-shaped local
+  connection data; `our services`/`our roles` inspection; `our setup --role`
+  selection persisted in umbrella state; umbrella-root `.mcp.json`
+  materialized from local connection data only; doctor service checks.
 - Sync: bidirectional reconcile with auto-publish policy for adopted private
   content, Gnit backend when the umbrella is a Gnit control workspace,
   `.our/last-sync.json` audit, `our doctor [--fix]`.
@@ -75,11 +80,16 @@ operator-approved combined path):
    (v0.17.0): `our ai` launches from the base umbrella, sessions are opt-in
    via `--new-session`/`--session <id>`, and content commands resolve to the
    session's mount worktrees when run inside one.
-3. **Next** — manifest `roles` + `services` (org APIs, MCP servers as
-   `kind: mcp`, gated brokers; reference-first descriptions; URI secret
-   references such as `op://`); harness MCP config materialization; org-side
-   launch-artifact compilation for contained runners (container tooling
-   formats are compile targets, not vocabulary sources).
+3. **Shipped in v0.18.0** — manifest `roles` + `services` (org APIs, MCP
+   servers as `kind: mcp`; reference-first descriptions; URI secret
+   references such as `op://`), `our services`/`our roles` inspection,
+   `our setup --role` with role-filtered guidance and service visibility,
+   umbrella-root `.mcp.json` materialized only from checked-in or inline
+   connection data, and doctor service-health checks (see
+   `docs/plans/2026-06-12-v018-scope.md`).
+4. **Next** — org-side launch-artifact compilation for contained runners
+   (container tooling formats are compile targets, not vocabulary sources);
+   descriptor fetch/cache as derived local state.
 
 ## Non-Goals
 

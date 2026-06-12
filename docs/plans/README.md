@@ -7,9 +7,9 @@ noted successor wins on conflict).
 
 | Plan | Status | Notes |
 |---|---|---|
-| [2026-06-12-v018-scope](2026-06-12-v018-scope.md) | active (converged) | v0.18 = manifest `services` + `roles`, inspection verbs, `our setup --role`, umbrella-root `.mcp.json` from local/inline connection data only, doctor checks. Session GC and Mode B compile deferred. |
+| [2026-06-12-v018-scope](2026-06-12-v018-scope.md) | shipped (v0.18.0) | Manifest `services` + `roles`, inspection verbs, `our setup --role`, umbrella-root `.mcp.json` from local/inline connection data only, doctor service checks. Session GC and Mode B compile deferred. |
 | [2026-06-11-products-repos-split](2026-06-11-products-repos-split.md) | shipped (v0.15.0) | Catalog products are business entities linking repos; `catalog/repos.json` + `our repos` noun + `--repo` launch flags. Private fluxinc manifest migrated in step. |
-| [2026-06-10-execution-plane](2026-06-10-execution-plane.md) | active | Mode A sessions shipped in v0.14.0 and hardened in v0.16.0; v0.17.0 revised launches to opt-in sessions (`--new-session`/`--session`) with session-aware content commands. Contained runners plus manifest `roles`/`services` remain active. |
+| [2026-06-10-execution-plane](2026-06-10-execution-plane.md) | active | Mode A sessions shipped v0.14.0–v0.17.0 (opt-in launches, session-aware content commands); manifest `roles`/`services` with Mode A MCP materialization shipped in v0.18.0. Contained runners (Mode B compile) remain active. |
 | [2026-06-10-single-checkout-workspace](2026-06-10-single-checkout-workspace.md) | shipped (v0.13.0) | Control/data-plane split: private manifest repo + workspace content repo, `our publish`. The file's earlier visible-single-checkout draft is superseded by its final two-repo form. |
 | [2026-06-10-fleet-registry](2026-06-10-fleet-registry.md) | shipped (v0.9.0) | `our fleet` registry: one record per deployed instance, identifier resolution. |
 | [2026-06-10-support-knowledgebase](2026-06-10-support-knowledgebase.md) | shipped (v0.9.0) | `our support` anonymized problem-to-solution records. |
