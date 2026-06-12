@@ -33,11 +33,12 @@ For a fuller neutral reference, browse the
 which keeps the manifest fixture and content fixture in separate directories.
 
 When `our manifests sync` pulls or clones exactly one manifest, it also
-reconciles generated guidance and manifest skills for an existing matching
-umbrella. Derived state means the generated guidance (`AGENTS.md` and the
-`CLAUDE.md` pointer) and manifest-declared skills. Use `--no-derived` for a
-cache-only refresh when you know derived state is already current, or
-`--umbrella DIR` to target a specific umbrella.
+reconciles generated guidance, umbrella MCP config, and manifest skills for an
+existing matching umbrella. Derived state means generated guidance (`AGENTS.md`
+and the `CLAUDE.md` pointer), umbrella-root `.mcp.json`, and
+manifest-declared skills. Use `--no-derived` for a cache-only refresh when you
+know derived state is already current, or `--umbrella DIR` to target a
+specific umbrella.
 
 Manifests can also set the default sync publish policy:
 

@@ -68,6 +68,7 @@ private manifest repo (the control plane) plus a content repo at
 ├── workspace/      # manifest-declared content mount (its own repo)
 ├── repos/          # opted-in catalog repositories
 ├── personal/       # local-only scratch
+├── .mcp.json       # generated local MCP config
 ├── AGENTS.md       # generated root guidance
 └── CLAUDE.md       # compatibility pointer when supported
 ```

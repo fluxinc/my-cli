@@ -5,11 +5,11 @@
 ## Manifest
 
 The organization source of truth — the control plane. A manifest repo declares
-skills, mounts, catalog entries, tool hints, umbrella defaults, and generated
-guidance inputs. The manifest is not the workspace: the workspace is a mount
-of things the manifest defines. It lives in its own private repository
-outside the umbrella, so day-to-day work never edits it and hosting
-permissions can restrict who pushes it.
+skills, mounts, catalog entries, tool hints, services, roles, umbrella
+defaults, and generated guidance inputs. The manifest is not the workspace:
+the workspace is a mount of things the manifest defines. It lives in its own
+private repository outside the umbrella, so day-to-day work never edits it and
+hosting permissions can restrict who pushes it.
 
 Create a starter organization or register an existing manifest:
 
@@ -20,6 +20,14 @@ our manifests add acme <git-url>
 our manifests sync acme
 our manifests validate acme
 ```
+
+Services and roles are manifest vocabulary, not separate top-level concepts.
+`services` describe remote organization surfaces such as HTTP APIs and MCP
+servers using reference-first auth (`env://`, `op://`, `broker://`, or
+`none`). `roles` grant mounts, skills, tools, services, and optional guidance
+fragments. In Mode A, `our setup --role <id>` stores the selected role locally,
+appends role guidance to `AGENTS.md`, and materializes an umbrella-root
+`.mcp.json` for locally described MCP services visible to that role.
 
 ## Skill
 
@@ -36,7 +44,8 @@ organization-specific is baked into the public CLI.
 ## Umbrella
 
 A per-user workspace envelope, normally `~/<org>`. It contains local state,
-generated guidance, content mounts, product repos, and local scratch. When
+generated guidance, content mounts, product repos, generated `.mcp.json`, and
+local scratch. When
 initialized as a Gnit control workspace, multi-repo Change creation, ordered
 push, and resume use Gnit instead of Our AI reimplementing that transaction layer.
 Pins remain available for deliberate recorded workspace states.
@@ -78,7 +87,8 @@ umbrella; legacy `products/` checkouts migrate automatically at `our setup`.
 ## Guidance
 
 Generated root instructions for agents, written as `AGENTS.md`. `CLAUDE.md`
-points to the same file where supported.
+points to the same file where supported. Manifest role guidance is appended
+when the local umbrella has a selected role.
 
 ## Tool
 

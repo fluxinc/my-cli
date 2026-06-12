@@ -37,7 +37,8 @@ CLI deliberately does not grow human-workflow verbs; it grows content kinds.
 **Manifest** — an org's configuration in its own private Git repo, checked
 out locally on `manifests add` + `manifests sync`. The single source of truth
 for what skills exist, what mounts exist, what products are in the catalog,
-what tools the org expects, and the default `our sync` publish policy.
+what services and roles exist, what tools the org expects, and the default
+`our sync` publish policy.
 Validated by a schema (`manifests validate`). The manifest is the **control
 plane**: it is not the workspace — the workspace is a mount of things the
 manifest defines — and it lives outside the umbrella so day-to-day work never
@@ -69,13 +70,14 @@ pins, while the member repositories remain ordinary Git checkouts.
 ~/<org>/
 ├── .our/
 │   ├── workspace.json   identity: schema version, org, manifest ref, created_at
-│   └── state.json       dynamic: selected repos, per-mount sync status
+│   └── state.json       dynamic: selected repos/role, per-mount sync status
 ├── .gnit/                optional Gnit control metadata for multi-repo sync
 ├── workspace/           the org content repo (its own remote), mounted
 ├── <other mounts>/
 ├── repos/               opted-in catalog repositories
 ├── work/                isolated work sessions: git worktrees per mount
 ├── personal/            local-only, never synced — agent + human scratch
+├── .mcp.json            generated local MCP config for selected role services
 ├── AGENTS.md            generated workspace instructions for agents
 └── CLAUDE.md            alias for harnesses that read Claude-specific names
 ```
@@ -134,8 +136,16 @@ domain confirmation so meeting metadata can resolve to one canonical identity.
 
 **Guidance** — generated root instructions for agents. `our setup` writes
 `AGENTS.md` from the embedded public baseline plus manifest-declared guidance
-fragments, and points `CLAUDE.md` at the same content where the platform allows
-it. `our ai` checks guidance freshness before starting a harness.
+fragments plus any selected-role fragments, and points `CLAUDE.md` at the same
+content where the platform allows it. `our ai` checks guidance freshness before
+starting a harness.
+
+Manifest **services** and **roles** remain manifest vocabulary rather than new
+top-level concepts. Services describe remote organization surfaces such as HTTP
+APIs and MCP servers. Roles grant services and optional guidance fragments;
+`our setup --role <id>` stores the local role selection and materializes
+umbrella-root `.mcp.json` for locally described MCP services visible to that
+role. Roles do not prune mounts.
 
 **Tool** — an external executable the org depends on. The manifest declares
 purpose and install hints. `our doctor`, `our tools list`, and `our tools

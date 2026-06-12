@@ -11,6 +11,9 @@ Use the `our` CLI before falling back to ad hoc file searches:
   state; `our repos add <id>` clones one under `repos/<id>`.
 - `our customers list` shows canonical customer IDs and aliases.
 - `our mounts list` shows mounted handbook content and selected repos.
+- `our roles list` / `our roles get <id>` show manifest-declared operating
+  roles. `our services list` / `our services get <id>` show declared remote
+  surfaces such as HTTP APIs and MCP servers.
 - `our meetings list`, `our meetings search <text>`, and
   `our meetings get <id>` query local meeting notes; use `--customer`,
   `--partner`, and `--product` filters when those axes are known.
@@ -43,6 +46,10 @@ Operating orientation:
   the base umbrella, or from the current active session when run inside
   `work/<id>`. Use `our ai --new-session <harness>` for isolated content work;
   finish or discard session work with `our work finish --land|--publish|--discard`.
+- If the umbrella has a selected role, it is stored in `.our/state.json`.
+  Change it with `our setup --role <id>`; this regenerates role-specific
+  guidance and umbrella-root `.mcp.json` for MCP services visible to that
+  role.
 - Inspect active sessions with `our work status` or `our work list`; `our
   doctor` also reports session health.
 - Treat this base umbrella as inspection/admin space. Do not draft, edit, or

@@ -65,6 +65,44 @@ and repeatable `--skill-install-arg` — for tools that materialize their own
 skills; `edit` clears them with `--clear-skill-install` (and install commands
 or docs URLs with the matching `--clear-*` flags).
 
+## Services and roles
+
+Manifest `services` and `roles` are shared control-plane configuration. There
+are inspection verbs (`our services list|get`, `our roles list|get`) but no
+admin writer yet, so edit them in a maintainer checkout, validate, commit, and
+push:
+
+```json
+{
+  "services": [
+    {
+      "id": "docs-search",
+      "kind": "mcp",
+      "purpose": "Search workspace docs",
+      "auth_ref": "env://ACME_DOCS_TOKEN",
+      "connection": {
+        "type": "stdio",
+        "command": "acme-docs-mcp"
+      }
+    }
+  ],
+  "roles": [
+    {
+      "id": "operator",
+      "purpose": "Default operator role",
+      "guidance_paths": ["agent-guidance/operator.md"],
+      "services": ["docs-search"]
+    }
+  ]
+}
+```
+
+`our setup --role operator` stores the selected role locally, appends role
+guidance to generated `AGENTS.md`, and materializes umbrella-root `.mcp.json`
+for locally described MCP services granted to that role. `our doctor` reports
+URL-only descriptors, missing checked-in descriptors, unset environment
+variables, and missing optional resolver tools such as `op`.
+
 ## Admin aliases
 
 Use `our init` to create a new local manifest repo. Mutating or configuration
@@ -95,6 +133,10 @@ our manifests list
 our mounts list
 our tools list
 our tools info qmd
+our services list
+our services get docs-search
+our roles list
+our roles get operator
 our meetings list
 our meetings search cleanup
 our meetings get 2026-05-13-sampleco-followup

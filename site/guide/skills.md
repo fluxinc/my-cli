@@ -45,7 +45,9 @@ our skills show acme:handbook
 our skills status
 ```
 
-Use `--json` when an agent needs machine-readable output.
+Use `--json` when an agent needs machine-readable output. `our skills show`
+also surfaces manifest `requires` entries such as `service:<id>`, which name
+services the skill expects the workspace to provide.
 
 ## Install and reconcile
 
@@ -63,10 +65,10 @@ materializations. They do not edit the manifest.
 manifest targets by default. It leaves the bundled `our` self-skill to
 `our skills self ...`. Only the canonical id `our:self` is protected from
 pruning; a manifest-declared skill that happens to be named `our` is ordinary
-and removable. Pass `--no-prune` to only install or update. When the
-manifest itself changes, `our manifests sync` refreshes generated guidance and
-manifest skills for an existing matching umbrella unless `--no-derived` is
-passed.
+and removable. Pass `--no-prune` to only install or update. When the manifest
+itself changes, `our manifests sync` refreshes generated guidance, umbrella
+MCP config, and manifest skills for an existing matching umbrella unless
+`--no-derived` is passed.
 
 ## Provenance
 

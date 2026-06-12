@@ -19,11 +19,12 @@ our version
 our doctor
 ```
 
-`our doctor` reports manifest validity, generated guidance/skill drift, local
-Git freshness, and the last `.our/last-sync.json` audit when an umbrella is
-present. Add `--no-fetch` for an offline freshness check, or `--fix` to
-fast-forward clean stale manifest/content checkouts and reconcile derived
-skills/guidance.
+`our doctor` reports manifest validity, generated guidance/skill/MCP drift,
+service materialization health, local Git freshness, and the last
+`.our/last-sync.json` audit when an umbrella is present. Add `--no-fetch` for
+an offline freshness check, or `--fix` to fast-forward clean stale
+manifest/content checkouts and reconcile derived guidance, MCP config, and
+skills.
 
 ## Create an organization
 
@@ -68,6 +69,7 @@ running `our manifests sync` against a private repo.
 ```sh
 our setup
 # our setup --manifest acme    # only needed when several manifests are registered
+# our setup --role operator    # optional: select role-specific guidance/services
 ```
 
 With one registered manifest, every command defaults to it. Onboarding is safe to re-run.

@@ -29,7 +29,7 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
 `our` has eight concepts. Everything in the CLI is one of these:
 
 - **Manifest** — an organization's configuration in its own private Git repo:
-  declares skills, mounts, catalog, and tool hints. The single source of
+  declares skills, mounts, catalog, services, roles, and tool hints. The single source of
   truth, and the control plane only — the manifest is not the workspace; the
   workspace is a mount of things the manifest defines, and day-to-day work
   never edits the manifest. Registered locally with `our init <org-id>` for a
@@ -51,7 +51,7 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   repos), canonical customers, and repos (the organization's repositories,
   cloned on demand under `repos/<id>` via `our repos add`).
 - **Guidance** — the generated root `AGENTS.md` (and `CLAUDE.md` pointer) built
-  from a public baseline plus manifest fragments.
+  from a public baseline plus manifest and selected-role fragments.
 - **Tool** — an external executable the org depends on; `our` reports presence
   and install hints, it never silently installs tools.
 
@@ -64,7 +64,8 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   `our meetings list/search/get`, `our support list/search/get`,
   `our fleet list/search/get`,
   `our customers list`,
-  `our products list`, `our repos list/add/remove`, `our tools list/info`, `our root`,
+  `our products list`, `our repos list/add/remove`, `our tools list/info`,
+  `our services list/get`, `our roles list/get`, `our root`,
   `our ai`, `our doctor`, `our manifests list`, `our mounts list`,
   `our work start/status/list/resume/finish` (sessions are local execution-plane
   state; `finish --publish` only publishes what the sync policy allows), and
@@ -92,14 +93,14 @@ our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR]
                                     # create manifest + content repos locally and register them
 our publish [--manifest NAME] [--print]
                                     # create private remotes, rewrite local mount URLs, push both repos
-our setup [--manifest NAME] [--no-refresh] [--no-update-check]
-                                    # create umbrella, write guidance, install skills, sync mounts
+our setup [--manifest NAME] [--role ROLE] [--no-refresh] [--no-update-check]
+                                    # create umbrella, write guidance/MCP config, install skills, sync mounts
 our root [--repo ID] [--no-refresh] [--no-update-check]
                                     # print the umbrella (or repo) path
 our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--no-refresh] [--no-update-check] [harness]
                                     # verify guidance is current, then start a harness
                                     # --setup reconciles the umbrella first when guidance is stale or missing
-our doctor [--no-fetch] [--fix]   # git freshness, sessions, derived drift, last sync, manifests, tools
+our doctor [--no-fetch] [--fix]   # git freshness, sessions, services, derived drift, last sync, manifests, tools
 ```
 
 Use `our init` only when the user explicitly wants to create a new
@@ -119,6 +120,13 @@ dirty, diverged, repo, or remote-unknown repositories. Use `--no-refresh`
 for one command, `OUR_NO_AUTO_REFRESH=1` globally, or `OUR_REFRESH_TTL=30m`
 to tune the default six-hour window. `our ai` also ensures the bundled `our`
 self-skill is installed for the selected filesystem harness before exec.
+
+Use `our setup --role <id>` when the manifest declares local operating roles.
+The selected role is stored in `.our/state.json`; generated `AGENTS.md`
+includes that role's guidance fragments, and umbrella-root `.mcp.json` is
+materialized only for locally described MCP services granted to that role.
+Inspect available role and service declarations with `our roles list|get` and
+`our services list|get`. Roles never prune mounts.
 
 By default, `our ai` starts the harness from the base umbrella, or from the
 current active session when run inside `<umbrella>/work/<id>`. Treat the base
@@ -217,6 +225,8 @@ our skills install [harness...] | --all
 our skills sync                   # reconcile installs with the manifest (prune stale)
 our tools list                    # manifest-declared external tools
 our tools info <name>             # install hints for one external tool
+our services list|get             # manifest-declared remote surfaces
+our roles list|get                # manifest-declared operating roles
 ```
 
 ## Sync: reconcile and publish
@@ -231,7 +241,7 @@ divergent branches, and unsafe duplicate-remote checkouts are held back.
 our sync --print                  # plan only: show what would pull/push/hold (always safe)
 our sync                          # reconcile + publish per the auto policy
 our sync --scope repos            # limit to catalog repo clones (all|local|content|manifest|repos)
-our sync --no-derived             # skip skill/guidance reconcile after manifest changes
+our sync --no-derived             # skip derived guidance/MCP/skill reconcile after manifest changes
 our sync --publish never          # explicit local-only reconcile
 our sync --publish pr             # currently holds changes and reports PR-mode follow-up
 ```
@@ -244,8 +254,9 @@ after checking that it belongs in the shared content repo. Explicit `git add`
 also counts as adoption.
 
 "Derived" means the artifacts generated from the manifest: root guidance
-(`AGENTS.md` plus the `CLAUDE.md` pointer) and manifest-declared skills. Sync
-reconciles them automatically after a manifest checkout changes.
+(`AGENTS.md` plus the `CLAUDE.md` pointer), umbrella-root `.mcp.json`, and
+manifest-declared skills. Sync reconciles them automatically after a manifest
+checkout changes.
 
 Rule of thumb for the three similar verbs: `our sync` converges everything
 (use it by default); `our doctor` is the repair dry run — it diagnoses,
@@ -265,11 +276,15 @@ the current CLI yet. A manifest can set top-level `sync.publish_policy` to
 explicit CLI flag always wins. A non-print sync writes `.our/last-sync.json`;
 use `our doctor` to review the last publish/sync audit. `our doctor` fetches
 refs before reporting behind/ahead counts by default; pass `--no-fetch` for an
-offline view labeled as of the last fetch. It also reports active work-session
-health, missing session worktrees, and archived session counts. `our doctor
---fix` only fast-forwards clean stale manifest/content checkouts and reconciles
-generated guidance plus manifest skills; it reports dirty, diverged, repo,
-remote-unknown checkouts, and session work instead of touching them.
+offline view labeled as of the last fetch. It also reports service
+materialization health (URL-only MCP descriptors, missing checked-in
+descriptors, unset referenced environment variables, and missing optional
+resolver tools such as `op`), active work-session health, missing session
+worktrees, and archived session counts. `our doctor --fix` only
+fast-forwards clean stale manifest/content checkouts and reconciles generated
+guidance, umbrella `.mcp.json`, plus manifest skills; it reports dirty,
+diverged, repo, remote-unknown checkouts, and session work instead of touching
+them.
 
 ## Tips
 

@@ -9,12 +9,14 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
 
 - **`our sync`** converges the whole workspace. It pulls every registered
   repository (manifest cache, content mounts, catalog repo clones), reconciles
-  generated guidance and skills when the manifest changed, and publishes
-  local content that is safe to publish. This is the one routine verb — when
-  a startup notice says something is stale or unpublished, run this.
+  generated guidance, skills, and umbrella MCP config when the manifest
+  changed, and publishes local content that is safe to publish. This is the
+  one routine verb — when a startup notice says something is stale or
+  unpublished, run this.
 - **`our doctor`** is the dry run for installation and workspace repair: it
   diagnoses manifest validity, per-checkout Git freshness, derived
-  guidance/skill drift, work-session health, and the last sync audit,
+  guidance/skill/MCP drift, service materialization health, work-session
+  health, and the last sync audit,
   marking every repairable finding with `would ...` and a closing fixable
   count. Nothing changes until you re-run with `--fix`, which applies exactly
   that plan; findings `--fix` cannot repair (dirty, diverged, repo checkouts,
@@ -22,15 +24,16 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
 - **`our manifests sync`** refreshes the registered manifest cache. You need
   it before an umbrella exists (bootstrap) or when managing several
   registered manifests; when exactly one manifest changes and an umbrella is
-  known, it also reconciles generated guidance and manifest skills. Once an
-  umbrella is set up, plain `our sync` is still the routine command.
+  known, it also reconciles generated guidance, umbrella MCP config, and
+  manifest skills. Once an umbrella is set up, plain `our sync` is still the
+  routine command.
 
 ## Setup and launch
 
 ```sh
 our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
 our publish [--manifest NAME] [--home DIR] [--print] [--json]
-our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 our root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
@@ -143,6 +146,10 @@ our repos add <id> [--print] [--json]
 our repos remove <id> [--force] [--json]
 our tools list
 our tools info <name>
+our services list [--manifest NAME] [--home DIR] [--json]
+our services get <id> [--manifest NAME] [--home DIR] [--json]
+our roles list [--manifest NAME] [--home DIR] [--json]
+our roles get <id> [--manifest NAME] [--home DIR] [--json]
 ```
 
 `our sync` is the routine reconciliation command. `--backend auto` prefers Gnit
@@ -157,12 +164,12 @@ publish content. A manifest can set top-level `sync.publish_policy` to `auto`,
 `never`, or `pr` as the default when `--publish` is omitted; an explicit CLI
 flag always wins. Non-print syncs write `.our/last-sync.json`; `our doctor`
 reports that audit, per-checkout Git freshness, active and archived work
-sessions, and derived skill/guidance drift. Doctor fetches refs before
-behind/ahead checks unless `--no-fetch` is passed for an offline view.
-`doctor --fix` fast-forwards only clean stale manifest/content checkouts and
-reconciles derived guidance plus manifest skills. Sync performs the same
-derived reconcile after manifest checkout changes unless `--no-derived` is
-passed.
+sessions, service health, and derived guidance/skill/MCP drift. Doctor fetches
+refs before behind/ahead checks unless `--no-fetch` is passed for an offline
+view. `doctor --fix` fast-forwards only clean stale manifest/content checkouts
+and reconciles generated guidance, umbrella `.mcp.json`, and manifest skills.
+Sync performs the same derived reconcile after manifest checkout changes unless
+`--no-derived` is passed.
 
 `our root`, `our ai`, and `our setup` run a best-effort, TTL-gated
 refresh for clean manifest/content checkouts before using workspace context.
@@ -175,6 +182,12 @@ resume, or `--no-session` to ignore a current session for base
 inspection/admin/debug. Repo launches use `--repo <id>`. Use `--no-refresh`
 for one command, `OUR_NO_AUTO_REFRESH=1` globally, or `OUR_REFRESH_TTL=30m`
 to tune the default six-hour window.
+
+Manifest roles are selected locally with `our setup --role <id>`. The choice
+is stored in `.our/state.json`, appends that role's guidance fragments to
+`AGENTS.md`, and scopes generated `.mcp.json` to MCP services granted to the
+role. Services and roles are manifest vocabulary: inspect them with
+`our services list|get` and `our roles list|get`; they do not prune mounts.
 
 Those startup commands also emit a stderr-only notice when a newer Our AI release
 is available. Stdout remains clean for command substitutions such as

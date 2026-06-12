@@ -43,13 +43,13 @@ so agents know how to use the CLI itself.
 
 | Concept | What it is |
 |---|---|
-| **Manifest** | An organization's configuration, stored in its own private Git repo — the control plane. Declares skills, mounts, catalog, and tool hints. The single source of truth; it is not the workspace, and day-to-day work never touches it. |
+| **Manifest** | An organization's configuration, stored in its own private Git repo — the control plane. Declares skills, mounts, catalog, services, roles, and tool hints. The single source of truth; it is not the workspace, and day-to-day work never touches it. |
 | **Skill** | A capability installed into harness skill directories. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer). The CLI also ships one public, organization-neutral *self-skill* named `our`, embedded in the binary, that teaches harnesses how to use `our` itself. |
 | **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.our/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Gnit control workspace so multi-repo commits and pushes have one substrate. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
 | **Session** | An isolated unit of work under `work/<id>`: a git worktree per content mount on a fresh branch, plus session-local scratch. Create one with `our work start` or `our ai --new-session`; inspect it with `our work status` or `our work list`; work leaves only through `our work finish --land\|--publish\|--discard`. |
 | **Catalog** | JSON inventories for products (business entities, which may link repos), repos (the organization's repositories), and canonical customers. Users opt specific repos into their umbrella on demand. |
-| **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared fragments. `CLAUDE.md` points to the same file. |
+| **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared and role-specific fragments. `CLAUDE.md` points to the same file. |
 | **Tool** | An external executable the org depends on. `our` reports presence and install hints — it never silently installs tools. |
 
 Skills arrive from two places, split by a public/private line. The `our`
@@ -67,8 +67,8 @@ Run `our --help` for the authoritative surface. The essentials:
 ### Onboarding
 
 ```sh
-our setup [harness...] | --all   # create umbrella, write guidance, install skills, sync mounts
-                                    # [--manifest NAME] [--umbrella DIR] [--copy] [--link] [--print]
+our setup [harness...] | --all   # create umbrella, write guidance/MCP config, install skills, sync mounts
+                                    # [--manifest NAME] [--umbrella DIR] [--role ROLE] [--copy] [--link] [--print]
                                     # [--no-refresh] [--no-update-check]
 ```
 
@@ -134,8 +134,26 @@ our manifests validate <name|path>          # schema + reference checks
 
 When a non-print manifest sync pulls or clones exactly one manifest, `our`
 reconciles derived workspace artifacts for an existing matching umbrella:
-generated guidance and manifest skills. Pass `--no-derived` for a cache-only
-refresh or `--umbrella DIR` when the intended umbrella is not the current one.
+generated guidance, umbrella MCP config, and manifest skills. Pass
+`--no-derived` for a cache-only refresh or `--umbrella DIR` when the intended
+umbrella is not the current one.
+
+### Services and roles
+
+```sh
+our services list [--json]
+our services get <id> [--json]
+our roles list [--json]
+our roles get <id> [--json]
+our setup --role operator
+```
+
+Manifest `services` describe remote organization surfaces such as HTTP APIs and
+MCP servers. Manifest `roles` grant services and optional role-specific
+guidance without pruning mounts. `our setup --role <id>` stores the local role
+selection in `.our/state.json`, appends that role's guidance fragments to
+`AGENTS.md`, and materializes umbrella-root `.mcp.json` for locally described
+MCP services visible to the role.
 
 ### Skills
 
@@ -222,7 +240,7 @@ our sync --print                           # plan inbound refresh and outbound p
 our sync [--backend auto|gnit|builtin]         # auto prefers Gnit once the umbrella is initialized
 our sync --publish auto|never|direct|pr    # explicit override; direct is CLI-only
 our sync --scope all|local|content|manifest|repos  # limit to one repo class; repos = catalog repo clones
-our sync --no-derived                      # skip skill/guidance reconcile after manifest changes
+our sync --no-derived                      # skip derived guidance/MCP/skill reconcile after manifest changes
 ```
 
 `our sync` is the routine reconciliation command. Our AI classifies changes,
@@ -238,7 +256,8 @@ instead of being quietly committed. A manifest can set top-level
 `--publish` is omitted; an explicit CLI flag always wins. Non-print syncs write
 `.our/last-sync.json` so `our doctor` can show the last sync/publish audit.
 When sync pulls or publishes a manifest checkout, it reconciles generated
-guidance and manifest skills unless `--no-derived` is passed.
+guidance, umbrella MCP config, and manifest skills unless `--no-derived` is
+passed.
 
 ### Catalog
 
@@ -307,7 +326,7 @@ history. The status vocabulary is organization-defined.
 ```sh
 our tools list                             # declared tools across selected manifests
 our tools info <name>                      # install hints for a declared tool
-our doctor [--no-fetch] [--fix]            # git freshness, sessions, derived drift, last sync, manifests, tools
+our doctor [--no-fetch] [--fix]            # git freshness, sessions, services, derived drift, last sync, manifests, tools
 ```
 
 Data-returning commands expose `--json` where shown. Structured errors use a
@@ -315,10 +334,11 @@ machine-readable `{error, message, remediation}` with a concrete next command,
 so an agent that hits a wall can recover without a human.
 `our doctor` fetches refs before reporting behind/ahead counts by default; use
 `--no-fetch` for an offline view labeled as of the last fetch. It also reports
-active work sessions, missing session worktrees, and archived session counts.
-`--fix` only fast-forwards clean stale manifest/content checkouts and
-reconciles derived skills/guidance; dirty, diverged, repo, remote-unknown
-checkouts, and session work are reported rather than touched.
+service materialization health, active work sessions, missing session
+worktrees, and archived session counts. `--fix` only fast-forwards clean stale
+manifest/content checkouts and reconciles derived guidance, MCP config, and
+skills; dirty, diverged, repo, remote-unknown checkouts, and session work are
+reported rather than touched.
 
 ## Supported Harnesses
 
