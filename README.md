@@ -411,16 +411,18 @@ indexed in [docs/plans/](docs/plans/README.md):
   (active state, missing worktrees, archived counts), and `our work list`
   plus session-specific follow-up commands round out the session surface.
   Plan: [execution plane](docs/plans/2026-06-10-execution-plane.md), Mode A.
-- **Next — roles and services.** Manifest `roles` and `services`
-  extensions describing the organization's remote surfaces (APIs, MCP
-  servers, gated brokers), harness MCP config materialization, and org-side
-  launch-artifact compilation for contained runners. Plans:
+- **Next — roles and services (v0.18, Mode A).** Manifest `roles` and
+  `services` extensions describing the organization's remote surfaces (APIs,
+  MCP servers, gated brokers), inspection verbs, `our setup --role`, and
+  umbrella-root MCP config materialized from checked-in or inline connection
+  data — references only, never secrets or network fetches. Plans:
   [execution plane](docs/plans/2026-06-10-execution-plane.md),
-  [v0.18 scope](docs/plans/2026-06-12-v018-scope.md) (release slicing under
-  debate).
-- **Later — contained runners (Mode B) and substrate upgrades.** Compiling
-  manifests into container launch artifacts for governed fleet agents, a
-  gnit backend for sessions, and managed read-only base mounts. Plan:
+  [v0.18 scope](docs/plans/2026-06-12-v018-scope.md) (converged).
+- **Later — contained runners (Mode B) and substrate upgrades.** Org-side
+  launch-artifact compilation (`our launch compile`) and descriptor
+  fetch/cache, compiling manifests into container launch artifacts for
+  governed fleet agents, a gnit backend for sessions, and managed read-only
+  base mounts. Plan:
   [execution plane](docs/plans/2026-06-10-execution-plane.md).
 
 This section is kept current with every release and direction change; the
