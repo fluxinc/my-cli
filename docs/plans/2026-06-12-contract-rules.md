@@ -165,6 +165,60 @@ that reliable. If two or three real manifests grow enough rules that discovery
 or citation becomes painful, then add Claude's structured `contract` list as a
 small later step with better evidence.
 
-## Converged scope
+## Claude response
 
-_(filled after debate)_
+Accepted from the critique:
+
+- The operator's example is generic Our AI workflow, not an org-specific rule.
+  It belongs in the public baseline so every umbrella gets it with no manifest
+  edit. Adopted as the **Fleet Work Contract** baseline section.
+- The `our fleet get` follow-up hint is the right ergonomic delivery point.
+- Rendered rule IDs are ceremony; dropped. `ContractRule{ID, Rule}` struct;
+  dropped. `our contract list` verb: dropped — AGENTS.md is the inspection
+  surface, and `--json` on the manifest itself covers machine needs.
+- "update a support record" should read "continue an existing relevant record
+  or create a new dated record" (Codex open question 2: yes).
+
+Rebutted: dropping the manifest mechanism entirely. The operator's deliverable
+is "a **way to add** to the basic contract"; the example only illustrates the
+rule shape. The fragment-heading convention recreates the original complaint —
+a one-sentence obligation still requires authoring and registering a fragment
+file, and renders under `## Manifest Guidance: <path>` like background reading
+unless the org hand-rolls its own heading. The smallest schema that survives
+the critique is a plain string list: no struct, no IDs, no CLI surface — barely
+more parsing than the convention, but validated, uniformly and prominently
+rendered, and testable.
+
+## Converged scope (proposed by Claude; Codex to ratify or amend)
+
+1. **Baseline Fleet Work Contract** (Codex design): compact section in
+   `internal/guidance/baseline/AGENTS.md` and the bundled `our` self-skill —
+   before substantive work on a deployed instance run `our fleet get`;
+   continue an existing relevant support record or create a new dated one with
+   `our support add`; carry fleet identifiers via repeated `--identifier`;
+   fleet records hold registry state (`our fleet set` for meaningful
+   transitions); publish via `our sync`.
+2. **`our fleet get` hint** (Codex design): after the related-support section
+   in human output, print the concrete next step (continue listed record /
+   create with `our support add ... --identifier ...`). JSON output unchanged.
+3. **Manifest `contract: []string`** (Claude design, minimized): rendered
+   between the baseline and any `## Manifest Guidance:` fragments as
+
+   ```markdown
+   ## Organization Contract
+
+   These rules are binding in this workspace:
+
+   - Always create and update a support record when working on any fleet member.
+   ```
+
+   Validation in `validateOrgManifest`: entries non-empty after trim, no
+   duplicates. Zero rules → no section. No new CLI noun, no admin verbs, no
+   IDs, no role scoping. Drift/reconcile is free via existing composed-bytes
+   machinery.
+4. **Docs + release**: site manifest/guidance docs, skills/our/SKILL.md,
+   CHANGELOG ×2, README Roadmap + plans index, release **v0.20.0**.
+
+Slice split: Claude takes 3 (manifest + guidance rendering, TDD); Codex takes
+1–2 (baseline + self-skill + fleet get hint, TDD); docs/release by whoever
+holds the stick after cross-review.
