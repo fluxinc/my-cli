@@ -364,8 +364,14 @@ The combined path:
    worktrees, first-class registry, sync session-awareness), revised in v0.17.0 so
    `our ai` defaults to base launch while sessions are explicit with
    `--new-session`/`--session` and current-session cwd is honored.
-3. **Next** — manifest `roles` + `services` (MCP servers fold in as
-   `kind: mcp`); org-side launch-artifact compilation for contained
-   runners.
-4. Later — gnit backend for sessions once umbrellas bootstrap as gnit
+3. **v0.18.0** — manifest `roles` + `services` (MCP servers fold in as
+   `kind: mcp`), `our services`/`our roles` inspection, `our setup --role`,
+   umbrella-root `.mcp.json` from local connection data, doctor service
+   checks (see `docs/plans/2026-06-12-v018-scope.md`).
+4. **Next** — org-side launch-artifact compilation for contained runners
+   (`our launch compile`): manifest + role + skills + mounts compile into a
+   container launch artifact; the manifest `contract` list (v0.20.0) maps to
+   the artifact's enforce-level contract block rather than a parallel
+   dialect; descriptor fetch/cache as derived local state.
+5. Later — gnit backend for sessions once umbrellas bootstrap as gnit
    control workspaces; managed read-only base mounts for contained launches.

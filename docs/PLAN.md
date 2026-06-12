@@ -95,7 +95,9 @@ operator-approved combined path):
    `docs/plans/2026-06-12-v018-scope.md`).
 4. **Next** — org-side launch-artifact compilation for contained runners
    (container tooling formats are compile targets, not vocabulary sources);
-   descriptor fetch/cache as derived local state.
+   the manifest `contract` list maps to the artifact's enforce-level
+   contract block rather than a parallel dialect; descriptor fetch/cache as
+   derived local state.
 
 ## Non-Goals
 

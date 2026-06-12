@@ -429,23 +429,17 @@ indexed in [docs/plans/](docs/plans/README.md):
   record adoption (`our record adopt`, Git intent-to-add). Plans:
   [single-checkout workspace](docs/plans/2026-06-10-single-checkout-workspace.md),
   [execution plane](docs/plans/2026-06-10-execution-plane.md) (safety patch).
-- **Shipped — sessions (v0.14.0; opt-in launch revision v0.17.0).** `our work start|status|list|resume|finish`: visible
-  `work/<id>` git worktrees per session, a session registry consulted by
-  `our sync`, explicit `our ai --new-session`/`--session` launch paths, and
-  session-aware content commands so record writes from inside `work/<id>` stay
-  in the session worktree instead of the base workspace.
+- **Shipped — work sessions, Mode A (v0.14.0–v0.17.0).** `our work
+  start|status|list|resume|finish`: visible `work/<id>` git worktrees per
+  session, a session registry consulted by `our sync` and `our doctor`,
+  session-aware content commands, and opt-in launches via
+  `our ai --new-session`/`--session` (base umbrella remains the default).
   Plan: [execution plane](docs/plans/2026-06-10-execution-plane.md), Mode A.
 - **Shipped — products/repos split (v0.15.0).** Catalog products are pure
   business entities (no `git_url`) that may link implementing repos;
   organization repositories live in `catalog/repos.json` with an `our repos`
   noun and `--repo` launch flags, cloned under `repos/<id>`. Plan:
   [products/repos split](docs/plans/2026-06-11-products-repos-split.md).
-- **Shipped — session stability and ergonomics (v0.16.0).** Hardening of the
-  Mode A session loop: `our ai` no longer leaves an orphan session when the
-  harness binary is missing, `our doctor` reports work-session health
-  (active state, missing worktrees, archived counts), and `our work list`
-  plus session-specific follow-up commands round out the session surface.
-  Plan: [execution plane](docs/plans/2026-06-10-execution-plane.md), Mode A.
 - **Shipped — roles and services, Mode A (v0.18.0).** Manifest `roles` and
   `services` sections describing the organization's remote surfaces (APIs,
   MCP servers, gated brokers), `our services`/`our roles` inspection verbs,
@@ -468,11 +462,15 @@ indexed in [docs/plans/](docs/plans/README.md):
   `our contract list` plus `our admin contract add|remove` for the standard
   inspect/review-commit-push workflow. Plan:
   [contract rules](docs/plans/2026-06-12-contract-rules.md).
-- **Next — contained runners (Mode B) and substrate upgrades.** Org-side
-  launch-artifact compilation (`our launch compile`) and descriptor
-  fetch/cache, compiling manifests into container launch artifacts for
-  governed fleet agents, a gnit backend for sessions, and managed read-only
-  base mounts. Plan:
+- **Next — contained runners (Mode B).** Org-side launch-artifact
+  compilation (`our launch compile`): manifest + role + skills + mounts
+  compile into a container launch artifact for governed fleet agents, with
+  the manifest `contract` list mapping to the artifact's enforce-level
+  contract block, plus descriptor fetch/cache as derived local state. Plan:
+  [execution plane](docs/plans/2026-06-10-execution-plane.md).
+- **Later — substrate upgrades.** A gnit backend for sessions once umbrellas
+  bootstrap as gnit control workspaces, and managed read-only base mounts
+  for contained launches. Plan:
   [execution plane](docs/plans/2026-06-10-execution-plane.md).
 
 This section is kept current with every release and direction change; the
