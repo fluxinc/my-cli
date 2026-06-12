@@ -377,6 +377,51 @@ func TestValidateManifestCatchesInvalidAgentGuidancePaths(t *testing.T) {
 	}
 }
 
+func TestValidateManifestAllowsContractRules(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "contract": [
+    "Always create and update a support record when working on any fleet member.",
+    "Record decisions in the handbook before acting on them."
+  ]
+}`)
+	result := ValidateFile(dir)
+	if len(result.Errors) != 0 {
+		t.Fatalf("errors = %#v", result.Errors)
+	}
+	doc, _, err := LoadDocument(dir)
+	if err != nil {
+		t.Fatalf("LoadDocument: %v", err)
+	}
+	if len(doc.Contract) != 2 {
+		t.Fatalf("contract = %#v", doc.Contract)
+	}
+}
+
+func TestValidateManifestCatchesInvalidContractRules(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "contract": [
+    "  ",
+    "Always create and update a support record when working on any fleet member.",
+    "Always create and update a support record when working on any fleet member."
+  ]
+}`)
+	result := ValidateFile(dir)
+	if len(result.Errors) != 2 {
+		t.Fatalf("errors = %#v", result.Errors)
+	}
+	for _, err := range result.Errors {
+		if !strings.Contains(err, "contract") {
+			t.Fatalf("error %q does not mention contract", err)
+		}
+	}
+}
+
 func TestValidateManifestCatchesInvalidSyncPolicy(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `{

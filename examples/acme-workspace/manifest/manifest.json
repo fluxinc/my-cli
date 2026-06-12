@@ -103,5 +103,8 @@
         "docs-search"
       ]
     }
+  ],
+  "contract": [
+    "Always create and update a support record when working on any fleet member."
   ]
 }

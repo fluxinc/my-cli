@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Manifest `contract`: a list of short, binding organization rules rendered
+  as an `## Organization Contract` section in generated `AGENTS.md`, between
+  the public baseline and manifest guidance fragments. Validation rejects
+  empty and duplicate rules; existing guidance drift detection and derived
+  reconcile cover contract changes automatically.
+
 ## 0.19.0 - 2026-06-12
 
 ### Changed

@@ -116,6 +116,41 @@ func TestComposeWithOptionsAppendsRoleGuidance(t *testing.T) {
 	}
 }
 
+func TestComposeRendersOrganizationContract(t *testing.T) {
+	manifestRoot := t.TempDir()
+	writeGuidanceTestFile(t, filepath.Join(manifestRoot, "guidance", "base.md"), "base guidance\n")
+	doc := manifest.Document{
+		AgentGuidance: manifest.AgentGuidance{Paths: []string{"guidance/base.md"}},
+		Contract: []string{
+			"Always create and update a support record when working on any fleet member.",
+		},
+	}
+	data, err := Compose(manifestRoot, doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "## Organization Contract") {
+		t.Fatalf("composed guidance missing contract section:\n%s", got)
+	}
+	if !strings.Contains(got, "- Always create and update a support record when working on any fleet member.") {
+		t.Fatalf("composed guidance missing contract rule:\n%s", got)
+	}
+	if strings.Index(got, "## Organization Contract") > strings.Index(got, "base guidance") {
+		t.Fatalf("contract section should precede manifest guidance fragments:\n%s", got)
+	}
+}
+
+func TestComposeOmitsEmptyOrganizationContract(t *testing.T) {
+	data, err := Compose(t.TempDir(), manifest.Document{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "## Organization Contract") {
+		t.Fatalf("contract section rendered with no rules:\n%s", string(data))
+	}
+}
+
 func writeGuidanceTestFile(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

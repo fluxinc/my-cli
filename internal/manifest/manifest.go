@@ -66,6 +66,7 @@ type Document struct {
 	Tools                     []Tool        `json:"tools,omitempty"`
 	Services                  []Service     `json:"services,omitempty"`
 	Roles                     []Role        `json:"roles,omitempty"`
+	Contract                  []string      `json:"contract,omitempty"`
 }
 
 // Organization identifies the organization owning this manifest.
@@ -835,6 +836,23 @@ func validateOrgManifest(doc Document, result *ValidationResult) {
 		validateTool(t, result)
 	}
 	validateRoles(doc.Roles, mountIDs, skillIDs, tools, serviceIDs, result)
+	validateContract(doc.Contract, result)
+}
+
+func validateContract(rules []string, result *ValidationResult) {
+	seen := map[string]bool{}
+	for i, rule := range rules {
+		trimmed := strings.TrimSpace(rule)
+		if trimmed == "" {
+			result.Errors = append(result.Errors, fmt.Sprintf("contract entry %d must be non-empty rule text", i))
+			continue
+		}
+		if seen[trimmed] {
+			result.Errors = append(result.Errors, fmt.Sprintf("contract entry %d duplicates rule %q", i, trimmed))
+			continue
+		}
+		seen[trimmed] = true
+	}
 }
 
 func validateSyncPolicy(policy SyncPolicy, result *ValidationResult) {

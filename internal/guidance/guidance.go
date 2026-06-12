@@ -156,6 +156,14 @@ func ComposeWithOptions(manifestRoot string, doc manifest.Document, opts Options
 	out.WriteString("\n\n")
 	out.Write(bytes.TrimSpace(baseline))
 	out.WriteString("\n")
+	if len(doc.Contract) > 0 {
+		out.WriteString("\n## Organization Contract\n\nThese rules are binding in this workspace:\n\n")
+		for _, rule := range doc.Contract {
+			out.WriteString("- ")
+			out.WriteString(strings.TrimSpace(rule))
+			out.WriteString("\n")
+		}
+	}
 	paths := append([]string{}, doc.AgentGuidance.Paths...)
 	paths = append(paths, opts.RoleGuidancePaths...)
 	for _, path := range paths {
