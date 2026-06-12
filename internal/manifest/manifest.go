@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	pathpkg "path"
@@ -63,6 +64,8 @@ type Document struct {
 	Mounts                    []Mount       `json:"mounts,omitempty"`
 	Workspaces                []Workspace   `json:"workspaces,omitempty"`
 	Tools                     []Tool        `json:"tools,omitempty"`
+	Services                  []Service     `json:"services,omitempty"`
+	Roles                     []Role        `json:"roles,omitempty"`
 }
 
 // Organization identifies the organization owning this manifest.
@@ -169,6 +172,41 @@ type ToolInstall struct {
 type SkillInstall struct {
 	Command string   `json:"command"`
 	Args    []string `json:"args,omitempty"`
+}
+
+// Service describes one remote surface the organization may grant to roles
+// and skills. Secret material is always referenced, never stored here.
+type Service struct {
+	ID          string            `json:"id"`
+	Kind        string            `json:"kind"`
+	Purpose     string            `json:"purpose"`
+	DescribeRef string            `json:"describe_ref,omitempty"`
+	AuthRef     string            `json:"auth_ref"`
+	Grant       json.RawMessage   `json:"grant,omitempty"`
+	Connection  ServiceConnection `json:"connection,omitzero"`
+}
+
+// ServiceConnection is the small MCP/server.json-shaped subset v0.18 needs
+// to emit project MCP config without fetching remote descriptions.
+type ServiceConnection struct {
+	Type    string            `json:"type,omitempty"`
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	URL     string            `json:"url,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+// Role describes a named local/agent operating surface. In Mode A v0.18,
+// role grants filter generated guidance and visible services only.
+type Role struct {
+	ID            string   `json:"id"`
+	Purpose       string   `json:"purpose"`
+	GuidancePaths []string `json:"guidance_paths,omitempty"`
+	Mounts        []string `json:"mounts,omitempty"`
+	Skills        []string `json:"skills,omitempty"`
+	Tools         []string `json:"tools,omitempty"`
+	Services      []string `json:"services,omitempty"`
 }
 
 // Runner executes external commands. Tests can replace it.
@@ -779,8 +817,10 @@ func validateOrgManifest(doc Document, result *ValidationResult) {
 			tools[t.ID] = t
 		}
 	}
+	serviceIDs := validateServices(doc.Services, result)
+	skillIDs := manifestSkillIDs(doc)
 	for _, s := range doc.Skills {
-		validateSkill(s, allowed, mountIDs, tools, result)
+		validateSkill(s, allowed, mountIDs, tools, serviceIDs, result)
 	}
 	validateUmbrella(doc.Umbrella, result)
 	validateAgentGuidance(doc.AgentGuidance, result)
@@ -794,6 +834,7 @@ func validateOrgManifest(doc Document, result *ValidationResult) {
 	for _, t := range doc.Tools {
 		validateTool(t, result)
 	}
+	validateRoles(doc.Roles, mountIDs, skillIDs, tools, serviceIDs, result)
 }
 
 func validateSyncPolicy(policy SyncPolicy, result *ValidationResult) {
@@ -920,7 +961,193 @@ func validateMount(m Mount, result *ValidationResult) {
 	}
 }
 
-func validateSkill(s Skill, allowed, mountIDs map[string]bool, tools map[string]Tool, result *ValidationResult) {
+func validateServices(services []Service, result *ValidationResult) map[string]bool {
+	seen := map[string]bool{}
+	for _, service := range services {
+		validID := portableID(service.ID)
+		if !validID {
+			result.Errors = append(result.Errors, fmt.Sprintf("service id %q must be lowercase kebab-case", service.ID))
+		} else if seen[service.ID] {
+			result.Errors = append(result.Errors, fmt.Sprintf("duplicate service id %q", service.ID))
+		} else {
+			seen[service.ID] = true
+		}
+		validateService(service, result)
+	}
+	return seen
+}
+
+func validateService(service Service, result *ValidationResult) {
+	if strings.TrimSpace(service.Purpose) == "" {
+		result.Errors = append(result.Errors, fmt.Sprintf("service %q purpose is required", service.ID))
+	}
+	if !validServiceKind(service.Kind) {
+		result.Errors = append(result.Errors, fmt.Sprintf("service %q kind %q is unsupported", service.ID, service.Kind))
+	}
+	if strings.TrimSpace(service.AuthRef) == "" {
+		result.Errors = append(result.Errors, fmt.Sprintf("service %q auth_ref is required; use %q for public services", service.ID, "none"))
+	} else if !validAuthRef(service.AuthRef) {
+		result.Errors = append(result.Errors, fmt.Sprintf("service %q auth_ref %q must use op://, env://, broker://, or none", service.ID, service.AuthRef))
+	}
+	if service.DescribeRef == "" && service.Connection.IsZero() {
+		result.Errors = append(result.Errors, fmt.Sprintf("service %q describe_ref or connection is required", service.ID))
+	}
+	if service.DescribeRef != "" && !validDescribeRef(service.DescribeRef) {
+		result.Errors = append(result.Errors, fmt.Sprintf("service %q describe_ref %q must be an http(s) URL or a relative path inside the manifest repo", service.ID, service.DescribeRef))
+	}
+	if !service.Connection.IsZero() {
+		if service.Kind != "mcp" {
+			result.Errors = append(result.Errors, fmt.Sprintf("service %q connection is only supported for kind %q", service.ID, "mcp"))
+		}
+		validateServiceConnection(service.ID, service.Connection, result)
+	}
+}
+
+func validServiceKind(kind string) bool {
+	switch kind {
+	case "http", "mcp":
+		return true
+	default:
+		return false
+	}
+}
+
+func validAuthRef(value string) bool {
+	if strings.TrimSpace(value) != value {
+		return false
+	}
+	if value == "none" {
+		return true
+	}
+	switch {
+	case strings.HasPrefix(value, "env://"):
+		return envVarName(strings.TrimPrefix(value, "env://"))
+	case strings.HasPrefix(value, "op://"):
+		return nonBlankURIRef(strings.TrimPrefix(value, "op://"))
+	case strings.HasPrefix(value, "broker://"):
+		return nonBlankURIRef(strings.TrimPrefix(value, "broker://"))
+	default:
+		return false
+	}
+}
+
+func nonBlankURIRef(value string) bool {
+	return value != "" && !strings.ContainsAny(value, " \t\r\n")
+}
+
+func envVarName(value string) bool {
+	if value == "" {
+		return false
+	}
+	for i, r := range value {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || r == '_' {
+			continue
+		}
+		if i > 0 && r >= '0' && r <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validDescribeRef(value string) bool {
+	if strings.TrimSpace(value) != value || value == "" {
+		return false
+	}
+	if validHTTPURL(value) {
+		return true
+	}
+	return portableIncludePath(value)
+}
+
+func validHTTPURL(value string) bool {
+	u, err := url.Parse(value)
+	if err != nil {
+		return false
+	}
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+// IsZero lets encoding/json's omitzero tag omit empty inline connections.
+func (c ServiceConnection) IsZero() bool {
+	return c.Type == "" &&
+		c.Command == "" &&
+		len(c.Args) == 0 &&
+		len(c.Env) == 0 &&
+		c.URL == "" &&
+		len(c.Headers) == 0
+}
+
+func validateServiceConnection(serviceID string, connection ServiceConnection, result *ValidationResult) {
+	if strings.TrimSpace(connection.Type) != connection.Type {
+		result.Errors = append(result.Errors, fmt.Sprintf("service %q connection.type must not have surrounding whitespace", serviceID))
+	}
+	if strings.TrimSpace(connection.Command) != connection.Command {
+		result.Errors = append(result.Errors, fmt.Sprintf("service %q connection.command must not have surrounding whitespace", serviceID))
+	}
+	if strings.TrimSpace(connection.URL) != connection.URL {
+		result.Errors = append(result.Errors, fmt.Sprintf("service %q connection.url must not have surrounding whitespace", serviceID))
+	}
+	if connection.Command == "" && connection.URL == "" {
+		result.Errors = append(result.Errors, fmt.Sprintf("service %q connection must include command or url", serviceID))
+	}
+	if connection.URL != "" && !validHTTPURL(connection.URL) {
+		result.Errors = append(result.Errors, fmt.Sprintf("service %q connection.url %q must be an http(s) URL", serviceID, connection.URL))
+	}
+}
+
+func validateRoles(roles []Role, mountIDs, skillIDs map[string]bool, tools map[string]Tool, serviceIDs map[string]bool, result *ValidationResult) {
+	seen := map[string]bool{}
+	for _, role := range roles {
+		validID := portableID(role.ID)
+		if !validID {
+			result.Errors = append(result.Errors, fmt.Sprintf("role id %q must be lowercase kebab-case", role.ID))
+		} else if seen[role.ID] {
+			result.Errors = append(result.Errors, fmt.Sprintf("duplicate role id %q", role.ID))
+		} else {
+			seen[role.ID] = true
+		}
+		if strings.TrimSpace(role.Purpose) == "" {
+			result.Errors = append(result.Errors, fmt.Sprintf("role %q purpose is required", role.ID))
+		}
+		for _, path := range role.GuidancePaths {
+			if !portableIncludePath(path) {
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q guidance_paths entry %q must be a relative path that stays inside the manifest repo", role.ID, path))
+			}
+		}
+		for _, id := range role.Mounts {
+			if !portableID(id) {
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q mount grant %q must be lowercase kebab-case", role.ID, id))
+			} else if !mountIDs[id] {
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q grants unknown mount %q", role.ID, id))
+			}
+		}
+		for _, id := range role.Skills {
+			if !portableNamespacedID(id) {
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q skill grant %q must be namespace:name with lowercase kebab-case parts", role.ID, id))
+			} else if !skillIDs[id] {
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q grants unknown skill %q", role.ID, id))
+			}
+		}
+		for _, id := range role.Tools {
+			if !portableID(id) {
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q tool grant %q must be lowercase kebab-case", role.ID, id))
+			} else if _, ok := tools[id]; !ok {
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q grants unknown tool %q", role.ID, id))
+			}
+		}
+		for _, id := range role.Services {
+			if !portableID(id) {
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q service grant %q must be lowercase kebab-case", role.ID, id))
+			} else if !serviceIDs[id] {
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q grants unknown service %q", role.ID, id))
+			}
+		}
+	}
+}
+
+func validateSkill(s Skill, allowed, mountIDs map[string]bool, tools map[string]Tool, serviceIDs map[string]bool, result *ValidationResult) {
 	if s.ID == "" {
 		result.Errors = append(result.Errors, "skill id is required")
 	} else {
@@ -960,11 +1187,11 @@ func validateSkill(s Skill, allowed, mountIDs map[string]bool, tools map[string]
 		result.Errors = append(result.Errors, fmt.Sprintf("skill %q source.type %q is unsupported", s.ID, sourceType))
 	}
 	for _, req := range s.Requires {
-		validateSkillRequirement(s.ID, req, mountIDs, tools, result)
+		validateSkillRequirement(s.ID, req, mountIDs, tools, serviceIDs, result)
 	}
 }
 
-func validateSkillRequirement(skillID, req string, mountIDs map[string]bool, tools map[string]Tool, result *ValidationResult) {
+func validateSkillRequirement(skillID, req string, mountIDs map[string]bool, tools map[string]Tool, serviceIDs map[string]bool, result *ValidationResult) {
 	parts := strings.SplitN(req, ":", 2)
 	if len(parts) != 2 || !portableID(parts[0]) || !portableID(parts[1]) {
 		result.Errors = append(result.Errors, fmt.Sprintf("skill %q requires entry %q must be type:id with lowercase kebab-case parts", skillID, req))
@@ -978,6 +1205,10 @@ func validateSkillRequirement(skillID, req string, mountIDs map[string]bool, too
 	case "tool":
 		if _, ok := tools[parts[1]]; !ok {
 			result.Errors = append(result.Errors, fmt.Sprintf("skill %q requires unknown tool %q", skillID, parts[1]))
+		}
+	case "service":
+		if !serviceIDs[parts[1]] {
+			result.Errors = append(result.Errors, fmt.Sprintf("skill %q requires unknown service %q", skillID, parts[1]))
 		}
 	default:
 		result.Errors = append(result.Errors, fmt.Sprintf("skill %q requires unsupported dependency type %q", skillID, parts[0]))

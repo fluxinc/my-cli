@@ -418,6 +418,149 @@ func TestValidateManifestAllowsWorkspaceRequirementFromMount(t *testing.T) {
 	}
 }
 
+func TestValidateManifestAllowsServicesRolesAndServiceRequirements(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "agent_guidance": {
+    "paths": ["agent-guidance/acme.md"]
+  },
+  "skills": [
+    {
+      "id": "acme:handbook",
+      "install_slug": "acme-handbook",
+      "path": "skills/acme-handbook",
+      "requires": ["workspace:handbook", "tool:qmd", "service:docs-search"]
+    }
+  ],
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": "https://github.com/acme/acme-handbook.git",
+      "mode": "required"
+    }
+  ],
+  "tools": [
+    { "id": "qmd", "mode": "optional" }
+  ],
+  "services": [
+    {
+      "id": "docs-search",
+      "kind": "mcp",
+      "purpose": "Search the checked-in handbook index",
+      "describe_ref": "services/docs-search.server.json",
+      "auth_ref": "env://ACME_DOCS_TOKEN",
+      "grant": { "scope": "read" },
+      "connection": {
+        "type": "stdio",
+        "command": "acme-docs-mcp",
+        "args": ["--stdio"],
+        "env": { "ACME_DOCS_TOKEN": "${ACME_DOCS_TOKEN}" }
+      }
+    },
+    {
+      "id": "status-api",
+      "kind": "http",
+      "purpose": "Read-only status API",
+      "describe_ref": "https://api.example.com/openapi.json",
+      "auth_ref": "none",
+      "grant": "read"
+    }
+  ],
+  "roles": [
+    {
+      "id": "operator",
+      "purpose": "Default operator role",
+      "guidance_paths": ["agent-guidance/operator.md"],
+      "mounts": ["handbook"],
+      "skills": ["acme:handbook"],
+      "tools": ["qmd"],
+      "services": ["docs-search", "status-api"]
+    }
+  ]
+}`)
+	result := ValidateFile(dir)
+	if len(result.Errors) != 0 || len(result.Warnings) != 0 {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestValidateManifestCatchesInvalidServicesRolesAndServiceRequirements(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "skills": [
+    {
+      "id": "acme:handbook",
+      "install_slug": "acme-handbook",
+      "path": "skills/acme-handbook",
+      "requires": ["service:missing-service"]
+    }
+  ],
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": "https://github.com/acme/acme-handbook.git",
+      "mode": "required"
+    }
+  ],
+  "tools": [
+    { "id": "qmd", "mode": "optional" }
+  ],
+  "services": [
+    {
+      "id": "Bad Service",
+      "kind": "a2a",
+      "purpose": "",
+      "describe_ref": "../server.json",
+      "auth_ref": "secret-value"
+    },
+    {
+      "id": "status-api",
+      "kind": "http",
+      "purpose": "Status API",
+      "auth_ref": "none",
+      "connection": { "command": "status-mcp" }
+    }
+  ],
+  "roles": [
+    {
+      "id": "bad-role",
+      "purpose": "",
+      "guidance_paths": ["../private.md"],
+      "mounts": ["missing-mount"],
+      "skills": ["acme:missing"],
+      "tools": ["missing-tool"],
+      "services": ["missing-service"]
+    }
+  ]
+}`)
+	result := ValidateFile(dir)
+	for _, want := range []string{
+		`service id "Bad Service" must be lowercase kebab-case`,
+		`service "Bad Service" kind "a2a" is unsupported`,
+		`service "Bad Service" purpose is required`,
+		`service "Bad Service" auth_ref "secret-value" must use op://, env://, broker://, or none`,
+		`service "Bad Service" describe_ref "../server.json" must be an http(s) URL or a relative path inside the manifest repo`,
+		`service "status-api" connection is only supported for kind "mcp"`,
+		`skill "acme:handbook" requires unknown service "missing-service"`,
+		`role "bad-role" purpose is required`,
+		`role "bad-role" guidance_paths entry "../private.md" must be a relative path that stays inside the manifest repo`,
+		`role "bad-role" grants unknown mount "missing-mount"`,
+		`role "bad-role" grants unknown skill "acme:missing"`,
+		`role "bad-role" grants unknown tool "missing-tool"`,
+		`role "bad-role" grants unknown service "missing-service"`,
+	} {
+		if !containsString(result.Errors, want) {
+			t.Fatalf("errors missing %q:\n%#v", want, result.Errors)
+		}
+	}
+}
+
 func TestSaveDocumentRoundTripsExampleManifest(t *testing.T) {
 	source := filepath.Join("..", "..", "examples", "acme-workspace", "manifest", "manifest.json")
 	original, err := os.ReadFile(source)
@@ -658,6 +801,15 @@ func writeManifest(t *testing.T, dir, body string) {
 	if err := os.WriteFile(filepath.Join(dir, manifestFile), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func writeFile(t *testing.T, path, body string) {

@@ -1,0 +1,12 @@
+{
+  "name": "docs-search",
+  "description": "Search the public ACME fixture handbook.",
+  "type": "stdio",
+  "command": "acme-docs-mcp",
+  "args": [
+    "--stdio"
+  ],
+  "env": {
+    "ACME_DOCS_TOKEN": "${ACME_DOCS_TOKEN}"
+  }
+}

@@ -28,7 +28,8 @@
         "workspace"
       ],
       "requires": [
-        "workspace:handbook"
+        "workspace:handbook",
+        "service:docs-search"
       ]
     }
   ],
@@ -60,6 +61,47 @@
         ],
         "docs_url": "https://github.com/tobilu/qmd"
       }
+    }
+  ],
+  "services": [
+    {
+      "id": "docs-search",
+      "kind": "mcp",
+      "purpose": "Search the public ACME fixture handbook",
+      "describe_ref": "services/docs-search.server.json",
+      "auth_ref": "env://ACME_DOCS_TOKEN",
+      "grant": "read",
+      "connection": {
+        "type": "stdio",
+        "command": "acme-docs-mcp",
+        "args": [
+          "--stdio"
+        ],
+        "env": {
+          "ACME_DOCS_TOKEN": "${ACME_DOCS_TOKEN}"
+        }
+      }
+    }
+  ],
+  "roles": [
+    {
+      "id": "operator",
+      "purpose": "Default public fixture operator role",
+      "guidance_paths": [
+        "agent-guidance/acme.md"
+      ],
+      "mounts": [
+        "handbook"
+      ],
+      "skills": [
+        "acme:handbook"
+      ],
+      "tools": [
+        "qmd"
+      ],
+      "services": [
+        "docs-search"
+      ]
     }
   ]
 }
