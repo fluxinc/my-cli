@@ -24,8 +24,9 @@ const (
 
 // Options controls workspace guidance generation.
 type Options struct {
-	Force  bool
-	DryRun bool
+	Force             bool
+	DryRun            bool
+	RoleGuidancePaths []string
 }
 
 // Result describes generated workspace guidance status.
@@ -53,7 +54,7 @@ func Ensure(root, manifestRoot string, doc manifest.Document, opts Options) (Res
 		ClaudePath: claudePath,
 	}
 
-	content, err := Compose(manifestRoot, doc)
+	content, err := ComposeWithOptions(manifestRoot, doc, opts)
 	if err != nil {
 		return res, err
 	}
@@ -89,6 +90,12 @@ func Ensure(root, manifestRoot string, doc manifest.Document, opts Options) (Res
 // Check reports whether AGENTS.md and its CLAUDE.md alias match the generated
 // guidance for the supplied manifest. It never writes files.
 func Check(root, manifestRoot string, doc manifest.Document) (CheckResult, error) {
+	return CheckWithOptions(root, manifestRoot, doc, Options{})
+}
+
+// CheckWithOptions reports whether AGENTS.md and its CLAUDE.md alias match the
+// generated guidance for the supplied manifest and local role options.
+func CheckWithOptions(root, manifestRoot string, doc manifest.Document, opts Options) (CheckResult, error) {
 	agentsPath := filepath.Join(root, agentsFile)
 	claudePath := filepath.Join(root, claudeFile)
 	res := CheckResult{
@@ -96,7 +103,7 @@ func Check(root, manifestRoot string, doc manifest.Document) (CheckResult, error
 		ClaudePath: claudePath,
 	}
 
-	expected, err := Compose(manifestRoot, doc)
+	expected, err := ComposeWithOptions(manifestRoot, doc, opts)
 	if err != nil {
 		return res, err
 	}
@@ -134,6 +141,12 @@ func Check(root, manifestRoot string, doc manifest.Document) (CheckResult, error
 // Compose returns generated AGENTS.md content from the public baseline plus
 // manifest-declared fragments.
 func Compose(manifestRoot string, doc manifest.Document) ([]byte, error) {
+	return ComposeWithOptions(manifestRoot, doc, Options{})
+}
+
+// ComposeWithOptions returns generated AGENTS.md content from the public
+// baseline plus manifest-declared and locally selected role fragments.
+func ComposeWithOptions(manifestRoot string, doc manifest.Document, opts Options) ([]byte, error) {
 	baseline, err := baselineFS.ReadFile("baseline/AGENTS.md")
 	if err != nil {
 		return nil, err
@@ -143,7 +156,9 @@ func Compose(manifestRoot string, doc manifest.Document) ([]byte, error) {
 	out.WriteString("\n\n")
 	out.Write(bytes.TrimSpace(baseline))
 	out.WriteString("\n")
-	for _, path := range doc.AgentGuidance.Paths {
+	paths := append([]string{}, doc.AgentGuidance.Paths...)
+	paths = append(paths, opts.RoleGuidancePaths...)
+	for _, path := range paths {
 		fragmentPath := filepath.Join(manifestRoot, filepath.FromSlash(path))
 		if !pathWithin(fragmentPath, manifestRoot) {
 			return nil, fmt.Errorf("agent guidance path %q escapes manifest root", path)

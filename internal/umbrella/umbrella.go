@@ -33,6 +33,7 @@ type Workspace struct {
 type State struct {
 	SchemaVersion int           `json:"schema_version"`
 	SelectedRepos []string      `json:"selected_repos"`
+	SelectedRole  string        `json:"selected_role,omitempty"`
 	Mounts        []MountStatus `json:"mounts"`
 
 	// LegacySelectedProducts holds the pre-split selected_products key; it is

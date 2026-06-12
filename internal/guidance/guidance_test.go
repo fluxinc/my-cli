@@ -94,6 +94,28 @@ func TestCheckStatuses(t *testing.T) {
 	})
 }
 
+func TestComposeWithOptionsAppendsRoleGuidance(t *testing.T) {
+	manifestRoot := t.TempDir()
+	writeGuidanceTestFile(t, filepath.Join(manifestRoot, "guidance", "base.md"), "base guidance\n")
+	writeGuidanceTestFile(t, filepath.Join(manifestRoot, "guidance", "operator.md"), "operator guidance\n")
+	doc := manifest.Document{
+		AgentGuidance: manifest.AgentGuidance{Paths: []string{"guidance/base.md"}},
+	}
+	data, err := ComposeWithOptions(manifestRoot, doc, Options{
+		RoleGuidancePaths: []string{"guidance/operator.md"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "base guidance") || !strings.Contains(got, "operator guidance") {
+		t.Fatalf("composed guidance missing fragments:\n%s", got)
+	}
+	if strings.Index(got, "base guidance") > strings.Index(got, "operator guidance") {
+		t.Fatalf("role guidance should follow base guidance:\n%s", got)
+	}
+}
+
 func writeGuidanceTestFile(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

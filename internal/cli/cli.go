@@ -199,7 +199,7 @@ func (a app) printUsage() {
 	fmt.Fprintln(a.stdout, `our installs and manages manifest-backed AI workspace tooling.
 
 Usage:
-  our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   our root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
   our update [--check] [--version X.Y.Z] [--json] [--yes]
@@ -4977,7 +4977,11 @@ func (a app) reconcileDerived(home, manifestName, root string) (derivedReconcile
 	if err != nil {
 		return derivedReconcileReport{}, err
 	}
-	guidanceResult, err := guidance.Ensure(root, doc.ref.LocalPath, doc.doc, guidance.Options{})
+	guidanceOpts, err := guidanceOptionsForSelectedRole(root, doc.doc)
+	if err != nil {
+		return derivedReconcileReport{}, err
+	}
+	guidanceResult, err := guidance.Ensure(root, doc.ref.LocalPath, doc.doc, guidanceOpts)
 	if err != nil {
 		return derivedReconcileReport{}, err
 	}
@@ -5247,7 +5251,21 @@ func doctorGuidance(home, root, manifestName string) doctorItem {
 		item.Message = err.Error()
 		return item
 	}
-	result, err := guidance.Check(root, doc.ref.LocalPath, doc.doc)
+	opts := guidance.Options{}
+	if state, err := umbrella.LoadState(root); err == nil {
+		role, err := roleByID(doc.doc, state.SelectedRole)
+		if err != nil {
+			item.Status = "error"
+			item.Message = err.Error()
+			return item
+		}
+		opts.RoleGuidancePaths = role.GuidancePaths
+	} else if !errors.Is(err, os.ErrNotExist) {
+		item.Status = "error"
+		item.Message = err.Error()
+		return item
+	}
+	result, err := guidance.CheckWithOptions(root, doc.ref.LocalPath, doc.doc, opts)
 	if err != nil {
 		item.Status = "error"
 		item.Path = result.AgentsPath
@@ -5625,6 +5643,65 @@ func loadManifestServices(home, manifestName string) ([]manifest.Service, error)
 		services = append(services, doc.doc.Services...)
 	}
 	return services, nil
+}
+
+func visibleServices(doc manifest.Document, selectedRole string) ([]manifest.Service, error) {
+	role, err := roleByID(doc, selectedRole)
+	if err != nil {
+		return nil, err
+	}
+	if selectedRole == "" {
+		return append([]manifest.Service(nil), doc.Services...), nil
+	}
+	granted := make(map[string]bool, len(role.Services))
+	for _, id := range role.Services {
+		granted[id] = true
+	}
+	services := make([]manifest.Service, 0, len(role.Services))
+	for _, service := range doc.Services {
+		if granted[service.ID] {
+			services = append(services, service)
+		}
+	}
+	return services, nil
+}
+
+func roleByID(doc manifest.Document, selectedRole string) (manifest.Role, error) {
+	if selectedRole == "" {
+		return manifest.Role{}, nil
+	}
+	for _, role := range doc.Roles {
+		if role.ID == selectedRole {
+			return role, nil
+		}
+	}
+	return manifest.Role{}, fmt.Errorf("role %q not found; run our roles list", selectedRole)
+}
+
+func guidanceOptionsForSelectedRole(root string, doc manifest.Document) (guidance.Options, error) {
+	state, err := umbrella.LoadState(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return guidance.Options{}, nil
+	}
+	if err != nil {
+		return guidance.Options{}, err
+	}
+	role, err := roleByID(doc, state.SelectedRole)
+	if err != nil {
+		return guidance.Options{}, err
+	}
+	return guidance.Options{RoleGuidancePaths: role.GuidancePaths}, nil
+}
+
+func setupGuidanceOptions(root string, doc manifest.Document, opts skillsCommandOpts) (guidance.Options, error) {
+	if opts.role != "" {
+		role, err := roleByID(doc, opts.role)
+		if err != nil {
+			return guidance.Options{}, err
+		}
+		return guidance.Options{RoleGuidancePaths: role.GuidancePaths}, nil
+	}
+	return guidanceOptionsForSelectedRole(root, doc)
 }
 
 func (a app) runRoles(args []string) error {
@@ -8668,10 +8745,12 @@ func (a app) runOnboard(args []string) error {
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	fs.StringVar(&opts.manifestName, "manifest", "", "use skills declared by a synced manifest")
 	fs.StringVar(&opts.umbrellaRoot, "umbrella", "", "override umbrella root")
+	fs.StringVar(&opts.role, "role", "", "select a manifest role for generated guidance and service visibility")
 	rest, err := parseInterspersed(fs, args, map[string]bool{
 		"home":     true,
 		"manifest": true,
 		"umbrella": true,
+		"role":     true,
 	})
 	if err != nil {
 		return err
@@ -8702,6 +8781,7 @@ func (a app) runOnboard(args []string) error {
 		return err
 	}
 	var ws umbrella.Workspace
+	var state umbrella.State
 	if opts.print {
 		fmt.Fprintf(a.stderr, "# umbrella: %s\n", root)
 		ws = umbrella.Workspace{
@@ -8710,12 +8790,16 @@ func (a app) runOnboard(args []string) error {
 			ManifestRef:   doc.ref.Name,
 			WorkspaceRoot: root,
 		}
+		if existing, err := umbrella.LoadState(root); err == nil {
+			state = existing
+		}
 	} else {
-		ensured, _, err := umbrella.Ensure(root, doc.doc.Organization.ID, doc.ref.Name)
+		ensured, ensuredState, err := umbrella.Ensure(root, doc.doc.Organization.ID, doc.ref.Name)
 		if err != nil {
 			return err
 		}
 		ws = ensured
+		state = ensuredState
 		a.maybeAutoRefresh(opts.home, doc.ref.Name, root, root, opts.noRefresh)
 		a.maybeUpdateNotice(opts.home, opts.noUpdateCheck)
 		refreshed, err := loadSingleRegisteredDoc(opts.home, doc.ref.Name)
@@ -8724,9 +8808,29 @@ func (a app) runOnboard(args []string) error {
 		}
 		doc = refreshed
 	}
+	selectedRole := state.SelectedRole
+	if opts.role != "" {
+		selectedRole = opts.role
+	}
+	if selectedRole != "" {
+		if _, err := roleByID(doc.doc, selectedRole); err != nil {
+			return err
+		}
+	}
+	if !opts.print && opts.role != "" {
+		state.SelectedRole = opts.role
+		if err := umbrella.SaveState(root, state); err != nil {
+			return err
+		}
+	}
+	guidanceOpts, err := setupGuidanceOptions(root, doc.doc, opts)
+	if err != nil {
+		return err
+	}
 	guidanceResult, err := guidance.Ensure(root, doc.ref.LocalPath, doc.doc, guidance.Options{
-		Force:  opts.force,
-		DryRun: opts.print,
+		Force:             opts.force,
+		DryRun:            opts.print,
+		RoleGuidancePaths: guidanceOpts.RoleGuidancePaths,
 	})
 	if err != nil {
 		return err
@@ -9422,6 +9526,7 @@ type skillsCommandOpts struct {
 	home                   string
 	manifestName           string
 	umbrellaRoot           string
+	role                   string
 	quietSource            bool
 	skillRefs              stringListFlag
 	allowMissingToolSkills bool

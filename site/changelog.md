@@ -15,6 +15,9 @@
   requirements.
 - `our services list|get` and `our roles list|get` inspection commands with
   `--json`.
+- `our setup --role <id>` persists the selected role in `.our/state.json`,
+  appends role-specific guidance fragments to generated `AGENTS.md`, and
+  makes the selected role available for role-scoped service materialization.
 
 ## 0.17.0 - 2026-06-11
 

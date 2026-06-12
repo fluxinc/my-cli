@@ -5320,6 +5320,64 @@ Test skill.
 	}
 }
 
+func writeRoleSetupManifest(t *testing.T, home string) string {
+	t.Helper()
+	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "agent_guidance": { "paths": ["guidance/base.md"] },
+  "services": [
+    {
+      "id": "docs-search",
+      "kind": "mcp",
+      "purpose": "Search the handbook",
+      "auth_ref": "none",
+      "connection": {
+        "type": "stdio",
+        "command": "acme-docs-mcp"
+      }
+    },
+    {
+      "id": "status-api",
+      "kind": "http",
+      "purpose": "Status API",
+      "describe_ref": "https://status.acme.example/openapi.json",
+      "auth_ref": "none"
+    }
+  ],
+  "roles": [
+    {
+      "id": "operator",
+      "purpose": "Default operator role",
+      "guidance_paths": ["guidance/operator.md"],
+      "services": ["docs-search"]
+    },
+    {
+      "id": "auditor",
+      "purpose": "Audit role",
+      "guidance_paths": ["guidance/auditor.md"],
+      "services": ["status-api"]
+    }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "guidance", "base.md"), "base guidance\n")
+	writeCLITestFile(t, filepath.Join(manifestCache, "guidance", "operator.md"), "operator role guidance\n")
+	writeCLITestFile(t, filepath.Join(manifestCache, "guidance", "auditor.md"), "auditor role guidance\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "manifests", "add", "acme",
+		"https://github.com/acme/acme-ai-manifest.git",
+		"--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(home, "acme")
+}
+
 func TestServicesListAndGet(t *testing.T) {
 	home := t.TempDir()
 	writeServicesRolesManifest(t, home)
@@ -5423,5 +5481,106 @@ func TestSkillsShowSurfacesServiceRequirements(t *testing.T) {
 	}
 	if len(shown.Requires) != 1 || shown.Requires[0] != "service:docs-search" {
 		t.Fatalf("skills show --json requires = %+v", shown.Requires)
+	}
+}
+
+func TestSetupRolePersistsStateAndFiltersGuidance(t *testing.T) {
+	home := t.TempDir()
+	umbrellaRoot := writeRoleSetupManifest(t, home)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "setup",
+		"--manifest", "acme",
+		"--home", home,
+		"--role", "operator",
+		"--no-refresh",
+		"--no-update-check",
+	}); err != nil {
+		t.Fatalf("setup --role: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	state, err := umbrella.LoadState(umbrellaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.SelectedRole != "operator" {
+		t.Fatalf("selected role = %q", state.SelectedRole)
+	}
+	data, err := os.ReadFile(filepath.Join(umbrellaRoot, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	guidance := string(data)
+	for _, want := range []string{"base guidance", "operator role guidance"} {
+		if !strings.Contains(guidance, want) {
+			t.Fatalf("AGENTS.md missing %q:\n%s", want, guidance)
+		}
+	}
+	if strings.Contains(guidance, "auditor role guidance") {
+		t.Fatalf("AGENTS.md included unselected role guidance:\n%s", guidance)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"our", "doctor",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+		"--no-fetch",
+	}); err != nil {
+		t.Fatalf("doctor: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "umbrella\tguidance\tok") {
+		t.Fatalf("doctor stdout should report guidance ok:\n%s", stdout.String())
+	}
+}
+
+func TestSetupRoleRejectsUnknownRole(t *testing.T) {
+	home := t.TempDir()
+	writeRoleSetupManifest(t, home)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{
+		"our", "setup",
+		"--manifest", "acme",
+		"--home", home,
+		"--role", "missing",
+		"--no-refresh",
+		"--no-update-check",
+	})
+	if err == nil || !strings.Contains(err.Error(), `role "missing" not found; run our roles list`) {
+		t.Fatalf("setup --role missing err = %v", err)
+	}
+}
+
+func TestVisibleServicesHonorsSelectedRole(t *testing.T) {
+	doc := manifest.Document{
+		Services: []manifest.Service{
+			{ID: "docs-search", Kind: "mcp", Purpose: "Search docs", AuthRef: "none"},
+			{ID: "status-api", Kind: "http", Purpose: "Status API", AuthRef: "none"},
+		},
+		Roles: []manifest.Role{
+			{ID: "operator", Purpose: "Operator", Services: []string{"docs-search"}},
+		},
+	}
+	all, err := visibleServices(doc, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("visibleServices without role = %#v", all)
+	}
+	filtered, err := visibleServices(doc, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || filtered[0].ID != "docs-search" {
+		t.Fatalf("visibleServices operator = %#v", filtered)
+	}
+	if _, err := visibleServices(doc, "missing"); err == nil || !strings.Contains(err.Error(), "our roles list") {
+		t.Fatalf("visibleServices missing err = %v", err)
 	}
 }

@@ -75,7 +75,7 @@ func TestLoadStateMigratesSelectedProductsAndProductMounts(t *testing.T) {
 
 func TestSaveStateRoundTripsSelectedRepos(t *testing.T) {
 	root := t.TempDir()
-	state := State{SelectedRepos: []string{"alpha"}}
+	state := State{SelectedRepos: []string{"alpha"}, SelectedRole: "operator"}
 	if err := SaveState(root, state); err != nil {
 		t.Fatal(err)
 	}
@@ -86,11 +86,14 @@ func TestSaveStateRoundTripsSelectedRepos(t *testing.T) {
 	if len(loaded.SelectedRepos) != 1 || loaded.SelectedRepos[0] != "alpha" {
 		t.Fatalf("loaded = %#v", loaded)
 	}
+	if loaded.SelectedRole != "operator" {
+		t.Fatalf("selected role = %q", loaded.SelectedRole)
+	}
 	data, err := os.ReadFile(filepath.Join(root, DirName, StateFile))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(data) == "" || !strings.Contains(string(data), "selected_repos") || strings.Contains(string(data), "selected_products") {
+	if string(data) == "" || !strings.Contains(string(data), "selected_repos") || !strings.Contains(string(data), "selected_role") || strings.Contains(string(data), "selected_products") {
 		t.Fatalf("state file = %s", data)
 	}
 }
