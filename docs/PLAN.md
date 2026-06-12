@@ -1,7 +1,7 @@
 # our Implementation Plan
 
 Status: public-safe working plan for the published CLI repository,
-refreshed 2026-06-10 (v0.13.0). Long-form designs live in `docs/plans/`
+refreshed 2026-06-12 (v0.17.0). Long-form designs live in `docs/plans/`
 (see the index there); this file is the short orientation.
 
 ## Repository Shape
@@ -24,9 +24,10 @@ audiences:
 `our init` creates both locally; `our publish` creates the private remotes,
 rewrites mount URLs, and pushes. The umbrella (`~/<org>`) is not itself a
 Git repository; it is the per-user operating envelope containing `.our/`,
-mounts, product clones under `repos/`, and local scratch under `personal/`.
+mounts, catalog repo clones under `repos/`, work sessions under `work/`, and
+local scratch under `personal/`.
 
-## Current Baseline (v0.13.0)
+## Current Baseline (v0.17.0)
 
 - Go standard library only; external tools limited to git, gh, and
   manifest-declared optional tools.
@@ -39,14 +40,23 @@ mounts, product clones under `repos/`, and local scratch under `personal/`.
   self-skill kept current by the binary and installer.
 - Umbrella creation and guidance generation; sparse scoped mounts via
   `include_paths`.
-- Catalog: products (opt-in clones under `repos/<id>`) and customers.
+- Catalog: products as business entities that link implementing repos;
+  repos opted in on demand (`our repos add`) and cloned under `repos/<id>`;
+  canonical customers.
 - Markdown-first content commands: meetings, support, fleet (registry with
-  in-place updates), with qmd-first search when available.
-- Sync: bidirectional reconcile with auto-publish policy for private
+  in-place updates), with qmd-first search when available; records created
+  by the CLI are adopted via Git intent-to-add, the rest via
+  `our record adopt`.
+- Work sessions, opt-in: `work/<id>` git worktrees per writable mount
+  (`our work start|status|list|resume|finish`, `our ai
+  --new-session|--session <id>`); content commands and plain `our ai` are
+  session-aware when run inside one; `our doctor` reports session health;
+  `our sync` holds mounts with dirty or unlanded active sessions.
+- Sync: bidirectional reconcile with auto-publish policy for adopted private
   content, Gnit backend when the umbrella is a Gnit control workspace,
   `.our/last-sync.json` audit, `our doctor [--fix]`.
 - Self-update (`our update`) from GitHub releases with checksum
-  verification.
+  verification; TTL-gated startup refresh and stderr-only update notices.
 
 ## Active Direction
 
@@ -57,12 +67,15 @@ operator-approved combined path):
    untracked content files; records created by the CLI are adopted via Git
    intent-to-add, `our record adopt` (or an explicit `git add`) adopts the
    rest; held files are named with remediation.
-2. **Shipped in v0.14.0** — sessions: visible `work/<id>` per-session git worktrees of
-   writable mounts, `our work start|status|resume|finish`, `our ai` defaulting into
-   a fresh session, a first-class session registry consulted by sync.
+2. **Shipped in v0.14.0–v0.17.0** — sessions: visible `work/<id>` per-session
+   git worktrees of writable mounts, `our work start|status|list|resume|finish`,
+   a first-class session registry consulted by sync and doctor.
    Harness-agnostic by principle: no integration with any harness's internal
-   isolation mechanisms.
-3. **Next in v0.15** — manifest `roles` + `services` (org APIs, MCP servers as
+   isolation mechanisms. The launch default was revised after dogfood
+   (v0.17.0): `our ai` launches from the base umbrella, sessions are opt-in
+   via `--new-session`/`--session <id>`, and content commands resolve to the
+   session's mount worktrees when run inside one.
+3. **Next** — manifest `roles` + `services` (org APIs, MCP servers as
    `kind: mcp`, gated brokers; reference-first descriptions; URI secret
    references such as `op://`); harness MCP config materialization; org-side
    launch-artifact compilation for contained runners (container tooling

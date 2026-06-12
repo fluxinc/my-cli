@@ -32,6 +32,8 @@ The command converges local state. Re-run it when the manifest changes.
 - Git-backed content mounts.
 - Product and customer catalog inspection.
 - Meeting-note, support-record, and fleet-registry operations.
+- Opt-in isolated work sessions (`our work`, `our ai --new-session`), with
+  session-aware content commands inside a session.
 - Tool diagnostics and install hints.
 - Best-effort TTL-gated auto-refresh of clean manifest/content checkouts at
   startup (tunable via `--no-refresh`, `OUR_NO_AUTO_REFRESH`, `OUR_REFRESH_TTL`),

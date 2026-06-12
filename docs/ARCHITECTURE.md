@@ -32,7 +32,7 @@ Humans own agency — products, goals, decisions, ownership. That belongs in
 *content* (a manifest repo, handbook documents), not in CLI surface area. The
 CLI deliberately does not grow human-workflow verbs; it grows content kinds.
 
-## 3. The seven concepts
+## 3. The eight concepts
 
 **Manifest** — an org's configuration in its own private Git repo, checked
 out locally on `manifests add` + `manifests sync`. The single source of truth
@@ -60,10 +60,10 @@ carries no organization-specific content, so every org's particulars stay in the
 manifests they control.
 
 **Umbrella** — a per-user operating envelope (default `~/<org>`). It contains
-Our AI state, generated guidance, version-controlled mounts, product repositories,
-and local-only scratch. When initialized as a Gnit control workspace, the
-umbrella's root records workspace metadata and pins, while the member
-repositories remain ordinary Git checkouts.
+Our AI state, generated guidance, version-controlled mounts, opted-in catalog
+repositories, work sessions, and local-only scratch. When initialized as a
+Gnit control workspace, the umbrella's root records workspace metadata and
+pins, while the member repositories remain ordinary Git checkouts.
 
 ```
 ~/<org>/
@@ -74,6 +74,7 @@ repositories remain ordinary Git checkouts.
 ├── workspace/           the org content repo (its own remote), mounted
 ├── <other mounts>/
 ├── repos/               opted-in catalog repositories
+├── work/                isolated work sessions: git worktrees per mount
 ├── personal/            local-only, never synced — agent + human scratch
 ├── AGENTS.md            generated workspace instructions for agents
 └── CLAUDE.md            alias for harnesses that read Claude-specific names
@@ -81,15 +82,42 @@ repositories remain ordinary Git checkouts.
 
 `personal/` and `repos/` always exist after `setup`. Entity commands
 (`our meetings ...`) resolve against the umbrella by walking up from the
-working directory to find `.our/workspace.json`. If the caller is outside the
-umbrella, meeting commands use the single configured registered manifest's
-recommended umbrella when it has been set up.
+working directory to find `.our/workspace.json`; when the working directory
+is inside an active session under `work/<id>`, they resolve one level
+further, to that session's mount worktrees instead of the base mounts. If the
+caller is outside the umbrella, meeting commands use the single configured
+registered manifest's recommended umbrella when it has been set up.
 
 **Mount** — a Git-backed content folder cloned into the umbrella. Kinds include
 handbook, meetings, support, fleet, policy, docs. Modes: `required`, `default`,
 `optional`. Optional mounts are clone-if-accessible: if the user lacks access
 they are skipped with a warning, not a failure (RBAC by Git permissions, not by
 the CLI).
+
+**Session** — an isolated unit of work under `work/<id>` in the umbrella: a
+git worktree of each writable content mount on a fresh `our/work/<id>`
+branch, plus session-local scratch, a `SESSION.md` summary, and generated
+session guidance, recorded in a registry under `.our/sessions/`. Sessions are
+opt-in: `our work start` or `our ai --new-session` creates one, `our ai
+--session <id>` resumes one, and plain `our ai` launches from the base
+umbrella. Commands are session-aware by working directory — run inside an
+active session, content commands write to that session's mount worktrees and
+plain `our ai` stays in the session; a directory under `work/` that matches
+no active session is an error, never a silent fallback to base. Work leaves a
+session only through `our work finish --land | --publish | --discard`, and
+`our sync` holds outbound publish of a mount while an active session on it is
+dirty or unlanded.
+
+Sessions exist because writes are the risky operation: a half-edited tracked
+file or stray draft in the base checkout would otherwise ride the next
+`our sync` publish. Two mechanisms compose. Adoption-gated publishing means
+`our sync` only auto-publishes content files that were explicitly adopted —
+records created by the CLI are adopted via Git intent-to-add, and `our record
+adopt` (or a plain `git add`) adopts the rest. Sessions add structural
+isolation on top for work that should not touch the base checkout at all,
+while staying plain Git: a human can `cd` into a session and take over with
+ordinary commands. Keeping sessions opt-in keeps the default launch
+ergonomic for humans; agents are directed to the flag by generated guidance.
 
 **Catalog** — JSON inventories for products, repos, and canonical customers.
 Products are business entities: a name, description, purpose, optional links
@@ -167,14 +195,14 @@ outside its own tree.
    `agent_guidance.paths` declared by the manifest, and make `CLAUDE.md` point
    at it where the platform permits symlinks.
 6. Sync `required` and `default` mounts (scoped by `include_paths` if present).
-7. Re-sync any previously selected catalog products recorded in umbrella state.
+7. Re-sync any previously selected catalog repos recorded in umbrella state.
 
 Every step is convergent: re-running `setup` reconciles rather than
 duplicates.
 
 Startup commands (`our root`, `our ai`, and `our setup`) use the same
 best-effort refresh path. The guard is deliberately narrow: fast-forward only,
-clean manifest/content checkouts only, TTL-gated, and never product repos,
+clean manifest/content checkouts only, TTL-gated, and never catalog repos,
 dirty checkouts, diverged branches, or remote-unknown repos. Operators can use
 `--no-refresh`, `OUR_NO_AUTO_REFRESH=1`, or `OUR_REFRESH_TTL` when they need
 fully offline or deterministic reads.
