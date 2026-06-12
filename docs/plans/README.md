@@ -7,6 +7,7 @@ noted successor wins on conflict).
 
 | Plan | Status | Notes |
 |---|---|---|
+| [2026-06-12-v018-scope](2026-06-12-v018-scope.md) | active (debate) | v0.18 = manifest `services` + `roles`, Mode A MCP-config materialization, skill `service:` deps, session GC + update-check debts. Claude's opening position; Codex critique pending. |
 | [2026-06-11-products-repos-split](2026-06-11-products-repos-split.md) | shipped (v0.15.0) | Catalog products are business entities linking repos; `catalog/repos.json` + `our repos` noun + `--repo` launch flags. Private fluxinc manifest migrated in step. |
 | [2026-06-10-execution-plane](2026-06-10-execution-plane.md) | active | Mode A sessions shipped in v0.14.0 and hardened in v0.16.0; v0.17.0 revised launches to opt-in sessions (`--new-session`/`--session`) with session-aware content commands. Contained runners plus manifest `roles`/`services` remain active. |
 | [2026-06-10-single-checkout-workspace](2026-06-10-single-checkout-workspace.md) | shipped (v0.13.0) | Control/data-plane split: private manifest repo + workspace content repo, `our publish`. The file's earlier visible-single-checkout draft is superseded by its final two-repo form. |
