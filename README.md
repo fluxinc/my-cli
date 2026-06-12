@@ -439,6 +439,11 @@ indexed in [docs/plans/](docs/plans/README.md):
   fetches — and doctor service-health checks. Plans:
   [execution plane](docs/plans/2026-06-10-execution-plane.md),
   [v0.18 scope](docs/plans/2026-06-12-v018-scope.md).
+- **Shipped — CLI package refactor (v0.19.0).** The `internal/cli` package
+  and its tests are split into cohesive per-domain files, leaving `cli.go`
+  as a small app core/dispatcher/update shell and `cli_test.go` as shared
+  helpers plus cross-cutting tests. Plan:
+  [CLI package refactor](docs/plans/2026-06-12-cli-package-refactor.md).
 - **Next — contained runners (Mode B) and substrate upgrades.** Org-side
   launch-artifact compilation (`our launch compile`) and descriptor
   fetch/cache, compiling manifests into container launch artifacts for

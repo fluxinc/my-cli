@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.19.0 - 2026-06-12
+
+### Changed
+
+- Split the `internal/cli` implementation into per-domain files without
+  behavior changes: `cli.go` now holds only the app core, dispatcher, usage,
+  version, and update plumbing, while command implementations live with their
+  domains. The matching CLI tests were split into per-domain `_test.go`
+  files, leaving `cli_test.go` for shared helpers and cross-cutting tests.
+
 ## 0.18.0 - 2026-06-12
 
 ### Added
