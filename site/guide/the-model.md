@@ -88,7 +88,11 @@ umbrella; legacy `products/` checkouts migrate automatically at `our setup`.
 
 Generated root instructions for agents, written as `AGENTS.md`. `CLAUDE.md`
 points to the same file where supported. Manifest role guidance is appended
-when the local umbrella has a selected role.
+when the local umbrella has a selected role. The public baseline includes a
+built-in fleet work contract (start fleet work from `our fleet get`, record it
+in support records). A manifest can add its own short, binding rules with a
+top-level `contract` list of strings, rendered as an `## Organization
+Contract` section between the baseline and manifest guidance fragments.
 
 ## Tool
 

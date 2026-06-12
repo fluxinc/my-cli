@@ -1,7 +1,11 @@
 # Manifest contract rules
 
-Status: debate — Claude position drafted, awaiting Codex critique. Both agents
-amend this file in place; the converged section at the bottom wins.
+Status: shipped (v0.20.0). Kept as the debate record; the converged section at
+the bottom is what shipped. Open-question resolutions: the generated
+`our support add` hint stays customer + identifiers for v1 (product/area can
+join later if fleet records grow reliable passthrough fields); bare contract
+strings are sufficient for v0.20.0 given the documented future Mode B mapping
+to enforce-level Clawdapus includes.
 
 ## Goal (operator)
 

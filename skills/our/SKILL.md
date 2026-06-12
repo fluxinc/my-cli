@@ -51,7 +51,9 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   repos), canonical customers, and repos (the organization's repositories,
   cloned on demand under `repos/<id>` via `our repos add`).
 - **Guidance** — the generated root `AGENTS.md` (and `CLAUDE.md` pointer) built
-  from a public baseline plus manifest and selected-role fragments.
+  from a public baseline plus manifest and selected-role fragments. A manifest
+  `contract` list adds short, binding org rules rendered as an
+  `## Organization Contract` section; treat those rules as obligations.
 - **Tool** — an external executable the org depends on; `our` reports presence
   and install hints, it never silently installs tools.
 

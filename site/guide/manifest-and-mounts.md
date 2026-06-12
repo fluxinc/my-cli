@@ -56,6 +56,25 @@ Allowed values are `auto`, `never`, and `pr`. The setting applies when
 changes, content mounts, manifest checkouts, or catalog repo clones
 (`repos`).
 
+## Organization contract
+
+A manifest can add short, binding rules to the generated guidance with a
+top-level `contract` list:
+
+```json
+{
+  "contract": [
+    "Continue an existing relevant support record or create a new dated record when working on any fleet member."
+  ]
+}
+```
+
+Each entry must be a non-empty, single-line rule, with no duplicates. The rules
+render as an `## Organization Contract` section in generated `AGENTS.md`,
+between the public baseline and any manifest guidance fragments, so every
+harness sees them as obligations rather than background reading. Longer
+narrative guidance still belongs in `agent_guidance.paths` fragments.
+
 ## Mount lifecycle
 
 ```sh

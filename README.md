@@ -444,6 +444,13 @@ indexed in [docs/plans/](docs/plans/README.md):
   as a small app core/dispatcher/update shell and `cli_test.go` as shared
   helpers plus cross-cutting tests. Plan:
   [CLI package refactor](docs/plans/2026-06-12-cli-package-refactor.md).
+- **Shipped — contract rules (v0.20.0).** A built-in Fleet Work Contract in
+  generated guidance and the bundled self-skill (start fleet work from
+  `our fleet get`, record it in support records, carry identifiers), a
+  support-record next-step hint in `our fleet get` output, and a manifest
+  `contract` list of short, binding org rules rendered as an
+  `## Organization Contract` section in `AGENTS.md`. Plan:
+  [contract rules](docs/plans/2026-06-12-contract-rules.md).
 - **Next — contained runners (Mode B) and substrate upgrades.** Org-side
   launch-artifact compilation (`our launch compile`) and descriptor
   fetch/cache, compiling manifests into container launch artifacts for
