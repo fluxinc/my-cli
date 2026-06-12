@@ -5255,3 +5255,173 @@ func TestAdminRoutingDelegatesToTopLevelHandlers(t *testing.T) {
 		}
 	})
 }
+
+func writeServicesRolesManifest(t *testing.T, home string) {
+	t.Helper()
+	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "skills": [
+    {
+      "id": "acme:handbook",
+      "install_slug": "acme-handbook",
+      "path": "skills/acme-handbook",
+      "requires": ["service:docs-search"]
+    }
+  ],
+  "services": [
+    {
+      "id": "docs-search",
+      "kind": "mcp",
+      "purpose": "Search the handbook",
+      "describe_ref": "services/docs-search.server.json",
+      "auth_ref": "env://ACME_DOCS_TOKEN",
+      "grant": "read",
+      "connection": {
+        "type": "stdio",
+        "command": "acme-docs-mcp",
+        "args": ["--stdio"]
+      }
+    },
+    {
+      "id": "status-api",
+      "kind": "http",
+      "purpose": "Status API",
+      "describe_ref": "https://status.acme.example/openapi.json",
+      "auth_ref": "none"
+    }
+  ],
+  "roles": [
+    {
+      "id": "operator",
+      "purpose": "Default operator role",
+      "skills": ["acme:handbook"],
+      "services": ["docs-search"]
+    }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-handbook", "SKILL.md"), `---
+name: acme-handbook
+description: Handbook skill.
+---
+
+Test skill.
+`)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "manifests", "add", "acme",
+		"https://github.com/acme/acme-ai-manifest.git",
+		"--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestServicesListAndGet(t *testing.T) {
+	home := t.TempDir()
+	writeServicesRolesManifest(t, home)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "services", "list", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"docs-search", "Search the handbook", "status-api", "mcp", "http"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("services list stdout missing %q in:\n%s", want, stdout.String())
+		}
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"our", "services", "get", "docs-search", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	var service struct {
+		ID         string `json:"id"`
+		Kind       string `json:"kind"`
+		AuthRef    string `json:"auth_ref"`
+		Connection struct {
+			Command string `json:"command"`
+		} `json:"connection"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &service); err != nil {
+		t.Fatalf("services get --json: %v in:\n%s", err, stdout.String())
+	}
+	if service.ID != "docs-search" || service.Kind != "mcp" || service.AuthRef != "env://ACME_DOCS_TOKEN" || service.Connection.Command != "acme-docs-mcp" {
+		t.Fatalf("services get --json = %+v", service)
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"our", "services", "get", "nope", "--manifest", "acme", "--home", home}); err == nil {
+		t.Fatal("services get nope should fail")
+	} else if !strings.Contains(err.Error(), "nope") {
+		t.Fatalf("services get nope error = %v", err)
+	}
+}
+
+func TestRolesListAndGet(t *testing.T) {
+	home := t.TempDir()
+	writeServicesRolesManifest(t, home)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "roles", "list", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"operator", "Default operator role", "docs-search"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("roles list stdout missing %q in:\n%s", want, stdout.String())
+		}
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"our", "roles", "get", "operator", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	var role struct {
+		ID       string   `json:"id"`
+		Services []string `json:"services"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &role); err != nil {
+		t.Fatalf("roles get --json: %v in:\n%s", err, stdout.String())
+	}
+	if role.ID != "operator" || len(role.Services) != 1 || role.Services[0] != "docs-search" {
+		t.Fatalf("roles get --json = %+v", role)
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"our", "roles", "get", "nope", "--manifest", "acme", "--home", home}); err == nil {
+		t.Fatal("roles get nope should fail")
+	}
+}
+
+func TestSkillsShowSurfacesServiceRequirements(t *testing.T) {
+	home := t.TempDir()
+	writeServicesRolesManifest(t, home)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "skills", "show", "acme:handbook", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "service:docs-search") {
+		t.Fatalf("skills show stdout should surface service requirement, got:\n%s", stdout.String())
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"our", "skills", "show", "acme:handbook", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	var shown struct {
+		Requires []string `json:"Requires"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &shown); err != nil {
+		t.Fatalf("skills show --json: %v in:\n%s", err, stdout.String())
+	}
+	if len(shown.Requires) != 1 || shown.Requires[0] != "service:docs-search" {
+		t.Fatalf("skills show --json requires = %+v", shown.Requires)
+	}
+}

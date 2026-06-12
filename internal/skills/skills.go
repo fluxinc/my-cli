@@ -21,12 +21,13 @@ import (
 )
 
 type Skill struct {
-	Name        string // portable install slug / directory name
-	SkillName   string // SKILL.md `name:` field
-	SourcePath  string // absolute path to the skill directory
-	SourceRoot  string // root considered Our AI-managed for provenance
-	CanonicalID string // manifest namespace:name identity, when known
-	Description string // first line / folded scalar from SKILL.md
+	Name        string   // portable install slug / directory name
+	SkillName   string   // SKILL.md `name:` field
+	SourcePath  string   // absolute path to the skill directory
+	SourceRoot  string   // root considered Our AI-managed for provenance
+	CanonicalID string   // manifest namespace:name identity, when known
+	Description string   // first line / folded scalar from SKILL.md
+	Requires    []string // manifest workspace:/tool:/service: dependencies
 	Warnings    []string
 }
 
@@ -37,6 +38,7 @@ type DeclaredSkill struct {
 	Path         string
 	SourceRoot   string
 	SourceLabel  string
+	Requires     []string
 	AllowMissing bool
 }
 
@@ -112,6 +114,7 @@ func DiscoverDeclared(root string, declared []DeclaredSkill) ([]Skill, error) {
 					SourcePath:  sourcePath,
 					SourceRoot:  sourceRoot,
 					CanonicalID: declaredSkill.ID,
+					Requires:    declaredSkill.Requires,
 				})
 				continue
 			}
@@ -131,6 +134,7 @@ func DiscoverDeclared(root string, declared []DeclaredSkill) ([]Skill, error) {
 			SourceRoot:  sourceRoot,
 			CanonicalID: declaredSkill.ID,
 			Description: desc,
+			Requires:    declaredSkill.Requires,
 			Warnings:    warnings,
 		})
 	}

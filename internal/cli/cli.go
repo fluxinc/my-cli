@@ -180,6 +180,10 @@ func (a app) run(args []string) error {
 		return a.runProducts(args[2:])
 	case "repos":
 		return a.runRepos(args[2:])
+	case "services":
+		return a.runServices(args[2:])
+	case "roles":
+		return a.runRoles(args[2:])
 	case "admin":
 		return a.runAdmin(args[2:])
 	default:
@@ -255,6 +259,10 @@ Usage:
   our repos list [--json]
   our repos add <id>
   our repos remove <id> [--force]
+  our services list [--manifest NAME] [--json]
+  our services get <id> [--manifest NAME] [--json]
+  our roles list [--manifest NAME] [--json]
+  our roles get <id> [--manifest NAME] [--json]
   our doctor [--no-fetch] [--fix] [--json]
   our version`)
 }
@@ -5491,6 +5499,257 @@ func (a app) printProducts(products []manifest.Product) {
 	}
 }
 
+func (a app) runServices(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing services subcommand")
+	}
+	switch args[0] {
+	case "list":
+		return a.runServicesList(args[1:])
+	case "get":
+		return a.runServicesGet(args[1:])
+	case "-h", "--help", "help":
+		a.printServicesUsage()
+		return nil
+	default:
+		return fmt.Errorf("unknown services subcommand %q", args[0])
+	}
+}
+
+func (a app) printServicesUsage() {
+	fmt.Fprintln(a.stdout, `Usage:
+  our services list [--manifest NAME] [--home DIR] [--json]
+  our services get <id> [--manifest NAME] [--home DIR] [--json]
+
+Services are the organization's remote surfaces declared in the manifest.
+Secret material is always referenced (op://, env://, broker://), never stored.`)
+}
+
+func (a app) runServicesList(args []string) error {
+	var home, manifestName string
+	var jsonOut bool
+	fs := newFlagSet("our services list", a.stderr)
+	fs.StringVar(&home, "home", "", "override home directory")
+	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home":     true,
+		"manifest": true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("usage: our services list")
+	}
+	services, err := loadManifestServices(home, manifestName)
+	if err != nil {
+		return a.maybeJSONError(jsonOut, err)
+	}
+	if jsonOut {
+		return printJSON(a.stdout, services)
+	}
+	for i, service := range services {
+		if i != 0 {
+			fmt.Fprintln(a.stdout)
+		}
+		a.printService(service)
+	}
+	return nil
+}
+
+func (a app) runServicesGet(args []string) error {
+	var home, manifestName string
+	var jsonOut bool
+	fs := newFlagSet("our services get", a.stderr)
+	fs.StringVar(&home, "home", "", "override home directory")
+	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home":     true,
+		"manifest": true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: our services get <id>")
+	}
+	services, err := loadManifestServices(home, manifestName)
+	if err != nil {
+		return a.maybeJSONError(jsonOut, err)
+	}
+	for _, service := range services {
+		if service.ID == rest[0] {
+			if jsonOut {
+				return printJSON(a.stdout, service)
+			}
+			a.printService(service)
+			return nil
+		}
+	}
+	return a.maybeJSONError(jsonOut, fmt.Errorf("service %q not found; run our services list", rest[0]))
+}
+
+func (a app) printService(service manifest.Service) {
+	fmt.Fprintf(a.stdout, "%s - %s\n", service.ID, service.Purpose)
+	printHumanField(a.stdout, "kind", service.Kind)
+	printHumanField(a.stdout, "auth", service.AuthRef)
+	if service.DescribeRef != "" {
+		printHumanField(a.stdout, "describe", service.DescribeRef)
+	}
+	if len(service.Grant) != 0 {
+		grant := string(service.Grant)
+		var asString string
+		if err := json.Unmarshal(service.Grant, &asString); err == nil {
+			grant = asString
+		}
+		printHumanField(a.stdout, "grant", grant)
+	}
+	if !service.Connection.IsZero() {
+		if service.Connection.Command != "" {
+			printHumanField(a.stdout, "connection", "command "+service.Connection.Command)
+		} else if service.Connection.URL != "" {
+			printHumanField(a.stdout, "connection", "url "+service.Connection.URL)
+		}
+	}
+}
+
+func loadManifestServices(home, manifestName string) ([]manifest.Service, error) {
+	docs, err := loadRegisteredDocs(home, manifestName)
+	if err != nil {
+		return nil, err
+	}
+	services := []manifest.Service{}
+	for _, doc := range docs {
+		services = append(services, doc.doc.Services...)
+	}
+	return services, nil
+}
+
+func (a app) runRoles(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("missing roles subcommand")
+	}
+	switch args[0] {
+	case "list":
+		return a.runRolesList(args[1:])
+	case "get":
+		return a.runRolesGet(args[1:])
+	case "-h", "--help", "help":
+		a.printRolesUsage()
+		return nil
+	default:
+		return fmt.Errorf("unknown roles subcommand %q", args[0])
+	}
+}
+
+func (a app) printRolesUsage() {
+	fmt.Fprintln(a.stdout, `Usage:
+  our roles list [--manifest NAME] [--home DIR] [--json]
+  our roles get <id> [--manifest NAME] [--home DIR] [--json]
+
+Roles are named operating surfaces declared in the manifest. Role grants
+filter generated guidance and visible services; they never prune mounts.`)
+}
+
+func (a app) runRolesList(args []string) error {
+	var home, manifestName string
+	var jsonOut bool
+	fs := newFlagSet("our roles list", a.stderr)
+	fs.StringVar(&home, "home", "", "override home directory")
+	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home":     true,
+		"manifest": true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("usage: our roles list")
+	}
+	roles, err := loadManifestRoles(home, manifestName)
+	if err != nil {
+		return a.maybeJSONError(jsonOut, err)
+	}
+	if jsonOut {
+		return printJSON(a.stdout, roles)
+	}
+	for i, role := range roles {
+		if i != 0 {
+			fmt.Fprintln(a.stdout)
+		}
+		a.printRole(role)
+	}
+	return nil
+}
+
+func (a app) runRolesGet(args []string) error {
+	var home, manifestName string
+	var jsonOut bool
+	fs := newFlagSet("our roles get", a.stderr)
+	fs.StringVar(&home, "home", "", "override home directory")
+	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home":     true,
+		"manifest": true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: our roles get <id>")
+	}
+	roles, err := loadManifestRoles(home, manifestName)
+	if err != nil {
+		return a.maybeJSONError(jsonOut, err)
+	}
+	for _, role := range roles {
+		if role.ID == rest[0] {
+			if jsonOut {
+				return printJSON(a.stdout, role)
+			}
+			a.printRole(role)
+			return nil
+		}
+	}
+	return a.maybeJSONError(jsonOut, fmt.Errorf("role %q not found; run our roles list", rest[0]))
+}
+
+func (a app) printRole(role manifest.Role) {
+	fmt.Fprintf(a.stdout, "%s - %s\n", role.ID, role.Purpose)
+	if len(role.Mounts) != 0 {
+		printHumanField(a.stdout, "mounts", strings.Join(role.Mounts, ", "))
+	}
+	if len(role.Skills) != 0 {
+		printHumanField(a.stdout, "skills", strings.Join(role.Skills, ", "))
+	}
+	if len(role.Tools) != 0 {
+		printHumanField(a.stdout, "tools", strings.Join(role.Tools, ", "))
+	}
+	if len(role.Services) != 0 {
+		printHumanField(a.stdout, "services", strings.Join(role.Services, ", "))
+	}
+	if len(role.GuidancePaths) != 0 {
+		printHumanField(a.stdout, "guidance", strings.Join(role.GuidancePaths, ", "))
+	}
+}
+
+func loadManifestRoles(home, manifestName string) ([]manifest.Role, error) {
+	docs, err := loadRegisteredDocs(home, manifestName)
+	if err != nil {
+		return nil, err
+	}
+	roles := []manifest.Role{}
+	for _, doc := range docs {
+		roles = append(roles, doc.doc.Roles...)
+	}
+	return roles, nil
+}
+
 func printHumanField(w io.Writer, label, value string) {
 	const width = 88
 	text := strings.Join(strings.Fields(value), " ")
@@ -8945,6 +9204,9 @@ func (a app) printSkillShow(s skills.Skill) {
 	if s.SourceRoot != "" {
 		printHumanField(a.stdout, "source root", s.SourceRoot)
 	}
+	if len(s.Requires) != 0 {
+		printHumanField(a.stdout, "requires", strings.Join(s.Requires, ", "))
+	}
 }
 
 type skillStatusRow struct {
@@ -9639,6 +9901,7 @@ func (a app) discoverManifestSkillDocs(home string, docs []registeredDoc, allowM
 				Path:         path,
 				SourceRoot:   sourceRoot,
 				SourceLabel:  sourceLabel,
+				Requires:     skill.Requires,
 				AllowMissing: sourceType == "tool" && allowMissingToolSkills,
 			})
 		}

@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Manifest `services` and `roles` sections: services describe the
+  organization's remote surfaces (`kind: http|mcp`, `describe_ref`, URI
+  `auth_ref` such as `op://`, `env://`, `broker://`, or `none`, optional
+  server.json-shaped inline `connection` for MCP); roles grant mounts,
+  skills, tools, and services. Validation covers ids, kinds, auth/describe
+  references, connection shape, and grant resolution.
+- Skills may declare `requires: ["service:<id>"]` alongside the existing
+  `workspace:` and `tool:` forms; `our skills show` surfaces declared
+  requirements.
+- `our services list|get` and `our roles list|get` inspection commands with
+  `--json`.
+
 ## 0.17.0 - 2026-06-11
 
 ### Fixed
