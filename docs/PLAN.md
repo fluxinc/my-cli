@@ -1,7 +1,7 @@
 # our Implementation Plan
 
 Status: public-safe working plan for the published CLI repository,
-refreshed 2026-06-12 (v0.20.0). Long-form designs live in `docs/plans/`
+refreshed 2026-06-12 (v0.21.0). Long-form designs live in `docs/plans/`
 (see the index there); this file is the short orientation.
 
 ## Repository Shape
@@ -27,7 +27,7 @@ Git repository; it is the per-user operating envelope containing `.our/`,
 mounts, catalog repo clones under `repos/`, work sessions under `work/`, and
 local scratch under `personal/`.
 
-## Current Baseline (v0.20.0)
+## Current Baseline (v0.21.0)
 
 - Go standard library only; external tools limited to git, gh, and
   manifest-declared optional tools.
@@ -65,7 +65,9 @@ local scratch under `personal/`.
 - Contract rules: a built-in Fleet Work Contract in baseline guidance and the
   bundled self-skill, a support-record next-step hint in `our fleet get`
   output, and a manifest `contract` string list rendered as an
-  `## Organization Contract` section in generated `AGENTS.md`.
+  `## Organization Contract` section in generated `AGENTS.md`; inspected with
+  `our contract list` and edited with `our admin contract add|remove` through
+  the normal admin review-commit-push flow.
 
 ## Active Direction
 

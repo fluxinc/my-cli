@@ -155,6 +155,18 @@ selection in `.our/state.json`, appends that role's guidance fragments to
 `AGENTS.md`, and materializes umbrella-root `.mcp.json` for locally described
 MCP services visible to the role.
 
+### Contract rules
+
+```sh
+our contract list [--json]
+our admin contract add "RULE TEXT" --manifest-dir <checkout>
+our admin contract remove <index|"RULE TEXT"> --manifest-dir <checkout>
+```
+
+Manifest `contract` entries are short, binding organization rules rendered
+into generated `AGENTS.md`. Reads stay top-level; edits go through the admin
+review-commit-push flow against a maintainer manifest checkout.
+
 ### Skills
 
 ```sh
@@ -191,6 +203,8 @@ our admin skills remove <id|slug> --manifest-dir <checkout> [--prune-orphans]
 our admin tools add <id> --manifest-dir <checkout> --mode required|optional --purpose "..."
 our admin tools edit <id> --manifest-dir <checkout> [--purpose "..."]
 our admin tools remove <id> --manifest-dir <checkout>
+our admin contract add "RULE TEXT" --manifest-dir <checkout>
+our admin contract remove <index|"RULE TEXT"> --manifest-dir <checkout>
 ```
 
 Admin commands write a maintainer checkout, not the synced cache. They
@@ -214,6 +228,7 @@ our admin meetings add                # alias of our meetings add
 our admin support add                 # alias of our support add
 our admin customers add|edit          # edit catalog/customers.json
 our admin tools add|edit|remove       # edit manifest tools[]
+our admin contract add|remove         # edit manifest contract[]
 ```
 
 Admin aliases are intentionally limited to those mutating/configuration
@@ -444,12 +459,14 @@ indexed in [docs/plans/](docs/plans/README.md):
   as a small app core/dispatcher/update shell and `cli_test.go` as shared
   helpers plus cross-cutting tests. Plan:
   [CLI package refactor](docs/plans/2026-06-12-cli-package-refactor.md).
-- **Shipped — contract rules (v0.20.0).** A built-in Fleet Work Contract in
-  generated guidance and the bundled self-skill (start fleet work from
-  `our fleet get`, record it in support records, carry identifiers), a
-  support-record next-step hint in `our fleet get` output, and a manifest
+- **Shipped — contract rules and verbs (v0.20.0-v0.21.0).** A built-in Fleet
+  Work Contract in generated guidance and the bundled self-skill (start fleet
+  work from `our fleet get`, record it in support records, carry identifiers),
+  a support-record next-step hint in `our fleet get` output, a manifest
   `contract` list of short, binding org rules rendered as an
-  `## Organization Contract` section in `AGENTS.md`. Plan:
+  `## Organization Contract` section in `AGENTS.md`, and
+  `our contract list` plus `our admin contract add|remove` for the standard
+  inspect/review-commit-push workflow. Plan:
   [contract rules](docs/plans/2026-06-12-contract-rules.md).
 - **Next — contained runners (Mode B) and substrate upgrades.** Org-side
   launch-artifact compilation (`our launch compile`) and descriptor

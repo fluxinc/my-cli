@@ -1,7 +1,7 @@
 # Manifest contract rules
 
-Status: shipped (v0.20.0). Kept as the debate record; the converged section at
-the bottom is what shipped. Open-question resolutions: the generated
+Status: shipped (v0.20.0-v0.21.0). Kept as the debate record; the converged
+section at the bottom is what shipped. Open-question resolutions: the generated
 `our support add` hint stays customer + identifiers for v1 (product/area can
 join later if fleet records grow reliable passthrough fields); bare contract
 strings are sufficient for v0.20.0 given the documented future Mode B mapping
@@ -228,5 +228,22 @@ rendered, and testable.
    CHANGELOG ×2, README Roadmap + plans index, release **v0.20.0**.
 
 Slice split: Claude takes 3 (manifest + guidance rendering, TDD); Codex takes
-1–2 (baseline + self-skill + fleet get hint, TDD); docs/release by whoever
+1-2 (baseline + self-skill + fleet get hint, TDD); docs/release by whoever
 holds the stick after cross-review.
+
+## v0.21.0 follow-up
+
+Dogfooding showed that inspectable and editable contract rules are useful even
+without IDs or richer schema. The follow-up kept the string-list model and
+added only the minimal CLI surface:
+
+- `our contract list [--manifest NAME] [--json]` for operational inspection,
+  including the manifest name and 1-based position.
+- `our admin contract add "RULE" --manifest-dir DIR` for maintainer checkout
+  edits, rejecting duplicate, empty, and multiline rules.
+- `our admin contract remove <index|"RULE"> --manifest-dir DIR` for the
+  standard review-commit-push admin flow.
+
+This preserves the Mode B compatibility direction: the manifest contract
+remains a flat enforce-level rule list that can later compile to a
+Clawdapus-compatible contract include instead of becoming a parallel dialect.
