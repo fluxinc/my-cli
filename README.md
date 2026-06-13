@@ -469,7 +469,7 @@ indexed in [docs/plans/](docs/plans/README.md):
   `our customers list` now reads mounted `customers/*.md` records, customer
   alias resolution still feeds meetings/support/fleet filters, and
   `our admin customers add|edit` plus manifest `catalog/customers.json`
-  loading/validation are removed. Later data-surface slices remain active.
+  loading/validation are removed.
   Plan: [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 1.
 - **Shipped — data bindings over surfaces (v0.23.0).** Manifest `data_bindings`
   maps stable operational data nouns (`customers`, `meetings`, `support`,
@@ -477,9 +477,11 @@ indexed in [docs/plans/](docs/plans/README.md):
   bindings narrow today's local record commands; service-backed domain
   invocation remains deferred. Plan:
   [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 2.
-- **Next — domain notes over bound surfaces.** Data bindings will be able to
+- **Shipped — domain notes over bound surfaces (v0.24.0).** Data bindings can
   carry labeled guidance fragments for their backing surfaces without changing
-  the top-level org contract. Plan:
+  the top-level org contract. This completes the near-term data-surface scope;
+  service-backed domain invocation and contained runners remain future/YAGNI.
+  Plan:
   [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 3.
 - **Next — contained runners (Mode B).** Org-side launch-artifact
   compilation (`our launch compile`): manifest + role + skills + mounts

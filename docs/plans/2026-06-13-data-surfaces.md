@@ -1,8 +1,9 @@
 # Data Types over Data Surfaces
 
 Status: active, 2026-06-13. Slice 1 shipped in v0.22.0; Slice 2 shipped in
-v0.23.0; later slices remain draft. Supersedes the earlier RBAC-oriented
-draft.
+v0.23.0; Slice 3 shipped in v0.24.0. Service-backed domains and recursive
+claw-pod materialization remain future/YAGNI. Supersedes the earlier
+RBAC-oriented draft.
 
 ## Problem
 

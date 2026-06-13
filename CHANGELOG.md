@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.24.0 - 2026-06-13
+
 ### Added
 
 - Data bindings may carry domain-notes `guidance` fragments. Those fragments
