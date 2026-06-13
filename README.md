@@ -471,12 +471,16 @@ indexed in [docs/plans/](docs/plans/README.md):
   `our admin customers add|edit` plus manifest `catalog/customers.json`
   loading/validation are removed. Later data-surface slices remain active.
   Plan: [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 1.
-- **In progress — data bindings over surfaces.** Manifest `data_bindings`
+- **Shipped — data bindings over surfaces (v0.23.0).** Manifest `data_bindings`
   maps stable operational data nouns (`customers`, `meetings`, `support`,
   `fleet`) to existing `mount:<id>` or `service:<id>` surfaces. Mount-backed
   bindings narrow today's local record commands; service-backed domain
   invocation remains deferred. Plan:
   [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 2.
+- **Next — surface bundles and domain notes.** Active surfaces will be able to
+  contribute skills, MCPs, tools, and labeled guidance fragments without
+  changing the top-level org contract. Plan:
+  [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 3.
 - **Next — contained runners (Mode B).** Org-side launch-artifact
   compilation (`our launch compile`): manifest + role + skills + mounts
   compile into a container launch artifact for governed fleet agents, with

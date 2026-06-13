@@ -1,7 +1,8 @@
 # Data Types over Data Surfaces
 
-Status: active, 2026-06-13. Slice 1 shipped in v0.22.0; later slices remain
-draft. Supersedes the earlier RBAC-oriented draft.
+Status: active, 2026-06-13. Slice 1 shipped in v0.22.0; Slice 2 shipped in
+v0.23.0; later slices remain draft. Supersedes the earlier RBAC-oriented
+draft.
 
 ## Problem
 
