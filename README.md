@@ -462,6 +462,12 @@ indexed in [docs/plans/](docs/plans/README.md):
   `our contract list` plus `our admin contract add|remove` for the standard
   inspect/review-commit-push workflow. Plan:
   [contract rules](docs/plans/2026-06-12-contract-rules.md).
+- **Shipped — customer records move to the data plane (v0.22.0).**
+  `our customers list` now reads mounted `customers/*.md` records, customer
+  alias resolution still feeds meetings/support/fleet filters, and
+  `our admin customers add|edit` plus manifest `catalog/customers.json`
+  loading/validation are removed. Later data-surface slices remain active.
+  Plan: [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 1.
 - **Next — contained runners (Mode B).** Org-side launch-artifact
   compilation (`our launch compile`): manifest + role + skills + mounts
   compile into a container launch artifact for governed fleet agents, with

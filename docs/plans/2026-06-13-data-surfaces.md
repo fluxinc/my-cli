@@ -1,7 +1,7 @@
 # Data Types over Data Surfaces
 
-Status: draft, 2026-06-13. Supersedes the earlier RBAC-oriented draft.
-Nothing here is locked.
+Status: active, 2026-06-13. Slice 1 shipped in v0.22.0; later slices remain
+draft. Supersedes the earlier RBAC-oriented draft.
 
 ## Problem
 
