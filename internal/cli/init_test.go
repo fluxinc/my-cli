@@ -89,7 +89,6 @@ func TestInitCreatesManifestRepoAndRegisters(t *testing.T) {
 		filepath.Join(manifestRepo, "README.md"),
 		filepath.Join(manifestRepo, "agent-guidance", "acme.md"),
 		filepath.Join(manifestRepo, "skills", "acme-handbook", "SKILL.md"),
-		filepath.Join(manifestRepo, "catalog", "customers.json"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s: %v", path, err)
@@ -99,6 +98,7 @@ func TestInitCreatesManifestRepoAndRegisters(t *testing.T) {
 	for _, path := range []string{
 		filepath.Join(content, ".git"),
 		filepath.Join(content, "README.md"),
+		filepath.Join(content, "customers", "README.md"),
 		filepath.Join(content, "meetings", "README.md"),
 		filepath.Join(content, "support", "README.md"),
 		filepath.Join(content, "fleet", "README.md"),

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -307,31 +306,6 @@ func writeAdminManifest(t *testing.T, dir, extra string) {
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" }`+extra+`
 }`)
-}
-
-func setupAdminCustomerManifest(t *testing.T) string {
-	t.Helper()
-	manifestDir := t.TempDir()
-	writeAdminManifest(t, manifestDir, "")
-	data, err := os.ReadFile(filepath.Join("..", "..", "examples", "acme-workspace", "manifest", "catalog", "customers.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeCLITestFile(t, filepath.Join(manifestDir, "catalog", "customers.json"), string(data))
-	return manifestDir
-}
-
-func readAdminCustomers(t *testing.T, manifestDir string) []manifest.Customer {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(manifestDir, "catalog", "customers.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var customers []manifest.Customer
-	if err := json.Unmarshal(data, &customers); err != nil {
-		t.Fatal(err)
-	}
-	return customers
 }
 
 func setupCLISkillsManifestFixture(t *testing.T) string {

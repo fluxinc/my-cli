@@ -232,6 +232,12 @@ func TestValidateManifest(t *testing.T) {
       "mode": "optional"
     },
     {
+      "id": "customers",
+      "kind": "customers",
+      "git_url": "https://github.com/acme/acme-customers.git",
+      "mode": "optional"
+    },
+    {
       "id": "fleet",
       "kind": "fleet",
       "git_url": "https://github.com/acme/acme-fleet.git",
@@ -690,54 +696,6 @@ func TestLoadCatalogReadsProducts(t *testing.T) {
 	}
 	if !ok || product.Name != "Sample Product" {
 		t.Fatalf("product = %#v, ok=%v", product, ok)
-	}
-}
-
-func TestLoadCustomersReadsAliasesAndFQDNIDs(t *testing.T) {
-	home := t.TempDir()
-	ref, err := Add(home, "acme", "https://github.com/acme/acme-ai-manifest.git")
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, CustomerCatalogPath(ref), `[
-  {
-    "id": "sampleco.example.com",
-    "name": "SampleCo",
-    "domain": "sampleco.example.com",
-    "domain_confirmed": true,
-    "aliases": ["sampleco", "sc"],
-    "partners": ["integratorco"]
-  }
-]`)
-	customers, err := LoadCustomers(home, "acme")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(customers) != 1 || customers[0].ID != "sampleco.example.com" || len(customers[0].Aliases) != 2 {
-		t.Fatalf("customers = %#v", customers)
-	}
-	customer, ok, err := FindCustomer(home, "acme", "SC")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !ok || customer.ID != "sampleco.example.com" {
-		t.Fatalf("customer = %#v, ok=%v", customer, ok)
-	}
-}
-
-func TestValidateManifestCatchesDuplicateCustomerAlias(t *testing.T) {
-	dir := t.TempDir()
-	writeManifest(t, dir, `{
-  "manifest_version": 1,
-  "organization": { "id": "acme", "name": "Acme Example" }
-}`)
-	writeFile(t, filepath.Join(dir, "catalog", "customers.json"), `[
-  { "id": "first.example.com", "name": "First", "aliases": ["sampleco"] },
-  { "id": "second.example.com", "name": "Second", "aliases": ["sampleco"] }
-]`)
-	result := ValidateFile(dir)
-	if len(result.Errors) != 1 || !strings.Contains(result.Errors[0], "sampleco") {
-		t.Fatalf("errors = %#v", result.Errors)
 	}
 }
 

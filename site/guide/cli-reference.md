@@ -88,7 +88,6 @@ our admin manifests add|sync|validate ...
 our admin mounts add|remove|sync ...
 our admin meetings add ...
 our admin support add ...
-our admin customers add|edit <id> --manifest-dir DIR
 our admin tools add|edit|remove <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
 our admin contract add "RULE TEXT" --manifest-dir DIR [--force] [--json]
 our admin contract remove <index|"RULE TEXT"> --manifest-dir DIR [--force] [--json]
@@ -141,7 +140,7 @@ our fleet set <id> KEY=VALUE...
 
 our record adopt <path>
 
-our customers list
+our customers list                     # mounted customer identity records
 our products list
 our repos list [--json]
 our repos add <id> [--print] [--json]

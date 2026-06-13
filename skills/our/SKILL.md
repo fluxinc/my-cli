@@ -1,6 +1,6 @@
 ---
 name: our
-description: Use when working inside an Our AI umbrella (a per-user operating dir, e.g. ~/our, containing a .our/ directory and a generated AGENTS.md), or when the user asks about the `our` CLI, organization manifests, workspace skills, mounts, meeting notes, customers/catalog, onboarding a harness, or syncing/publishing local workspace changes. Also use when an AGENTS.md says the workspace is Our AI-managed.
+description: Use when working inside an Our AI umbrella (a per-user operating dir, e.g. ~/our, containing a .our/ directory and a generated AGENTS.md), or when the user asks about the `our` CLI, organization manifests, workspace skills, mounts, meeting notes, customers, the product catalog, onboarding a harness, or syncing/publishing local workspace changes. Also use when an AGENTS.md says the workspace is Our AI-managed.
 ---
 
 This skill teaches a harness how to operate inside an Our AI workspace.
@@ -41,15 +41,16 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   `.our/` identity namespace plus mounts and local scratch. Launch harnesses
   from here so they pick up the generated `AGENTS.md` context.
 - **Mount** — a Git-backed content folder cloned into the umbrella (handbook,
-  meeting notes, policy, docs).
+  customers, meeting notes, policy, docs).
 - **Session** — an isolated unit of work under `<umbrella>/work/<id>`: a git
   worktree per content mount on a fresh `our/work/<id>` branch, plus
   session-local `scratch/`, with a registry record under `.our/sessions/`.
   Create one with `our work start` or `our ai --new-session`; work leaves a
   session only through `our work finish --land | --publish | --discard`.
 - **Catalog** — JSON inventories: products (business entities, which may link
-  repos), canonical customers, and repos (the organization's repositories,
-  cloned on demand under `repos/<id>` via `our repos add`).
+  repos) and repos (the organization's repositories, cloned on demand under
+  `repos/<id>` via `our repos add`). Customer identities are mounted workspace
+  records, not manifest catalog rows.
 - **Guidance** — the generated root `AGENTS.md` (and `CLAUDE.md` pointer) built
   from a public baseline plus manifest and selected-role fragments. A manifest
   `contract` list adds short, binding org rules rendered as an
@@ -75,10 +76,11 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   `our sync --print`.
   `our update --check` is also safe for inspection. Run `our update` itself
   only when the user explicitly asks to update the local CLI binary.
-- **Admin** commands mutate the shared source of truth (the manifest, catalog,
-  guidance, skills declarations). They live under `our admin ...`
-  (`our admin skills add/remove`, `our admin customers add/edit`,
-  `our admin tools add/edit/remove`, `our admin contract add/remove`,
+- **Admin** commands mutate the shared source of truth (the manifest,
+  product/repo catalog, guidance, skills declarations). They live under
+  `our admin ...`
+  (`our admin skills add/remove`, `our admin tools add/edit/remove`,
+  `our admin contract add/remove`,
   `our admin manifests/mounts/meetings/support/setup`) and require explicit
   intent.
   Do not run them to "fix" something unless the user asked to change the
@@ -216,7 +218,7 @@ our support add     <slug> [--date DATE] [--title TEXT] [--customer ID] [--ident
                      # --claimed-by = org member who worked it; --observed-by repeatable
                      # for others involved; never set --approved-by without explicit
                      # operator approval — it is the human sign-off field
-our customers list  [--json]      # canonical customer IDs, aliases, partners
+our customers list  [--json]      # mounted customer IDs, aliases, partners
 ```
 
 Manage skills on this machine:

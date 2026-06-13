@@ -30,8 +30,8 @@ The command converges local state. Re-run it when the manifest changes.
 - Umbrella workspace creation.
 - Generated agent guidance.
 - Git-backed content mounts.
-- Product and customer catalog inspection.
-- Meeting-note, support-record, and fleet-registry operations.
+- Product catalog inspection and mounted customer-record inspection.
+- Customer, meeting-note, support-record, and fleet-registry operations.
 - Opt-in isolated work sessions (`our work`, `our ai --new-session`), with
   session-aware content commands inside a session.
 - Tool diagnostics and install hints.

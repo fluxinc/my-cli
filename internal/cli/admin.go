@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/fluxinc/our-ai/internal/manifest"
@@ -32,8 +31,6 @@ func (a app) runAdmin(args []string) error {
 		return a.runAdminMeetings(args[1:])
 	case "support":
 		return a.runAdminSupport(args[1:])
-	case "customers":
-		return a.runAdminCustomers(args[1:])
 	case "tools":
 		return a.runAdminTools(args[1:])
 	case "contract":
@@ -55,7 +52,6 @@ func (a app) printAdminUsage() {
   our admin mounts add|remove|sync ...        (alias of our mounts ...)
   our admin meetings add ...                 (alias of our meetings add)
   our admin support add ...                  (alias of our support add)
-  our admin customers add|edit ...           (edit manifest customer catalog)
   our admin contract add "RULE TEXT" --manifest-dir DIR [--force] [--json]
   our admin contract remove <index|"RULE TEXT"> --manifest-dir DIR [--force] [--json]
   our admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
@@ -141,25 +137,6 @@ func (a app) runAdminSupport(args []string) error {
 	}
 }
 
-func (a app) runAdminCustomers(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("missing admin customers subcommand")
-	}
-	switch args[0] {
-	case "add":
-		return a.runAdminCustomersAdd(args[1:])
-	case "edit":
-		return a.runAdminCustomersEdit(args[1:])
-	case "list":
-		return adminOperationalReadError("customers", args[0])
-	case "-h", "--help", "help":
-		a.printAdminUsage()
-		return nil
-	default:
-		return fmt.Errorf("unknown admin customers subcommand %q", args[0])
-	}
-}
-
 func (a app) runAdminTools(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("missing admin tools subcommand")
@@ -217,15 +194,6 @@ type adminSkillResult struct {
 	NextCommands    []string `json:"next_commands,omitempty"`
 }
 
-type adminCustomerResult struct {
-	Action       string            `json:"action"`
-	ID           string            `json:"id"`
-	CatalogPath  string            `json:"catalog_path"`
-	Customer     manifest.Customer `json:"customer"`
-	Message      string            `json:"message,omitempty"`
-	NextCommands []string          `json:"next_commands,omitempty"`
-}
-
 type adminToolResult struct {
 	Action       string        `json:"action"`
 	ID           string        `json:"id"`
@@ -233,17 +201,6 @@ type adminToolResult struct {
 	Tool         manifest.Tool `json:"tool,omitempty"`
 	Message      string        `json:"message,omitempty"`
 	NextCommands []string      `json:"next_commands,omitempty"`
-}
-
-type adminCustomerOpts struct {
-	manifestDir     string
-	name            optionalStringFlag
-	domain          optionalStringFlag
-	aliases         stringListFlag
-	partners        stringListFlag
-	domainConfirmed optionalBoolFlag
-	force           bool
-	jsonOut         bool
 }
 
 type adminToolOpts struct {
@@ -273,92 +230,6 @@ func (f *optionalStringFlag) String() string {
 func (f *optionalStringFlag) Set(value string) error {
 	f.value = strings.TrimSpace(value)
 	f.set = true
-	return nil
-}
-
-type optionalBoolFlag struct {
-	value bool
-	set   bool
-}
-
-func (f *optionalBoolFlag) String() string {
-	return strconv.FormatBool(f.value)
-}
-
-func (f *optionalBoolFlag) Set(value string) error {
-	parsed, err := strconv.ParseBool(value)
-	if err != nil {
-		return err
-	}
-	f.value = parsed
-	f.set = true
-	return nil
-}
-
-func (f *optionalBoolFlag) IsBoolFlag() bool {
-	return true
-}
-
-func (a app) runAdminCustomersAdd(args []string) error {
-	opts, rest, err := parseAdminCustomerOpts("our admin customers add", a.stderr, args)
-	if err != nil {
-		return err
-	}
-	if len(rest) != 1 || opts.manifestDir == "" {
-		return fmt.Errorf("usage: our admin customers add <id> --manifest-dir DIR")
-	}
-	result, err := a.adminCustomersAdd(rest[0], opts)
-	if err != nil {
-		return err
-	}
-	return a.printAdminCustomerResult(result, opts.jsonOut)
-}
-
-func (a app) runAdminCustomersEdit(args []string) error {
-	opts, rest, err := parseAdminCustomerOpts("our admin customers edit", a.stderr, args)
-	if err != nil {
-		return err
-	}
-	if len(rest) != 1 || opts.manifestDir == "" {
-		return fmt.Errorf("usage: our admin customers edit <id> --manifest-dir DIR")
-	}
-	result, err := a.adminCustomersEdit(rest[0], opts)
-	if err != nil {
-		return err
-	}
-	return a.printAdminCustomerResult(result, opts.jsonOut)
-}
-
-func parseAdminCustomerOpts(name string, stderr io.Writer, args []string) (adminCustomerOpts, []string, error) {
-	var opts adminCustomerOpts
-	fs := newFlagSet(name, stderr)
-	fs.StringVar(&opts.manifestDir, "manifest-dir", "", "maintainer manifest checkout")
-	fs.Var(&opts.name, "name", "customer display name")
-	fs.Var(&opts.domain, "domain", "customer domain")
-	fs.Var(&opts.aliases, "alias", "customer alias (repeatable)")
-	fs.Var(&opts.partners, "partner", "customer partner (repeatable)")
-	fs.Var(&opts.domainConfirmed, "domain-confirmed", "mark the customer domain as confirmed")
-	fs.BoolVar(&opts.force, "force", false, "allow dirty checkout")
-	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON result")
-	rest, err := parseInterspersed(fs, args, map[string]bool{
-		"manifest-dir": true,
-		"name":         true,
-		"domain":       true,
-		"alias":        true,
-		"partner":      true,
-	})
-	return opts, rest, err
-}
-
-func (a app) printAdminCustomerResult(result adminCustomerResult, jsonOut bool) error {
-	if jsonOut {
-		return printJSON(a.stdout, result)
-	}
-	fmt.Fprintf(a.stdout, "%s\t%s\t%s\n", result.Action, result.ID, result.CatalogPath)
-	if result.Message != "" {
-		fmt.Fprintln(a.stdout, result.Message)
-	}
-	printAdminNextCommands(a.stdout, result.NextCommands)
 	return nil
 }
 
@@ -466,73 +337,6 @@ func (a app) printAdminToolResult(result adminToolResult, jsonOut bool) error {
 	}
 	printAdminNextCommands(a.stdout, result.NextCommands)
 	return nil
-}
-
-func (a app) adminCustomersAdd(id string, opts adminCustomerOpts) (adminCustomerResult, error) {
-	root, customers, path, err := loadAdminCustomerCatalogFromCheckout(opts.manifestDir)
-	if err != nil {
-		return adminCustomerResult{}, err
-	}
-	if err := ensureAdminManifestClean(root, opts.force); err != nil {
-		return adminCustomerResult{}, err
-	}
-	id = strings.TrimSpace(id)
-	if !manifest.ValidCustomerID(id) {
-		return adminCustomerResult{}, fmt.Errorf("customer id %q must be lowercase FQDN-style or kebab-case", id)
-	}
-	if customerIndex(customers, id) != -1 {
-		return adminCustomerResult{}, fmt.Errorf("customer %q already exists", id)
-	}
-	customer := manifest.Customer{ID: id}
-	applyCustomerOpts(&customer, opts, true)
-	customers = append(customers, customer)
-	if err := manifest.ValidateCustomers(path, customers); err != nil {
-		return adminCustomerResult{}, err
-	}
-	if err := saveAdminCustomerCatalog(path, customers); err != nil {
-		return adminCustomerResult{}, err
-	}
-	return adminCustomerResult{
-		Action:       "added",
-		ID:           customer.ID,
-		CatalogPath:  path,
-		Customer:     customer,
-		Message:      "added customer catalog entry",
-		NextCommands: adminNextCommands(root),
-	}, nil
-}
-
-func (a app) adminCustomersEdit(id string, opts adminCustomerOpts) (adminCustomerResult, error) {
-	root, customers, path, err := loadAdminCustomerCatalogFromCheckout(opts.manifestDir)
-	if err != nil {
-		return adminCustomerResult{}, err
-	}
-	if err := ensureAdminManifestClean(root, opts.force); err != nil {
-		return adminCustomerResult{}, err
-	}
-	id = strings.TrimSpace(id)
-	if !manifest.ValidCustomerID(id) {
-		return adminCustomerResult{}, fmt.Errorf("customer id %q must be lowercase FQDN-style or kebab-case", id)
-	}
-	idx := customerIndex(customers, id)
-	if idx == -1 {
-		return adminCustomerResult{}, fmt.Errorf("customer %q does not exist", id)
-	}
-	applyCustomerOpts(&customers[idx], opts, false)
-	if err := manifest.ValidateCustomers(path, customers); err != nil {
-		return adminCustomerResult{}, err
-	}
-	if err := saveAdminCustomerCatalog(path, customers); err != nil {
-		return adminCustomerResult{}, err
-	}
-	return adminCustomerResult{
-		Action:       "edited",
-		ID:           customers[idx].ID,
-		CatalogPath:  path,
-		Customer:     customers[idx],
-		Message:      "updated customer catalog entry",
-		NextCommands: adminNextCommands(root),
-	}, nil
 }
 
 func (a app) adminToolsAdd(id string, opts adminToolOpts) (adminToolResult, error) {
@@ -700,35 +504,6 @@ func validToolMode(value string) bool {
 	default:
 		return false
 	}
-}
-
-func applyCustomerOpts(customer *manifest.Customer, opts adminCustomerOpts, add bool) {
-	if opts.name.set {
-		customer.Name = opts.name.value
-	}
-	if opts.domain.set {
-		customer.Domain = opts.domain.value
-	}
-	if len(opts.aliases) != 0 {
-		customer.Aliases = append([]string(nil), opts.aliases...)
-	}
-	if len(opts.partners) != 0 {
-		customer.Partners = append([]string(nil), opts.partners...)
-	}
-	if opts.domainConfirmed.set {
-		customer.DomainConfirmed = opts.domainConfirmed.value
-	} else if add {
-		customer.DomainConfirmed = false
-	}
-}
-
-func customerIndex(customers []manifest.Customer, id string) int {
-	for i, customer := range customers {
-		if customer.ID == id {
-			return i
-		}
-	}
-	return -1
 }
 
 func (a app) runAdminSkillsAdd(args []string) error {
@@ -1242,49 +1017,6 @@ func loadAdminProductCatalog(root string) ([]manifest.Product, string, bool, err
 		return nil, path, false, fmt.Errorf("read product catalog %s: %w", path, err)
 	}
 	return products, path, true, nil
-}
-
-func loadAdminCustomerCatalogFromCheckout(manifestDir string) (string, []manifest.Customer, string, error) {
-	_, _, root, err := loadAdminManifestCheckout(manifestDir)
-	if err != nil {
-		return "", nil, "", err
-	}
-	customers, path, _, err := loadAdminCustomerCatalog(root)
-	if err != nil {
-		return "", nil, "", err
-	}
-	return root, customers, path, nil
-}
-
-func loadAdminCustomerCatalog(root string) ([]manifest.Customer, string, bool, error) {
-	path := filepath.Join(root, "catalog", "customers.json")
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return []manifest.Customer{}, path, false, nil
-	}
-	if err != nil {
-		return nil, path, false, err
-	}
-	var customers []manifest.Customer
-	if err := json.Unmarshal(data, &customers); err != nil {
-		return nil, path, false, fmt.Errorf("read customer catalog %s: %w", path, err)
-	}
-	if err := manifest.ValidateCustomers(path, customers); err != nil {
-		return nil, path, false, err
-	}
-	return customers, path, true, nil
-}
-
-func saveAdminCustomerCatalog(path string, customers []manifest.Customer) error {
-	data, err := json.MarshalIndent(customers, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
 }
 
 func saveAdminProductCatalog(path string, products []manifest.Product) error {

@@ -208,7 +208,6 @@ Usage:
   our admin mounts add|remove|sync ...        (alias of our mounts ...)
   our admin meetings add ...                 (alias of our meetings add)
   our admin support add ...                  (alias of our support add)
-  our admin customers add|edit ...           (edit manifest customer catalog)
   our admin tools add|edit|remove ...        (edit manifest tool hints)
   our admin contract add|remove ...          (edit manifest contract rules)
   our manifests add <name> <git-url>

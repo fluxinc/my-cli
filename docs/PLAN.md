@@ -14,11 +14,11 @@ company-specific operating content.
 Each organization has two private repositories with distinct write
 audiences:
 
-- a **manifest repo** (control plane): `manifest.json`, catalog, skills,
-  agent guidance. Checked out at the registry path, outside the umbrella;
-  edited via `our admin` commands; admin-writable.
-- a **workspace repo** (data plane): meetings, support, fleet, decisions,
-  projects, policy, people. Mounted visibly in the umbrella at
+- a **manifest repo** (control plane): `manifest.json`, product/repo catalog,
+  skills, agent guidance. Checked out at the registry path, outside the
+  umbrella; edited via `our admin` commands; admin-writable.
+- a **workspace repo** (data plane): customers, meetings, support, fleet,
+  decisions, projects, policy, people. Mounted visibly in the umbrella at
   `<umbrella>/workspace`; org-writable.
 
 `our init` creates both locally; `our publish` creates the private remotes,
@@ -41,8 +41,8 @@ local scratch under `personal/`.
 - Umbrella creation and guidance generation; sparse scoped mounts via
   `include_paths`.
 - Catalog: products as business entities that link implementing repos;
-  repos opted in on demand (`our repos add`) and cloned under `repos/<id>`;
-  canonical customers.
+  repos opted in on demand (`our repos add`) and cloned under `repos/<id>`.
+  Customer identities are mounted markdown records read by `our customers`.
 - Markdown-first content commands: meetings, support, fleet (registry with
   in-place updates), with qmd-first search when available; records created
   by the CLI are adopted via Git intent-to-add, the rest via

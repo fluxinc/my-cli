@@ -91,8 +91,9 @@ caller is outside the umbrella, meeting commands use the single configured
 registered manifest's recommended umbrella when it has been set up.
 
 **Mount** — a Git-backed content folder cloned into the umbrella. Kinds include
-handbook, meetings, support, fleet, policy, docs. Modes: `required`, `default`,
-`optional`. Optional mounts are clone-if-accessible: if the user lacks access
+handbook, customers, meetings, support, fleet, policy, docs. Modes:
+`required`, `default`, `optional`. Optional mounts are clone-if-accessible: if
+the user lacks access
 they are skipped with a warning, not a failure (RBAC by Git permissions, not by
 the CLI).
 
@@ -121,7 +122,7 @@ while staying plain Git: a human can `cd` into a session and take over with
 ordinary commands. Keeping sessions opt-in keeps the default launch
 ergonomic for humans; agents are directed to the flag by generated guidance.
 
-**Catalog** — JSON inventories for products, repos, and canonical customers.
+**Catalog** — JSON inventories for products and repos.
 Products are business entities: a name, description, purpose, optional links
 to the repos that implement them (`repos: ["<repo-id>"]`), and any related
 manifest skill IDs. Repos (`catalog/repos.json`) are the organization's
@@ -131,8 +132,9 @@ user opts a repo in with `our repos add <id>`, which clones it under
 umbrella small and lets each operator pull only what they work on.
 `related_skills` are references to skills declared by the manifest; cloning a
 catalog repo does not let that repo inject new org-namespaced skills. Customer
-catalog entries provide stable IDs, aliases, partner associations, and optional
-domain confirmation so meeting metadata can resolve to one canonical identity.
+identity records live in mounted workspace content under `customers/*.md`, so
+the same backend permissions that protect meetings/support/fleet protect
+ordinary customer data.
 
 **Guidance** — generated root instructions for agents. `our setup` writes
 `AGENTS.md` from the embedded public baseline plus manifest-declared guidance
@@ -162,13 +164,13 @@ These are **three repositories**:
 1. **`our` (public)** — this CLI. Generic, no org data, tests use neutral
    placeholders.
 2. **`<org>-manifest` (private, control plane)** — `manifest.json`,
-   proprietary skills, catalog JSON, tool declarations, agent guidance
-   fragments. Lives at the registry path, outside the umbrella; changed
+   proprietary skills, product/repo catalog JSON, tool declarations, agent
+   guidance fragments. Lives at the registry path, outside the umbrella; changed
    through `our admin` commands; hosting permissions can restrict pushes to
    admins.
 3. **`<org>-workspace` (private, data plane)** — the operating content:
-   meetings, support, fleet, decisions, projects, policy, people. Mounted
-   visibly in the umbrella; pushed by the whole organization.
+   customers, meetings, support, fleet, decisions, projects, policy, people.
+   Mounted visibly in the umbrella; pushed by the whole organization.
 
 `our init` creates both private repos locally and `our publish` takes them
 online; teammates register only the manifest URL, and the manifest defines

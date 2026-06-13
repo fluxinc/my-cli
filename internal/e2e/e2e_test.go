@@ -90,7 +90,7 @@ Acme operators should check the local handbook before answering operational ques
       "git_url": %q,
       "kind": "handbook",
       "mode": "required",
-      "include_paths": ["meetings"]
+      "include_paths": ["customers", "meetings"]
     }
   ],
   "tools": [
@@ -102,6 +102,17 @@ Acme operators should check the local handbook before answering operational ques
     }
   ]
 }`, workspaceSource))
+	writeFile(t, filepath.Join(workspaceSource, "customers", "sampleco.example.com.md"), `---
+id: sampleco.example.com
+name: SampleCo
+domain: sampleco.example.com
+domain_confirmed: true
+aliases:
+  - sampleco
+---
+
+# SampleCo
+`)
 	writeFile(t, filepath.Join(workspaceSource, "meetings", "2026-03-12-sampleco-implementation.md"), `---
 id: 2026-03-12-sampleco-implementation
 date: 2026-03-12
@@ -145,6 +156,9 @@ status: finalized
 	}
 	if _, err := os.Stat(filepath.Join(workspaceRoot, "meetings", "2026-03-12-sampleco-implementation.md")); err != nil {
 		t.Fatalf("workspace sparse checkout missed meetings content: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workspaceRoot, "customers", "sampleco.example.com.md")); err != nil {
+		t.Fatalf("workspace sparse checkout missed customer content: %v", err)
 	}
 	for _, blocked := range []string{
 		filepath.Join(workspaceRoot, "skills"),

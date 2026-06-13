@@ -106,7 +106,7 @@ variables, and missing optional resolver tools such as `op`.
 ## Contract rules
 
 The organization contract — short, binding rules rendered into generated
-`AGENTS.md` — is edited the same way as customers and tools:
+`AGENTS.md` — is edited through the same manifest-admin review flow as tools:
 
 ```sh
 our admin contract add "Record decisions in the handbook before acting on them." --manifest-dir ~/src/acme-manifest
@@ -130,7 +130,6 @@ our admin manifests sync acme
 our admin manifests validate acme
 our admin meetings add sampleco-followup --workspace handbook
 our admin support add routing-timeout --workspace handbook
-our admin customers add sampleco.example.com --manifest-dir ~/src/acme-manifest
 our admin tools add qmd --manifest-dir ~/src/acme-manifest --mode optional --purpose "Markdown search"
 ```
 

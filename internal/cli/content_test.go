@@ -290,13 +290,18 @@ customer: sampleco.example.com
 
 Data cleanup follow-up.
 `)
-	writeCLITestFile(t, filepath.Join(root, "handbook", "customers", "registry.md"), `# Customer Registry
+	writeCLITestFile(t, filepath.Join(root, "handbook", "customers", "sampleco.example.com.md"), `---
+id: sampleco.example.com
+name: SampleCo
+domain: sampleco.example.com
+domain_confirmed: true
+aliases:
+  - sampleco
+partners:
+  - IntegratorCo
+---
 
-## Registry - confirmed FQDN
-
-| Canonical ID | Name | Partner(s) | Notes |
-|---|---|---|---|
-| `+"`sampleco.example.com`"+` | SampleCo | IntegratorCo | Merged `+"`sampleco`"+`. |
+# SampleCo
 `)
 
 	var stdout, stderr bytes.Buffer
@@ -740,16 +745,20 @@ func TestCustomersListAndMeetingCustomerAlias(t *testing.T) {
     }
   ]
 }`)
-	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "customers.json"), `[
-  {
-    "id": "sampleco.example.com",
-    "name": "SampleCo",
-    "domain": "sampleco.example.com",
-    "domain_confirmed": true,
-    "aliases": ["sampleco", "sc"],
-    "partners": ["integratorco"]
-  }
-]`)
+	writeCLITestFile(t, filepath.Join(workspaceRoot, "customers", "sampleco.example.com.md"), `---
+id: sampleco.example.com
+name: SampleCo
+domain: sampleco.example.com
+domain_confirmed: true
+aliases:
+  - sampleco
+  - sc
+partners:
+  - integratorco
+---
+
+# SampleCo
+`)
 	writeCLITestFile(t, filepath.Join(workspaceRoot, "meetings", "2026-03-12-sampleco-implementation.md"), `---
 id: 2026-03-12-sampleco-implementation
 date: 2026-03-12

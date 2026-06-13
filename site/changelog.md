@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `our customers list` now reads mounted `customers/*.md` customer identity
+  records instead of manifest `catalog/customers.json`, so customer data lives
+  in the workspace data plane and follows the backing Git/API permissions.
+- `our init` scaffolds a workspace `customers/` directory instead of an empty
+  manifest customer catalog.
+
+### Removed
+
+- Removed `our admin customers add|edit` and manifest customer catalog
+  validation/loading. Customers are operational records, not manifest admin
+  data.
+
 ## 0.21.0 - 2026-06-12
 
 ### Added

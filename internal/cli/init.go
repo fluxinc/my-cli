@@ -267,7 +267,6 @@ func writeInitManifestScaffold(root string, doc manifest.Document) error {
 		"README.md": initManifestREADME(orgID, orgName),
 		filepath.Join("agent-guidance", orgID+".md"):           initAgentGuidance(orgName),
 		filepath.Join("skills", orgID+"-handbook", "SKILL.md"): initSkillDoc(orgID, orgName),
-		filepath.Join("catalog", "customers.json"):             "[]\n",
 		filepath.Join("catalog", "products.json"):              "[]\n",
 	}
 	for path, content := range files {
@@ -281,6 +280,7 @@ func writeInitManifestScaffold(root string, doc manifest.Document) error {
 func writeInitContentScaffold(root, orgID, orgName string) error {
 	files := map[string]string{
 		"README.md":                             initContentREADME(orgName),
+		filepath.Join("customers", "README.md"): initSectionREADME("Customers", "Keep customer identity records as one markdown file per customer."),
 		filepath.Join("meetings", "README.md"):  initSectionREADME("Meetings", "Record meeting notes with our meetings add, then publish with our sync."),
 		filepath.Join("support", "README.md"):   initSectionREADME("Support", "Record anonymized problem-to-solution notes with our support add."),
 		filepath.Join("fleet", "README.md"):     initSectionREADME("Fleet", "Track deployed instances or devices with our fleet add and our fleet set."),
@@ -308,7 +308,7 @@ func initManifestREADME(orgID, orgName string) string {
 	return fmt.Sprintf(`# %s Our AI Manifest
 
 This private repository is the %s organization manifest: the control plane
-that defines mounts, skills, the catalog, and agent guidance. Day-to-day
+that defines mounts, skills, the product/repo catalog, and agent guidance. Day-to-day
 workspace content lives in the mounted content repositories it declares, not
 here. Restrict write access to workspace administrators.
 
@@ -335,10 +335,10 @@ local paths.
 func initContentREADME(orgName string) string {
 	return fmt.Sprintf(`# %s Handbook
 
-Workspace content for %s: meetings, support records, fleet records,
-decisions, projects, policy, and people notes. Record entries with the our
-CLI (our meetings add, our support add, our fleet add) and publish with
-our sync.
+Workspace content for %s: customer identity records, meetings, support
+records, fleet records, decisions, projects, policy, and people notes. Record
+entries with the our CLI (our meetings add, our support add, our fleet add)
+and publish with our sync.
 `, orgName, orgName)
 }
 
@@ -354,7 +354,7 @@ func initAgentGuidance(orgName string) string {
 func initSkillDoc(orgID, orgName string) string {
 	return fmt.Sprintf(`---
 name: %s-handbook
-description: Use the %s handbook for meetings, support records, fleet records, decisions, policy, people, projects, and workspace-specific operating context.
+description: Use the %s handbook for customer records, meetings, support records, fleet records, decisions, policy, people, projects, and workspace-specific operating context.
 ---
 
 # %s Handbook

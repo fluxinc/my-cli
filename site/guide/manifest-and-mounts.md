@@ -107,7 +107,7 @@ handbook.
 Content mounts can use sparse include paths so only the relevant subtree
 lands in the umbrella.
 
-## Catalog commands
+## Catalog and customer commands
 
 ```sh
 our products list
@@ -119,4 +119,6 @@ Products are business catalog entries; each may link the repos that implement
 it (`repos: ["<repo-id>"]`) and reference related manifest skills. Repos are
 the organization's repositories in `catalog/repos.json`, cloned on demand with
 `our repos add <id>`. Cloning a catalog repo does not let that repo inject
-organization-namespaced skills.
+organization-namespaced skills. Customers are mounted workspace records under
+`customers/*.md`, so `our customers list` follows the data-plane mount rather
+than the manifest catalog.

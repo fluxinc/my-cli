@@ -65,7 +65,7 @@ func TestSyncHoldsManifestWithLocalMountURL(t *testing.T) {
 	runCLIGit(t, home, "init", "--bare", "-q", remote)
 	runCLIGit(t, manifestRepo, "remote", "add", "origin", remote)
 	runCLIGit(t, manifestRepo, "push", "-q", "-u", "origin", "master")
-	writeCLITestFile(t, filepath.Join(manifestRepo, "catalog", "customers.json"), "[{\"id\":\"local\"}]\n")
+	writeCLITestFile(t, filepath.Join(manifestRepo, "catalog", "products.json"), "[{\"id\":\"local\",\"name\":\"Local\",\"description\":\"Local product\"}]\n")
 	commitCLIGit(t, manifestRepo, "Edit catalog locally")
 	localHead := strings.TrimSpace(gitCLIOutput(t, manifestRepo, "rev-parse", "HEAD"))
 

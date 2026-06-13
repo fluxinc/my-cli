@@ -2,8 +2,8 @@
 name: acme-handbook
 description: >
   Use when answering questions from the Acme workspace, including meetings,
-  support notes, decisions, projects, policy, and people content synced by the
-  our CLI.
+  customer identity records, support notes, decisions, projects, policy, and
+  people content synced by the our CLI.
 ---
 
 # Acme Handbook

@@ -108,7 +108,7 @@ func TestRunAutoHoldsWorkspaceRoleEvenWhenContentIsAdopted(t *testing.T) {
 func TestRunHoldsDuplicateRemoteWhenBothCheckoutsHavePendingChanges(t *testing.T) {
 	remote, content, manifest := setupTwoCheckoutRemote(t)
 	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
-	writeFile(t, filepath.Join(manifest, "catalog", "customers.json"), "[]\n")
+	writeFile(t, filepath.Join(manifest, "catalog", "products.json"), "[]\n")
 
 	report := Run([]Entry{
 		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
@@ -228,7 +228,7 @@ func TestRunGnitDirectHoldsDirtyNonContent(t *testing.T) {
 	remote, content, _ := setupTwoCheckoutRemote(t)
 	gnitRoot := filepath.Dir(content)
 	writeFile(t, filepath.Join(gnitRoot, ".gnit", "roster.yaml"), "version: 1\nmode: shared\nmembers:\n- id: handbook\n  path: content\n")
-	writeFile(t, filepath.Join(content, "catalog", "customers.json"), "[]\n")
+	writeFile(t, filepath.Join(content, "scratch", "local.txt"), "local\n")
 
 	report := Run([]Entry{
 		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
@@ -291,7 +291,7 @@ func TestRunGnitAllowsCanonicalContentWithCleanDuplicateSibling(t *testing.T) {
 func TestRunGnitHoldsWhenDuplicateSiblingHasPendingChanges(t *testing.T) {
 	remote, gnitRoot, content, manifest := setupGnitWorkspaceWithDuplicateRemote(t)
 	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
-	writeFile(t, filepath.Join(manifest, "catalog", "customers.json"), "[]\n")
+	writeFile(t, filepath.Join(manifest, "catalog", "products.json"), "[]\n")
 
 	report := Run([]Entry{
 		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},

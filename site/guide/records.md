@@ -1,11 +1,13 @@
-# Records: Meetings, Support, Fleet
+# Records: Customers, Meetings, Support, Fleet
 
 Workspace content is markdown records with frontmatter, living in mounted
-content repos. Three record families ship with first-class commands; all of
-them follow the same shape: `list` and `search` to find, `get` to read,
-`add` to create, and `our sync` to publish.
+content repos. Customer identities are read from mounted `customers/*.md`
+records. Meetings, support, and fleet also expose write-oriented record
+commands, with `our sync` publishing adopted changes.
 
 ```sh
+our customers list [--json]
+
 our meetings list [--since DATE] [--customer ID] [--partner ID] [--json]
 our meetings search <text>
 our meetings get <id|path>
@@ -25,6 +27,30 @@ our fleet set <id> KEY=VALUE...
 
 When the `qmd` tool is installed, `search` uses it for higher-quality
 retrieval; otherwise a built-in scan applies. Single keywords match best.
+
+## Customer records
+
+Customer identities live under `customers/*.md` in a mounted content repo, not
+in the manifest. A minimal record is:
+
+```md
+---
+id: sampleco.example.com
+name: SampleCo
+domain: sampleco.example.com
+domain_confirmed: true
+aliases:
+  - sampleco
+  - sc
+partners:
+  - integratorco
+---
+
+# SampleCo
+```
+
+`our customers list` reads these records, and customer filters accept IDs,
+domains, names, and aliases.
 
 ## Meetings
 
