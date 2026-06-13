@@ -187,7 +187,7 @@ to tune the default six-hour window.
 
 Manifest roles are selected locally with `our setup --role <id>`. The choice
 is stored in `.our/state.json`, appends that role's guidance fragments to
-`AGENTS.md`, and scopes generated `.mcp.json` to MCP services granted to the
+`AGENTS.md`, and scopes generated `.mcp.json` to MCP services selected by the
 role. Services and roles are manifest vocabulary: inspect them with
 `our services list|get` and `our roles list|get`; they do not prune mounts.
 

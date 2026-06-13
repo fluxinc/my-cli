@@ -51,6 +51,20 @@
       ]
     }
   ],
+  "data_bindings": {
+    "customers": {
+      "surface": "mount:handbook"
+    },
+    "fleet": {
+      "surface": "mount:handbook"
+    },
+    "meetings": {
+      "surface": "mount:handbook"
+    },
+    "support": {
+      "surface": "mount:handbook"
+    }
+  },
   "tools": [
     {
       "id": "qmd",
@@ -71,7 +85,6 @@
       "purpose": "Search the public ACME fixture handbook",
       "describe_ref": "services/docs-search.server.json",
       "auth_ref": "env://ACME_DOCS_TOKEN",
-      "grant": "read",
       "connection": {
         "type": "stdio",
         "command": "acme-docs-mcp",

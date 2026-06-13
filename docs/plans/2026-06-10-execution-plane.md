@@ -125,34 +125,35 @@ mapping is close to 1:1:
 | tools                       | local tool requirements                    |
 | members / roles             | agent identity + persona seed              |
 | catalog products            | repo mounts                                |
-| services (role-granted)     | remote surfaces + mediated tool wiring     |
+| services (role-selected / data-bound) | remote surfaces + mediated tool wiring     |
 
 A future `our launch compile [--role R]` (verb TBD) emits the org-side launch
-artifacts — contract text, role-scoped mount list, tool grants, service
-declarations, persona seed — that container tooling (for example, `claw up`)
-consumes. Inside the container the agent gets a role-scoped
+artifacts — contract text, role-scoped mount list, tool selections, data
+bindings, service declarations, persona seed — that container tooling (for
+example, `claw up`) consumes. Inside the container the agent gets a role-scoped
 umbrella pulled into its home, the `our` CLI installed, and **only the
 operational verb set** reachable through the mediated tool plane; `our
 admin *` and `our sync` remain operator-only — the privilege split the CLI
 already enforces. Cross-pollution is impossible by construction: every
 container has its own filesystem.
 
-Mode B implies manifest extensions that are useful standalone:
+Mode B builds on manifest extensions that are useful standalone:
 
-- `roles`: named role definitions — guidance fragments, mount scoping, tool,
-  skill, and **service grants** (roles grant services; services do not name
-  roles).
+- `roles`: named local loadouts — guidance fragments, mount scoping, tool,
+  skill, and service selections. Roles select what `our` materializes; they
+  do not grant authority.
+- `data_bindings`: stable operational data nouns mapped to `mount:<id>` or
+  `service:<id>`, so local harnesses and contained agents use the same
+  declared backend for customers, meetings, support, and fleet.
 - `services`: the organization's remote surfaces — APIs, MCP servers, gated
   brokers — the analog of container surface descriptions. Per entry: id,
   kind (`http`, `mcp`, …), purpose, base URL or discovery, `describe_ref`
   (a self-description endpoint or a checked-in description file;
   descriptions are **references by default**, with fetched snapshots cached
   as derived local state under `.our`, never silently promoted to manifest
-  truth), and auth split into three orthogonal fields: `auth_ref` (a name,
-  never a secret), requested grant/scope, and resolver mode (`env`,
-  `governance-proxy`, `gated-broker`, `none`). An MCP server is simply a
-  service of kind `mcp`. Skills may declare `service:<id>` dependencies
-  alongside `workspace:` and `tool:`.
+  truth), and `auth_ref` (a credential reference, never a secret). An MCP
+  server is simply a service of kind `mcp`. Skills may declare `service:<id>`
+  dependencies alongside `workspace:` and `tool:`.
 
 Two gated-service shapes anchor the services design, and both are consumed
 identically by human and AI operators — gating is a property of the
@@ -166,7 +167,7 @@ Surfacing is mode-aware and conservative. In Mode A, `our setup`
 materializes harness MCP config and guidance opt-in, only for services
 visible to the current role/operator, never fetching describe endpoints by
 default, with doctor warnings for unresolved auth references. In Mode B,
-compilation emits topology and grants only — never credentials or fetched
+compilation emits topology and non-secret references only — never credentials or fetched
 schemas; refresh belongs to the runtime/governance plane.
 
 ### Immediate safety patch (independent of mode work)
@@ -202,7 +203,7 @@ is. The plan adopts accordingly.
   resolver-mode enum is dropped — it conflated storage backends with
   mediation planes. Mode policy replaces it: Mode A resolves locally at
   launch; Mode B compilation refuses to emit locally-resolvable references
-  into container artifacts (only service id + grant travel; the governance
+  into container artifacts (only service id + auth reference travel; the governance
   plane resolves). Precedent: op:// (already used in fleet records),
   helmfile/vals `ref+` across 30+ backends, Berglas, Kong; Docker Compose is
   adopting the same convention (docker/compose#13821).
@@ -262,10 +263,10 @@ multi-repo substrate remains in-house (gnit) by design.
   single-repo; Conductor's linked-directories multi-repo is documented as
   "not yet perfect". One session spanning worktrees of N writable mounts,
   with a registry consulted by org-level sync, exists nowhere.
-- **The services grant/policy envelope**: requested grant + role-granted
-  visibility in a git-native, serverless registry consumed identically by
-  humans and agents. server.json stops at `isSecret`; org-registry products
-  assume a hosted service.
+- **The services/data policy envelope**: role-selected visibility plus
+  data-binding topology in a git-native, serverless registry consumed
+  identically by humans and agents. server.json stops at `isSecret`;
+  org-registry products assume a hosted service.
 - **Mode-aware compile policy** (refusing local secret references in
   container artifacts) — the property no off-the-shelf resolver has.
 

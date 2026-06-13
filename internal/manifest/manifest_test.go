@@ -494,6 +494,10 @@ func TestValidateManifestAllowsServicesRolesAndServiceRequirements(t *testing.T)
       "mode": "required"
     }
   ],
+  "data_bindings": {
+    "customers": { "surface": "mount:handbook" },
+    "support": { "surface": "service:docs-search" }
+  },
   "tools": [
     { "id": "qmd", "mode": "optional" }
   ],
@@ -504,7 +508,6 @@ func TestValidateManifestAllowsServicesRolesAndServiceRequirements(t *testing.T)
       "purpose": "Search the checked-in handbook index",
       "describe_ref": "services/docs-search.server.json",
       "auth_ref": "env://ACME_DOCS_TOKEN",
-      "grant": { "scope": "read" },
       "connection": {
         "type": "stdio",
         "command": "acme-docs-mcp",
@@ -517,8 +520,7 @@ func TestValidateManifestAllowsServicesRolesAndServiceRequirements(t *testing.T)
       "kind": "http",
       "purpose": "Read-only status API",
       "describe_ref": "https://api.example.com/openapi.json",
-      "auth_ref": "none",
-      "grant": "read"
+      "auth_ref": "none"
     }
   ],
   "roles": [
@@ -563,6 +565,12 @@ func TestValidateManifestCatchesInvalidServicesRolesAndServiceRequirements(t *te
   "tools": [
     { "id": "qmd", "mode": "optional" }
   ],
+  "data_bindings": {
+    "customers": { "surface": "mount:missing-mount" },
+    "meetings": { "surface": "service:missing-service" },
+    "support": { "surface": "volume:support" },
+    "orders": { "surface": "mount:handbook" }
+  },
   "services": [
     {
       "id": "Bad Service",
@@ -599,13 +607,17 @@ func TestValidateManifestCatchesInvalidServicesRolesAndServiceRequirements(t *te
 		`service "Bad Service" auth_ref "secret-value" must use op://, env://, broker://, or none`,
 		`service "Bad Service" describe_ref "../server.json" must be an http(s) URL or a relative path inside the manifest repo`,
 		`service "status-api" connection is only supported for kind "mcp"`,
+		`data_bindings.customers.surface references unknown mount "missing-mount"`,
+		`data_bindings.meetings.surface references unknown service "missing-service"`,
+		`data_bindings key "orders" is unsupported; supported data types are customers, fleet, meetings, support`,
+		`data_bindings.support.surface "volume:support" must be mount:<id> or service:<id>`,
 		`skill "acme:handbook" requires unknown service "missing-service"`,
 		`role "bad-role" purpose is required`,
 		`role "bad-role" guidance_paths entry "../private.md" must be a relative path that stays inside the manifest repo`,
-		`role "bad-role" grants unknown mount "missing-mount"`,
-		`role "bad-role" grants unknown skill "acme:missing"`,
-		`role "bad-role" grants unknown tool "missing-tool"`,
-		`role "bad-role" grants unknown service "missing-service"`,
+		`role "bad-role" selects unknown mount "missing-mount"`,
+		`role "bad-role" selects unknown skill "acme:missing"`,
+		`role "bad-role" selects unknown tool "missing-tool"`,
+		`role "bad-role" selects unknown service "missing-service"`,
 	} {
 		if !containsString(result.Errors, want) {
 			t.Fatalf("errors missing %q:\n%#v", want, result.Errors)

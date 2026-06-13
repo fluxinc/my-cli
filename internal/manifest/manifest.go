@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	pathpkg "path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/fluxinc/our-ai/internal/ghauth"
@@ -54,19 +55,26 @@ type ValidationResult struct {
 
 // Document is the organization manifest.json schema consumed by the CLI.
 type Document struct {
-	ManifestVersion           int           `json:"manifest_version"`
-	Organization              Organization  `json:"organization"`
-	AllowedExternalNamespaces []string      `json:"allowed_external_namespaces,omitempty"`
-	Umbrella                  Umbrella      `json:"umbrella,omitzero"`
-	AgentGuidance             AgentGuidance `json:"agent_guidance,omitzero"`
-	Sync                      SyncPolicy    `json:"sync,omitzero"`
-	Skills                    []Skill       `json:"skills,omitempty"`
-	Mounts                    []Mount       `json:"mounts,omitempty"`
-	Workspaces                []Workspace   `json:"workspaces,omitempty"`
-	Tools                     []Tool        `json:"tools,omitempty"`
-	Services                  []Service     `json:"services,omitempty"`
-	Roles                     []Role        `json:"roles,omitempty"`
-	Contract                  []string      `json:"contract,omitempty"`
+	ManifestVersion           int                    `json:"manifest_version"`
+	Organization              Organization           `json:"organization"`
+	AllowedExternalNamespaces []string               `json:"allowed_external_namespaces,omitempty"`
+	Umbrella                  Umbrella               `json:"umbrella,omitzero"`
+	AgentGuidance             AgentGuidance          `json:"agent_guidance,omitzero"`
+	Sync                      SyncPolicy             `json:"sync,omitzero"`
+	Skills                    []Skill                `json:"skills,omitempty"`
+	Mounts                    []Mount                `json:"mounts,omitempty"`
+	DataBindings              map[string]DataBinding `json:"data_bindings,omitempty"`
+	Workspaces                []Workspace            `json:"workspaces,omitempty"`
+	Tools                     []Tool                 `json:"tools,omitempty"`
+	Services                  []Service              `json:"services,omitempty"`
+	Roles                     []Role                 `json:"roles,omitempty"`
+	Contract                  []string               `json:"contract,omitempty"`
+}
+
+// DataBinding maps one stable business data type to the mount or service that
+// backs it. The referenced surface owns storage and access control.
+type DataBinding struct {
+	Surface string `json:"surface"`
 }
 
 // Organization identifies the organization owning this manifest.
@@ -165,15 +173,14 @@ type SkillInstall struct {
 	Args    []string `json:"args,omitempty"`
 }
 
-// Service describes one remote surface the organization may grant to roles
-// and skills. Secret material is always referenced, never stored here.
+// Service describes one callable remote surface. Secret material is always
+// referenced, never stored here; access control belongs to the backing service.
 type Service struct {
 	ID          string            `json:"id"`
 	Kind        string            `json:"kind"`
 	Purpose     string            `json:"purpose"`
 	DescribeRef string            `json:"describe_ref,omitempty"`
 	AuthRef     string            `json:"auth_ref"`
-	Grant       json.RawMessage   `json:"grant,omitempty"`
 	Connection  ServiceConnection `json:"connection,omitzero"`
 }
 
@@ -188,8 +195,8 @@ type ServiceConnection struct {
 	Headers map[string]string `json:"headers,omitempty"`
 }
 
-// Role describes a named local/agent operating surface. In Mode A v0.18,
-// role grants filter generated guidance and visible services only.
+// Role describes a named local/agent loadout. It selects what our materializes
+// for the harness; it is not an authorization boundary.
 type Role struct {
 	ID            string   `json:"id"`
 	Purpose       string   `json:"purpose"`
@@ -735,6 +742,7 @@ func validateOrgManifest(doc Document, result *ValidationResult) {
 	for _, m := range doc.Mounts {
 		validateMount(m, result)
 	}
+	validateDataBindings(doc.DataBindings, mountIDs, serviceIDs, result)
 	for _, w := range doc.Workspaces {
 		validateWorkspace(w, result)
 	}
@@ -743,6 +751,73 @@ func validateOrgManifest(doc Document, result *ValidationResult) {
 	}
 	validateRoles(doc.Roles, mountIDs, skillIDs, tools, serviceIDs, result)
 	validateContract(doc.Contract, result)
+}
+
+func validateDataBindings(bindings map[string]DataBinding, mountIDs, serviceIDs map[string]bool, result *ValidationResult) {
+	keys := make([]string, 0, len(bindings))
+	for dataType := range bindings {
+		keys = append(keys, dataType)
+	}
+	sort.Strings(keys)
+	for _, dataType := range keys {
+		binding := bindings[dataType]
+		if !ValidDataType(dataType) {
+			result.Errors = append(result.Errors, fmt.Sprintf("data_bindings key %q is unsupported; supported data types are customers, fleet, meetings, support", dataType))
+			continue
+		}
+		kind, id, ok := ParseSurfaceRef(binding.Surface)
+		if strings.TrimSpace(binding.Surface) == "" {
+			result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface is required", dataType))
+			continue
+		}
+		if !ok {
+			result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface %q must be mount:<id> or service:<id>", dataType, binding.Surface))
+			continue
+		}
+		if !portableID(id) {
+			result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface %s id %q must be lowercase kebab-case", dataType, kind, id))
+			continue
+		}
+		switch kind {
+		case "mount":
+			if !mountIDs[id] {
+				result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface references unknown mount %q", dataType, id))
+			}
+		case "service":
+			if !serviceIDs[id] {
+				result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface references unknown service %q", dataType, id))
+			}
+		}
+	}
+}
+
+// ValidDataType reports whether value is one of the stable operational record
+// domains that can be bound to a surface.
+func ValidDataType(value string) bool {
+	switch value {
+	case "customers", "meetings", "support", "fleet":
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseSurfaceRef splits a data binding surface reference. It accepts only the
+// two surface primitives our knows how to materialize: mounts and services.
+func ParseSurfaceRef(value string) (kind, id string, ok bool) {
+	if strings.TrimSpace(value) != value {
+		return "", "", false
+	}
+	parts := strings.SplitN(value, ":", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		return "", "", false
+	}
+	switch parts[0] {
+	case "mount", "service":
+		return parts[0], parts[1], true
+	default:
+		return "", "", false
+	}
 }
 
 func validateContract(rules []string, result *ValidationResult) {
@@ -1026,30 +1101,30 @@ func validateRoles(roles []Role, mountIDs, skillIDs map[string]bool, tools map[s
 		}
 		for _, id := range role.Mounts {
 			if !portableID(id) {
-				result.Errors = append(result.Errors, fmt.Sprintf("role %q mount grant %q must be lowercase kebab-case", role.ID, id))
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q mount selection %q must be lowercase kebab-case", role.ID, id))
 			} else if !mountIDs[id] {
-				result.Errors = append(result.Errors, fmt.Sprintf("role %q grants unknown mount %q", role.ID, id))
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q selects unknown mount %q", role.ID, id))
 			}
 		}
 		for _, id := range role.Skills {
 			if !portableNamespacedID(id) {
-				result.Errors = append(result.Errors, fmt.Sprintf("role %q skill grant %q must be namespace:name with lowercase kebab-case parts", role.ID, id))
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q skill selection %q must be namespace:name with lowercase kebab-case parts", role.ID, id))
 			} else if !skillIDs[id] {
-				result.Errors = append(result.Errors, fmt.Sprintf("role %q grants unknown skill %q", role.ID, id))
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q selects unknown skill %q", role.ID, id))
 			}
 		}
 		for _, id := range role.Tools {
 			if !portableID(id) {
-				result.Errors = append(result.Errors, fmt.Sprintf("role %q tool grant %q must be lowercase kebab-case", role.ID, id))
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q tool selection %q must be lowercase kebab-case", role.ID, id))
 			} else if _, ok := tools[id]; !ok {
-				result.Errors = append(result.Errors, fmt.Sprintf("role %q grants unknown tool %q", role.ID, id))
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q selects unknown tool %q", role.ID, id))
 			}
 		}
 		for _, id := range role.Services {
 			if !portableID(id) {
-				result.Errors = append(result.Errors, fmt.Sprintf("role %q service grant %q must be lowercase kebab-case", role.ID, id))
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q service selection %q must be lowercase kebab-case", role.ID, id))
 			} else if !serviceIDs[id] {
-				result.Errors = append(result.Errors, fmt.Sprintf("role %q grants unknown service %q", role.ID, id))
+				result.Errors = append(result.Errors, fmt.Sprintf("role %q selects unknown service %q", role.ID, id))
 			}
 		}
 	}

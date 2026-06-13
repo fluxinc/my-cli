@@ -77,13 +77,17 @@ clawdapus-aligned vocabulary comes from the mapping above, not a rename.
 A thin **data binding** maps a data type to a surface:
 
 ```
-customers -> mount:<id>     # small-business default
-customers -> service:<id>   # when a CRM/API exists
+"data_bindings": {
+  "customers": { "surface": "mount:customers" }, # small-business default
+  "meetings": { "surface": "service:crm" }       # when a CRM/API exists
+}
 ```
 
 The manifest holds only the binding plus the reach details already present on
 mounts/services (URL + `include_paths`, or endpoint + `describe_ref` +
-`auth_ref`). Records and rights live in the backend, not in `our`.
+`auth_ref`). The binding value is an object rather than a bare string so future
+non-authority metadata can be added without a shape migration. Records and
+rights live in the backend, not in `our`.
 
 ### 3. Surface bundles — what a backend contributes
 
@@ -159,11 +163,15 @@ a `service` and the CRM's RBAC takes over — zero change to commands or model.
   workspace domain in the same step (private repo, not here).
 
 **Slice 2 — Data bindings over existing mounts/services.**
-- Add a thin binding mapping a data type → `mount:<id>` | `service:<id>`;
-  keep `mounts` and `services` as separate primitives. Document the clawdapus
-  mapping (mount ↔ host/volume, service ↔ service+descriptor).
-- Remove the vestigial `Service.Grant` field (or, if a backend passthrough is
-  ever needed, rename to `descriptor_options`, explicitly non-authority).
+- Add a top-level `data_bindings` map keyed by stable data noun
+  (`customers`, `meetings`, `support`, `fleet`) whose value is
+  `{ "surface": "mount:<id>" }` or `{ "surface": "service:<id>" }`.
+  Keep `mounts` and `services` as separate primitives. Mount bindings narrow
+  today's local markdown commands to the selected mount; service bindings are
+  valid declarations but command invocation waits for Slice 4. Document the
+  clawdapus mapping (mount ↔ host/volume, service ↔ service+descriptor).
+- Remove the vestigial `Service.Grant` field. If a backend passthrough is ever
+  needed, it must be named `descriptor_options` and explicitly non-authority.
   `our` carries no grants.
 
 **Slice 3 — Surface bundles + domain guidance fragments.**

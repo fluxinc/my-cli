@@ -29,8 +29,9 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
 `our` has eight concepts. Everything in the CLI is one of these:
 
 - **Manifest** — an organization's configuration in its own private Git repo:
-  declares skills, mounts, catalog, services, roles, and tool hints. The single source of
-  truth, and the control plane only — the manifest is not the workspace; the
+  declares skills, mounts, data bindings, catalog, services, roles, and tool
+  hints. The single source of truth, and the control plane only — the manifest
+  is not the workspace; the
   workspace is a mount of things the manifest defines, and day-to-day work
   never edits the manifest. Registered locally with `our init <org-id>` for a
   new organization or `our manifests add <name> <git-url>` for an existing
@@ -129,7 +130,7 @@ self-skill is installed for the selected filesystem harness before exec.
 Use `our setup --role <id>` when the manifest declares local operating roles.
 The selected role is stored in `.our/state.json`; generated `AGENTS.md`
 includes that role's guidance fragments, and umbrella-root `.mcp.json` is
-materialized only for locally described MCP services granted to that role.
+materialized only for locally described MCP services selected by that role.
 Inspect available role and service declarations with `our roles list|get` and
 `our services list|get`. Roles never prune mounts.
 

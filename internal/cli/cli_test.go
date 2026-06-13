@@ -543,7 +543,6 @@ func writeServicesRolesManifest(t *testing.T, home string) {
       "purpose": "Search the handbook",
       "describe_ref": "services/docs-search.server.json",
       "auth_ref": "env://ACME_DOCS_TOKEN",
-      "grant": "read",
       "connection": {
         "type": "stdio",
         "command": "acme-docs-mcp",

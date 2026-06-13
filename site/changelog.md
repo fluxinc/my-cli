@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Manifest `data_bindings`: map stable operational data nouns (`customers`,
+  `meetings`, `support`, `fleet`) to declared `mount:<id>` or `service:<id>`
+  surfaces. Mount-backed bindings narrow existing local record commands;
+  service-backed bindings are validated but deferred until service-domain
+  invocation ships.
+
+### Changed
+
+- Roles are documented and reported as local loadouts/selections rather than
+  authority grants.
+
+### Removed
+
+- Removed the vestigial service `grant` field from the manifest schema and
+  `our services` output. Existing manifest JSON that still contains `grant`
+  remains load-tolerant because unknown fields are ignored.
+
 ## 0.22.0 - 2026-06-13
 
 ### Changed

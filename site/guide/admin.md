@@ -99,7 +99,7 @@ push:
 
 `our setup --role operator` stores the selected role locally, appends role
 guidance to generated `AGENTS.md`, and materializes umbrella-root `.mcp.json`
-for locally described MCP services granted to that role. `our doctor` reports
+for locally described MCP services selected by that role. `our doctor` reports
 URL-only descriptors, missing checked-in descriptors, unset environment
 variables, and missing optional resolver tools such as `op`.
 

@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
+	"github.com/fluxinc/our-ai/internal/manifest"
 	"github.com/fluxinc/our-ai/internal/record"
 	"github.com/fluxinc/our-ai/internal/umbrella"
 	"github.com/fluxinc/our-ai/internal/worksession"
@@ -13,24 +16,44 @@ import (
 )
 
 func contentRoots(home, manifestName, workspaceID, umbrellaRoot, noun string, kinds []string) ([]record.Root, error) {
+	filterRoots := func(roots []record.Root) ([]record.Root, error) {
+		return applyDataBinding(home, manifestName, noun, roots)
+	}
 	if umbrellaRoot != "" {
 		root, err := resolveUmbrellaRoot(home, umbrellaRoot)
 		if err != nil {
 			return nil, err
 		}
 		if roots, ok, err := currentSessionContentRoots(root, workspaceID, noun, kinds); ok || err != nil {
-			return roots, err
+			if err != nil {
+				return nil, err
+			}
+			return filterRoots(roots)
 		}
-		return umbrellaContentRootsForRoot(root, workspaceID, noun, kinds)
+		roots, err := umbrellaContentRootsForRoot(root, workspaceID, noun, kinds)
+		if err != nil {
+			return nil, err
+		}
+		return filterRoots(roots)
 	}
 	if root, ok := umbrella.FindRoot("."); ok {
 		if roots, ok, err := currentSessionContentRoots(root, workspaceID, noun, kinds); ok || err != nil {
-			return roots, err
+			if err != nil {
+				return nil, err
+			}
+			return filterRoots(roots)
 		}
-		return umbrellaContentRootsForRoot(root, workspaceID, noun, kinds)
+		roots, err := umbrellaContentRootsForRoot(root, workspaceID, noun, kinds)
+		if err != nil {
+			return nil, err
+		}
+		return filterRoots(roots)
 	}
 	if roots, ok, err := configuredUmbrellaContentRoots(home, manifestName, workspaceID, noun, kinds); ok || err != nil {
-		return roots, err
+		if err != nil {
+			return nil, err
+		}
+		return filterRoots(roots)
 	}
 	if manifestName == "" {
 		return nil, noUmbrellaError("no our umbrella found; run our setup or pass --umbrella", "run our setup or pass --umbrella <path>")
@@ -56,7 +79,74 @@ func contentRoots(home, manifestName, workspaceID, umbrellaRoot, noun string, ki
 		}
 		return nil, fmt.Errorf("no workspaces declared by selected manifests")
 	}
-	return roots, nil
+	return filterRoots(roots)
+}
+
+func applyDataBinding(home, manifestName, noun string, roots []record.Root) ([]record.Root, error) {
+	dataType := dataTypeForContentNoun(noun)
+	if !manifest.ValidDataType(dataType) {
+		return roots, nil
+	}
+	docs, err := loadRegisteredDocs(home, manifestName)
+	if err != nil {
+		return nil, err
+	}
+	if len(docs) == 0 {
+		return roots, nil
+	}
+	mountIDs := map[string]bool{}
+	var serviceRefs []string
+	for _, doc := range docs {
+		binding, ok := doc.doc.DataBindings[dataType]
+		if !ok {
+			continue
+		}
+		kind, id, ok := manifest.ParseSurfaceRef(binding.Surface)
+		if !ok {
+			// loadRegisteredDocs validates manifests before returning them, so this
+			// path only protects against tests or future callers bypassing validation.
+			return nil, fmt.Errorf("data binding %s has invalid surface %q", dataType, binding.Surface)
+		}
+		switch kind {
+		case "mount":
+			mountIDs[id] = true
+		case "service":
+			serviceRefs = append(serviceRefs, doc.ref.Name+":"+id)
+		}
+	}
+	if len(serviceRefs) != 0 {
+		sort.Strings(serviceRefs)
+		return nil, fmt.Errorf("%s is bound to service surface(s) %s; service-backed data domains are not implemented yet", dataType, strings.Join(serviceRefs, ", "))
+	}
+	if len(mountIDs) == 0 {
+		return roots, nil
+	}
+	filtered := make([]record.Root, 0, len(roots))
+	for _, root := range roots {
+		if mountIDs[root.Workspace] {
+			filtered = append(filtered, root)
+		}
+	}
+	if len(filtered) == 0 {
+		ids := make([]string, 0, len(mountIDs))
+		for id := range mountIDs {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		return nil, fmt.Errorf("%s is bound to mount(s) %s, but no matching synced mount roots are available", dataType, strings.Join(ids, ", "))
+	}
+	return filtered, nil
+}
+
+func dataTypeForContentNoun(noun string) string {
+	switch noun {
+	case "customer":
+		return "customers"
+	case "meeting":
+		return "meetings"
+	default:
+		return noun
+	}
 }
 
 func configuredUmbrellaContentRoots(home, manifestName, workspaceID, noun string, kinds []string) ([]record.Root, bool, error) {

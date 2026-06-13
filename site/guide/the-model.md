@@ -22,12 +22,15 @@ our manifests validate acme
 ```
 
 Services and roles are manifest vocabulary, not separate top-level concepts.
-`services` describe remote organization surfaces such as HTTP APIs and MCP
-servers using reference-first auth (`env://`, `op://`, `broker://`, or
-`none`). `roles` grant mounts, skills, tools, services, and optional guidance
-fragments. In Mode A, `our setup --role <id>` stores the selected role locally,
-appends role guidance to `AGENTS.md`, and materializes an umbrella-root
-`.mcp.json` for locally described MCP services visible to that role.
+`data_bindings` map stable data nouns (`customers`, `meetings`, `support`,
+`fleet`) to an existing `mount:<id>` or `service:<id>`. `services` describe
+remote organization surfaces such as HTTP APIs and MCP servers using
+reference-first auth (`env://`, `op://`, `broker://`, or `none`). `roles`
+select mounts, skills, tools, services, and optional guidance fragments as
+local loadouts. In Mode A, `our setup --role <id>` stores the selected role
+locally, appends role guidance to `AGENTS.md`, and materializes an
+umbrella-root `.mcp.json` for locally described MCP services visible to that
+role.
 
 ## Skill
 

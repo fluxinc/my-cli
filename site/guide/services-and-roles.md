@@ -27,7 +27,6 @@ references:
       "kind": "mcp",
       "purpose": "Search the handbook",
       "auth_ref": "env://ACME_DOCS_TOKEN",
-      "grant": "read",
       "connection": {
         "type": "stdio",
         "command": "acme-docs-mcp",
@@ -46,9 +45,9 @@ at a checked-in descriptor file instead.
 
 ## Roles
 
-A role is a named operating profile that grants mounts, skills, tools,
-services, and optional guidance fragments. Roles grant services, never the
-reverse. Select one locally:
+A role is a named local loadout that selects mounts, skills, tools, services,
+and optional guidance fragments. Roles do not grant authority; the backing Git
+host or service enforces access. Select one locally:
 
 ```sh
 our setup --role operator

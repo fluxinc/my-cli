@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -111,14 +110,6 @@ func (a app) printService(service manifest.Service) {
 	if service.DescribeRef != "" {
 		printHumanField(a.stdout, "describe", service.DescribeRef)
 	}
-	if len(service.Grant) != 0 {
-		grant := string(service.Grant)
-		var asString string
-		if err := json.Unmarshal(service.Grant, &asString); err == nil {
-			grant = asString
-		}
-		printHumanField(a.stdout, "grant", grant)
-	}
 	if !service.Connection.IsZero() {
 		if service.Connection.Command != "" {
 			printHumanField(a.stdout, "connection", "command "+service.Connection.Command)
@@ -148,13 +139,13 @@ func visibleServices(doc manifest.Document, selectedRole string) ([]manifest.Ser
 	if selectedRole == "" {
 		return append([]manifest.Service(nil), doc.Services...), nil
 	}
-	granted := make(map[string]bool, len(role.Services))
+	selected := make(map[string]bool, len(role.Services))
 	for _, id := range role.Services {
-		granted[id] = true
+		selected[id] = true
 	}
 	services := make([]manifest.Service, 0, len(role.Services))
 	for _, service := range doc.Services {
-		if granted[service.ID] {
+		if selected[service.ID] {
 			services = append(services, service)
 		}
 	}
@@ -229,8 +220,8 @@ func (a app) printRolesUsage() {
   our roles list [--manifest NAME] [--home DIR] [--json]
   our roles get <id> [--manifest NAME] [--home DIR] [--json]
 
-Roles are named operating surfaces declared in the manifest. Role grants
-filter generated guidance and visible services; they never prune mounts.`)
+Roles are named loadouts declared in the manifest. A role selects generated
+guidance and visible services; it never grants authority or prunes mounts.`)
 }
 
 func (a app) runRolesList(args []string) error {

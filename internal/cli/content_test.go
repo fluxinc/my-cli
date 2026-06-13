@@ -336,6 +336,142 @@ partners:
 	}
 }
 
+func TestMeetingsUseDataBindingMount(t *testing.T) {
+	home := t.TempDir()
+	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": "https://github.com/acme/acme-handbook.git",
+      "mode": "default"
+    },
+    {
+      "id": "records",
+      "kind": "meetings",
+      "git_url": "https://github.com/acme/acme-meetings.git",
+      "mode": "default"
+    }
+  ],
+  "data_bindings": {
+    "meetings": { "surface": "mount:records" }
+  }
+}`)
+	root := filepath.Join(home, "acme")
+	if _, state, err := umbrella.Ensure(root, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	} else {
+		for _, mount := range []umbrella.MountStatus{
+			{ID: "handbook", Kind: "handbook", SourceRef: "manifest:acme:handbook", Status: "synced"},
+			{ID: "records", Kind: "meetings", SourceRef: "manifest:acme:records", Status: "synced"},
+		} {
+			state = umbrella.UpsertMount(state, mount)
+		}
+		if err := umbrella.SaveState(root, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeCLITestFile(t, filepath.Join(root, "handbook", "meetings", "2026-03-12-handbook.md"), `---
+id: 2026-03-12-handbook
+date: 2026-03-12
+title: "Handbook meeting"
+---
+
+This record should be hidden by the data binding.
+`)
+	writeCLITestFile(t, filepath.Join(root, "records", "meetings", "2026-03-13-records.md"), `---
+id: 2026-03-13-records
+date: 2026-03-13
+title: "Records meeting"
+---
+
+This record should be visible.
+`)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "manifests", "add", "acme",
+		"https://github.com/acme/acme-ai-manifest.git",
+		"--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	if err := a.run([]string{"our", "meetings", "list", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "2026-03-13-records") {
+		t.Fatalf("meetings list stdout = %q, want bound records mount", out)
+	}
+	if strings.Contains(out, "2026-03-12-handbook") {
+		t.Fatalf("meetings list stdout = %q, should not include unbound handbook mount", out)
+	}
+}
+
+func TestServiceDataBindingReportsNotImplemented(t *testing.T) {
+	home := t.TempDir()
+	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": "https://github.com/acme/acme-handbook.git",
+      "mode": "default"
+    }
+  ],
+  "services": [
+    {
+      "id": "crm",
+      "kind": "http",
+      "purpose": "CRM records",
+      "describe_ref": "https://crm.example.com/openapi.json",
+      "auth_ref": "env://ACME_CRM_TOKEN"
+    }
+  ],
+  "data_bindings": {
+    "support": { "surface": "service:crm" }
+  }
+}`)
+	root := filepath.Join(home, "acme")
+	if _, state, err := umbrella.Ensure(root, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	} else {
+		state = umbrella.UpsertMount(state, umbrella.MountStatus{
+			ID:        "handbook",
+			Kind:      "handbook",
+			SourceRef: "manifest:acme:handbook",
+			Status:    "synced",
+		})
+		if err := umbrella.SaveState(root, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"our", "manifests", "add", "acme",
+		"https://github.com/acme/acme-ai-manifest.git",
+		"--home", home,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	err := a.run([]string{"our", "support", "list", "--home", home})
+	if err == nil || !strings.Contains(err.Error(), "service-backed data domains are not implemented yet") {
+		t.Fatalf("support list error = %v", err)
+	}
+}
+
 func TestMeetingsSearchUsesQMDOrderWhenAvailable(t *testing.T) {
 	root := meetings.Root{Manifest: "acme", Workspace: "handbook", Path: t.TempDir()}
 	writeCLITestFile(t, filepath.Join(root.Path, "meetings", "2026-01-01-alpha.md"), `---

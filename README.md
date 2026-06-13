@@ -44,7 +44,7 @@ so agents know how to use the CLI itself.
 
 | Concept | What it is |
 |---|---|
-| **Manifest** | An organization's configuration, stored in its own private Git repo — the control plane. Declares skills, mounts, catalog, services, roles, and tool hints. The single source of truth; it is not the workspace, and day-to-day work never touches it. |
+| **Manifest** | An organization's configuration, stored in its own private Git repo — the control plane. Declares skills, mounts, data bindings, catalog, services, roles, and tool hints. The single source of truth; it is not the workspace, and day-to-day work never touches it. |
 | **Skill** | A capability installed into harness skill directories. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer). The CLI also ships one public, organization-neutral *self-skill* named `our`, embedded in the binary, that teaches harnesses how to use `our` itself. |
 | **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.our/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Gnit control workspace so multi-repo commits and pushes have one substrate. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, customers, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
@@ -149,12 +149,15 @@ our roles get <id> [--json]
 our setup --role operator
 ```
 
+Manifest `data_bindings` map stable data nouns (`customers`, `meetings`,
+`support`, `fleet`) to an existing `mount:<id>` or `service:<id>`.
 Manifest `services` describe remote organization surfaces such as HTTP APIs and
-MCP servers. Manifest `roles` grant services and optional role-specific
-guidance without pruning mounts. `our setup --role <id>` stores the local role
-selection in `.our/state.json`, appends that role's guidance fragments to
-`AGENTS.md`, and materializes umbrella-root `.mcp.json` for locally described
-MCP services visible to the role.
+MCP servers. Manifest `roles` are local loadouts: they select services and
+optional role-specific guidance without granting authority or pruning mounts.
+`our setup --role <id>` stores the local role selection in `.our/state.json`,
+appends that role's guidance fragments to `AGENTS.md`, and materializes
+umbrella-root `.mcp.json` for locally described MCP services visible to the
+role.
 
 ### Contract rules
 
@@ -468,6 +471,12 @@ indexed in [docs/plans/](docs/plans/README.md):
   `our admin customers add|edit` plus manifest `catalog/customers.json`
   loading/validation are removed. Later data-surface slices remain active.
   Plan: [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 1.
+- **In progress — data bindings over surfaces.** Manifest `data_bindings`
+  maps stable operational data nouns (`customers`, `meetings`, `support`,
+  `fleet`) to existing `mount:<id>` or `service:<id>` surfaces. Mount-backed
+  bindings narrow today's local record commands; service-backed domain
+  invocation remains deferred. Plan:
+  [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 2.
 - **Next — contained runners (Mode B).** Org-side launch-artifact
   compilation (`our launch compile`): manifest + role + skills + mounts
   compile into a container launch artifact for governed fleet agents, with

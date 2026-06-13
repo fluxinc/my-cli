@@ -144,10 +144,11 @@ starting a harness.
 
 Manifest **services** and **roles** remain manifest vocabulary rather than new
 top-level concepts. Services describe remote organization surfaces such as HTTP
-APIs and MCP servers. Roles grant services and optional guidance fragments;
-`our setup --role <id>` stores the local role selection and materializes
-umbrella-root `.mcp.json` for locally described MCP services visible to that
-role. Roles do not prune mounts.
+APIs and MCP servers. Data bindings map stable data nouns to declared mount or
+service surfaces. Roles select services and optional guidance fragments as
+local loadouts; `our setup --role <id>` stores the local role selection and
+materializes umbrella-root `.mcp.json` for locally described MCP services
+visible to that role. Roles do not grant authority or prune mounts.
 
 **Tool** — an external executable the org depends on. The manifest declares
 purpose and install hints. `our doctor`, `our tools list`, and `our tools

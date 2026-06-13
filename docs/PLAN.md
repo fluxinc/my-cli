@@ -52,11 +52,15 @@ local scratch under `personal/`.
   --new-session|--session <id>`); content commands and plain `our ai` are
   session-aware when run inside one; `our doctor` reports session health;
   `our sync` holds mounts with dirty or unlanded active sessions.
+- Manifest `data_bindings`: stable operational data nouns (`customers`,
+  `meetings`, `support`, `fleet`) mapped to declared `mount:<id>` or
+  `service:<id>` surfaces.
 - Manifest `services` and `roles`: remote surfaces with reference-only auth
   (`op://`, `env://`, `broker://`, `none`) and server.json-shaped local
   connection data; `our services`/`our roles` inspection; `our setup --role`
-  selection persisted in umbrella state; umbrella-root `.mcp.json`
-  materialized from local connection data only; doctor service checks.
+  selection persisted in umbrella state; roles are loadouts, not authority;
+  umbrella-root `.mcp.json` materialized from local connection data only;
+  doctor service checks.
 - Sync: bidirectional reconcile with auto-publish policy for adopted private
   content, Gnit backend when the umbrella is a Gnit control workspace,
   `.our/last-sync.json` audit, `our doctor [--fix]`.
