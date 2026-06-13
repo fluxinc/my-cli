@@ -7,6 +7,7 @@ noted successor wins on conflict).
 
 | Plan | Status | Notes |
 |---|---|---|
+| [2026-06-13-data-surfaces](2026-06-13-data-surfaces.md) | active (draft) | Business-noun commands stay stable over a thin **data binding** to existing `mount`/`service` primitives (umbrella term: "surface"); a surface may bundle skills + MCPs + tools + labeled domain-guidance fragments (distinct from the org `contract`). Customers leave the manifest; no RBAC/grants in the CLI (Git host + backend enforce, `gnit` only composes); recursive materialization to local harness and claw pods. Supersedes the vetoed RBAC "Path B" draft. |
 | [2026-06-12-contract-rules](2026-06-12-contract-rules.md) | shipped (v0.20.0-v0.21.0) | Built-in Fleet Work Contract in baseline guidance + self-skill, `our fleet get` support-record next-step hint, manifest `contract` string list rendered as `## Organization Contract` in `AGENTS.md`, plus `our contract list` and `our admin contract add|remove`. |
 | [2026-06-12-cli-package-refactor](2026-06-12-cli-package-refactor.md) | shipped (v0.19.0) | `internal/cli` split into per-domain implementation and test files; `cli.go` reduced to app core/dispatcher/update shell. |
 | [2026-06-12-v018-scope](2026-06-12-v018-scope.md) | shipped (v0.18.0) | Manifest `services` + `roles`, inspection verbs, `our setup --role`, umbrella-root `.mcp.json` from local/inline connection data only, doctor service checks. Session GC and Mode B compile deferred. |
