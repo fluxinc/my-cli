@@ -92,31 +92,31 @@ rights live in the backend, not in `our`.
 
 ### 3. Surface bundles — what a backend contributes
 
-A surface (mount or service) may contribute, for its domain:
+A surface (mount or service) is the backend that owns data and rights. The
+near-term manifest keeps that primitive small: skills, MCPs, tools, and services
+remain existing top-level declarations selected by roles; `data_bindings` is the
+join point that says which surface backs one business domain.
 
-- **skills** — how to work with the domain (markdown guidance).
-- **mcps** — MCP servers exposing the domain's operations (→ `.mcp.json`).
-- **tools** — described callables / company CLI dependencies to install.
-- **guidance fragments** — domain norms rendered into `AGENTS.md` under a
-  **labeled, source-attributed** section (e.g. `## Domain Notes: customers`),
-  **separate** from the top-level org `contract`.
+The new bundle metadata is therefore intentionally narrow: a data binding may
+carry **guidance fragments** for its domain. Those norms render into
+`AGENTS.md` under a **labeled, source-attributed** section
+(e.g. `## Domain Notes: customers`), **separate** from the top-level org
+`contract`.
 
-The top-level manifest `contract` list and `our contract list|add|remove`
-stay authoritative and untouched — surface guidance is rendered as its own
-attributed section, never merged silently into the binding org contract, so
-`our contract list` never misrepresents what it owns. This is the one
-genuinely new structural idea, and it is small: surfaces gain a bundle. It
-mirrors clawdapus, where a service's `.claw-describe.json` advertises its
-tools/skill and a consuming agent auto-mounts that skill.
+The top-level manifest `contract` list and `our contract list|add|remove` stay
+authoritative and untouched — domain notes render as their own attributed
+section, never merged silently into the binding org contract, so
+`our contract list` never misrepresents what it owns. This keeps the model close
+to clawdapus without adding redundant `skills`/`mcps`/`tools` arrays to mounts or
+services before the compile/materialization path needs them.
 
 ## Roles become loadouts, not authority
 
 `manifest.Role` already selects `Mounts + Skills + Tools + Services +
 GuidancePaths`. Reframe it as a **loadout/profile**: which surfaces are active
-for a given harness or claw — nothing more. Activating a role wires in its
-surfaces' bundles (skills + mcps + tools + guidance fragments). A role is
-*what is loaded*, never *what is permitted*; the Git host / the API still gate
-real access. `our setup --role` keeps working; only the framing tightens.
+for a given harness or claw — nothing more. A role is *what is loaded*, never
+*what is permitted*; the Git host / the API still gate real access.
+`our setup --role` keeps working; only the framing tightens.
 
 ## Materialization is recursive (one model, both directions)
 
@@ -175,11 +175,11 @@ a `service` and the CRM's RBAC takes over — zero change to commands or model.
   needed, it must be named `descriptor_options` and explicitly non-authority.
   `our` carries no grants.
 
-**Slice 3 — Surface bundles + domain guidance fragments.**
-- A surface may carry `skills`, `mcps`, `tools`, and `guidance` fragments.
-  Render active surfaces' fragments into labeled, source-attributed
-  `AGENTS.md` sections; leave the top-level org `contract` and `our contract`
-  verbs untouched.
+**Slice 3 — Bound-surface domain guidance fragments.**
+- A data binding may carry `guidance` fragments for the surface that backs that
+  domain. Render those fragments into labeled, source-attributed `AGENTS.md`
+  sections; leave the top-level org `contract` and `our contract` verbs
+  untouched.
 
 **Slice 4 — Service-backed domains (future; YAGNI until a backend exists).**
 - A binding may target a `service` whose descriptor (CLI / MCP / HTTP, with a

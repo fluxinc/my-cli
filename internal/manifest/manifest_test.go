@@ -574,7 +574,7 @@ func TestValidateManifestCatchesInvalidServicesRolesAndServiceRequirements(t *te
     { "id": "qmd", "mode": "optional" }
   ],
   "data_bindings": {
-    "customers": { "surface": "mount:missing-mount" },
+    "customers": { "surface": "mount:missing-mount", "guidance": ["../private.md"] },
     "meetings": { "surface": "service:missing-service" },
     "support": { "surface": "volume:support" },
     "orders": { "surface": "mount:handbook" }
@@ -616,6 +616,7 @@ func TestValidateManifestCatchesInvalidServicesRolesAndServiceRequirements(t *te
 		`service "Bad Service" describe_ref "../server.json" must be an http(s) URL or a relative path inside the manifest repo`,
 		`service "status-api" connection is only supported for kind "mcp"`,
 		`data_bindings.customers.surface references unknown mount "missing-mount"`,
+		`data_bindings.customers.guidance[0] "../private.md" must be a relative path that stays inside the manifest repo`,
 		`data_bindings.meetings.surface references unknown service "missing-service"`,
 		`data_bindings key "orders" is unsupported; supported data types are customers, fleet, meetings, support`,
 		`data_bindings.support.surface "volume:support" must be mount:<id> or service:<id>`,

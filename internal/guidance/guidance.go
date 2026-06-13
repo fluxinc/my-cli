@@ -200,7 +200,15 @@ func writeDomainNotes(out *bytes.Buffer, manifestRoot string, bindings map[strin
 	sort.Strings(dataTypes)
 	for _, dataType := range dataTypes {
 		binding := bindings[dataType]
-		for _, path := range binding.Guidance {
+		if len(binding.Guidance) == 0 {
+			continue
+		}
+		out.WriteString("\n## Domain Notes: ")
+		out.WriteString(dataType)
+		out.WriteString("\n\n_Source: ")
+		out.WriteString(binding.Surface)
+		out.WriteString("_\n\n")
+		for i, path := range binding.Guidance {
 			fragmentPath := filepath.Join(manifestRoot, filepath.FromSlash(path))
 			if !pathWithin(fragmentPath, manifestRoot) {
 				return fmt.Errorf("data binding %s guidance path %q escapes manifest root", dataType, path)
@@ -209,11 +217,9 @@ func writeDomainNotes(out *bytes.Buffer, manifestRoot string, bindings map[strin
 			if err != nil {
 				return fmt.Errorf("read data binding %s guidance %s: %w", dataType, path, err)
 			}
-			out.WriteString("\n## Domain Notes: ")
-			out.WriteString(dataType)
-			out.WriteString("\n\n_Source: ")
-			out.WriteString(binding.Surface)
-			out.WriteString("_\n\n")
+			if i > 0 {
+				out.WriteString("\n")
+			}
 			out.Write(bytes.TrimSpace(data))
 			out.WriteString("\n")
 		}

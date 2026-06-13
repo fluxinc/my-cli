@@ -4,8 +4,8 @@
 
 ### Added
 
-- Data bindings may carry domain-notes `guidance` fragments. Active surfaces'
-  fragments render into generated `AGENTS.md` under a labeled, source-attributed
+- Data bindings may carry domain-notes `guidance` fragments. Those fragments
+  render into generated `AGENTS.md` under a labeled, source-attributed
   `## Domain Notes: <data type>` section, kept separate from the organization
   contract and the `our contract` verbs.
 

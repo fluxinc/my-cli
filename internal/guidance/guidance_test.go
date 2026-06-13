@@ -144,12 +144,13 @@ func TestComposeRendersOrganizationContract(t *testing.T) {
 func TestComposeRendersDomainNotesSeparateFromContract(t *testing.T) {
 	manifestRoot := t.TempDir()
 	writeGuidanceTestFile(t, filepath.Join(manifestRoot, "guidance", "customers-domain.md"), "Archive customers; never hard-delete.\n")
+	writeGuidanceTestFile(t, filepath.Join(manifestRoot, "guidance", "customers-pii.md"), "Keep customer contact details out of public notes.\n")
 	doc := manifest.Document{
 		Contract: []string{"Record decisions in the handbook before acting."},
 		DataBindings: map[string]manifest.DataBinding{
 			"customers": {
 				Surface:  "mount:handbook",
-				Guidance: []string{"guidance/customers-domain.md"},
+				Guidance: []string{"guidance/customers-domain.md", "guidance/customers-pii.md"},
 			},
 		},
 	}
@@ -166,6 +167,15 @@ func TestComposeRendersDomainNotesSeparateFromContract(t *testing.T) {
 	}
 	if !strings.Contains(got, "Archive customers; never hard-delete.") {
 		t.Fatalf("missing domain notes fragment content:\n%s", got)
+	}
+	if !strings.Contains(got, "Keep customer contact details out of public notes.") {
+		t.Fatalf("missing second domain notes fragment content:\n%s", got)
+	}
+	if strings.Count(got, "## Domain Notes: customers") != 1 {
+		t.Fatalf("domain notes should render one section per data type:\n%s", got)
+	}
+	if strings.Index(got, "Archive customers; never hard-delete.") > strings.Index(got, "Keep customer contact details out of public notes.") {
+		t.Fatalf("domain notes fragments should preserve manifest order:\n%s", got)
 	}
 	if !strings.Contains(got, "## Organization Contract") {
 		t.Fatalf("missing contract section:\n%s", got)
@@ -188,6 +198,32 @@ func TestComposeOmitsDomainNotesWithoutGuidance(t *testing.T) {
 	}
 	if strings.Contains(string(data), "## Domain Notes") {
 		t.Fatalf("domain notes rendered with no guidance:\n%s", string(data))
+	}
+}
+
+func TestComposeExampleWorkspaceDomainNotes(t *testing.T) {
+	manifestRoot := filepath.Join("..", "..", "examples", "acme-workspace", "manifest")
+	doc, _, err := manifest.LoadDocument(filepath.Join(manifestRoot, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := Compose(manifestRoot, doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	for _, want := range []string{
+		"## Domain Notes: customers",
+		"_Source: mount:handbook_",
+		"Archive customer records instead of hard-deleting them",
+		"Treat customer contact details as sensitive",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("example guidance missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Count(got, "## Domain Notes: customers") != 1 {
+		t.Fatalf("example guidance should render one customers domain section:\n%s", got)
 	}
 }
 

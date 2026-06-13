@@ -793,8 +793,8 @@ func validateDataBindings(bindings map[string]DataBinding, mountIDs, serviceIDs 
 			}
 		}
 		for i, path := range binding.Guidance {
-			if strings.TrimSpace(path) == "" {
-				result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.guidance[%d] must be a non-empty path", dataType, i))
+			if !portableIncludePath(path) {
+				result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.guidance[%d] %q must be a relative path that stays inside the manifest repo", dataType, i, path))
 			}
 		}
 	}

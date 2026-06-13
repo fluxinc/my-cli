@@ -477,9 +477,9 @@ indexed in [docs/plans/](docs/plans/README.md):
   bindings narrow today's local record commands; service-backed domain
   invocation remains deferred. Plan:
   [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 2.
-- **Next — surface bundles and domain notes.** Active surfaces will be able to
-  contribute skills, MCPs, tools, and labeled guidance fragments without
-  changing the top-level org contract. Plan:
+- **Next — domain notes over bound surfaces.** Data bindings will be able to
+  carry labeled guidance fragments for their backing surfaces without changing
+  the top-level org contract. Plan:
   [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 3.
 - **Next — contained runners (Mode B).** Org-side launch-artifact
   compilation (`our launch compile`): manifest + role + skills + mounts
