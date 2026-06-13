@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Data bindings may carry domain-notes `guidance` fragments. Active surfaces'
+  fragments render into generated `AGENTS.md` under a labeled, source-attributed
+  `## Domain Notes: <data type>` section, kept separate from the organization
+  contract and the `our contract` verbs.
+
 ## 0.23.0 - 2026-06-13
 
 ### Added

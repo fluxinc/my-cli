@@ -8,7 +8,7 @@ changes, and checked for drift by `our doctor`.
 
 ## How AGENTS.md is composed
 
-Generated guidance stacks four layers, in order:
+Generated guidance stacks five layers, in order:
 
 1. **The public baseline** — ships inside the CLI binary. It teaches any agent
    the workspace layout, the operational command surface, and the built-in
@@ -22,6 +22,9 @@ Generated guidance stacks four layers, in order:
 4. **Role guidance fragments** — appended only when the local umbrella has a
    selected role (`our setup --role <id>`), from that role's
    `guidance_paths`.
+5. **Domain notes** — per-data-binding norms from `data_bindings[*].guidance`,
+   rendered as labeled, source-attributed `## Domain Notes: <data type>`
+   sections (below). Present only when a binding declares guidance fragments.
 
 The composition is deterministic: same manifest plus same selected role equals
 byte-identical guidance. That is what lets `our doctor` and `our sync` detect
@@ -99,6 +102,43 @@ These rules are binding in this workspace:
   when working on any fleet member.
 ```
 
+## Domain notes
+
+A [data binding](./the-model) can attach domain-specific norms to the
+surface that backs a data type. List markdown fragments under the binding's
+`guidance` (paths relative to the manifest root):
+
+```json
+{
+  "data_bindings": {
+    "customers": {
+      "surface": "mount:handbook",
+      "guidance": ["agent-guidance/customers-domain.md"]
+    }
+  }
+}
+```
+
+Each fragment renders into `AGENTS.md` as a labeled, source-attributed section:
+
+```markdown
+## Domain Notes: customers
+
+_Source: mount:handbook_
+
+Archive customer records instead of hard-deleting them; preserve identifiers
+needed to reconcile prior meetings, support records, and fleet deployments.
+```
+
+Domain notes are deliberately **separate** from the organization contract:
+the contract is the org's binding rules and is owned by `our contract`, while
+domain notes are surface-contributed norms for one data type and are attributed
+to the surface that supplies them. They never merge into the contract list, so
+`our contract list` always reflects exactly what the org owns. This is how the
+soft side of the customers story is expressed ("archive, never hard-delete")
+without putting access control in the CLI — the backing surface still owns real
+permissions.
+
 ## Choosing the right layer
 
 - **One-sentence obligation every agent must follow** → `contract` rule.
@@ -106,6 +146,8 @@ These rules are binding in this workspace:
   fragment.
 - **Role-specific instructions** → role `guidance_paths`, activated by
   `our setup --role`.
+- **Norms for one data type, tied to its backing surface** →
+  `data_bindings[*].guidance` domain notes.
 - **Generic Our AI workflow** → already in the baseline; if something generic
   is missing, it belongs upstream in the public CLI, not in your manifest.
 

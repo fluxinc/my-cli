@@ -141,6 +141,56 @@ func TestComposeRendersOrganizationContract(t *testing.T) {
 	}
 }
 
+func TestComposeRendersDomainNotesSeparateFromContract(t *testing.T) {
+	manifestRoot := t.TempDir()
+	writeGuidanceTestFile(t, filepath.Join(manifestRoot, "guidance", "customers-domain.md"), "Archive customers; never hard-delete.\n")
+	doc := manifest.Document{
+		Contract: []string{"Record decisions in the handbook before acting."},
+		DataBindings: map[string]manifest.DataBinding{
+			"customers": {
+				Surface:  "mount:handbook",
+				Guidance: []string{"guidance/customers-domain.md"},
+			},
+		},
+	}
+	data, err := Compose(manifestRoot, doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "## Domain Notes: customers") {
+		t.Fatalf("missing domain notes section:\n%s", got)
+	}
+	if !strings.Contains(got, "_Source: mount:handbook_") {
+		t.Fatalf("missing source attribution:\n%s", got)
+	}
+	if !strings.Contains(got, "Archive customers; never hard-delete.") {
+		t.Fatalf("missing domain notes fragment content:\n%s", got)
+	}
+	if !strings.Contains(got, "## Organization Contract") {
+		t.Fatalf("missing contract section:\n%s", got)
+	}
+	// Domain notes are a distinct, attributed section that follows the org contract.
+	if strings.Index(got, "## Organization Contract") > strings.Index(got, "## Domain Notes: customers") {
+		t.Fatalf("domain notes should follow the org contract:\n%s", got)
+	}
+}
+
+func TestComposeOmitsDomainNotesWithoutGuidance(t *testing.T) {
+	doc := manifest.Document{
+		DataBindings: map[string]manifest.DataBinding{
+			"customers": {Surface: "mount:handbook"},
+		},
+	}
+	data, err := Compose(t.TempDir(), doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "## Domain Notes") {
+		t.Fatalf("domain notes rendered with no guidance:\n%s", string(data))
+	}
+}
+
 func TestComposeOmitsEmptyOrganizationContract(t *testing.T) {
 	data, err := Compose(t.TempDir(), manifest.Document{})
 	if err != nil {

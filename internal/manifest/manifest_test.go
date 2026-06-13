@@ -429,6 +429,14 @@ func TestValidateManifestCatchesInvalidContractRules(t *testing.T) {
 	}
 }
 
+func TestExampleWorkspaceManifestValidates(t *testing.T) {
+	dir := filepath.Join("..", "..", "examples", "acme-workspace", "manifest")
+	result := ValidateFile(dir)
+	if len(result.Errors) != 0 {
+		t.Fatalf("example workspace manifest has validation errors: %#v", result.Errors)
+	}
+}
+
 func TestValidateManifestCatchesInvalidSyncPolicy(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `{

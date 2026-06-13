@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/fluxinc/our-ai/internal/manifest"
@@ -181,7 +182,43 @@ func ComposeWithOptions(manifestRoot string, doc manifest.Document, opts Options
 		out.Write(bytes.TrimSpace(data))
 		out.WriteString("\n")
 	}
+	if err := writeDomainNotes(&out, manifestRoot, doc.DataBindings); err != nil {
+		return nil, err
+	}
 	return out.Bytes(), nil
+}
+
+// writeDomainNotes renders each data binding's domain-guidance fragments into a
+// labeled, source-attributed "## Domain Notes: <data type>" section. These are
+// deliberately kept separate from the org contract: surface-contributed domain
+// norms, not binding org rules.
+func writeDomainNotes(out *bytes.Buffer, manifestRoot string, bindings map[string]manifest.DataBinding) error {
+	dataTypes := make([]string, 0, len(bindings))
+	for dataType := range bindings {
+		dataTypes = append(dataTypes, dataType)
+	}
+	sort.Strings(dataTypes)
+	for _, dataType := range dataTypes {
+		binding := bindings[dataType]
+		for _, path := range binding.Guidance {
+			fragmentPath := filepath.Join(manifestRoot, filepath.FromSlash(path))
+			if !pathWithin(fragmentPath, manifestRoot) {
+				return fmt.Errorf("data binding %s guidance path %q escapes manifest root", dataType, path)
+			}
+			data, err := os.ReadFile(fragmentPath)
+			if err != nil {
+				return fmt.Errorf("read data binding %s guidance %s: %w", dataType, path, err)
+			}
+			out.WriteString("\n## Domain Notes: ")
+			out.WriteString(dataType)
+			out.WriteString("\n\n_Source: ")
+			out.WriteString(binding.Surface)
+			out.WriteString("_\n\n")
+			out.Write(bytes.TrimSpace(data))
+			out.WriteString("\n")
+		}
+	}
+	return nil
 }
 
 func blockedByExistingFiles(agentsPath, claudePath string, force bool) (bool, string, error) {

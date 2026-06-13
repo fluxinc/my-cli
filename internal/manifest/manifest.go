@@ -72,9 +72,13 @@ type Document struct {
 }
 
 // DataBinding maps one stable business data type to the mount or service that
-// backs it. The referenced surface owns storage and access control.
+// backs it. The referenced surface owns storage and access control. Guidance
+// lists optional domain-notes markdown fragments (paths relative to the
+// manifest root) rendered into AGENTS.md under a labeled, source-attributed
+// "## Domain Notes: <data type>" section, separate from the org contract.
 type DataBinding struct {
-	Surface string `json:"surface"`
+	Surface  string   `json:"surface"`
+	Guidance []string `json:"guidance,omitempty"`
 }
 
 // Organization identifies the organization owning this manifest.
@@ -786,6 +790,11 @@ func validateDataBindings(bindings map[string]DataBinding, mountIDs, serviceIDs 
 		case "service":
 			if !serviceIDs[id] {
 				result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface references unknown service %q", dataType, id))
+			}
+		}
+		for i, path := range binding.Guidance {
+			if strings.TrimSpace(path) == "" {
+				result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.guidance[%d] must be a non-empty path", dataType, i))
 			}
 		}
 	}
