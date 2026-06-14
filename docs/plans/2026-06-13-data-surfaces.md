@@ -127,13 +127,13 @@ directions from one source:
 - **Local harness** (`our setup` / `our ai`): active surfaces → mounts checked
   out + `.mcp.json` from surface MCPs + tools installed + `AGENTS.md`
   (baseline + skills + org contract + per-surface domain notes).
-- **Claw pod** (`our launch compile`, the Mode B slice in
+- **Claw pod** (`our compile`, the Mode B slice in
   [execution plane](2026-06-10-execution-plane.md)): active surfaces → pod
   `host://` / `service://` + descriptors + skills + contract → a per-agent
   context dir mirroring clawdapus `/claw/context/<id>/`.
 
 In-pod, `our customers` reads the same materialized bindings.
-`our launch compile` and clawdapus's context materialization are the same act
+`our compile` and clawdapus's context materialization are the same act
 from two angles.
 
 ## The original worry, reconciled without RBAC
@@ -190,7 +190,7 @@ a `service` and the CRM's RBAC takes over — zero change to commands or model.
   access needs a purpose-built broker, not an admin session.
 
 **Slice 5 — Compile (the recursion; tracked under Mode B).**
-- `our launch compile` consumes active surfaces → claw pod + context dir.
+- `our compile` consumes active surfaces → claw pod + context dir.
   Detailed in the execution-plane plan.
 
 ## Non-goals

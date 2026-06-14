@@ -70,7 +70,7 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   `our customers list`,
   `our products list`, `our repos list/add/remove`, `our tools list/info`,
   `our services list/get`, `our roles list/get`, `our contract list`,
-  `our root`,
+  `our compile`, `our root`,
   `our ai`, `our doctor`, `our manifests list`, `our mounts list`,
   `our work start/status/list/resume/finish` (sessions are local execution-plane
   state; `finish --publish` only publishes what the sync policy allows), and
@@ -106,6 +106,8 @@ our root [--repo ID] [--no-refresh] [--no-update-check]
 our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--no-refresh] [--no-update-check] [harness]
                                     # verify guidance is current, then start a harness
                                     # --setup reconciles the umbrella first when guidance is stale or missing
+our compile --role ROLE [--manifest NAME] [--home DIR]
+                                    # print deterministic manifest-to-Clawdapus launch projection JSON
 our doctor [--no-fetch] [--fix]   # git freshness, sessions, services, derived drift, last sync, manifests, tools
 ```
 
@@ -133,6 +135,13 @@ includes that role's guidance fragments, and umbrella-root `.mcp.json` is
 materialized only for locally described MCP services selected by that role.
 Inspect available role and service declarations with `our roles list|get` and
 `our services list|get`. Roles never prune mounts.
+
+Use `our compile --role <id>` to inspect the contained-runner handoff for a
+role. It is read-only and prints deterministic JSON only: no container launch,
+no service invocation, no credential resolution, and no descriptor fetch.
+When a manifest declares roles, `--role` is required; a manifest with no roles
+compiles an unscoped full projection. A local mount `git_url` is a compile
+error because contained launches must not leak host paths.
 
 By default, `our ai` starts the harness from the base umbrella, or from the
 current active session when run inside `<umbrella>/work/<id>`. Treat the base

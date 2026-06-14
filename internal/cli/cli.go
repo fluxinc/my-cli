@@ -123,6 +123,8 @@ func (a app) run(args []string) error {
 		return a.runInit(args[2:])
 	case "publish":
 		return a.runPublish(args[2:])
+	case "compile":
+		return a.runCompile(args[2:])
 	case "skills":
 		return a.runSkills(args[2:])
 	case "setup":
@@ -133,9 +135,6 @@ func (a app) run(args []string) error {
 	case "root":
 		return a.runRoot(args[2:])
 	case "ai":
-		return a.runLaunch(args[2:])
-	case "launch":
-		a.warnDeprecated("our launch", "our ai")
 		return a.runLaunch(args[2:])
 	case "sync":
 		return a.runSync(args[2:])
@@ -192,6 +191,7 @@ Usage:
   our update [--check] [--version X.Y.Z] [--json] [--yes]
   our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
   our publish [--manifest NAME] [--home DIR] [--print] [--json]
+  our compile --role ROLE [--manifest NAME] [--home DIR]
   our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
   our skills self install|uninstall|status ...
   our skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]

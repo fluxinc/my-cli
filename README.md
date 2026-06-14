@@ -147,6 +147,7 @@ our services get <id> [--json]
 our roles list [--json]
 our roles get <id> [--json]
 our setup --role operator
+our compile --role operator [--manifest NAME] [--home DIR]
 ```
 
 Manifest `data_bindings` map stable data nouns (`customers`, `meetings`,
@@ -157,7 +158,10 @@ optional role-specific guidance without granting authority or pruning mounts.
 `our setup --role <id>` stores the local role selection in `.our/state.json`,
 appends that role's guidance fragments to `AGENTS.md`, and materializes
 umbrella-root `.mcp.json` for locally described MCP services visible to the
-role.
+role. `our compile --role <id>` is the read-only Mode B handoff: it prints a
+deterministic manifest-to-Clawdapus launch projection as JSON, without
+launching containers or resolving credentials. A role is required when the
+manifest declares roles; manifests with no roles compile unscoped.
 
 ### Contract rules
 
@@ -483,11 +487,12 @@ indexed in [docs/plans/](docs/plans/README.md):
   service-backed domain invocation and contained runners remain future/YAGNI.
   Plan:
   [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 3.
-- **Next — contained runners (Mode B).** Org-side launch-artifact
-  compilation (`our launch compile`): manifest + role + skills + mounts
-  compile into a container launch artifact for governed fleet agents, with
-  the manifest `contract` list mapping to the artifact's enforce-level
-  contract block, plus descriptor fetch/cache as derived local state. Plan:
+- **Active — contained runners (Mode B phase 1).** Org-side launch-artifact
+  projection (`our compile`): manifest + role + skills + mounts compile into a
+  deterministic Clawdapus-facing JSON artifact for governed fleet agents, with
+  baseline and manifest contract blocks preserved as enforce-level inputs. The
+  Clawdapus pod/context emitter and descriptor fetch/cache remain later phases.
+  Plans: [compile launch projection](docs/plans/2026-06-14-compile-launch-plan.md),
   [execution plane](docs/plans/2026-06-10-execution-plane.md).
 - **Later — substrate upgrades.** A gnit backend for sessions once umbrellas
   bootstrap as gnit control workspaces, and managed read-only base mounts

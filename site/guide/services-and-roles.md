@@ -11,6 +11,7 @@ our services get <id> [--manifest NAME] [--json]
 our roles list [--manifest NAME] [--json]
 our roles get <id> [--manifest NAME] [--json]
 our setup --role <id>
+our compile --role <id> [--manifest NAME] [--home DIR]
 ```
 
 ## Services
@@ -57,6 +58,12 @@ The choice persists in `.our/state.json` and affects two derived outputs:
 role guidance fragments are appended to generated `AGENTS.md`, and the
 umbrella-root `.mcp.json` is scoped to MCP services visible to that role.
 Role selection never prunes mounts or hides commands.
+
+`our compile --role <id>` uses the same role vocabulary for contained runners:
+it prints a deterministic manifest-to-Clawdapus launch projection JSON artifact
+and writes nothing. It does not launch containers, call services, resolve
+credentials, or fetch `describe_ref` targets. A manifest with roles requires
+`--role`; a manifest with no roles compiles an unscoped projection.
 
 ## MCP materialization
 

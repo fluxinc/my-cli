@@ -1,0 +1,140 @@
+{
+  "compile_version": 1,
+  "target": "clawdapus",
+  "organization": {
+    "id": "acme",
+    "name": "Acme Example"
+  },
+  "role": "operator",
+  "contract": [
+    {
+      "source": "baseline:fleet-work-contract",
+      "mode": "enforce",
+      "rules": [
+        "Before substantive work on a deployed instance, run `our fleet get <id|identifier>` so you start from the registry record and see related support history.",
+        "Continue an existing relevant support record when one is listed, or create a new dated anonymized record with `our support add` for a distinct incident or work session.",
+        "Put the fleet record id and every useful fleet identifier on the support record with repeated `--identifier` flags, plus customer, product, and area frontmatter when known.",
+        "Treat support records as the incident/work log. Fleet records hold registry state; use `our fleet set` only for meaningful state transitions.",
+        "Publish the resulting content with `our sync`."
+      ]
+    },
+    {
+      "source": "manifest:contract",
+      "mode": "enforce",
+      "rules": [
+        "Continue an existing relevant support record or create a new dated record when working on any fleet member."
+      ]
+    }
+  ],
+  "guidance": [
+    {
+      "id": "agent-guidance-agent-guidance-acme",
+      "source": "agent_guidance",
+      "mode": "guide",
+      "path": "agent-guidance/acme.md"
+    },
+    {
+      "id": "role-operator-agent-guidance-acme",
+      "source": "role:operator",
+      "mode": "guide",
+      "path": "agent-guidance/acme.md"
+    },
+    {
+      "id": "domain-customers-agent-guidance-customers-domain",
+      "source": "domain:customers",
+      "mode": "reference",
+      "path": "agent-guidance/customers-domain.md",
+      "surface": "mount:handbook"
+    }
+  ],
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "mode": "default",
+      "git_url": "https://github.com/example/acme-workspace-content.git",
+      "include_paths": [
+        "customers",
+        "meetings",
+        "support",
+        "fleet",
+        "decisions",
+        "projects",
+        "policy",
+        "people"
+      ]
+    }
+  ],
+  "data_bindings": {
+    "customers": {
+      "surface": "mount:handbook",
+      "kind": "mount",
+      "ref": "handbook"
+    },
+    "fleet": {
+      "surface": "mount:handbook",
+      "kind": "mount",
+      "ref": "handbook"
+    },
+    "meetings": {
+      "surface": "mount:handbook",
+      "kind": "mount",
+      "ref": "handbook"
+    },
+    "support": {
+      "surface": "mount:handbook",
+      "kind": "mount",
+      "ref": "handbook"
+    }
+  },
+  "services": [
+    {
+      "id": "docs-search",
+      "kind": "mcp",
+      "purpose": "Search the public ACME fixture handbook",
+      "describe_ref": "services/docs-search.server.json",
+      "auth_ref": "env://ACME_DOCS_TOKEN",
+      "connection": {
+        "type": "stdio",
+        "command": "acme-docs-mcp",
+        "args": [
+          "--stdio"
+        ],
+        "env": {
+          "ACME_DOCS_TOKEN": "${ACME_DOCS_TOKEN}"
+        }
+      }
+    }
+  ],
+  "skills": [
+    {
+      "id": "acme:handbook",
+      "install_slug": "acme-handbook",
+      "path": "skills/acme-handbook",
+      "capabilities": [
+        "meetings",
+        "support",
+        "fleet",
+        "decisions",
+        "workspace"
+      ],
+      "requires": [
+        "workspace:handbook",
+        "service:docs-search"
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "id": "qmd",
+      "mode": "optional",
+      "purpose": "Higher quality local markdown search and retrieval",
+      "install": {
+        "commands": [
+          "npm install -g @tobilu/qmd"
+        ],
+        "docs_url": "https://github.com/tobilu/qmd"
+      }
+    }
+  ]
+}

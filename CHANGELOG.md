@@ -1,6 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.25.0 - 2026-06-14
+
+### Added
+
+- `our compile --role <id> [--manifest NAME] [--home DIR]`: emits a
+  deterministic manifest-to-Clawdapus launch projection JSON artifact without
+  launching containers, resolving credentials, or fetching service descriptors.
+
+### Removed
+
+- Removed the deprecated `our launch` dispatch alias. Use `our ai` for local
+  harness startup and `our compile` for the contained-runner projection.
 
 ## 0.24.0 - 2026-06-13
 

@@ -15,6 +15,9 @@ Use the `our` CLI before falling back to ad hoc file searches:
   roles. `our services list` / `our services get <id>` show declared remote
   surfaces such as HTTP APIs and MCP servers. `our contract list` shows the
   organization's binding contract rules.
+- `our compile --role <id>` prints the deterministic contained-runner launch
+  projection JSON for that role. It does not launch containers, fetch service
+  descriptors, or resolve credentials.
 - `our meetings list`, `our meetings search <text>`, and
   `our meetings get <id>` query local meeting notes; use `--customer`,
   `--partner`, and `--product` filters when those axes are known.

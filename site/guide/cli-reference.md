@@ -152,6 +152,7 @@ our services get <id> [--manifest NAME] [--home DIR] [--json]
 our roles list [--manifest NAME] [--home DIR] [--json]
 our roles get <id> [--manifest NAME] [--home DIR] [--json]
 our contract list [--manifest NAME] [--home DIR] [--json]
+our compile --role <id> [--manifest NAME] [--home DIR]
 ```
 
 `our sync` is the routine reconciliation command. `--backend auto` prefers Gnit
@@ -190,6 +191,9 @@ is stored in `.our/state.json`, appends that role's guidance fragments to
 `AGENTS.md`, and scopes generated `.mcp.json` to MCP services selected by the
 role. Services and roles are manifest vocabulary: inspect them with
 `our services list|get` and `our roles list|get`; they do not prune mounts.
+`our compile --role <id>` prints the deterministic contained-runner launch
+projection JSON for that role without launching containers, resolving
+credentials, or fetching service descriptors.
 
 Those startup commands also emit a stderr-only notice when a newer Our AI release
 is available. Stdout remains clean for command substitutions such as

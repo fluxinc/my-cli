@@ -127,15 +127,15 @@ mapping is close to 1:1:
 | catalog products            | repo mounts                                |
 | services (role-selected / data-bound) | remote surfaces + mediated tool wiring     |
 
-A future `our launch compile [--role R]` (verb TBD) emits the org-side launch
-artifacts — contract text, role-scoped mount list, tool selections, data
-bindings, service declarations, persona seed — that container tooling (for
-example, `claw up`) consumes. Inside the container the agent gets a role-scoped
-umbrella pulled into its home, the `our` CLI installed, and **only the
-operational verb set** reachable through the mediated tool plane; `our
-admin *` and `our sync` remain operator-only — the privilege split the CLI
-already enforces. Cross-pollution is impossible by construction: every
-container has its own filesystem.
+`our compile --role R` emits the org-side launch projection — contract blocks,
+role-scoped mounts, tool selections, data bindings, and service declarations.
+The later Clawdapus emitter consumes that projection and writes the native pod
+and context artifacts that container tooling (for example, `claw up`) consumes.
+Inside the container the agent gets a role-scoped umbrella pulled into its home,
+the `our` CLI installed, and **only the operational verb set** reachable through
+the mediated tool plane; `our admin *` and `our sync` remain operator-only —
+the privilege split the CLI already enforces. Cross-pollution is impossible by
+construction: every container has its own filesystem.
 
 Mode B builds on manifest extensions that are useful standalone:
 
@@ -288,12 +288,12 @@ is a compile target, not a vocabulary source.**
 
 - The manifest's sections describe organization truth (roles, mounts,
   skills, tools, services, guidance) in `our`'s own minimal schema.
-- `our launch compile` emits the container tooling's native formats —
-  pod-file fragments and contract documents — the same way Mode A emits each
-  harness's native MCP config dialect. Speaking the consumer's dialect at
-  the boundary avoids both a parallel DSL and schema coupling: container
-  tooling evolves independently, and a new runner format becomes a new
-  emitter, not a manifest migration.
+- A later Mode B emitter consumes `our compile` output and emits the container
+  tooling's native formats — pod-file fragments and contract documents — the
+  same way Mode A emits each harness's native MCP config dialect. Speaking the
+  consumer's dialect at the boundary avoids both a parallel DSL and schema
+  coupling: container tooling evolves independently, and a new runner format
+  becomes a new emitter, not a manifest migration.
 - Where a concept is a genuine published standard (server.json for MCP
   connection material, OpenAPI for HTTP, op:// for secret references), the
   manifest adopts the standard directly rather than wrapping it.
@@ -369,10 +369,11 @@ The combined path:
    `kind: mcp`), `our services`/`our roles` inspection, `our setup --role`,
    umbrella-root `.mcp.json` from local connection data, doctor service
    checks (see `docs/plans/2026-06-12-v018-scope.md`).
-4. **Next** — org-side launch-artifact compilation for contained runners
-   (`our launch compile`): manifest + role + skills + mounts compile into a
-   container launch artifact; the manifest `contract` list (v0.20.0) maps to
-   the artifact's enforce-level contract block rather than a parallel
-   dialect; descriptor fetch/cache as derived local state.
+4. **Next** — org-side launch-artifact projection for contained runners
+   (`our compile`): manifest + role + skills + mounts compile into a
+   deterministic Clawdapus-facing launch artifact; the manifest `contract`
+   list (v0.20.0) maps to the artifact's enforce-level contract block rather
+   than a parallel dialect. Descriptor fetch/cache remains a later derived-state
+   phase.
 5. Later — gnit backend for sessions once umbrellas bootstrap as gnit
    control workspaces; managed read-only base mounts for contained launches.
