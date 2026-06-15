@@ -152,6 +152,8 @@ our services list [--json]
 our services get <id> [--json]
 our roles list [--json]
 our roles get <id> [--json]
+our admin services add|edit|remove ...
+our admin roles add|edit|remove ...
 our setup --role operator
 our compile --role operator [--manifest NAME] [--home DIR]
 ```
@@ -223,6 +225,12 @@ our admin skills remove <id|slug> --manifest-dir <checkout> [--prune-orphans]
 our admin tools add <id> --manifest-dir <checkout> --mode required|optional --purpose "..."
 our admin tools edit <id> --manifest-dir <checkout> [--purpose "..."]
 our admin tools remove <id> --manifest-dir <checkout>
+our admin services add <id> --manifest-dir <checkout> --kind http|mcp --purpose "..." --auth-ref REF
+our admin services edit <id> --manifest-dir <checkout> [--purpose "..."]
+our admin services remove <id> --manifest-dir <checkout> [--prune-roles]
+our admin roles add <id> --manifest-dir <checkout> --purpose "..."
+our admin roles edit <id> --manifest-dir <checkout> [--purpose "..."]
+our admin roles remove <id> --manifest-dir <checkout>
 our admin contract add "RULE TEXT" --manifest-dir <checkout>
 our admin contract remove <index|"RULE TEXT"> --manifest-dir <checkout>
 ```

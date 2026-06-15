@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `our admin roles add|edit|remove` and `our admin services add|edit|remove`
+  for command-driven manifest authoring of role loadouts and service surfaces.
+
 ## 0.28.0 - 2026-06-15
 
 ### Added

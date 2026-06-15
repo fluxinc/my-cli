@@ -33,6 +33,10 @@ func (a app) runAdmin(args []string) error {
 		return a.runAdminSupport(args[1:])
 	case "tools":
 		return a.runAdminTools(args[1:])
+	case "roles":
+		return a.runAdminRoles(args[1:])
+	case "services":
+		return a.runAdminServices(args[1:])
 	case "contract":
 		return a.runAdminContract(args[1:])
 	case "-h", "--help", "help":
@@ -57,6 +61,12 @@ func (a app) printAdminUsage() {
   our admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
   our admin tools edit <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--clear-install-commands] [--docs-url URL|--clear-docs-url] [--skill-install-command CMD] [--skill-install-arg ARG] [--clear-skill-install] [--force] [--json]
   our admin tools remove <id> --manifest-dir DIR [--force] [--json]
+  our admin roles add <id> --manifest-dir DIR --purpose TEXT [--guidance PATH] [--mount ID] [--skill namespace:name] [--tool ID] [--service ID] [--force] [--json]
+  our admin roles edit <id> --manifest-dir DIR [--purpose TEXT] [--guidance PATH|--clear-guidance] [--mount ID|--clear-mounts] [--skill namespace:name|--clear-skills] [--tool ID|--clear-tools] [--service ID|--clear-services] [--force] [--json]
+  our admin roles remove <id> --manifest-dir DIR [--force] [--json]
+  our admin services add <id> --manifest-dir DIR --kind http|mcp --purpose TEXT --auth-ref REF [--describe-ref REF] [--connection-type TYPE] [--connection-command CMD|--connection-url URL] [--connection-arg ARG] [--connection-env KEY=REF] [--connection-header KEY=VALUE] [--force] [--json]
+  our admin services edit <id> --manifest-dir DIR [--kind http|mcp] [--purpose TEXT] [--auth-ref REF] [--describe-ref REF|--clear-describe-ref] [--connection-type TYPE] [--connection-command CMD|--connection-url URL] [--connection-arg ARG] [--connection-env KEY=REF] [--connection-header KEY=VALUE] [--clear-connection] [--force] [--json]
+  our admin services remove <id> --manifest-dir DIR [--prune-roles] [--force] [--json]
 
 admin groups shared/workspace configuration. The top-level command forms remain
 as compatibility aliases. Admin aliases are limited to mutating/configuration

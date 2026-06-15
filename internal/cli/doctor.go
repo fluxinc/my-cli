@@ -973,12 +973,8 @@ func doctorServices(manifestName, manifestRoot string, services []manifest.Servi
 }
 
 // serviceEnvVars collects environment variable names a service expects
-// locally: an env:// auth reference plus ${VAR} placeholders in inline
-// connection env values.
-
-// serviceEnvVars collects environment variable names a service expects
-// locally: an env:// auth reference plus ${VAR} placeholders in inline
-// connection env values.
+// locally: an env:// auth reference plus ${VAR} references in inline
+// connection env and header values.
 func serviceEnvVars(service manifest.Service) []string {
 	seen := map[string]bool{}
 	var names []string
@@ -992,21 +988,28 @@ func serviceEnvVars(service manifest.Service) []string {
 		add(name)
 	}
 	for _, value := range service.Connection.Env {
-		rest := value
-		for {
-			_, after, found := strings.Cut(rest, "${")
-			if !found {
-				break
-			}
-			name, after, found := strings.Cut(after, "}")
-			if !found {
-				break
-			}
-			add(name)
-			rest = after
-		}
+		addEnvRefsFromConnectionValue(value, add)
+	}
+	for _, value := range service.Connection.Headers {
+		addEnvRefsFromConnectionValue(value, add)
 	}
 	return names
+}
+
+func addEnvRefsFromConnectionValue(value string, add func(string)) {
+	rest := value
+	for {
+		_, after, found := strings.Cut(rest, "${")
+		if !found {
+			break
+		}
+		name, after, found := strings.Cut(after, "}")
+		if !found {
+			break
+		}
+		add(name)
+		rest = after
+	}
 }
 
 func (a app) printDoctorReport(report doctorReport) {
