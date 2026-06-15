@@ -327,6 +327,48 @@ func TestValidateManifestCatchesInvalidMounts(t *testing.T) {
 	}
 }
 
+func TestValidateManifestProfiles(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ],
+  "profiles": [
+    { "id": "support", "purpose": "Support loadout", "skills": ["acme:handbook"] }
+  ]
+}`)
+	result := ValidateFile(dir)
+	if len(result.Errors) != 0 {
+		t.Fatalf("valid profile result = %#v", result.Errors)
+	}
+
+	writeManifest(t, dir, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ],
+  "profiles": [
+    { "id": "Bad Profile", "skills": ["acme:missing", "bad"] },
+    { "id": "support", "skills": ["acme:handbook"] },
+    { "id": "support", "skills": ["acme:handbook"] }
+  ]
+}`)
+	result = ValidateFile(dir)
+	for _, want := range []string{
+		`profile id "Bad Profile" must be lowercase kebab-case`,
+		`profile "Bad Profile" selects unknown skill "acme:missing"`,
+		`profile "Bad Profile" skill selection "bad" must be namespace:name`,
+		`duplicate profile id "support"`,
+	} {
+		if !containsValidationError(result.Errors, want) {
+			t.Fatalf("profile errors = %#v, missing %q", result.Errors, want)
+		}
+	}
+}
+
 func TestValidateManifestRejectsSelfMountGitURL(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `{
@@ -831,6 +873,15 @@ func writeManifest(t *testing.T, dir, body string) {
 func containsString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsValidationError(values []string, want string) bool {
+	for _, value := range values {
+		if strings.Contains(value, want) {
 			return true
 		}
 	}

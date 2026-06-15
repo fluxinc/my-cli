@@ -19,12 +19,13 @@ our version
 our doctor
 ```
 
-`our doctor` reports manifest validity, generated guidance/skill/MCP drift,
+`our doctor` reports manifest validity, generated guidance/MCP drift, legacy
+global org-skill drift,
 service materialization health, local Git freshness, and the last
 `.our/last-sync.json` audit when an umbrella is present. Add `--no-fetch` for
 an offline freshness check, or `--fix` to fast-forward clean stale
 manifest/content checkouts and reconcile derived guidance, MCP config, and
-skills.
+legacy global org-skill cleanup.
 
 ## Create an organization
 
@@ -79,8 +80,9 @@ our setup
 `our manifests add <name> <git-url>` next step and leaves the tour unmarked.
 Plain `our setup` stays deterministic and scriptable. With one registered
 manifest, every command defaults to it. Setup is safe to re-run: it validates
-the manifest, installs declared skills, creates the umbrella, writes generated
-guidance, and syncs default content. Opted-in catalog repo clones live under
+the manifest, installs the bundled self-skill, creates the umbrella, writes
+generated guidance, and syncs default content. Organization skills are composed
+by `our ai` into the launch root. Opted-in catalog repo clones live under
 `repos/<id>` in the umbrella.
 
 ## Start an agent

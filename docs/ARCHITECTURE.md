@@ -7,12 +7,12 @@ generic — no organization is described here.
 ## 1. Problem
 
 A company adopts AI agents across several harnesses (Claude Code, Codex,
-OpenCode, Gemini) on many machines. Each agent is only as useful as the skills
-and context it can reach. Without a mechanism, every machine drifts: different
-skills, stale company knowledge, ad-hoc tool setup, no provenance.
+OpenCode, Antigravity) on many machines. Each agent is only as useful as the
+skills and context it can reach. Without a mechanism, every machine drifts:
+different skills, stale company knowledge, ad-hoc tool setup, no provenance.
 
-The goal: **one command on a fresh machine makes every installed agent
-operate from the same skills and the same company context.** No per-harness
+The goal: **one command on a fresh machine makes every installed agent operate
+from the same manifest-defined context and launch profile.** No per-harness
 fiddling, no manual cloning, no "which version of the skill is this."
 
 ## 2. Audience Principle: agents are primary
@@ -45,13 +45,16 @@ manifest defines — and it lives outside the umbrella so day-to-day work never
 touches it. Write access can differ per plane: admins push the manifest; the
 whole organization pushes workspace content.
 
-**Skill** — a capability installed into harness skill directories. Two kinds:
+**Skill** — a capability exposed to harnesses. Two kinds:
 
-- *Static*: a directory inside the manifest repo. Copied/symlinked into each
-  present harness.
+- *Static*: a directory inside the manifest repo. Composed by `our ai` into
+  launch-root `.agents/skills` for harnesses with a project-local skill seam,
+  with per-harness mirrors where needed. OpenCode currently remains
+  compatibility-global because no launch-root seam has been proven.
 - *Tool-provided*: declared with a source tool; `our` invokes that tool's own
-  skill installer to materialize the skill, then installs the result. This
-  keeps tool-owned skills authoritative to the tool, not vendored copies.
+  skill installer to materialize the skill, then includes the result in the
+  launch profile. This keeps tool-owned skills authoritative to the tool, not
+  vendored copies.
 
 Our AI also ships one public, organization-neutral self-skill named `our`. It
 teaches harnesses how to use the CLI and is managed by `our skills self ...`,
@@ -198,10 +201,13 @@ outside its own tree.
    TTL allows it, best-effort fast-forward clean stale manifest/content
    checkouts.
 2. Validate the manifest (schema + cross-references).
-3. Install the bundled `our` self-skill and declared organization skills into
-   every present harness (static ones from the cache; tool-provided ones via
-   the tool's installer). Provenance is recorded; a directory `our` did not
-   place is never overwritten.
+3. Install or refresh the bundled `our` self-skill for every present
+   filesystem harness. Declared organization skills are not installed globally
+   by setup; `our ai` composes them into the selected launch root when a
+   launch-root-capable harness is launched. OpenCode is the compatibility
+   exception and keeps org skills in its user config dir when present or
+   explicitly selected. Provenance is recorded; a directory `our` did not place
+   is never overwritten.
 4. Create/repair the umbrella: `.our/workspace.json`, `.our/state.json`,
    `personal/`, `repos/`.
 5. Generate root `AGENTS.md` from the embedded public baseline plus

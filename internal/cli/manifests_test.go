@@ -115,7 +115,8 @@ description: Acme handbook
 	out := stdout.String()
 	if !strings.Contains(out, "acme\tsynced\t") ||
 		!strings.Contains(out, "derived\tguidance\t") ||
-		!strings.Contains(out, "derived-skill\tclaude-code\tacme-handbook\tinstalled") {
+		!strings.Contains(out, "derived-skill\tclaude-code\t*\tskipped") ||
+		!strings.Contains(out, "launch-scoped") {
 		t.Fatalf("manifest sync stdout = %q", out)
 	}
 	data, err := os.ReadFile(filepath.Join(umbrellaRoot, "AGENTS.md"))
@@ -125,8 +126,8 @@ description: Acme handbook
 	if !strings.Contains(string(data), "fresh guidance from manifest") {
 		t.Fatalf("AGENTS.md was not regenerated from synced manifest:\n%s", data)
 	}
-	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); err != nil {
-		t.Fatalf("skill was not installed after manifest sync: %v", err)
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("manifest sync installed org skill globally: %v", err)
 	}
 	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "our")); err != nil {
 		t.Fatalf("self-skill was pruned by manifest sync derived reconcile: %v", err)

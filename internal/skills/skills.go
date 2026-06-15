@@ -1,6 +1,6 @@
 // Package skills discovers and installs manifest-managed skills into
 // AI agent harnesses. Filesystem harnesses receive a symlink (default)
-// or a directory copy; Gemini is delegated to the `gemini` CLI.
+// or a directory copy.
 package skills
 
 import (
@@ -12,7 +12,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -208,6 +207,7 @@ type InstallOpts struct {
 	Force       bool     // replace/remove non-Our AI-managed targets
 	SourceRoot  string   // resolved skills source root for provenance checks
 	SourceRoots []string // additional managed source roots
+	Scope       string   // provenance scope: manual, launch, or empty legacy
 }
 
 type Result struct {
@@ -231,6 +231,7 @@ type InstalledSkill struct {
 	LinkTarget  string          `json:"link_target,omitempty"`
 	Managed     bool            `json:"managed"`
 	Source      string          `json:"source,omitempty"`
+	Scope       string          `json:"scope,omitempty"`
 }
 
 const (
@@ -252,48 +253,6 @@ func Install(s Skill, h harness.Harness, opts InstallOpts) Result {
 	}
 
 	res := Result{Harness: h, Skill: s.Name, CanonicalID: s.CanonicalID}
-
-	if h == harness.Gemini {
-		res.TargetPath = "(gemini CLI)"
-		if opts.SkipMissing {
-			configDir := h.ConfigDir(home)
-			if _, err := os.Stat(configDir); errors.Is(err, fs.ErrNotExist) {
-				res.Status = StatusSkipped
-				res.Message = fmt.Sprintf("harness not present: %s", configDir)
-				return res
-			} else if err != nil {
-				res.Status = StatusFailed
-				res.Err = err
-				return res
-			}
-		}
-		if opts.DryRun {
-			res.Status = StatusDryRun
-			res.Message = fmt.Sprintf("gemini skills link %s --scope user --consent", s.SourcePath)
-			return res
-		}
-		if _, err := exec.LookPath("gemini"); err != nil {
-			res.Message = "gemini CLI not in PATH"
-			if opts.SkipMissing {
-				res.Status = StatusSkipped
-				return res
-			}
-			res.Status = StatusFailed
-			res.Err = err
-			return res
-		}
-		cmd := exec.Command("gemini", "skills", "link", s.SourcePath, "--scope", "user", "--consent")
-		cmd.Env = envWithHome(home)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			res.Status = StatusFailed
-			res.Err = err
-			res.Message = strings.TrimSpace(string(out))
-			return res
-		}
-		res.Status = StatusInstalled
-		return res
-	}
 
 	configDir := h.ConfigDir(home)
 	if opts.SkipMissing {
@@ -358,7 +317,14 @@ func Install(s Skill, h harness.Harness, opts InstallOpts) Result {
 			res.Err = err
 			return res
 		}
-		if err := writeManagedMarker(target, "copy", sourceRootFor(s, opts), s.CanonicalID); err != nil {
+		if err := writeManagedMarker(target, "copy", sourceRootFor(s, opts), s.CanonicalID, opts.Scope); err != nil {
+			res.Status = StatusFailed
+			res.Err = err
+			return res
+		}
+	}
+	if opts.Scope != "" {
+		if err := updateManagedIndex(filepath.Dir(target), s.Name, s.CanonicalID, opts.Scope); err != nil {
 			res.Status = StatusFailed
 			res.Err = err
 			return res
@@ -380,48 +346,6 @@ func Uninstall(skillName string, h harness.Harness, opts InstallOpts) Result {
 		return Result{Harness: h, Skill: skillName, Status: StatusFailed, Err: err}
 	}
 	res := Result{Harness: h, Skill: skillName}
-
-	if h == harness.Gemini {
-		res.TargetPath = "(gemini CLI)"
-		if opts.SkipMissing {
-			configDir := h.ConfigDir(home)
-			if _, err := os.Stat(configDir); errors.Is(err, fs.ErrNotExist) {
-				res.Status = StatusSkipped
-				res.Message = fmt.Sprintf("harness not present: %s", configDir)
-				return res
-			} else if err != nil {
-				res.Status = StatusFailed
-				res.Err = err
-				return res
-			}
-		}
-		if opts.DryRun {
-			res.Status = StatusDryRun
-			res.Message = fmt.Sprintf("gemini skills uninstall %s --scope user", skillName)
-			return res
-		}
-		if _, err := exec.LookPath("gemini"); err != nil {
-			res.Message = "gemini CLI not in PATH"
-			if opts.SkipMissing {
-				res.Status = StatusSkipped
-				return res
-			}
-			res.Status = StatusFailed
-			res.Err = err
-			return res
-		}
-		cmd := exec.Command("gemini", "skills", "uninstall", skillName, "--scope", "user")
-		cmd.Env = envWithHome(home)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			res.Status = StatusFailed
-			res.Err = err
-			res.Message = strings.TrimSpace(string(out))
-			return res
-		}
-		res.Status = StatusRemoved
-		return res
-	}
 
 	target := h.SkillTargetPath(home, skillName)
 	res.TargetPath = target
@@ -454,13 +378,18 @@ func Uninstall(skillName string, h harness.Harness, opts InstallOpts) Result {
 		res.Err = err
 		return res
 	}
+	if err := removeManagedIndexEntry(filepath.Dir(target), skillName); err != nil {
+		res.Status = StatusFailed
+		res.Err = err
+		return res
+	}
 	res.Status = StatusRemoved
 	return res
 }
 
 // InstalledKind describes what's at the harness skill path: symlink, copy, or absent.
 type InstalledKind struct {
-	Kind   string // "symlink" | "copy" | "absent" | "managed-by-gemini"
+	Kind   string // "symlink" | "copy" | "absent"
 	Target string // for symlinks, the link target; otherwise empty
 }
 
@@ -478,9 +407,6 @@ func Inspect(skillName string, h harness.Harness, home string) (InstalledKind, e
 		if err != nil {
 			return InstalledKind{}, err
 		}
-	}
-	if h == harness.Gemini {
-		return InstalledKind{Kind: "managed-by-gemini"}, nil
 	}
 	target := h.SkillTargetPath(home, skillName)
 	info, err := os.Lstat(target)
@@ -512,7 +438,7 @@ func InspectDeclared(s Skill, h harness.Harness, opts InstallOpts) (DeclaredInsp
 		return DeclaredInspection{}, err
 	}
 	inspection := DeclaredInspection{Kind: kind}
-	if h == harness.Gemini || kind.Kind != "copy" {
+	if kind.Kind != "copy" {
 		return inspection, nil
 	}
 	target := h.SkillTargetPath(home, s.Name)
@@ -539,14 +465,11 @@ func InspectDeclared(s Skill, h harness.Harness, opts InstallOpts) (DeclaredInsp
 }
 
 // ListInstalled returns the current filesystem skill materializations for a
-// harness. Gemini is intentionally empty because its lifecycle is CLI-managed.
+// harness.
 func ListInstalled(h harness.Harness, opts InstallOpts) ([]InstalledSkill, error) {
 	home, err := resolveHome(opts.Home)
 	if err != nil {
 		return nil, err
-	}
-	if !h.IsFilesystem() {
-		return nil, nil
 	}
 	dir := filepath.Join(h.ConfigDir(home), "skills")
 	entries, err := os.ReadDir(dir)
@@ -557,12 +480,19 @@ func ListInstalled(h harness.Harness, opts InstallOpts) ([]InstalledSkill, error
 		return nil, err
 	}
 	sourceRoots := managedSourceRoots(opts.SourceRoot, opts.SourceRoots, home)
+	index := readManagedIndex(dir)
 	var out []InstalledSkill
 	for _, entry := range entries {
+		if entry.Name() == bundle.MarkerName {
+			continue
+		}
 		target := filepath.Join(dir, entry.Name())
 		info, err := os.Lstat(target)
 		if err != nil {
 			return nil, err
+		}
+		if !entry.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			continue
 		}
 		installed := InstalledSkill{
 			Harness:    h,
@@ -580,11 +510,21 @@ func ListInstalled(h harness.Harness, opts InstallOpts) ([]InstalledSkill, error
 				if marker, ok := readManagedMarker(link); ok {
 					installed.CanonicalID = marker.CanonicalID
 					installed.Source = marker.Source
+					installed.Scope = marker.Scope
 				}
 			}
 		} else if marker, ok := readManagedMarker(target); ok {
 			installed.CanonicalID = marker.CanonicalID
 			installed.Source = marker.Source
+			installed.Scope = marker.Scope
+		}
+		if indexed, ok := index.Skills[entry.Name()]; ok {
+			if installed.CanonicalID == "" {
+				installed.CanonicalID = indexed.CanonicalID
+			}
+			if installed.Scope == "" {
+				installed.Scope = indexed.Scope
+			}
 		}
 		installed.Managed = isOurManagedTarget(target, info, sourceRoots)
 		out = append(out, installed)
@@ -693,15 +633,86 @@ func sameFilesystemPath(a, b string) bool {
 	return filepath.Clean(absA) == filepath.Clean(absB)
 }
 
-func writeManagedMarker(dir, mode, source, canonicalID string) error {
+func writeManagedMarker(dir, mode, source, canonicalID, scope string) error {
 	marker := bundle.Marker{
 		Installer:   "our",
 		Version:     bundle.Version(),
 		Mode:        mode,
 		Source:      source,
 		CanonicalID: canonicalID,
+		Scope:       scope,
 	}
 	data, err := json.MarshalIndent(marker, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return os.WriteFile(filepath.Join(dir, bundle.MarkerName), data, 0o644)
+}
+
+type managedIndex struct {
+	Installer string                      `json:"installer"`
+	Version   string                      `json:"version"`
+	Mode      string                      `json:"mode"`
+	Skills    map[string]managedIndexItem `json:"skills,omitempty"`
+}
+
+type managedIndexItem struct {
+	CanonicalID string `json:"canonical_id,omitempty"`
+	Scope       string `json:"scope,omitempty"`
+}
+
+func readManagedIndex(dir string) managedIndex {
+	data, err := os.ReadFile(filepath.Join(dir, bundle.MarkerName))
+	if err != nil {
+		return managedIndex{Skills: map[string]managedIndexItem{}}
+	}
+	var index managedIndex
+	if err := json.Unmarshal(data, &index); err != nil {
+		return managedIndex{Skills: map[string]managedIndexItem{}}
+	}
+	if index.Installer != "our" && index.Installer != "our-ai" {
+		return managedIndex{Skills: map[string]managedIndexItem{}}
+	}
+	if index.Mode != "index" {
+		return managedIndex{Skills: map[string]managedIndexItem{}}
+	}
+	if index.Skills == nil {
+		index.Skills = map[string]managedIndexItem{}
+	}
+	return index
+}
+
+func updateManagedIndex(dir, skillName, canonicalID, scope string) error {
+	index := readManagedIndex(dir)
+	index.Installer = "our"
+	index.Version = bundle.Version()
+	index.Mode = "index"
+	if index.Skills == nil {
+		index.Skills = map[string]managedIndexItem{}
+	}
+	index.Skills[skillName] = managedIndexItem{CanonicalID: canonicalID, Scope: scope}
+	return writeManagedIndex(dir, index)
+}
+
+func removeManagedIndexEntry(dir, skillName string) error {
+	index := readManagedIndex(dir)
+	if len(index.Skills) == 0 {
+		return nil
+	}
+	delete(index.Skills, skillName)
+	if len(index.Skills) == 0 {
+		err := os.Remove(filepath.Join(dir, bundle.MarkerName))
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	return writeManagedIndex(dir, index)
+}
+
+func writeManagedIndex(dir string, index managedIndex) error {
+	data, err := json.MarshalIndent(index, "", "  ")
 	if err != nil {
 		return err
 	}

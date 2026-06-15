@@ -35,7 +35,7 @@ remove them in the same write.
 After an admin edit, only the maintainer checkout has changed: review with
 `git status` and `git diff`, then commit and push yourself. Teammates pick the
 change up via `our manifests sync`, which reconciles generated guidance and
-manifest skills automatically.
+launch-scoped skill reconciliation notices automatically.
 
 ## Tool hints
 

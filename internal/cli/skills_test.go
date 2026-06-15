@@ -313,8 +313,8 @@ func TestSkillsStatusJSON(t *testing.T) {
 		`"harness": "codex"`,
 		`"status": "absent"`,
 		`"remedy": "our skills install codex --skill acme:handbook --manifest acme --home `,
-		`"harness": "gemini"`,
-		`"status": "managed-by-gemini"`,
+		`"harness": "antigravity"`,
+		`"remedy": "our skills install antigravity --skill acme:handbook --manifest acme --home `,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("skills status json = %q, missing %q", out, want)

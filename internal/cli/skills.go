@@ -60,7 +60,7 @@ func (a app) printSkillsUsage() {
   our skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
 
 Harnesses:
-  claude-code, codex, opencode, gemini
+  claude-code, codex, opencode, antigravity
 
 With no harnesses, install targets all supported harnesses and silently skips
 missing ones. If synced manifests are registered, skills commands use them by
@@ -287,6 +287,10 @@ func (a app) installSkills(opts skillsCommandOpts, hs []harness.Harness, syncLeg
 }
 
 func (a app) collectSkillInstallResults(opts skillsCommandOpts, hs []harness.Harness, syncLegacyWorkspaces bool) ([]skills.Result, error) {
+	return a.collectSkillInstallResultsWithScope(opts, hs, syncLegacyWorkspaces, "manual")
+}
+
+func (a app) collectSkillInstallResultsWithScope(opts skillsCommandOpts, hs []harness.Harness, syncLegacyWorkspaces bool, scope string) ([]skills.Result, error) {
 	if err := a.prepareManifestSkillSources(opts); err != nil {
 		return nil, err
 	}
@@ -310,6 +314,7 @@ func (a app) collectSkillInstallResults(opts skillsCommandOpts, hs []harness.Har
 		Home:        opts.home,
 		Force:       opts.force,
 		SourceRoots: sourceRoots,
+		Scope:       scope,
 	}
 	var results []skills.Result
 	for _, h := range hs {
@@ -413,6 +418,10 @@ func (a app) runSkillsSync(args []string) error {
 }
 
 func (a app) collectSkillSyncResults(opts skillsCommandOpts, hs []harness.Harness, syncLegacyWorkspaces bool) ([]skills.Result, error) {
+	return a.collectSkillSyncResultsWithScope(opts, hs, syncLegacyWorkspaces, "manual")
+}
+
+func (a app) collectSkillSyncResultsWithScope(opts skillsCommandOpts, hs []harness.Harness, syncLegacyWorkspaces bool, scope string) ([]skills.Result, error) {
 	if err := a.prepareManifestSkillSources(opts); err != nil {
 		return nil, err
 	}
@@ -436,6 +445,7 @@ func (a app) collectSkillSyncResults(opts skillsCommandOpts, hs []harness.Harnes
 		Home:        opts.home,
 		Force:       opts.force,
 		SourceRoots: sourceRoots,
+		Scope:       scope,
 	}
 	var results []skills.Result
 	for _, h := range hs {
@@ -500,18 +510,6 @@ func (a app) collectSkillPurgeResults(opts skillsCommandOpts, hs []harness.Harne
 	}
 	var results []skills.Result
 	for _, h := range hs {
-		if h == harness.Gemini {
-			targets, err := geminiPurgeTargets(bundled, opts.skillRefs)
-			if err != nil {
-				return nil, err
-			}
-			for _, target := range targets {
-				res := skills.Uninstall(target.Name, h, installOpts)
-				res.CanonicalID = target.CanonicalID
-				results = append(results, res)
-			}
-			continue
-		}
 		installed, err := skills.ListInstalled(h, installOpts)
 		if err != nil {
 			results = append(results, skills.Result{Harness: h, Skill: "*", Status: skills.StatusFailed, Err: err})
@@ -705,11 +703,7 @@ func (a app) skillStatusRows(opts skillsCommandOpts, bundled []skills.Skill, sou
 				CanonicalID: s.CanonicalID,
 				SourcePath:  s.SourcePath,
 			}
-			if h.IsFilesystem() {
-				row.TargetPath = h.SkillTargetPath(home, s.Name)
-			} else {
-				row.TargetPath = "(gemini CLI)"
-			}
+			row.TargetPath = h.SkillTargetPath(home, s.Name)
 			inspection, err := skills.InspectDeclared(s, h, installOpts)
 			if err != nil {
 				row.Status = "error"
@@ -724,8 +718,6 @@ func (a app) skillStatusRows(opts skillsCommandOpts, bundled []skills.Skill, sou
 			case "absent":
 				row.Status = "absent"
 				row.Remedy = skillInstallRemedy(opts, h, s)
-			case "managed-by-gemini":
-				row.Status = "managed-by-gemini"
 			case "copy":
 				if inspection.Stale {
 					row.Status = "stale"
@@ -927,9 +919,6 @@ func collectStaleSkillRemovalResults(opts skillsCommandOpts, hs []harness.Harnes
 	}
 	var results []skills.Result
 	for _, h := range hs {
-		if !h.IsFilesystem() {
-			continue
-		}
 		installed, err := skills.ListInstalled(h, installOpts)
 		if err != nil {
 			results = append(results, skills.Result{Harness: h, Skill: "*", Status: skills.StatusFailed, Err: err})
@@ -953,17 +942,6 @@ func staleRemovalMessage(message string) string {
 		return "stale Our AI-managed skill not declared by selected source"
 	}
 	return "stale Our AI-managed skill not declared by selected source; " + message
-}
-
-func geminiPurgeTargets(declared []skills.Skill, refs []string) ([]skillRemovalTarget, error) {
-	if len(refs) == 0 {
-		targets := make([]skillRemovalTarget, 0, len(declared))
-		for _, s := range declared {
-			targets = append(targets, skillRemovalTarget{Name: s.Name, CanonicalID: s.CanonicalID})
-		}
-		return targets, nil
-	}
-	return declaredOrRawRemovalTargets(declared, refs), nil
 }
 
 func filesystemPurgeTargets(declared []skills.Skill, installed []skills.InstalledSkill, refs []string) ([]skillRemovalTarget, error) {
@@ -1005,21 +983,6 @@ func filesystemPurgeTargets(declared []skills.Skill, installed []skills.Installe
 
 func isSelfSkillMaterialization(existing skills.InstalledSkill) bool {
 	return existing.CanonicalID == selfskill.CanonicalID
-}
-
-func declaredOrRawRemovalTargets(declared []skills.Skill, refs []string) []skillRemovalTarget {
-	var targets []skillRemovalTarget
-	for _, ref := range refs {
-		matches := declaredMatchesRef(declared, ref)
-		if len(matches) == 0 {
-			targets = append(targets, skillRemovalTarget{Name: ref})
-			continue
-		}
-		for _, s := range matches {
-			targets = append(targets, skillRemovalTarget{Name: s.Name, CanonicalID: s.CanonicalID})
-		}
-	}
-	return dedupeRemovalTargets(targets)
 }
 
 func declaredMatchesRef(declared []skills.Skill, ref string) []skills.Skill {

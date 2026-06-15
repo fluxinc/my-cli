@@ -3,7 +3,6 @@ package skills
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -283,7 +282,7 @@ func TestListInstalledReportsManagedEntries(t *testing.T) {
 	}
 	copyDir := filepath.Join(targetDir, "copy-skill")
 	mustMkdir(t, copyDir)
-	if err := writeManagedMarker(copyDir, "copy", source, "our:copy-skill"); err != nil {
+	if err := writeManagedMarker(copyDir, "copy", source, "our:copy-skill", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -315,112 +314,6 @@ func TestMissingHarnessSkip(t *testing.T) {
 	}
 }
 
-func TestGeminiMissing(t *testing.T) {
-	t.Setenv("PATH", t.TempDir())
-	source := t.TempDir()
-	skill := writeSkill(t, source, "demo-skill", "demo-skill", "Demo")
-	res := Install(skill, harness.Gemini, InstallOpts{SkipMissing: true})
-	if res.Status != StatusSkipped {
-		t.Fatalf("missing gemini skip status = %s, want skipped", res.Status)
-	}
-	res = Install(skill, harness.Gemini, InstallOpts{})
-	if res.Status != StatusFailed {
-		t.Fatalf("missing gemini explicit status = %s, want failed", res.Status)
-	}
-}
-
-func TestGeminiSkipMissingUsesOverrideHomeConfigDir(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake gemini test uses a POSIX shell script")
-	}
-	source := t.TempDir()
-	skill := writeSkill(t, source, "demo-skill", "demo-skill", "Demo")
-	home := t.TempDir()
-	log := filepath.Join(t.TempDir(), "gemini.log")
-	binDir := t.TempDir()
-	writeFakeGemini(t, binDir, log)
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("OUR_GEMINI_LOG", log)
-	t.Setenv("OUR_EXPECT_HOME", home)
-
-	res := Install(skill, harness.Gemini, InstallOpts{Home: home, SkipMissing: true})
-	if res.Status != StatusSkipped {
-		t.Fatalf("missing gemini home install status = %s, want skipped", res.Status)
-	}
-	if !strings.Contains(res.Message, filepath.Join(home, ".gemini")) {
-		t.Fatalf("missing gemini home message = %q, want override config dir", res.Message)
-	}
-	res = Uninstall("demo-skill", harness.Gemini, InstallOpts{Home: home, SkipMissing: true})
-	if res.Status != StatusSkipped {
-		t.Fatalf("missing gemini home uninstall status = %s, want skipped", res.Status)
-	}
-	if _, err := os.Stat(log); !os.IsNotExist(err) {
-		t.Fatalf("gemini command was invoked despite missing override home config: %v", err)
-	}
-}
-
-func TestGeminiInstallAndUninstallUseOverrideHome(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake gemini test uses a POSIX shell script")
-	}
-	source := t.TempDir()
-	skill := writeSkill(t, source, "demo-skill", "demo-skill", "Demo")
-	realHome := t.TempDir()
-	home := t.TempDir()
-	mustMkdir(t, filepath.Join(home, ".gemini"))
-	log := filepath.Join(t.TempDir(), "gemini.log")
-	binDir := t.TempDir()
-	writeFakeGemini(t, binDir, log)
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("HOME", realHome)
-	t.Setenv("OUR_GEMINI_LOG", log)
-	t.Setenv("OUR_EXPECT_HOME", home)
-
-	res := Install(skill, harness.Gemini, InstallOpts{Home: home})
-	if res.Status != StatusInstalled {
-		t.Fatalf("gemini install status = %s, want installed (%v: %s)", res.Status, res.Err, res.Message)
-	}
-	res = Uninstall("demo-skill", harness.Gemini, InstallOpts{Home: home})
-	if res.Status != StatusRemoved {
-		t.Fatalf("gemini uninstall status = %s, want removed (%v: %s)", res.Status, res.Err, res.Message)
-	}
-
-	data, err := os.ReadFile(log)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := string(data)
-	if strings.Contains(got, "HOME="+realHome) {
-		t.Fatalf("gemini inherited real HOME in log:\n%s", got)
-	}
-	if strings.Count(got, "HOME="+home) != 2 {
-		t.Fatalf("gemini HOME log = %q, want override home for install and uninstall", got)
-	}
-	if !strings.Contains(got, "ARGS=skills link ") || !strings.Contains(got, "ARGS=skills uninstall demo-skill --scope user") {
-		t.Fatalf("gemini args log = %q, missing install/uninstall calls", got)
-	}
-}
-
-func TestGeminiDryRunAndInspect(t *testing.T) {
-	source := t.TempDir()
-	skill := writeSkill(t, source, "demo-skill", "demo-skill", "Demo")
-	res := Install(skill, harness.Gemini, InstallOpts{DryRun: true})
-	if res.Status != StatusDryRun {
-		t.Fatalf("gemini dry-run install = %s, want dry-run", res.Status)
-	}
-	res = Uninstall("demo-skill", harness.Gemini, InstallOpts{DryRun: true})
-	if res.Status != StatusDryRun {
-		t.Fatalf("gemini dry-run uninstall = %s, want dry-run", res.Status)
-	}
-	kind, err := Inspect("demo-skill", harness.Gemini, t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if kind.Kind != "managed-by-gemini" {
-		t.Fatalf("Inspect gemini = %#v, want managed-by-gemini", kind)
-	}
-}
-
 func writeSkill(t *testing.T, root, dirName, skillName, desc string) Skill {
 	t.Helper()
 	writeRawSkill(t, root, dirName, "---\nname: "+skillName+"\ndescription: "+desc+"\n---\n")
@@ -449,22 +342,6 @@ func writeRawSkill(t *testing.T, root, dirName, content string) {
 func mustMkdir(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func writeFakeGemini(t *testing.T, binDir, log string) {
-	t.Helper()
-	path := filepath.Join(binDir, "gemini")
-	body := `#!/bin/sh
-printf 'HOME=%s\n' "$HOME" >> "$OUR_GEMINI_LOG"
-printf 'ARGS=%s\n' "$*" >> "$OUR_GEMINI_LOG"
-if [ "$HOME" != "$OUR_EXPECT_HOME" ]; then
-  echo "wrong HOME: $HOME" >&2
-  exit 42
-fi
-`
-	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
 }

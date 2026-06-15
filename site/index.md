@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Our AI
   text: Your team's AI, set up once
-  tagline: One organization manifest gives every AI harness the same skills, generated guidance, mounts, and local operating context — on any machine, with one command.
+  tagline: One organization manifest gives every AI harness generated guidance, mounts, launch profiles, and local operating context — on any machine, with one command.
   image:
     src: /our-ai-glyph.svg
     alt: Our AI mark
@@ -22,7 +22,7 @@ features:
     details: Skills, mounts, catalog, tools, and generated guidance flow from a single organization source of truth.
   - icon: "02"
     title: Every harness
-    details: Claude Code, Codex, OpenCode, and Gemini get the same declared capabilities — no per-harness setup.
+    details: Claude Code, Codex, OpenCode, and Antigravity launch from one manifest-defined profile, using the best available skill path for each harness.
   - icon: "03"
     title: Local umbrella
     details: Every operator gets the same deterministic workspace, with synced content, catalog repositories, state, and scratch.

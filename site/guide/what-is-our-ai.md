@@ -3,14 +3,14 @@
 Our AI is a small Go CLI, `our`, that bootstraps AI agent workspaces from an
 organization manifest.
 
-It installs declared skills into supported AI harnesses, creates a local
-umbrella workspace, writes generated root guidance, syncs content mounts, and
-reports missing tools. The result is a repeatable operating envelope for agents
-on a fresh machine.
+It creates a local umbrella workspace, writes generated root guidance, syncs
+content mounts, reports missing tools, and lets `our ai` compose declared
+organization skills into each launch root. The result is a repeatable operating
+envelope for agents on a fresh machine.
 
 ## The problem
 
-AI harnesses drift. A team may use Claude Code, Codex, OpenCode, and Gemini,
+AI harnesses drift. A team may use Claude Code, Codex, OpenCode, and Antigravity,
 but each surface has its own skill location, project context rules, and local
 setup habits. Without one source of truth, agents see different knowledge and
 different capabilities.
@@ -26,7 +26,7 @@ The command converges local state. Re-run it when the manifest changes.
 ## What our owns
 
 - Manifest registration and sync.
-- Harness skill materialization.
+- Launch-scoped organization skill materialization.
 - Umbrella workspace creation.
 - Generated agent guidance.
 - Git-backed content mounts.

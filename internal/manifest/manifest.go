@@ -68,6 +68,7 @@ type Document struct {
 	Tools                     []Tool                 `json:"tools,omitempty"`
 	Services                  []Service              `json:"services,omitempty"`
 	Roles                     []Role                 `json:"roles,omitempty"`
+	Profiles                  []Profile              `json:"profiles,omitempty"`
 	Contract                  []string               `json:"contract,omitempty"`
 }
 
@@ -209,6 +210,14 @@ type Role struct {
 	Skills        []string `json:"skills,omitempty"`
 	Tools         []string `json:"tools,omitempty"`
 	Services      []string `json:"services,omitempty"`
+}
+
+// Profile describes a named launch skill loadout. It selects skills for
+// launch-root materialization; it is not an authorization boundary.
+type Profile struct {
+	ID      string   `json:"id"`
+	Purpose string   `json:"purpose,omitempty"`
+	Skills  []string `json:"skills,omitempty"`
 }
 
 // Runner executes external commands. Tests can replace it.
@@ -754,6 +763,7 @@ func validateOrgManifest(doc Document, result *ValidationResult) {
 		validateTool(t, result)
 	}
 	validateRoles(doc.Roles, mountIDs, skillIDs, tools, serviceIDs, result)
+	validateProfiles(doc.Profiles, skillIDs, result)
 	validateContract(doc.Contract, result)
 }
 
@@ -1134,6 +1144,27 @@ func validateRoles(roles []Role, mountIDs, skillIDs map[string]bool, tools map[s
 				result.Errors = append(result.Errors, fmt.Sprintf("role %q service selection %q must be lowercase kebab-case", role.ID, id))
 			} else if !serviceIDs[id] {
 				result.Errors = append(result.Errors, fmt.Sprintf("role %q selects unknown service %q", role.ID, id))
+			}
+		}
+	}
+}
+
+func validateProfiles(profiles []Profile, skillIDs map[string]bool, result *ValidationResult) {
+	seen := map[string]bool{}
+	for _, profile := range profiles {
+		validID := portableID(profile.ID)
+		if !validID {
+			result.Errors = append(result.Errors, fmt.Sprintf("profile id %q must be lowercase kebab-case", profile.ID))
+		} else if seen[profile.ID] {
+			result.Errors = append(result.Errors, fmt.Sprintf("duplicate profile id %q", profile.ID))
+		} else {
+			seen[profile.ID] = true
+		}
+		for _, id := range profile.Skills {
+			if !portableNamespacedID(id) {
+				result.Errors = append(result.Errors, fmt.Sprintf("profile %q skill selection %q must be namespace:name with lowercase kebab-case parts", profile.ID, id))
+			} else if !skillIDs[id] {
+				result.Errors = append(result.Errors, fmt.Sprintf("profile %q selects unknown skill %q", profile.ID, id))
 			}
 		}
 	}

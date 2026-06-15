@@ -2,9 +2,9 @@
 
 `our` is a small, dependency-free CLI that bootstraps an AI agent's working
 environment from a single organization manifest. One command turns a fresh
-machine into one where every installed AI harness — Claude Code, Codex,
-OpenCode, Gemini — has the same skills, the same company context, and the same
-local tooling.
+machine into one where installed AI harnesses — Claude Code, Codex, OpenCode,
+Antigravity — share the same company context, manifest-defined launch profiles,
+and local tooling.
 
 It is built for a world where **agents are the primary operators**. Humans own
 intent — goals, products, decisions — and express it as content in a Git repo.
@@ -47,7 +47,7 @@ so agents know how to use the CLI itself.
 | Concept | What it is |
 |---|---|
 | **Manifest** | An organization's configuration, stored in its own private Git repo — the control plane. Declares skills, mounts, data bindings, catalog, services, roles, and tool hints. The single source of truth; it is not the workspace, and day-to-day work never touches it. |
-| **Skill** | A capability installed into harness skill directories. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer). The CLI also ships one public, organization-neutral *self-skill* named `our`, embedded in the binary, that teaches harnesses how to use `our` itself. |
+| **Skill** | A capability exposed to harnesses. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer); `our ai` composes them into the launch root for harnesses with a project-local skill seam. The CLI also ships one public, organization-neutral *self-skill* named `our`, embedded in the binary, that teaches harnesses how to use `our` itself. |
 | **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.our/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Gnit control workspace so multi-repo commits and pushes have one substrate. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, customers, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
 | **Session** | An isolated unit of work under `work/<id>`: a git worktree per content mount on a fresh branch, plus session-local scratch. Create one with `our work start` or `our ai --new-session`; inspect it with `our work status` or `our work list`; work leaves only through `our work finish --land\|--publish\|--discard`. |
@@ -71,7 +71,7 @@ Run `our --help` for the authoritative surface. The essentials:
 
 ```sh
 our onboard                    # human walkthrough; offers interactive setup
-our setup [harness...] | --all # create umbrella, write guidance/MCP config, install skills, sync mounts
+our setup [harness...] | --all # create umbrella, write guidance/MCP config, install self-skill, sync mounts
                                     # [--manifest NAME] [--umbrella DIR] [--role ROLE] [--copy] [--link] [--print]
                                     # [--interactive] [--no-refresh] [--no-update-check]
 ```
@@ -85,7 +85,7 @@ selection.
 ```sh
 our root [--repo ID] [--no-refresh] [--no-update-check]
                                              # print the umbrella or repo path
-our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--no-refresh] [--no-update-check] [harness]
+our ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--no-refresh] [--no-update-check] [harness]
                                              # verify guidance, then start a harness
 our ai codex --model gpt-5              # pass harness flags after the harness name
 our ai --new-session codex
@@ -140,7 +140,8 @@ our manifests validate <name|path>          # schema + reference checks
 
 When a non-print manifest sync pulls or clones exactly one manifest, `our`
 reconciles derived workspace artifacts for an existing matching umbrella:
-generated guidance, umbrella MCP config, and manifest skills. Pass
+generated guidance, umbrella MCP config, and launch-scoped skill reconciliation
+notices. Pass
 `--no-derived` for a cache-only refresh or `--umbrella DIR` when the intended
 umbrella is not the current one.
 
@@ -188,7 +189,7 @@ our skills self install [harness...] | --all
 our skills list [--json]                   # manifest/source skills available to install
 our skills show <id|slug> [--json]         # one skill's metadata and source path
 our skills status [--skill ID_OR_SLUG]     # installed/absent status across harnesses
-our skills install [harness...] | --all    # materialize skills into harness dirs
+our skills install [harness...] | --all    # explicit user-global materialization
 our skills uninstall <harness...> | --all  # remove materialized skills
 our skills sync [harness...] | --all       # install/update and prune stale Our AI-managed skills
 our skills purge <harness...> | --all      # remove Our AI-managed materializations
@@ -200,13 +201,19 @@ selected filesystem harness before `our ai` execs it, and quietly kept current
 for already-installed file-based harness copies when a newer binary runs.
 
 Use `--skill ID_OR_SLUG` on manifest skill `install`, `uninstall`, `sync`,
-`purge`, or `status` to target a single declared skill. Manifest skills install
-as symlinks by default (`--copy` to vendor a copy). `our` records provenance
-and refuses to clobber a directory it did not place. `skills sync` prunes stale
-Our AI-managed manifest skills by default, but does not remove the bundled
-`our` self-skill; pass `--no-prune` to only install/update. Skill commands only
-refresh harness skill directories; run `our setup` when manifest guidance or
-the generated umbrella `AGENTS.md` should change without a manifest sync.
+`purge`, or `status` to target a single declared skill. These commands are
+explicit manual user-global materialization surfaces; managed launches get
+organization skills from `our ai` in the launch root when the harness supports
+that. OpenCode is currently compatibility-global: present or explicit OpenCode
+setup/launch keeps org skills in `~/.config/opencode/skills`, and `our ai
+opencode --skills/--profile` is rejected until OpenCode has a proven
+project-local seam. Manual manifest skills install as symlinks by default
+(`--copy` to vendor a copy). `our` records provenance and refuses to clobber a
+directory it did not place. `skills sync` prunes stale Our AI-managed manual
+manifest skills by default, but does not remove the bundled `our` self-skill;
+pass `--no-prune` to only install/update. Skill commands only refresh harness
+skill directories; run `our setup` when manifest guidance or the generated
+umbrella `AGENTS.md` should change without a manifest sync.
 
 Manifest authoring is explicit admin work:
 
@@ -283,8 +290,8 @@ instead of being quietly committed. A manifest can set top-level
 `--publish` is omitted; an explicit CLI flag always wins. Non-print syncs write
 `.our/last-sync.json` so `our doctor` can show the last sync/publish audit.
 When sync pulls or publishes a manifest checkout, it reconciles generated
-guidance, umbrella MCP config, and manifest skills unless `--no-derived` is
-passed.
+guidance, umbrella MCP config, and launch-scoped skill reconciliation notices
+unless `--no-derived` is passed.
 
 ### Catalog and customer records
 
@@ -374,7 +381,12 @@ reported rather than touched.
 | Claude Code | `~/.claude/skills/<skill>` |
 | Codex | `~/.codex/skills/<skill>` |
 | OpenCode | `~/.config/opencode/skills/<skill>` |
-| Gemini | via `gemini skills link` |
+| Antigravity | `~/.agents/skills/<skill>` |
+
+Managed org-skill launches use the project-local seam where available: Claude
+Code receives a launch-root `.claude/skills` mirror, Codex and Antigravity read
+launch-root `.agents/skills`, and OpenCode stays on its global path as a
+compatibility exception.
 
 Missing harnesses are skipped silently — `our` configures what is present and
 never fails because a harness is absent.
@@ -506,6 +518,16 @@ indexed in [docs/plans/](docs/plans/README.md):
   stored umbrella-local; no new top-level verbs such as `configuration`,
   `configure`, or `tour`. Plan:
   [onboarding walkthrough](docs/plans/2026-06-14-onboarding-walkthrough.md).
+- **Shipped (v0.27.0) — launch-scoped skill composition.** `our ai` composes
+  manifest profile/skill selectors into disposable `.agents/skills` state under
+  the launch root, with harness mirrors where a launch-root seam exists.
+  Automatic setup/sync/doctor paths stop installing organization skills globally
+  for launch-root-capable harnesses; OpenCode remains compatibility-global until
+  a project-local skill seam is proven; the global `our` self-skill remains
+  during migration. Gemini harness support was removed entirely in favor of
+  Antigravity (`agy`). Plans:
+  [launch-scoped skill composition](docs/plans/2026-06-14-launch-scoped-skill-composition.md),
+  [ADR 0001](docs/decisions/0001-launch-scoped-skill-composition.md).
 - **Later — substrate upgrades.** A gnit backend for sessions once umbrellas
   bootstrap as gnit control workspaces, and managed read-only base mounts
   for contained launches. Plan:

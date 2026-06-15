@@ -1,14 +1,14 @@
 ---
 name: our
-description: Use when working inside an Our AI umbrella (a per-user operating dir, e.g. ~/our, containing a .our/ directory and a generated AGENTS.md), or when the user asks about the `our` CLI, organization manifests, workspace skills, mounts, meeting notes, customers, the product catalog, onboarding a harness, or syncing/publishing local workspace changes. Also use when an AGENTS.md says the workspace is Our AI-managed.
+description: Use when working inside an Our AI umbrella (a per-user operating dir, e.g. ~/our, containing a .our/ directory and a generated AGENTS.md), or when the user asks about the `our` CLI, organization manifests, launch-scoped skills, mounts, meeting notes, customers, the product catalog, onboarding a harness, or syncing/publishing local workspace changes. Also use when an AGENTS.md says the workspace is Our AI-managed.
 ---
 
 This skill teaches a harness how to operate inside an Our AI workspace.
 
 `our` is a small, dependency-free CLI that bootstraps an AI agent's working
-environment from a single organization **manifest**. One command gives every
-installed harness (Claude Code, Codex, OpenCode, Gemini) the same skills, the
-same company context, and the same local tooling.
+environment from a single organization **manifest**. One command gives installed
+harnesses (Claude Code, Codex, OpenCode, Antigravity) the same company context,
+manifest-defined launch profiles, and local tooling.
 
 ## When To Use
 
@@ -36,8 +36,10 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   never edits the manifest. Registered locally with `our init <org-id>` for a
   new organization or `our manifests add <name> <git-url>` for an existing
   repo, then refreshed with `our manifests sync`.
-- **Skill** — a capability installed into harness skill directories. Either
-  *static* (a directory in the manifest repo) or *tool-provided*.
+- **Skill** — a capability exposed to harnesses. Organization skills are
+  *static* (a directory in the manifest repo) or *tool-provided*; `our ai`
+  composes them into the launch root for harnesses with a project-local skill
+  seam. OpenCode is currently compatibility-global until that seam is proven.
 - **Umbrella** — a per-user operating envelope (e.g. `~/our` or `~/acme`): a
   `.our/` identity namespace plus mounts and local scratch. Launch harnesses
   from here so they pick up the generated `AGENTS.md` context.
@@ -279,8 +281,9 @@ also counts as adoption.
 
 "Derived" means the artifacts generated from the manifest: root guidance
 (`AGENTS.md` plus the `CLAUDE.md` pointer), umbrella-root `.mcp.json`, and
-manifest-declared skills. Sync reconciles them automatically after a manifest
-checkout changes.
+launch-scoped skill reconciliation notices. `our ai` materializes the actual
+organization skill loadout into each launch root where the harness supports it;
+OpenCode keeps org skills on its global compatibility path for now.
 
 Rule of thumb for the three similar verbs: `our sync` converges everything
 (use it by default); `our doctor` is the repair dry run — it diagnoses,
@@ -289,7 +292,7 @@ while `our doctor --fix` applies exactly that plan; `our manifests sync`
 refreshes the registered manifest checkout. Use `our manifests sync` before an
 umbrella exists or for multi-manifest administration; when exactly one
 manifest changes and an umbrella is known, it also reconciles generated
-guidance and manifest skills.
+guidance, umbrella `.mcp.json`, and launch-scoped skill notices.
 
 `our sync` uses **Gnit** as its multi-repo publish backend once the umbrella is
 a Gnit control workspace; otherwise it uses a guarded built-in Git path. Run
@@ -306,7 +309,7 @@ descriptors, unset referenced environment variables, and missing optional
 resolver tools such as `op`), active work-session health, missing session
 worktrees, and archived session counts. `our doctor --fix` only
 fast-forwards clean stale manifest/content checkouts and reconciles generated
-guidance, umbrella `.mcp.json`, plus manifest skills; it reports dirty,
+guidance, umbrella `.mcp.json`, plus legacy global org-skill cleanup; it reports dirty,
 diverged, repo, remote-unknown checkouts, and session work instead of touching
 them.
 

@@ -36,11 +36,12 @@ role.
 
 ## Skill
 
-A capability installed into harness skill directories. Static skills live
-inside the manifest repo. Tool-provided skills are materialized by their owning
-tool, then installed by `our`. The public CLI also ships one bundled
-organization-neutral self-skill named `our`, managed by
-`our skills self ...`, so harnesses know how to use Our AI itself.
+A capability exposed to harnesses. Static organization skills live inside the
+manifest repo. Tool-provided skills are materialized by their owning tool.
+`our ai` composes organization skills into the launch root's `.agents/skills`
+tree, with harness mirrors where needed. The public CLI also ships one bundled
+organization-neutral self-skill named `our`, managed by `our skills self ...`,
+so harnesses know how to use Our AI itself.
 These are the two skill sources, split by a public/private line: the self-skill
 is public and ships in the binary; organization skills are private to a manifest
 you control and appear only once that manifest is synced. Nothing

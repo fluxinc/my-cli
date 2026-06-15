@@ -11,15 +11,15 @@ import (
 type Harness string
 
 const (
-	ClaudeCode Harness = "claude-code"
-	Codex      Harness = "codex"
-	OpenCode   Harness = "opencode"
-	Gemini     Harness = "gemini"
+	ClaudeCode  Harness = "claude-code"
+	Codex       Harness = "codex"
+	OpenCode    Harness = "opencode"
+	Antigravity Harness = "antigravity"
 )
 
 // All returns every supported harness in stable order.
 func All() []Harness {
-	return []Harness{ClaudeCode, Codex, OpenCode, Gemini}
+	return []Harness{ClaudeCode, Codex, OpenCode, Antigravity}
 }
 
 // CommandName returns the executable normally used to start the harness.
@@ -31,8 +31,8 @@ func (h Harness) CommandName() string {
 		return "codex"
 	case OpenCode:
 		return "opencode"
-	case Gemini:
-		return "gemini"
+	case Antigravity:
+		return "agy"
 	}
 	return string(h)
 }
@@ -46,10 +46,10 @@ func Parse(s string) (Harness, error) {
 		return Codex, nil
 	case "opencode":
 		return OpenCode, nil
-	case "gemini":
-		return Gemini, nil
+	case "antigravity", "agy":
+		return Antigravity, nil
 	}
-	return "", fmt.Errorf("unknown harness %q (valid: claude-code, codex, opencode, gemini)", s)
+	return "", fmt.Errorf("unknown harness %q (valid: claude-code, codex, opencode, antigravity)", s)
 }
 
 // ConfigDir returns the harness's user config directory under home.
@@ -61,24 +61,39 @@ func (h Harness) ConfigDir(home string) string {
 		return filepath.Join(home, ".codex")
 	case OpenCode:
 		return filepath.Join(home, ".config", "opencode")
-	case Gemini:
-		return filepath.Join(home, ".gemini")
+	case Antigravity:
+		return filepath.Join(home, ".agents")
 	}
 	return ""
 }
 
-// SkillTargetPath returns where a skill directory should land for a
-// filesystem-managed harness. Returns empty for Gemini, which manages
-// skills through its own CLI rather than a directory layout.
+// SkillTargetPath returns where a skill directory should land for a harness.
 func (h Harness) SkillTargetPath(home, skillName string) string {
-	if h == Gemini {
-		return ""
-	}
 	return filepath.Join(h.ConfigDir(home), "skills", skillName)
 }
 
-// IsFilesystem reports whether skills are installed as directories
-// under the harness config dir (true for everything except Gemini).
-func (h Harness) IsFilesystem() bool {
-	return h != Gemini
+// ReadsAgentsSkills reports whether the harness reads launch-root
+// .agents/skills directly.
+func (h Harness) ReadsAgentsSkills() bool {
+	return h == Codex || h == Antigravity
+}
+
+// SupportsLaunchRootSkills reports whether the harness can consume
+// launch-scoped organization skills from a per-launch directory today.
+func (h Harness) SupportsLaunchRootSkills() bool {
+	return h == ClaudeCode || h == Codex || h == Antigravity
+}
+
+// MirrorSkillDir returns the launch-root mirror directory for harnesses that do
+// not read .agents/skills directly. Empty means no mirror is needed.
+func (h Harness) MirrorSkillDir(launchRoot string) string {
+	if !h.SupportsLaunchRootSkills() || h.ReadsAgentsSkills() {
+		return ""
+	}
+	switch h {
+	case ClaudeCode:
+		return filepath.Join(launchRoot, ".claude", "skills")
+	default:
+		return ""
+	}
 }

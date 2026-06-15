@@ -228,6 +228,9 @@ func TestSyncReconcilesDerivedAfterManifestPull(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(home, ".config", "opencode"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeCLITestFile(t, filepath.Join(writer, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -258,12 +261,14 @@ description: Acme handbook
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "acme\tacme\tmanifest\tpulled") ||
-		!strings.Contains(out, "derived-skill\tclaude-code\tacme-handbook\tinstalled") {
+		!strings.Contains(out, "derived-skill\tclaude-code\t*\tskipped") ||
+		!strings.Contains(out, "launch-scoped") {
 		t.Fatalf("sync stdout = %q", out)
 	}
-	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); err != nil {
-		t.Fatalf("skill was not installed: %v", err)
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("sync installed org skill globally: %v", err)
 	}
+	assertIndexedGlobalSkill(t, filepath.Join(home, ".config", "opencode", "skills"), "acme-handbook", "acme:handbook", compatibilityGlobalSkillScope)
 }
 
 func TestSyncNoDerivedSkipsDerivedReconcile(t *testing.T) {

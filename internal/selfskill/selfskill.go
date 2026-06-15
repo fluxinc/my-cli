@@ -153,22 +153,18 @@ func Inspect(hs []harness.Harness, opts Options) ([]Status, error) {
 			Skill:       Name,
 			CanonicalID: CanonicalID,
 		}
-		if h == harness.Gemini {
-			row.TargetPath = "(gemini CLI)"
-		} else {
-			row.TargetPath = h.SkillTargetPath(home, Name)
-			if _, err := os.Stat(h.ConfigDir(home)); errors.Is(err, fs.ErrNotExist) {
-				row.Status = "missing-harness"
-				row.Message = "harness config directory not found"
-				row.Remedy = installRemedy(h, opts.Home)
-				rows = append(rows, row)
-				continue
-			} else if err != nil {
-				row.Status = skills.StatusFailed
-				row.Message = err.Error()
-				rows = append(rows, row)
-				continue
-			}
+		row.TargetPath = h.SkillTargetPath(home, Name)
+		if _, err := os.Stat(h.ConfigDir(home)); errors.Is(err, fs.ErrNotExist) {
+			row.Status = "missing-harness"
+			row.Message = "harness config directory not found"
+			row.Remedy = installRemedy(h, opts.Home)
+			rows = append(rows, row)
+			continue
+		} else if err != nil {
+			row.Status = skills.StatusFailed
+			row.Message = err.Error()
+			rows = append(rows, row)
+			continue
 		}
 		inspection, err := skills.InspectDeclared(self, h, installOpts)
 		if err != nil {
@@ -196,15 +192,14 @@ func Inspect(hs []harness.Harness, opts Options) ([]Status, error) {
 }
 
 // SyncExisting quietly refreshes already-installed filesystem self-skills. It
-// does not create new harness config directories or install into Gemini's
-// registry.
+// does not create new harness config directories.
 func SyncExisting(opts Options) ([]skills.Result, error) {
 	home, err := resolveHome(opts.Home)
 	if err != nil {
 		return nil, err
 	}
 	existing := map[harness.Harness]fs.FileInfo{}
-	for _, h := range []harness.Harness{harness.ClaudeCode, harness.Codex, harness.OpenCode} {
+	for _, h := range harness.All() {
 		target := h.SkillTargetPath(home, Name)
 		info, err := os.Lstat(target)
 		if errors.Is(err, fs.ErrNotExist) {
@@ -233,7 +228,7 @@ func SyncExisting(opts Options) ([]skills.Result, error) {
 	baseOpts.SkipMissing = true
 
 	var results []skills.Result
-	for _, h := range []harness.Harness{harness.ClaudeCode, harness.Codex, harness.OpenCode} {
+	for _, h := range harness.All() {
 		info, ok := existing[h]
 		if !ok {
 			continue

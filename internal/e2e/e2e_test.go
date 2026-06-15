@@ -138,18 +138,23 @@ status: finalized
 
 	runOur(t, bin, home, "manifests", "add", "acme", "https://github.com/acme/acme-ai-manifest.git", "--home", home)
 	installOut := runOur(t, bin, home, "setup", "--home", home)
-	for _, want := range []string{"acme-handbook", "acme:handbook", "mock-mail", "mock:mail", "installed"} {
+	// ADR 0001: organization and tool skills are no longer installed user-global.
+	// Setup reports them as launch-scoped (our ai materializes them into the
+	// launch root); only the bundled self-skill is ensured in the harness dir.
+	for _, want := range []string{"launch-scoped", "our:self", "installed"} {
 		if !strings.Contains(installOut, want) {
-			t.Fatalf("skills install output = %q, missing %q", installOut, want)
+			t.Fatalf("setup output = %q, missing %q", installOut, want)
 		}
 	}
-	target := filepath.Join(home, ".claude", "skills", "acme-handbook")
-	if info, err := os.Lstat(target); err != nil || info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("installed target is not a symlink: info=%v err=%v", info, err)
+	selfTarget := filepath.Join(home, ".claude", "skills", "our")
+	if _, err := os.Lstat(selfTarget); err != nil {
+		t.Fatalf("self-skill was not ensured in the harness dir: err=%v\n%s", err, installOut)
 	}
-	toolTarget := filepath.Join(home, ".claude", "skills", "mock-mail")
-	if info, err := os.Lstat(toolTarget); err != nil || info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("tool-provided skill target is not a symlink: info=%v err=%v\n%s", info, err, installOut)
+	// Org and tool skills must NOT be materialized into the user config dir.
+	for _, slug := range []string{"acme-handbook", "mock-mail"} {
+		if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", slug)); !os.IsNotExist(err) {
+			t.Fatalf("org skill %q must not be installed user-global; err=%v\n%s", slug, err, installOut)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(workspaceRoot, ".git")); err != nil {
 		t.Fatalf("workspace was not cloned during skills install: %v", err)

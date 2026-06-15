@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fluxinc/our-ai/internal/bundle"
 	"github.com/fluxinc/our-ai/internal/selfupdate"
 	"github.com/fluxinc/our-ai/internal/umbrella"
 	"github.com/fluxinc/our-ai/internal/worksession"
@@ -771,6 +772,188 @@ func TestLaunchRepoRefusesSessionFlags(t *testing.T) {
 	}
 }
 
+func TestLaunchMaterializesOrgSkillsIntoLaunchRootAndMirror(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
+	var stdout, stderr bytes.Buffer
+	var gotDir string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "claude-code"}); err != nil {
+		t.Fatal(err)
+	}
+	if gotDir != umbrellaRoot {
+		t.Fatalf("gotDir = %q, want %q", gotDir, umbrellaRoot)
+	}
+	for _, base := range []string{
+		filepath.Join(umbrellaRoot, ".agents", "skills"),
+		filepath.Join(umbrellaRoot, ".claude", "skills"),
+	} {
+		assertLaunchSkill(t, filepath.Join(base, "acme-handbook"), "acme:handbook")
+		assertLaunchSkill(t, filepath.Join(base, "acme-calendar"), "acme:calendar")
+		if _, err := os.Stat(filepath.Join(base, "our")); !os.IsNotExist(err) {
+			t.Fatalf("self-skill was materialized into launch root at %s: %v", filepath.Join(base, "our"), err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("org skill was installed globally: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "our", "SKILL.md")); err != nil {
+		t.Fatalf("global self-skill missing: %v", err)
+	}
+}
+
+func TestLaunchCodexUsesAgentsSkillsWithoutMirror(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error { return nil },
+	}
+	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	base := filepath.Join(umbrellaRoot, ".agents", "skills")
+	assertLaunchSkill(t, filepath.Join(base, "acme-handbook"), "acme:handbook")
+	assertLaunchSkill(t, filepath.Join(base, "acme-calendar"), "acme:calendar")
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, ".codex", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("codex mirror should not be written because codex reads .agents/skills: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".codex", "skills", "our", "SKILL.md")); err != nil {
+		t.Fatalf("global self-skill missing: %v", err)
+	}
+}
+
+func TestLaunchOpenCodeUsesCompatibilityGlobalSkills(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error { return nil },
+	}
+	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "opencode"}); err != nil {
+		t.Fatal(err)
+	}
+	globalSkillsDir := filepath.Join(home, ".config", "opencode", "skills")
+	assertIndexedGlobalSkill(t, globalSkillsDir, "acme-handbook", "acme:handbook", compatibilityGlobalSkillScope)
+	assertIndexedGlobalSkill(t, globalSkillsDir, "acme-calendar", "acme:calendar", compatibilityGlobalSkillScope)
+	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", "skills", "our", "SKILL.md")); err != nil {
+		t.Fatalf("global self-skill missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, ".agents", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("opencode should not write unread .agents launch skill: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, ".config", "opencode", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("opencode should not write unread launch-root mirror: %v", err)
+	}
+}
+
+func TestLaunchOpenCodeRejectsSkillSelectors(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			t.Fatal("execHarness called despite unsupported selector")
+			return nil
+		},
+	}
+	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "--profile", "support", "opencode"})
+	if err == nil || !strings.Contains(err.Error(), "does not support launch-scoped skill profiles") {
+		t.Fatalf("err = %v, want launch-scoped profile support error", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", "skills", "acme-calendar")); !os.IsNotExist(err) {
+		t.Fatalf("unsupported profile should not install selected org skill globally: %v", err)
+	}
+}
+
+func TestLaunchProfileSelectorAndSkillsNone(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error { return nil },
+	}
+	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "--profile", "support", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	base := filepath.Join(umbrellaRoot, ".agents", "skills")
+	assertLaunchSkill(t, filepath.Join(base, "acme-calendar"), "acme:calendar")
+	if _, err := os.Stat(filepath.Join(base, "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("unselected skill exists after profile launch: %v", err)
+	}
+
+	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "--skills", "none", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(base, "acme-calendar")); !os.IsNotExist(err) {
+		t.Fatalf("launch-scoped skill was not wiped by --skills none: %v", err)
+	}
+}
+
+func TestLaunchPrintWithSelectorsDoesNotMaterializeOrValidateProfile(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--print", "--profile", "missing", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "cd "+umbrellaRoot+" && codex") {
+		t.Fatalf("stdout = %q, want command preview", stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, ".agents", "skills")); !os.IsNotExist(err) {
+		t.Fatalf("--print materialized launch skills: %v", err)
+	}
+}
+
+func TestLaunchRefusesNonOurSkillCollisionWithoutPartialMaterialization(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
+	writeCLITestFile(t, filepath.Join(umbrellaRoot, ".agents", "skills", "acme-handbook", "SKILL.md"), "---\nname: acme-handbook\n---\nmanual\n")
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			t.Fatal("execHarness called despite collision")
+			return nil
+		},
+	}
+	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "codex"})
+	if err == nil || !strings.Contains(err.Error(), "collides with non-Our entry") {
+		t.Fatalf("err = %v, want collision error", err)
+	}
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, ".agents", "skills", "acme-calendar")); !os.IsNotExist(err) {
+		t.Fatalf("other selected skill was materialized despite preflight failure: %v", err)
+	}
+}
+
 func TestLaunchProductFlagRemoved(t *testing.T) {
 	home, _ := setupCLILaunchFixture(t)
 	var stdout, stderr bytes.Buffer
@@ -782,6 +965,85 @@ func TestLaunchProductFlagRemoved(t *testing.T) {
 	if !strings.Contains(stderr.String(), "--product was removed") ||
 		!strings.Contains(stderr.String(), "--repo") {
 		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func setupCLILaunchProfileFixture(t *testing.T) (string, string) {
+	t.Helper()
+	home := t.TempDir()
+	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	umbrellaRoot := filepath.Join(home, "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" },
+    { "id": "acme:calendar", "install_slug": "acme-calendar", "path": "skills/acme-calendar" }
+  ],
+  "profiles": [
+    { "id": "support", "purpose": "Support loadout", "skills": ["acme:calendar"] }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-handbook", "SKILL.md"), "---\nname: acme-handbook\n---\n")
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-calendar", "SKILL.md"), "---\nname: acme-calendar\n---\n")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "manifests", "add", "acme", "https://github.com/acme/acme-ai-manifest.git", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	ensureCLIGuidance(t, home, umbrellaRoot)
+	return home, umbrellaRoot
+}
+
+func assertLaunchSkill(t *testing.T, dir, canonicalID string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err != nil {
+		t.Fatalf("launch skill missing at %s: %v", dir, err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, bundle.MarkerName))
+	if err != nil {
+		t.Fatalf("launch marker missing at %s: %v", dir, err)
+	}
+	var marker struct {
+		Installer   string `json:"installer"`
+		CanonicalID string `json:"canonical_id"`
+		Scope       string `json:"scope"`
+	}
+	if err := json.Unmarshal(data, &marker); err != nil {
+		t.Fatalf("marker JSON: %v\n%s", err, data)
+	}
+	if marker.Installer != "our" || marker.CanonicalID != canonicalID || marker.Scope != "launch" {
+		t.Fatalf("marker = %+v, want canonical_id=%q scope=launch", marker, canonicalID)
+	}
+}
+
+func assertIndexedGlobalSkill(t *testing.T, skillsDir, skillName, canonicalID, scope string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(skillsDir, skillName, "SKILL.md")); err != nil {
+		t.Fatalf("global skill missing at %s: %v", filepath.Join(skillsDir, skillName), err)
+	}
+	data, err := os.ReadFile(filepath.Join(skillsDir, bundle.MarkerName))
+	if err != nil {
+		t.Fatalf("global skill index missing at %s: %v", skillsDir, err)
+	}
+	var index struct {
+		Installer string `json:"installer"`
+		Mode      string `json:"mode"`
+		Skills    map[string]struct {
+			CanonicalID string `json:"canonical_id"`
+			Scope       string `json:"scope"`
+		} `json:"skills"`
+	}
+	if err := json.Unmarshal(data, &index); err != nil {
+		t.Fatalf("index JSON: %v\n%s", err, data)
+	}
+	item, ok := index.Skills[skillName]
+	if index.Installer != "our" || index.Mode != "index" || !ok || item.CanonicalID != canonicalID || item.Scope != scope {
+		t.Fatalf("index = %+v, want %s canonical_id=%q scope=%s", index, skillName, canonicalID, scope)
 	}
 }
 

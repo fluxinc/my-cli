@@ -55,10 +55,13 @@ func TestOnboardJSONAndDoctorUmbrella(t *testing.T) {
 	if err := a.run([]string{"our", "setup", "claude-code", "--copy", "--json", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"umbrella"`, `"skills"`, `"acme-handbook"`} {
+	for _, want := range []string{`"umbrella"`, `"skills"`, "launch-scoped"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("onboard stdout = %q, missing %q", stdout.String(), want)
 		}
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("setup installed org skill globally: %v", err)
 	}
 
 	stdout.Reset()
@@ -70,6 +73,21 @@ func TestOnboardJSONAndDoctorUmbrella(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "umbrella\tguidance\tok") {
 		t.Fatalf("doctor stdout = %q, want guidance ok", stdout.String())
+	}
+}
+
+func TestSetupOpenCodeInstallsCompatibilityGlobalOrgSkills(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"our", "setup", "opencode", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-refresh", "--no-update-check"}); err != nil {
+		t.Fatal(err)
+	}
+	globalSkillsDir := filepath.Join(home, ".config", "opencode", "skills")
+	assertIndexedGlobalSkill(t, globalSkillsDir, "acme-handbook", "acme:handbook", compatibilityGlobalSkillScope)
+	assertIndexedGlobalSkill(t, globalSkillsDir, "acme-calendar", "acme:calendar", compatibilityGlobalSkillScope)
+	if _, err := os.Lstat(filepath.Join(umbrellaRoot, ".agents", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("setup should not materialize unread opencode launch skill: %v", err)
 	}
 }
 

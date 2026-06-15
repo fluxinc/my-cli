@@ -101,12 +101,12 @@ func TestDoctorSkipsSkillDriftForMissingHarnessDirs(t *testing.T) {
 		t.Fatalf("doctor stdout = %q, want missing harness dir skipped", out)
 	}
 	if !strings.Contains(out, "derived\tskills\tok") ||
-		!strings.Contains(out, "no present harness skill drift detected") {
-		t.Fatalf("doctor stdout = %q, want no present harness drift", out)
+		!strings.Contains(out, "no legacy user-global org skills detected") {
+		t.Fatalf("doctor stdout = %q, want no legacy global org skill drift", out)
 	}
 }
 
-func TestDoctorReportsDerivedSkillDriftForPresentHarness(t *testing.T) {
+func TestDoctorDoesNotReportAbsentGlobalOrgSkillAsDrift(t *testing.T) {
 	home := setupCLISkillsManifestFixture(t)
 	writeCLITestFile(t, filepath.Join(home, ".claude", "skills", ".keep"), "")
 	var stdout, stderr bytes.Buffer
@@ -118,9 +118,83 @@ func TestDoctorReportsDerivedSkillDriftForPresentHarness(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "derived\tskill:claude-code:acme-handbook\tabsent") ||
-		!strings.Contains(out, "our skills install claude-code --skill acme:handbook") {
+	if strings.Contains(out, "derived\tskill:claude-code:acme-handbook\tabsent") {
+		t.Fatalf("doctor stdout = %q, absent global org skill should not be drift", out)
+	}
+	if !strings.Contains(out, "derived\tskills\tok") ||
+		!strings.Contains(out, "no legacy user-global org skills detected") {
+		t.Fatalf("doctor stdout = %q, want launch-scoped org skill ok", out)
+	}
+}
+
+func TestDoctorReportsLegacyGlobalOrgSkill(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	writeCLIManagedSkill(t, filepath.Join(home, ".claude", "skills", "acme-handbook"), "acme:handbook")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+
+	stdout.Reset()
+	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "derived\tskill:claude-code:acme-handbook\tlegacy-global") ||
+		!strings.Contains(out, "remove legacy user-global org skill") {
 		t.Fatalf("doctor stdout = %q", out)
+	}
+}
+
+func TestDoctorFixPreservesManualGlobalOrgSkill(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"our", "skills", "install", "claude-code", "--manifest", "acme", "--home", home, "--skill", "acme:handbook"}); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(home, ".claude", "skills", "acme-handbook")
+	if _, err := os.Lstat(target); err != nil {
+		t.Fatalf("manual skill missing before doctor: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"our", "doctor", "--fix", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(target); err != nil {
+		t.Fatalf("doctor removed manual global org skill: %v\nstdout:\n%s", err, stdout.String())
+	}
+	if strings.Contains(stdout.String(), "fix\tskill:claude-code:acme-handbook\tfixed") {
+		t.Fatalf("doctor reported manual skill removal:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorFixPreservesOpenCodeCompatibilityGlobalOrgSkill(t *testing.T) {
+	home := setupCLISkillsManifestFixture(t)
+	target := filepath.Join(home, ".config", "opencode", "skills", "acme-handbook")
+	writeCLIManagedSkill(t, target, "acme:handbook")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	registerCLIManifest(t, a, home)
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"our", "doctor", "--fix", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(target); err != nil {
+		t.Fatalf("doctor removed opencode compatibility global org skill: %v\nstdout:\n%s", err, stdout.String())
+	}
+	if strings.Contains(stdout.String(), "skill:opencode:acme-handbook") {
+		t.Fatalf("doctor reported opencode compatibility skill as legacy drift:\n%s", stdout.String())
 	}
 }
 
@@ -348,6 +422,7 @@ func TestDoctorFixReconcilesDerivedArtifacts(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	writeCLIManagedSkill(t, filepath.Join(home, ".claude", "skills", "acme-handbook"), "acme:handbook")
 	writeCLITestFile(t, filepath.Join(umbrellaRoot, "AGENTS.md"), "<!-- our:generated workspace-guidance v1 -->\n\nstale\n")
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
@@ -362,8 +437,8 @@ func TestDoctorFixReconcilesDerivedArtifacts(t *testing.T) {
 		!strings.Contains(out, "fix\tskill:claude-code:acme-handbook\tfixed") {
 		t.Fatalf("doctor stdout = %q", out)
 	}
-	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); err != nil {
-		t.Fatalf("skill was not installed: %v", err)
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); !os.IsNotExist(err) {
+		t.Fatalf("legacy global org skill was not removed: %v", err)
 	}
 }
 

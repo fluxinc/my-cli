@@ -150,7 +150,7 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 			}
 			if item.Name == "selfskill" {
 				item.WouldFix = "reinstall the our self-skill"
-			} else {
+			} else if item.WouldFix == "" {
 				item.WouldFix = "reconcile derived guidance and skills"
 			}
 		}
@@ -588,7 +588,9 @@ func (a app) doctorFixDerived(home, manifestName, root string) []doctorItem {
 	if err != nil {
 		return []doctorItem{{Name: "derived", Status: "error", Message: err.Error()}}
 	}
-	return doctorDerivedFixItems(report)
+	items := doctorDerivedFixItems(report)
+	items = append(items, a.doctorFixLegacyGlobalOrgSkills(home, manifestName)...)
+	return items
 }
 
 func doctorDerivedFixItems(report derivedReconcileReport) []doctorItem {
@@ -654,7 +656,7 @@ func doctorFixFailed(items []doctorItem) bool {
 
 func (a app) doctorDerived(home, manifestName, root string) []doctorItem {
 	var items []doctorItem
-	items = append(items, a.doctorSkillDrift(home, manifestName)...)
+	items = append(items, a.doctorGlobalOrgSkills(home, manifestName)...)
 	items = append(items, a.doctorSelfSkill(home)...)
 	if root != "" {
 		items = append(items, doctorDerivedGuidance(home, root, manifestName))
@@ -665,56 +667,60 @@ func (a app) doctorDerived(home, manifestName, root string) []doctorItem {
 	return items
 }
 
-func (a app) doctorSkillDrift(home, manifestName string) []doctorItem {
+func (a app) doctorGlobalOrgSkills(home, manifestName string) []doctorItem {
 	opts := skillsCommandOpts{home: home, manifestName: manifestName, quietSource: true, allowMissingToolSkills: true}
-	bundled, sourceRoots, _, err := a.discoverSkills(opts)
+	found, leftovers, err := a.scanLegacyGlobalOrgSkills(opts, harness.All())
 	if err != nil {
 		return []doctorItem{{Name: "skills", Status: "error", Message: err.Error()}}
 	}
-	if len(bundled) == 0 {
+	if len(found) == 0 {
 		return nil
 	}
-	rows, err := a.skillStatusRows(opts, bundled, sourceRoots)
-	if err != nil {
-		return []doctorItem{{Name: "skills", Status: "error", Message: err.Error()}}
-	}
 	var items []doctorItem
-	for _, row := range rows {
-		if !doctorSkillHarnessPresent(row) {
-			continue
-		}
-		if doctorSkillStatusOK(row.Status) {
-			continue
-		}
+	for _, leftover := range leftovers {
+		existing := leftover.Installed
 		item := doctorItem{
-			Name:   "skill:" + string(row.Harness) + ":" + row.Skill,
-			Status: row.Status,
-			Path:   row.TargetPath,
+			Name:     "skill:" + string(existing.Harness) + ":" + existing.Skill,
+			Status:   "legacy-global",
+			Path:     existing.TargetPath,
+			Message:  "user-global org skill is legacy; org skills are now launch-scoped",
+			WouldFix: "remove legacy user-global org skill",
 		}
-		if row.Message != "" {
-			item.Message = row.Message
-		} else {
-			item.Message = row.Remedy
+		if existing.CanonicalID != "" {
+			item.Details = append(item.Details, "canonical_id="+existing.CanonicalID)
 		}
-		if row.CanonicalID != "" {
-			item.Details = append(item.Details, "canonical_id="+row.CanonicalID)
-		}
-		if row.SourcePath != "" {
-			item.Details = append(item.Details, "source="+row.SourcePath)
-		}
-		if row.LinkTarget != "" {
-			item.Details = append(item.Details, "link_target="+row.LinkTarget)
-		}
-		if row.Remedy != "" && row.Remedy != item.Message {
-			item.Details = append(item.Details, "remedy="+row.Remedy)
-		}
-		if row.Error != "" {
-			item.Details = append(item.Details, row.Error)
+		if existing.LinkTarget != "" {
+			item.Details = append(item.Details, "link_target="+existing.LinkTarget)
 		}
 		items = append(items, item)
 	}
 	if len(items) == 0 {
-		items = append(items, doctorItem{Name: "skills", Status: "ok", Message: "no present harness skill drift detected"})
+		items = append(items, doctorItem{Name: "skills", Status: "ok", Message: "org skills are launch-scoped; no legacy user-global org skills detected"})
+	}
+	return items
+}
+
+func (a app) doctorFixLegacyGlobalOrgSkills(home, manifestName string) []doctorItem {
+	opts := skillsCommandOpts{home: home, manifestName: manifestName, quietSource: true, allowMissingToolSkills: true}
+	results, err := a.removeLegacyGlobalOrgSkills(opts, harness.All())
+	if err != nil {
+		return []doctorItem{{Name: "skills", Status: "error", Message: err.Error()}}
+	}
+	var items []doctorItem
+	for _, result := range results {
+		item := doctorItem{
+			Name:    "skill:" + string(result.Harness) + ":" + result.Skill,
+			Status:  doctorFixStatusFromSkill(result.Status),
+			Path:    result.TargetPath,
+			Message: result.Message,
+		}
+		if result.CanonicalID != "" {
+			item.Details = append(item.Details, "canonical_id="+result.CanonicalID)
+		}
+		if result.Err != nil {
+			item.Details = append(item.Details, result.Err.Error())
+		}
+		items = append(items, item)
 	}
 	return items
 }
@@ -757,9 +763,6 @@ func (a app) doctorSelfSkill(home string) []doctorItem {
 }
 
 func doctorSkillHarnessPresent(row skillStatusRow) bool {
-	if !row.Harness.IsFilesystem() {
-		return true
-	}
 	if row.TargetPath == "" {
 		return false
 	}
@@ -768,7 +771,7 @@ func doctorSkillHarnessPresent(row skillStatusRow) bool {
 }
 
 func doctorSkillStatusOK(status string) bool {
-	return status == "installed" || status == "managed-by-gemini"
+	return status == "installed"
 }
 
 func doctorDerivedGuidance(home, root, manifestName string) doctorItem {

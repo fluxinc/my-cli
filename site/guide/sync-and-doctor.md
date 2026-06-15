@@ -12,9 +12,10 @@ our sync             # reconcile and publish per policy
 
 One routine verb: it pulls every registered repository (manifest cache,
 content mounts, catalog repo clones), reconciles derived state when the
-manifest changed (generated guidance, umbrella `.mcp.json`, manifest skills),
-and publishes local content that is safe to publish. When a startup notice
-says something is stale or unpublished, this is the command it means.
+manifest changed (generated guidance, umbrella `.mcp.json`, launch-scoped skill
+reconciliation notices), and publishes local content that is safe to publish.
+When a startup notice says something is stale or unpublished, this is the
+command it means.
 
 What publishes under the default `auto` policy: committed-or-adopted,
 content-only changes in private repos — new meeting notes, support records,
@@ -45,7 +46,7 @@ our doctor [--no-fetch] [--fix] [--json]
 
 The dry run for workspace repair. It reports manifest validity, per-checkout
 Git freshness (fetching refs first unless `--no-fetch`), derived
-guidance/skill/MCP drift, service materialization health, work-session
+guidance/MCP drift, legacy global org-skill drift, service materialization health, work-session
 health, and the last sync audit. Every repairable finding is marked
 `would ...` with a closing fixable count; nothing changes until you re-run
 with `--fix`, which applies exactly that plan. Findings `--fix` cannot repair

@@ -57,7 +57,7 @@ func (a app) reconcileDerived(home, manifestName, root string) (derivedReconcile
 		quietSource:            true,
 		allowMissingToolSkills: true,
 	}
-	skillResults, err := a.collectSkillSyncResults(opts, harness.All(), false)
+	skillResults, err := a.collectLaunchScopedOrgSkillResults(opts, harness.All())
 	if err != nil {
 		return derivedReconcileReport{}, err
 	}
@@ -287,7 +287,7 @@ func (a app) runSetup(args []string) error {
 		return err
 	}
 	results = append(results, repoResults...)
-	skillResults, err := a.collectSkillInstallResults(opts, hs, false)
+	skillResults, err := a.collectLaunchScopedOrgSkillResults(opts, hs)
 	if err != nil {
 		return err
 	}

@@ -50,6 +50,7 @@ type Marker struct {
 	Mode        string `json:"mode"`
 	Source      string `json:"source"`
 	CanonicalID string `json:"canonical_id,omitempty"`
+	Scope       string `json:"scope,omitempty"`
 }
 
 // ResolveSkillsSource returns a filesystem skills directory using the R1

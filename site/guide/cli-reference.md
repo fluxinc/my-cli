@@ -9,14 +9,14 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
 
 - **`our sync`** converges the whole workspace. It pulls every registered
   repository (manifest cache, content mounts, catalog repo clones), reconciles
-  generated guidance, skills, and umbrella MCP config when the manifest
-  changed, and publishes local content that is safe to publish. This is the
-  one routine verb — when a startup notice says something is stale or
-  unpublished, run this.
+  generated guidance, umbrella MCP config, and launch-scoped skill notices when
+  the manifest changed, and publishes local content that is safe to publish.
+  This is the one routine verb — when a startup notice says something is stale
+  or unpublished, run this.
 - **`our doctor`** is the dry run for installation and workspace repair: it
   diagnoses manifest validity, per-checkout Git freshness, derived
-  guidance/skill/MCP drift, service materialization health, work-session
-  health, and the last sync audit,
+  guidance/MCP drift, legacy global org-skill drift, service materialization
+  health, work-session health, and the last sync audit,
   marking every repairable finding with `would ...` and a closing fixable
   count. Nothing changes until you re-run with `--fix`, which applies exactly
   that plan; findings `--fix` cannot repair (dirty, diverged, repo checkouts,
@@ -25,8 +25,8 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
   it before an umbrella exists (bootstrap) or when managing several
   registered manifests; when exactly one manifest changes and an umbrella is
   known, it also reconciles generated guidance, umbrella MCP config, and
-  manifest skills. Once an umbrella is set up, plain `our sync` is still the
-  routine command.
+  launch-scoped skill reconciliation notices. Once an umbrella is set up, plain
+  `our sync` is still the routine command.
 
 ## Setup and launch
 
@@ -174,12 +174,13 @@ publish content. A manifest can set top-level `sync.publish_policy` to `auto`,
 `never`, or `pr` as the default when `--publish` is omitted; an explicit CLI
 flag always wins. Non-print syncs write `.our/last-sync.json`; `our doctor`
 reports that audit, per-checkout Git freshness, active and archived work
-sessions, service health, and derived guidance/skill/MCP drift. Doctor fetches
+sessions, service health, derived guidance/MCP drift, and legacy global
+org-skill drift. Doctor fetches
 refs before behind/ahead checks unless `--no-fetch` is passed for an offline
 view. `doctor --fix` fast-forwards only clean stale manifest/content checkouts
-and reconciles generated guidance, umbrella `.mcp.json`, and manifest skills.
-Sync performs the same derived reconcile after manifest checkout changes unless
-`--no-derived` is passed.
+and reconciles generated guidance, umbrella `.mcp.json`, and legacy global
+org-skill cleanup. Sync performs the same derived reconcile after manifest
+checkout changes unless `--no-derived` is passed.
 
 `our root`, `our ai`, and `our setup` run a best-effort, TTL-gated
 refresh for clean manifest/content checkouts before using workspace context.

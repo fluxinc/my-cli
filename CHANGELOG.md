@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.27.0 - 2026-06-14
+
+### Added
+
+- Launch-scoped skill composition: `our ai` composes the organization skills for
+  a launch and materializes them as disposable derived state in the launch
+  root's `.agents/skills/` (copied, with `.our-managed.json` markers and per-slug
+  ownership), instead of installing organization skills into harness user config
+  directories. Non-Our entries are never clobbered.
+- `our ai --skills all|none|<id,...>` and `our ai --profile <id>` skill
+  selectors, plus a manifest `profiles` list of named loadouts. `--skills` and
+  `--profile` are mutually exclusive; unsatisfiable skill requirements fail with
+  a precise closure error.
+- Harness launch-root skill capability model: Codex and Antigravity read
+  `.agents/skills` directly; Claude Code gets a generated `.claude/skills`
+  mirror.
+- Antigravity (`agy`) harness support.
+
+### Changed
+
+- `our setup`, `our sync`, `our manifests sync`, and `our doctor --fix` no longer
+  install organization skills into harness user config directories for
+  launch-root-capable harnesses; those skills are now launch-scoped. `our doctor
+  --fix` removes leftover user-global organization skills. The bundled `our`
+  self-skill stays on the global ensure path during migration.
+- OpenCode keeps organization skills user-global (it has no launch-root skill
+  discovery); `our ai --skills/--profile` is rejected for OpenCode.
+
+### Removed
+
+- Removed Gemini harness support entirely. Antigravity (`agy`) is the
+  replacement; `our ai gemini` and Gemini skill management are no longer
+  supported.
+
 ## 0.26.0 - 2026-06-14
 
 ### Added

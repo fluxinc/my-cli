@@ -88,7 +88,7 @@ func shouldAutoSyncSelfSkill(args []string) bool {
 }
 
 func isKnownHarnessEnv() bool {
-	for _, key := range []string{"CLAUDECODE", "CODEX_THREAD_ID", "GEMINI_CLI", "OPENCODE"} {
+	for _, key := range []string{"CLAUDECODE", "CODEX_THREAD_ID", "OPENCODE"} {
 		if os.Getenv(key) != "" {
 			return true
 		}

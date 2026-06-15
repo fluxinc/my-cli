@@ -82,18 +82,20 @@ Options:`)
 }
 
 type launchCommandOpts struct {
-	home          string
-	manifestName  string
-	umbrellaRoot  string
-	repoID        string
-	legacyProduct string
-	sessionID     string
-	newSession    bool
-	noSession     bool
-	onboard       bool
-	printOnly     bool
-	noRefresh     bool
-	noUpdateCheck bool
+	home           string
+	manifestName   string
+	umbrellaRoot   string
+	repoID         string
+	legacyProduct  string
+	sessionID      string
+	newSession     bool
+	noSession      bool
+	onboard        bool
+	printOnly      bool
+	skillsSelector string
+	profileID      string
+	noRefresh      bool
+	noUpdateCheck  bool
 }
 
 func (a app) runLaunch(args []string) error {
@@ -110,6 +112,10 @@ func (a app) runLaunch(args []string) error {
 		return err
 	}
 	commandName := h.CommandName()
+	selector, err := launchSelectorFromOpts(opts)
+	if err != nil {
+		return err
+	}
 	root, err := resolveOurRoot(opts.home, opts.manifestName, opts.umbrellaRoot)
 	if err != nil {
 		return err
@@ -186,6 +192,9 @@ func (a app) runLaunch(args []string) error {
 		if err != nil {
 			return a.maybePrintStructuredCommandError(err)
 		}
+	}
+	if err := a.ensureLaunchOrgSkills(h, opts, doc, root, targetDir, selector); err != nil {
+		return err
 	}
 	return a.runHarness(binary, harnessArgs, targetDir)
 }
@@ -302,9 +311,6 @@ func (a app) launchTargetDir(opts launchCommandOpts, root string) (string, error
 }
 
 func (a app) ensureLaunchSelfSkill(h harness.Harness, home string) error {
-	if !h.IsFilesystem() {
-		return nil
-	}
 	rows, err := selfskill.Inspect([]harness.Harness{h}, selfskill.Options{Home: home})
 	if err != nil {
 		return err
@@ -346,7 +352,7 @@ func (a app) printLaunchSelfSkillBlock(result skills.Result) {
 
 func (a app) printLaunchUsage() {
 	fmt.Fprintln(a.stderr, `Usage of our ai:
-  our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+  our ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 
 Harness defaults to claude-code. By default, harnesses launch from the base
 umbrella, or from the current work session when run inside one. Harness flags go
@@ -368,6 +374,8 @@ Options:
   --session ID      resume an active work session
   --no-session      ignore any current work session and launch from the base umbrella
   --repo ID         run from repos/<id> under the umbrella
+  --skills VALUE    select org skills: all, none, or comma-separated manifest skill ids
+  --profile ID      select a named manifest launch profile
   --setup           reconcile the umbrella first if guidance is stale or missing
   --no-refresh      skip best-effort auto-refresh
   --no-update-check skip best-effort update notice
@@ -401,7 +409,7 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			opts.noRefresh = true
 		case arg == "--no-update-check":
 			opts.noUpdateCheck = true
-		case arg == "--home" || arg == "--manifest" || arg == "--umbrella" || arg == "--repo" || arg == "--product" || arg == "--session":
+		case arg == "--home" || arg == "--manifest" || arg == "--umbrella" || arg == "--repo" || arg == "--product" || arg == "--session" || arg == "--skills" || arg == "--profile":
 			i++
 			if i >= len(args) {
 				return opts, "", nil, false, fmt.Errorf("missing value for %s", arg)
@@ -419,6 +427,10 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			opts.legacyProduct = strings.TrimPrefix(arg, "--product=")
 		case strings.HasPrefix(arg, "--session="):
 			opts.sessionID = strings.TrimPrefix(arg, "--session=")
+		case strings.HasPrefix(arg, "--skills="):
+			opts.skillsSelector = strings.TrimPrefix(arg, "--skills=")
+		case strings.HasPrefix(arg, "--profile="):
+			opts.profileID = strings.TrimPrefix(arg, "--profile=")
 		case isFlagArg(arg):
 			return opts, "", nil, false, fmt.Errorf("unknown our ai flag %q; put harness flags after the harness name", arg)
 		default:
@@ -442,6 +454,10 @@ func setLaunchValue(opts *launchCommandOpts, name, value string) {
 		opts.legacyProduct = value
 	case "session":
 		opts.sessionID = value
+	case "skills":
+		opts.skillsSelector = value
+	case "profile":
+		opts.profileID = value
 	}
 }
 
