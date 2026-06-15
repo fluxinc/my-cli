@@ -7,5 +7,6 @@ installation, and kept aligned with the running CLI version. It carries no
 organization-specific content.
 
 Organization-specific agent skills do **not** live here. They belong in an
-organization's manifest repository and are installed through
-`our skills install --manifest <name>` or `our setup`.
+organization's manifest repository. Managed launches receive them from `our ai`
+as launch-scoped skills where the harness supports that; `our skills install`
+and `our skills sync` are explicit manual user-global materialization commands.

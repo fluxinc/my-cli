@@ -39,7 +39,15 @@ role.
 A capability exposed to harnesses. Static organization skills live inside the
 manifest repo. Tool-provided skills are materialized by their owning tool.
 `our ai` composes organization skills into the launch root's `.agents/skills`
-tree, with harness mirrors where needed. The public CLI also ships one bundled
+tree, with harness mirrors where needed. Pick the loadout with
+`our ai --skills all|none|<id,...>` or `our ai --profile <id>` (mutually
+exclusive); a `profile` is a named skill loadout declared in the manifest's
+`profiles` list, distinct from a role. With no selector, `our ai` uses the
+default for the launch target: selected role skills for a base umbrella,
+workspace-satisfied skills for a session, all org skills for an unscoped
+umbrella, and no org skills for a repo launch. OpenCode is compatibility-global
+until a launch-root seam is proven, so its org skills stay user-global and these
+selectors are rejected for it. The public CLI also ships one bundled
 organization-neutral self-skill named `our`, managed by `our skills self ...`,
 so harnesses know how to use Our AI itself.
 These are the two skill sources, split by a public/private line: the self-skill

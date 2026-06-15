@@ -59,6 +59,15 @@ role guidance fragments are appended to generated `AGENTS.md`, and the
 umbrella-root `.mcp.json` is scoped to MCP services visible to that role.
 Role selection never prunes mounts or hides commands.
 
+A role's `skills` also drive the base-umbrella launch-scoped loadout. With no
+`--skills`/`--profile` selector, `our ai` uses the selected role's skills for a
+base umbrella launch; session launches may also include skills whose workspace
+requirements are satisfied, and repo launches intentionally receive no org
+skills yet. A `profile` (from the manifest's `profiles` list) is a separate
+named skill loadout selected with `our ai --profile <id>`; profiles select
+skills only and do not contribute guidance. See
+[Skills](/guide/skills#launch-scoped-skill-selection).
+
 `our compile --role <id>` uses the same role vocabulary for contained runners:
 it prints a deterministic manifest-to-Clawdapus launch projection JSON artifact
 and writes nothing. It does not launch containers, call services, resolve

@@ -16,7 +16,7 @@ Use this skill when any of these are true:
 
 - the working directory is, or sits under, an Our AI **umbrella** (a `.our/`
   marker directory and a generated `AGENTS.md` are present)
-- the user mentions `our`, an organization manifest, workspace skills, mounts,
+- the user mentions `our`, an organization manifest, launch-scoped skills, mounts,
   meeting notes, customers, the product catalog, onboarding, or syncing the
   workspace
 - the user wants to record a meeting/decision or publish local workspace changes
@@ -38,8 +38,16 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   repo, then refreshed with `our manifests sync`.
 - **Skill** — a capability exposed to harnesses. Organization skills are
   *static* (a directory in the manifest repo) or *tool-provided*; `our ai`
-  composes them into the launch root for harnesses with a project-local skill
-  seam. OpenCode is currently compatibility-global until that seam is proven.
+  composes them into the launch root's `.agents/skills/` (with a `.claude/skills/`
+  mirror for Claude Code) for harnesses with a project-local skill seam (Claude
+  Code, Codex, Antigravity). Pick the loadout with `our ai --skills all|none|<id,...>`
+  or `our ai --profile <id>` (mutually exclusive); with no selector, `our ai`
+  uses the default for the launch target: selected role skills for a base
+  umbrella, workspace-satisfied skills for a session, all org skills for an
+  unscoped umbrella, and no org skills for a repo launch. Named loadouts come
+  from the manifest's `profiles` list. OpenCode is compatibility-global until
+  that seam is proven, so its org skills stay user-global and `--skills`/`--profile`
+  are rejected for it.
 - **Umbrella** — a per-user operating envelope (e.g. `~/our` or `~/acme`): a
   `.our/` identity namespace plus mounts and local scratch. Launch harnesses
   from here so they pick up the generated `AGENTS.md` context.
@@ -104,11 +112,12 @@ our publish [--manifest NAME] [--print]
 our onboard [--manifest NAME] [--home DIR] [--umbrella DIR]
                                     # human walkthrough; offers interactive setup
 our setup [--manifest NAME] [--role ROLE] [--interactive] [--no-refresh] [--no-update-check]
-                                    # create umbrella, write guidance/MCP config, install skills, sync mounts
+                                    # create umbrella, write guidance/MCP config, install self-skill, sync mounts
 our root [--repo ID] [--no-refresh] [--no-update-check]
                                     # print the umbrella (or repo) path
-our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--no-refresh] [--no-update-check] [harness]
-                                    # verify guidance is current, then start a harness
+our ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--no-refresh] [--no-update-check] [harness]
+                                    # verify guidance is current, compose launch-scoped org skills, then start a harness
+                                    # --skills / --profile pick the org skill loadout (mutually exclusive); see the Skill model above
                                     # --setup reconciles the umbrella first when guidance is stale or missing
 our compile --role ROLE [--manifest NAME] [--home DIR]
                                     # print deterministic manifest-to-Clawdapus launch projection JSON
@@ -246,8 +255,8 @@ Manage skills on this machine:
 ```sh
 our skills list                   # manifest/source skills available to install
 our skills status                 # what's installed across harnesses, and where
-our skills install [harness...] | --all
-our skills sync                   # reconcile installs with the manifest (prune stale)
+our skills install [harness...] | --all  # explicit user-global org skill materialization
+our skills sync                   # reconcile manual materializations (prune stale)
 our tools list                    # manifest-declared external tools
 our tools info <name>             # install hints for one external tool
 our services list|get             # manifest-declared remote surfaces

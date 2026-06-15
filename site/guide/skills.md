@@ -28,6 +28,31 @@ Nothing organization-specific is baked into the public CLI: the self-skill stays
 generic, and everything particular to your organization lives in a manifest you
 own.
 
+## Launch-scoped skill selection
+
+`our ai` composes the organization skill loadout for a launch and materializes it
+into the launch root (`.agents/skills/`, plus a `.claude/skills/` mirror for
+Claude Code). Choose the loadout with mutually exclusive selectors:
+
+```sh
+our ai                                       # default loadout for this launch target
+our ai --skills all                          # every declared organization skill
+our ai --skills none                         # no organization skills (self-skill only)
+our ai --skills acme:handbook,acme:support   # an explicit set of skill ids
+our ai --profile support                     # a named loadout from the manifest `profiles` list
+```
+
+A `profile` is a named skill loadout declared in the manifest's `profiles` list,
+distinct from a role. With no selector, `our ai` uses the selected role's skills
+for a base umbrella launch, includes workspace-satisfied skills for session
+launches, uses all org skills for an unscoped umbrella, and intentionally uses no
+org skills for repo launches. These selectors compose for harnesses with a
+project-local skill seam (Claude Code, Codex, Antigravity). OpenCode is
+compatibility-global: it keeps organization skills in
+`~/.config/opencode/skills` and rejects `--skills`/`--profile` until a
+launch-root seam is proven. The `our skills` commands below manage user-global
+materializations manually and are no longer the automatic setup path.
+
 ## Our AI self-skill
 
 ```sh
