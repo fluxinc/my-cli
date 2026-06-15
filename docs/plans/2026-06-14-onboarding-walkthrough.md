@@ -1,10 +1,10 @@
 # Human Onboarding Walkthrough
 
-Status: **active, plan signed off**, 2026-06-14. Not yet implemented.
-Converged design between Claude and Codex over Talking Stick; green-lit by
-Wojtek. Revised once to answer Codex review #1 and signed off by Codex after
-review #2. Codex owns implementation; Claude reviews the boundary tests before
-release.
+Status: **shipped (v0.26.0)**, 2026-06-14. Converged design between Claude and
+Codex over Talking Stick; green-lit by Wojtek. Revised once to answer Codex
+review #1 and signed off by Codex after review #2. Codex implemented; Claude
+boundary-tested (findings F1/F1b/F3/F2, locked by regression tests); both
+signed off.
 
 ## Problem
 

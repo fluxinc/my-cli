@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -23,6 +24,7 @@ func Run(args []string) int {
 	a := app{
 		stdout: os.Stdout,
 		stderr: os.Stderr,
+		stdin:  bufio.NewReader(os.Stdin),
 	}
 	if err := a.run(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -44,6 +46,7 @@ func Run(args []string) int {
 type app struct {
 	stdout               io.Writer
 	stderr               io.Writer
+	stdin                io.Reader
 	lookPath             func(string) (string, error)
 	execHarness          func(path string, args []string, dir string) error
 	updateSource         selfupdate.Source
@@ -128,9 +131,8 @@ func (a app) run(args []string) error {
 	case "skills":
 		return a.runSkills(args[2:])
 	case "setup":
-		return a.runOnboard(args[2:])
+		return a.runSetup(args[2:])
 	case "onboard":
-		a.warnDeprecated("our onboard", "our setup")
 		return a.runOnboard(args[2:])
 	case "root":
 		return a.runRoot(args[2:])
@@ -177,15 +179,12 @@ func (a app) run(args []string) error {
 	}
 }
 
-func (a app) warnDeprecated(old, replacement string) {
-	fmt.Fprintf(a.stderr, "warning: `%s` is deprecated; use `%s`\n", old, replacement)
-}
-
 func (a app) printUsage() {
 	fmt.Fprintln(a.stdout, `our installs and manages manifest-backed AI workspace tooling.
 
 Usage:
-  our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  our setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  our onboard [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   our root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
   our update [--check] [--version X.Y.Z] [--json] [--yes]

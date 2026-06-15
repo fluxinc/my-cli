@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.26.0 - 2026-06-14
+
+### Added
+
+- `our onboard`: a human walkthrough that explains the model, handles the
+  no-manifest case with registration guidance, offers interactive setup on
+  first run, and records umbrella-local tour completion.
+- `our setup --interactive`: explicit prompt mode for manifest and role
+  selection, including role clearing via `none`.
+
+### Removed
+
+- Removed the deprecated `our onboard` -> `our setup` alias. `onboard` is now
+  a real tour command; `setup` remains the deterministic machine configurator.
+
 ## 0.25.0 - 2026-06-14
 
 ### Added

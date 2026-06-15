@@ -99,7 +99,9 @@ our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR]
                                     # create manifest + content repos locally and register them
 our publish [--manifest NAME] [--print]
                                     # create private remotes, rewrite local mount URLs, push both repos
-our setup [--manifest NAME] [--role ROLE] [--no-refresh] [--no-update-check]
+our onboard [--manifest NAME] [--home DIR] [--umbrella DIR]
+                                    # human walkthrough; offers interactive setup
+our setup [--manifest NAME] [--role ROLE] [--interactive] [--no-refresh] [--no-update-check]
                                     # create umbrella, write guidance/MCP config, install skills, sync mounts
 our root [--repo ID] [--no-refresh] [--no-update-check]
                                     # print the umbrella (or repo) path
@@ -110,6 +112,12 @@ our compile --role ROLE [--manifest NAME] [--home DIR]
                                     # print deterministic manifest-to-Clawdapus launch projection JSON
 our doctor [--no-fetch] [--fix]   # git freshness, sessions, services, derived drift, last sync, manifests, tools
 ```
+
+Use `our onboard` when a human wants the guided tour. It is not a manifest
+authoring wizard: with no registered manifest it prints the `our manifests add
+<name> <git-url>` next step and writes no state. Once a manifest is available,
+it teaches the model and offers to run `our setup --interactive`; completed
+tour state is local to the umbrella under `.our/state.json`.
 
 Use `our init` only when the user explicitly wants to create a new
 organization. It creates two local repos — a private manifest repo at the

@@ -67,15 +67,21 @@ running `our manifests sync` against a private repo.
 ## Onboard the workspace
 
 ```sh
+our onboard
 our setup
 # our setup --manifest acme    # only needed when several manifests are registered
 # our setup --role operator    # optional: select role-specific guidance/services
+# our setup --interactive      # prompt for manifest/role choices
 ```
 
-With one registered manifest, every command defaults to it. Onboarding is safe to re-run.
-It validates the manifest, installs declared skills, creates the umbrella,
-writes generated guidance, and syncs default content. Opted-in catalog repo clones
-live under `repos/<id>` in the umbrella.
+`our onboard` is the human walkthrough. It explains the model and offers to run
+`our setup --interactive`; if no manifest is registered yet, it prints the
+`our manifests add <name> <git-url>` next step and leaves the tour unmarked.
+Plain `our setup` stays deterministic and scriptable. With one registered
+manifest, every command defaults to it. Setup is safe to re-run: it validates
+the manifest, installs declared skills, creates the umbrella, writes generated
+guidance, and syncs default content. Opted-in catalog repo clones live under
+`repos/<id>` in the umbrella.
 
 ## Start an agent
 

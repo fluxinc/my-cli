@@ -17,12 +17,14 @@ Documentation: https://fluxinc.github.io/our-ai/
 curl -sSL https://raw.githubusercontent.com/fluxinc/our-ai/master/install.sh | sh
 
 our init acme --name "Acme"
-our setup
+our onboard
 our ai codex
 ```
 
-That's the whole setup. `our ai codex` resolves the umbrella, verifies the
-generated guidance, and starts Codex in the base umbrella. Agents that need
+That's the whole first run. `our onboard` is the human walkthrough; it explains
+the model and offers to run `our setup --interactive`. `our setup` remains the
+scriptable machine configurator. `our ai codex` resolves the umbrella, verifies
+the generated guidance, and starts Codex in the base umbrella. Agents that need
 isolated content work opt in with `our ai --new-session codex` or resume a
 known session with `our ai --session <id> codex`.
 `our init` creates two local repos — a private manifest repo (the control
@@ -68,12 +70,15 @@ Run `our --help` for the authoritative surface. The essentials:
 ### Onboarding
 
 ```sh
-our setup [harness...] | --all   # create umbrella, write guidance/MCP config, install skills, sync mounts
+our onboard                    # human walkthrough; offers interactive setup
+our setup [harness...] | --all # create umbrella, write guidance/MCP config, install skills, sync mounts
                                     # [--manifest NAME] [--umbrella DIR] [--role ROLE] [--copy] [--link] [--print]
-                                    # [--no-refresh] [--no-update-check]
+                                    # [--interactive] [--no-refresh] [--no-update-check]
 ```
 
-`setup` is the normal path: idempotent, non-interactive, safe to re-run.
+`setup` is the normal machine path: idempotent, non-interactive, safe to
+re-run. Use `setup --interactive` when you want prompts for manifest and role
+selection.
 
 ### Startup
 
@@ -495,11 +500,11 @@ indexed in [docs/plans/](docs/plans/README.md):
   fetch/cache remain later phases.
   Plans: [compile launch projection](docs/plans/2026-06-14-compile-launch-plan.md),
   [execution plane](docs/plans/2026-06-10-execution-plane.md).
-- **Active — human onboarding walkthrough.** Reclaim `our onboard` as a
-  minimal human tour while keeping `our setup` as the deterministic machine
-  configurator. The slice adds explicit `our setup --interactive`, stores only
-  umbrella-local tour completion, and avoids new top-level verbs such as
-  `configuration`, `configure`, or `tour`. Plan:
+- **Shipped (v0.26.0) — human onboarding walkthrough.** `our onboard` is a
+  minimal human tour; `our setup` stays the deterministic machine configurator,
+  with explicit `our setup --interactive` for prompting. Tour completion is
+  stored umbrella-local; no new top-level verbs such as `configuration`,
+  `configure`, or `tour`. Plan:
   [onboarding walkthrough](docs/plans/2026-06-14-onboarding-walkthrough.md).
 - **Later — substrate upgrades.** A gnit backend for sessions once umbrellas
   bootstrap as gnit control workspaces, and managed read-only base mounts

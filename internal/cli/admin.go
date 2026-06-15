@@ -22,7 +22,7 @@ func (a app) runAdmin(args []string) error {
 	case "skills":
 		return a.runAdminSkills(args[1:])
 	case "setup":
-		return a.runOnboard(args[1:])
+		return a.runSetup(args[1:])
 	case "manifests":
 		return a.runAdminManifest(args[1:])
 	case "mounts":

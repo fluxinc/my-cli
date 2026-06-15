@@ -31,7 +31,7 @@ features:
     details: Read, inspect, launch, diagnose, and materialize local skills without mutating the shared source of truth.
   - icon: "05"
     title: Admin when explicit
-    details: Manifest authoring, onboarding, mounts, and content writes live under the admin surface with clear write targets.
+    details: Manifest authoring, mounts, and content writes live under the admin surface with clear write targets.
   - icon: "06"
     title: Public mechanism
     details: The CLI stays generic and open. Organization knowledge lives in your private manifest and workspace repos.
@@ -50,15 +50,16 @@ works.
 
 ```sh
 our init acme --name "Acme"
-our setup
+our onboard
 our ai codex
 ```
 
-`our ai codex` performs the same root resolution and
-guidance freshness check before starting a harness. `our init` creates a
-private manifest repo (the control plane) plus a content repo at
-`~/acme/workspace` (the actual workspace), all local and working offline;
-`our publish` later creates the private remotes and pushes both.
+`our onboard` gives the human walkthrough and offers interactive setup.
+`our ai codex` performs the same root resolution and guidance freshness check
+before starting a harness. `our init` creates a private manifest repo (the
+control plane) plus a content repo at `~/acme/workspace` (the actual
+workspace), all local and working offline; `our publish` later creates the
+private remotes and pushes both.
 
 ## The Operating Shape
 

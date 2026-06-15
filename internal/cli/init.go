@@ -82,7 +82,7 @@ func (a app) runInit(args []string) error {
 		if opts.umbrellaPath != "" {
 			setupArgs = append(setupArgs, "--umbrella", opts.umbrellaPath)
 		}
-		return a.runOnboard(setupArgs)
+		return a.runSetup(setupArgs)
 	}
 	return nil
 }

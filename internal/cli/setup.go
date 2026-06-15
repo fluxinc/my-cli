@@ -1,17 +1,27 @@
 package cli
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/fluxinc/our-ai/internal/guidance"
 	"github.com/fluxinc/our-ai/internal/harness"
+	"github.com/fluxinc/our-ai/internal/manifest"
 	"github.com/fluxinc/our-ai/internal/mcpconfig"
 	"github.com/fluxinc/our-ai/internal/selfskill"
 	"github.com/fluxinc/our-ai/internal/skills"
 	"github.com/fluxinc/our-ai/internal/umbrella"
 	"github.com/fluxinc/our-ai/internal/workspace"
 )
+
+const onboardingTourVersion = 1
 
 type derivedReconcileReport struct {
 	Guidance guidance.Result  `json:"guidance"`
@@ -116,7 +126,7 @@ func derivedReconcileFailed(report derivedReconcileReport) bool {
 	return false
 }
 
-func (a app) runOnboard(args []string) error {
+func (a app) runSetup(args []string) error {
 	var opts skillsCommandOpts
 	fs := newFlagSet("our setup", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "install into every supported harness")
@@ -124,6 +134,7 @@ func (a app) runOnboard(args []string) error {
 	fs.BoolVar(&opts.copyMode, "copy", false, "copy skill directories instead of symlinking")
 	fs.BoolVar(&opts.linkMode, "link", false, "symlink skill directories")
 	fs.BoolVar(&opts.force, "force", false, "replace non-Our AI-managed targets")
+	fs.BoolVar(&opts.interactive, "interactive", false, "prompt for manifest and role choices")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.BoolVar(&opts.noRefresh, "no-refresh", false, "skip best-effort auto-refresh")
 	fs.BoolVar(&opts.noUpdateCheck, "no-update-check", false, "skip best-effort update notice")
@@ -143,6 +154,13 @@ func (a app) runOnboard(args []string) error {
 	if opts.copyMode && opts.linkMode {
 		return fmt.Errorf("--copy and --link are mutually exclusive")
 	}
+	if opts.interactive && opts.jsonOut {
+		return fmt.Errorf("--interactive and --json are mutually exclusive")
+	}
+	if opts.interactive && opts.print {
+		return fmt.Errorf("--interactive and --print are mutually exclusive")
+	}
+	opts.roleSet = flagWasSet(fs, "role")
 	if len(rest) == 0 && !opts.all {
 		opts.all = true
 	}
@@ -156,6 +174,16 @@ func (a app) runOnboard(args []string) error {
 	}
 	if !ok || len(docs) == 0 {
 		return fmt.Errorf("our setup requires a registered manifest")
+	}
+	if opts.interactive && opts.manifestName == "" && len(docs) > 1 {
+		doc, err := a.promptManifestChoice(docs)
+		if err != nil {
+			return err
+		}
+		docs = []registeredDoc{doc}
+		opts.manifestName = doc.ref.Name
+	} else if len(docs) == 1 {
+		opts.manifestName = docs[0].ref.Name
 	}
 	if len(docs) != 1 {
 		return fmt.Errorf("our setup requires exactly one manifest; pass --manifest")
@@ -197,12 +225,21 @@ func (a app) runOnboard(args []string) error {
 	if opts.role != "" {
 		selectedRole = opts.role
 	}
+	if opts.interactive && !opts.roleSet {
+		promptedRole, err := a.promptRoleChoice(doc.doc, selectedRole)
+		if err != nil {
+			return err
+		}
+		opts.role = promptedRole
+		opts.roleSet = true
+		selectedRole = promptedRole
+	}
 	if selectedRole != "" {
 		if _, err := roleByID(doc.doc, selectedRole); err != nil {
 			return err
 		}
 	}
-	if !opts.print && opts.role != "" {
+	if !opts.print && opts.roleSet {
 		state.SelectedRole = opts.role
 		if err := umbrella.SaveState(root, state); err != nil {
 			return err
@@ -291,6 +328,323 @@ func (a app) runOnboard(args []string) error {
 	}
 	a.printLaunchHints(root)
 	return nil
+}
+
+type onboardOptions struct {
+	home          string
+	manifestName  string
+	umbrellaRoot  string
+	noRefresh     bool
+	noUpdateCheck bool
+}
+
+func (a app) runOnboard(args []string) error {
+	var opts onboardOptions
+	fs := newFlagSet("our onboard", a.stderr)
+	fs.StringVar(&opts.home, "home", "", "override home directory")
+	fs.StringVar(&opts.manifestName, "manifest", "", "use a registered manifest")
+	fs.StringVar(&opts.umbrellaRoot, "umbrella", "", "override umbrella root")
+	fs.BoolVar(&opts.noRefresh, "no-refresh", false, "skip best-effort auto-refresh during setup")
+	fs.BoolVar(&opts.noUpdateCheck, "no-update-check", false, "skip best-effort update notice during setup")
+	fs.Usage = func() {
+		a.printOnboardUsage()
+		fs.PrintDefaults()
+	}
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home":     true,
+		"manifest": true,
+		"umbrella": true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("our onboard does not accept positional arguments")
+	}
+	docs, ok, err := a.skillManifestDocs(opts.home, opts.manifestName)
+	if err != nil {
+		return err
+	}
+	if !ok || len(docs) == 0 {
+		a.printOnboardZeroManifest()
+		return nil
+	}
+	if opts.manifestName == "" && len(docs) > 1 {
+		doc, err := a.promptManifestChoice(docs)
+		if err != nil {
+			return err
+		}
+		docs = []registeredDoc{doc}
+		opts.manifestName = doc.ref.Name
+	} else if len(docs) == 1 {
+		opts.manifestName = docs[0].ref.Name
+	}
+	if len(docs) != 1 {
+		return fmt.Errorf("our onboard requires exactly one manifest; pass --manifest")
+	}
+	doc := docs[0]
+	root, err := umbrella.ResolveRoot(opts.home, ".", opts.umbrellaRoot, doc.doc)
+	if err != nil {
+		return err
+	}
+	state, stateExists, err := loadOptionalState(root)
+	if err != nil {
+		return err
+	}
+	configured := stateExists
+	if _, err := umbrella.LoadWorkspace(root); err == nil {
+		configured = true
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		// LoadWorkspace returns path errors directly; any non-missing error is real.
+		return err
+	}
+	if tourMarked(state) {
+		a.printOnboardComplete(doc, root, state)
+		return nil
+	}
+	a.printOnboardIntro(doc, root, configured)
+	runSetup := false
+	answered := false
+	if configured {
+		runSetup, answered, err = a.promptConfirm("Review setup interactively now?", false)
+	} else {
+		runSetup, answered, err = a.promptConfirm("Run setup interactively now?", true)
+	}
+	if err != nil {
+		return err
+	}
+	if !answered {
+		a.printOnboardUnmarkedSetup(opts, doc.ref.Name, root, configured, "no input received")
+		return nil
+	}
+	if runSetup {
+		if err := a.runSetup(onboardSetupArgs(opts, doc.ref.Name, root)); err != nil {
+			return err
+		}
+		if err := markTourComplete(root); err != nil {
+			return err
+		}
+		fmt.Fprintln(a.stdout, "onboard\tcomplete")
+		return nil
+	}
+	a.printOnboardUnmarkedSetup(opts, doc.ref.Name, root, configured, "setup review declined")
+	return nil
+}
+
+func (a app) printOnboardUnmarkedSetup(opts onboardOptions, manifestName, root string, configured bool, reason string) {
+	fmt.Fprintf(a.stdout, "next\tsetup\t%s\n", shellCommandLine("", "our", append([]string{"setup", "--interactive"}, setupCommandFlags(opts, manifestName, root)...)))
+	message := "run setup to create the umbrella before completion can be recorded"
+	if configured {
+		message = "run setup when you are ready to review configuration"
+	}
+	if reason != "" {
+		message += "; " + reason
+	}
+	fmt.Fprintf(a.stdout, "onboard\tunmarked\t%s\n", message)
+}
+
+func (a app) printOnboardUsage() {
+	fmt.Fprintln(a.stderr, `Usage of our onboard:
+  our onboard [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+
+Runs the human walkthrough. The tour explains the Our AI model, then offers to
+run the existing setup configurator interactively. It does not add manifests or
+create new top-level configuration concepts.`)
+}
+
+func (a app) printOnboardZeroManifest() {
+	fmt.Fprintln(a.stdout, "Our AI starts from a registered organization manifest.")
+	fmt.Fprintln(a.stdout, "Ask your organization admin for the manifest name and Git URL, then run:")
+	fmt.Fprintln(a.stdout, "next\tregister\tour manifests add <name> <git-url>")
+	fmt.Fprintln(a.stdout, "next\tsetup\tour setup --interactive")
+	fmt.Fprintln(a.stdout, "onboard\tunmarked\tno umbrella exists yet")
+}
+
+func (a app) printOnboardIntro(doc registeredDoc, root string, configured bool) {
+	fmt.Fprintf(a.stdout, "onboard\tmanifest\t%s\t%s\n", doc.ref.Name, doc.doc.Organization.ID)
+	fmt.Fprintf(a.stdout, "onboard\tumbrella\t%s\n", root)
+	fmt.Fprintln(a.stdout, "model\tmanifest\tcontrol plane: skills, mounts, services, roles, tools")
+	fmt.Fprintln(a.stdout, "model\tmounts\tdata plane: local content folders such as customers, meetings, support, fleet")
+	fmt.Fprintln(a.stdout, "model\tsetup\twrites guidance, MCP config, mounts, repos, skills, and local role state")
+	if configured {
+		fmt.Fprintln(a.stdout, "onboard\tstate\tconfigured")
+	} else {
+		fmt.Fprintln(a.stdout, "onboard\tstate\tsetup needed")
+	}
+}
+
+func (a app) printOnboardComplete(doc registeredDoc, root string, state umbrella.State) {
+	fmt.Fprintf(a.stdout, "onboard\tcomplete\t%s\t%s\n", doc.ref.Name, root)
+	if state.Tour != nil && state.Tour.Version < onboardingTourVersion {
+		fmt.Fprintf(a.stdout, "onboard\tupdated\tcurrent tour version is %d\n", onboardingTourVersion)
+	}
+	if state.SelectedRole != "" {
+		fmt.Fprintf(a.stdout, "role\tselected\t%s\n", state.SelectedRole)
+	} else {
+		fmt.Fprintln(a.stdout, "role\tselected\tunscoped")
+	}
+	fmt.Fprintf(a.stdout, "next\tsetup\t%s\n", shellCommandLine(root, "our", []string{"setup", "--interactive", "--manifest", doc.ref.Name}))
+	fmt.Fprintf(a.stdout, "next\tlaunch\t%s\n", shellCommandLine(root, "our", []string{"ai", "codex"}))
+}
+
+func onboardSetupArgs(opts onboardOptions, manifestName, root string) []string {
+	args := []string{"--interactive"}
+	args = append(args, setupCommandFlags(opts, manifestName, root)...)
+	return args
+}
+
+func setupCommandFlags(opts onboardOptions, manifestName, root string) []string {
+	args := []string{"--manifest", manifestName, "--umbrella", root}
+	if opts.home != "" {
+		args = append(args, "--home", opts.home)
+	}
+	if opts.noRefresh {
+		args = append(args, "--no-refresh")
+	}
+	if opts.noUpdateCheck {
+		args = append(args, "--no-update-check")
+	}
+	return args
+}
+
+func loadOptionalState(root string) (umbrella.State, bool, error) {
+	state, err := umbrella.LoadState(root)
+	if err == nil {
+		return state, true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return umbrella.State{}, false, nil
+	}
+	return umbrella.State{}, false, err
+}
+
+func tourMarked(state umbrella.State) bool {
+	return state.Tour != nil && state.Tour.CompletedAt != ""
+}
+
+func markTourComplete(root string) error {
+	state, err := umbrella.LoadState(root)
+	if err != nil {
+		return err
+	}
+	state.Tour = &umbrella.TourState{
+		CompletedAt: utcNowString(),
+		Version:     onboardingTourVersion,
+	}
+	return umbrella.SaveState(root, state)
+}
+
+func (a app) promptManifestChoice(docs []registeredDoc) (registeredDoc, error) {
+	fmt.Fprintln(a.stdout, "Select a manifest:")
+	for i, doc := range docs {
+		name := doc.ref.Name
+		if doc.doc.Organization.Name != "" {
+			name += " - " + doc.doc.Organization.Name
+		}
+		fmt.Fprintf(a.stdout, "  %d) %s\n", i+1, name)
+	}
+	for {
+		line, err := a.promptLine("Manifest number (--manifest to skip this prompt): ")
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return registeredDoc{}, fmt.Errorf("manifest selection requires input; pass --manifest")
+			}
+			return registeredDoc{}, err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		n, err := strconv.Atoi(line)
+		if err != nil || n < 1 || n > len(docs) {
+			fmt.Fprintf(a.stdout, "Enter a number from 1 to %d.\n", len(docs))
+			continue
+		}
+		return docs[n-1], nil
+	}
+}
+
+func (a app) promptRoleChoice(doc manifest.Document, current string) (string, error) {
+	if len(doc.Roles) == 0 {
+		return "", nil
+	}
+	fmt.Fprintln(a.stdout, "Select a role:")
+	fmt.Fprintln(a.stdout, "  none) unscoped")
+	for _, role := range doc.Roles {
+		line := "  " + role.ID
+		if role.Purpose != "" {
+			line += " - " + role.Purpose
+		}
+		fmt.Fprintln(a.stdout, line)
+	}
+	defaultLabel := "none"
+	if current != "" {
+		defaultLabel = current
+	}
+	for {
+		line, err := a.promptLine("Role [" + defaultLabel + "]: ")
+		if err != nil && !errors.Is(err, io.EOF) {
+			return "", err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			return current, nil
+		}
+		if strings.EqualFold(line, "none") {
+			return "", nil
+		}
+		if _, err := roleByID(doc, line); err != nil {
+			fmt.Fprintf(a.stdout, "%s\n", err)
+			continue
+		}
+		return line, nil
+	}
+}
+
+func (a app) promptConfirm(prompt string, def bool) (bool, bool, error) {
+	suffix := " [y/N]: "
+	if def {
+		suffix = " [Y/n]: "
+	}
+	for {
+		line, err := a.promptLine(prompt + suffix)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return false, false, err
+		}
+		eof := errors.Is(err, io.EOF)
+		line = strings.TrimSpace(strings.ToLower(line))
+		if line == "" {
+			return def, !eof, nil
+		}
+		switch line {
+		case "y", "yes":
+			return true, true, nil
+		case "n", "no":
+			return false, true, nil
+		default:
+			fmt.Fprintln(a.stdout, "Enter y or n.")
+		}
+	}
+}
+
+func (a app) promptLine(prompt string) (string, error) {
+	fmt.Fprint(a.stdout, prompt)
+	if a.stdin == nil {
+		return "", io.EOF
+	}
+	if reader, ok := a.stdin.(interface {
+		ReadString(byte) (string, error)
+	}); ok {
+		line, err := reader.ReadString('\n')
+		return strings.TrimRight(line, "\r\n"), err
+	}
+	reader := bufio.NewReader(a.stdin)
+	line, err := reader.ReadString('\n')
+	return strings.TrimRight(line, "\r\n"), err
+}
+
+func utcNowString() string {
+	return time.Now().UTC().Format(time.RFC3339)
 }
 
 func (a app) printMCPResult(result mcpconfig.Result) {

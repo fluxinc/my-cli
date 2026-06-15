@@ -147,7 +147,7 @@ func (a app) runLaunch(args []string) error {
 			a.printLaunchGuidanceBlock(check)
 			return errAlreadyPrinted
 		}
-		if err := a.runOnboard(onboardArgsForLaunch(opts.home, doc.ref.Name, root, opts.noRefresh, opts.noUpdateCheck)); err != nil {
+		if err := a.runSetup(setupArgsForLaunch(opts.home, doc.ref.Name, root, opts.noRefresh, opts.noUpdateCheck)); err != nil {
 			return err
 		}
 		doc, err = loadSingleRegisteredDoc(opts.home, doc.ref.Name)
@@ -480,7 +480,7 @@ func launchGuidanceDoc(home, manifestName, root string) (registeredDoc, error) {
 	return loadSingleRegisteredDoc(home, manifestName)
 }
 
-func onboardArgsForLaunch(home, manifestName, root string, noRefresh, noUpdateCheck bool) []string {
+func setupArgsForLaunch(home, manifestName, root string, noRefresh, noUpdateCheck bool) []string {
 	args := []string{"--manifest", manifestName, "--umbrella", root}
 	if home != "" {
 		args = append(args, "--home", home)
@@ -505,6 +505,13 @@ func (a app) printLaunchGuidanceBlock(result guidance.CheckResult) {
 }
 
 func shellCommandLine(dir, command string, args []string) string {
+	if dir == "" {
+		parts := []string{shellQuote(command)}
+		for _, arg := range args {
+			parts = append(parts, shellQuote(arg))
+		}
+		return strings.Join(parts, " ")
+	}
 	parts := []string{"cd", shellQuote(dir), "&&", shellQuote(command)}
 	for _, arg := range args {
 		parts = append(parts, shellQuote(arg))

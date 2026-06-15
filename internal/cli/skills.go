@@ -66,8 +66,8 @@ With no harnesses, install targets all supported harnesses and silently skips
 missing ones. If synced manifests are registered, skills commands use them by
 default; --source forces a local skills directory.
 
-Manifest skill commands only refresh harness skill directories. Run our
-onboard to regenerate workspace guidance such as AGENTS.md. Self-skill commands
+Manifest skill commands only refresh harness skill directories. Run our setup
+to regenerate workspace guidance such as AGENTS.md. Self-skill commands
 install Our AI's bundled CLI guidance into harness skill directories.`)
 }
 
@@ -841,11 +841,13 @@ type skillsCommandOpts struct {
 	noPrune                bool
 	noRefresh              bool
 	noUpdateCheck          bool
+	interactive            bool
 	source                 string
 	home                   string
 	manifestName           string
 	umbrellaRoot           string
 	role                   string
+	roleSet                bool
 	quietSource            bool
 	skillRefs              stringListFlag
 	allowMissingToolSkills bool

@@ -33,7 +33,8 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
 ```sh
 our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
 our publish [--manifest NAME] [--home DIR] [--print] [--json]
-our setup [harness...] | --all [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+our onboard [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+our setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 our root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
@@ -47,6 +48,12 @@ registry path (the control plane) and a content repo at
 `<umbrella>/workspace` (`--path` overrides) — commits and registers them, and
 prints the follow-up `our setup`, `our ai`, and `our publish` commands. Both
 repos work offline and report `local-only` until published.
+
+`our onboard` is the human tour. With no registered manifest it prints the
+`our manifests add <name> <git-url>` next step and writes no state. With a
+manifest, it explains the model, offers `our setup --interactive`, and records
+tour completion in the umbrella. Plain `our setup` remains non-interactive and
+scriptable; `--interactive` prompts for manifest and role selection.
 
 `our publish` takes the organization online idempotently: it creates private
 remotes (`<org>-workspace`, `<org>-manifest`) via `gh`, or adopts existing

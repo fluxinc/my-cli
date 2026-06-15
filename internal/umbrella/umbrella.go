@@ -34,11 +34,18 @@ type State struct {
 	SchemaVersion int           `json:"schema_version"`
 	SelectedRepos []string      `json:"selected_repos"`
 	SelectedRole  string        `json:"selected_role,omitempty"`
+	Tour          *TourState    `json:"tour,omitempty"`
 	Mounts        []MountStatus `json:"mounts"`
 
 	// LegacySelectedProducts holds the pre-split selected_products key; it is
 	// migrated into SelectedRepos on load and never written back.
 	LegacySelectedProducts []string `json:"selected_products,omitempty"`
+}
+
+// TourState records the local human onboarding walkthrough completion.
+type TourState struct {
+	CompletedAt string `json:"completed_at,omitempty"`
+	Version     int    `json:"version,omitempty"`
 }
 
 // MountStatus records the last known state of one local mount.
