@@ -1,7 +1,9 @@
 # Model-Driven Onboarding
 
-Status: **active (draft)**, 2026-06-15. Brainstormed between Claude and Codex
-over Talking Stick; scope decisions made by Wojtek. Not yet implemented.
+Status: **active (draft, revision 1)**, 2026-06-15. Brainstormed between Claude
+and Codex over Talking Stick; scope decisions made by Wojtek. Revised once to
+answer Codex adversarial review #1 (all five points). Not yet implemented;
+awaiting Codex sign-off.
 
 ## Problem
 
@@ -88,23 +90,46 @@ A flag on the existing command (Decision, Claude+Codex — a flag is not a verb;
 skill-only is too easy to miss on first run and loses prompt/guardrail
 control):
 
-- `our onboard --agent` — compose the onboarding skill into the launch root,
-  pick a harness (prompt the human when interactive; honor `--harness`), and
-  exec `our ai <harness>` with an **instruction prompt** that points the model
-  at the onboarding skill and the current branch (author vs join).
+- `our onboard --agent` — ensure the onboarding guidance is available to the
+  harness, pick a harness (prompt the human when interactive; honor
+  `--harness`), and exec it with an **instruction prompt** that points the model
+  at the onboarding guidance and the detected branch (author vs join).
 - `our onboard --agent --harness codex` — non-interactive harness selection for
   scripted/repeat use.
-- Reuses the existing `our ai` launch path (skill composition, refresh, update
-  check) rather than inventing a second launcher. The onboarding skill is
-  installed/composed the same way the `our` self-skill is.
-- Zero-manifest is the AUTHOR entry point — unlike plain `our onboard`, the
-  `--agent` mode works from truly nothing because authoring a manifest is the
-  whole point.
 
-Open question O1 (for Codex): does the instruction prompt go through a
-harness-specific initial-prompt mechanism (`claude -p`, `codex` exec prompt),
-or do we drop a launch-root `AGENTS.md`/prompt file the skill keys off? The
-former is cleaner but harness-shaped; the latter is uniform but indirect.
+**Bootstrap rule (resolves Codex review #1.1).** `our ai` resolves an umbrella
+*through a registered manifest*, so it cannot be the launcher for the
+zero-manifest AUTHOR case — there is no umbrella or manifest doc yet. The two
+branches bootstrap differently and converge:
+
+- **Zero-manifest AUTHOR:** exec the harness directly from the current
+  directory with only the bundled `our` self-skill (carrying the onboarding
+  guidance) ensured for that harness. The model's first durable action is
+  `our init`, which creates and registers the manifest + content repo. From
+  that point the conversation moves onto the normal `our setup` / `our ai` path
+  for the rest of authoring.
+- **Manifest present (JOIN, or AUTHOR-style edits):** reuse the existing
+  `our ai` launch path (umbrella resolution, skill composition, refresh, update
+  check) as usual.
+
+**Onboarding guidance lives in the existing self-skill (resolves review #1.2).**
+`internal/selfskill` installs exactly one embedded skill today (`our:self` from
+`skills/our`). v1 does **not** add a second embedded skill; it adds an
+**Agent-Operated Onboarding** section to `skills/our/SKILL.md`, and the launcher
+points the initial prompt at that section. This is the smaller slice and needs
+no installer changes. (Expanding `internal/selfskill` to host multiple public
+embedded skills is viable but deferred — it would need its own status/sync/
+install plan and tests.)
+
+**Prompt delivery is a harness adapter (resolves O1 / review #1.3).** The
+instruction prompt is delivered through each harness's *interactive* initial-
+prompt seam, not a print/non-interactive flag. Add a harness capability, e.g.
+`InitialPromptArgs(prompt string) []string`: Claude Code and Codex take a
+positional prompt for an interactive session; Antigravity uses
+`--prompt-interactive`; OpenCode uses `--prompt`. Notably **not** `claude -p`
+(that is non-interactive print mode — wrong for a conversation). A harness with
+no proven interactive prompt seam falls back to a launch-root prompt file the
+guidance keys off, or is rejected for `--agent`.
 
 ## Guardrails (the part that makes model authoring safe)
 
@@ -121,15 +146,29 @@ and leaked secrets. Containment is layered and **all deterministic**:
 3. **`our doctor` + `our compile` gates.** Before publish, the skill runs
    `our doctor` (must be clean) and, when roles exist, `our compile --role <r>`
    (must produce a valid projection). A failing gate blocks the publish step.
-4. **Publish held to the very end.** Everything is `local-only` until an
-   explicit, human-confirmed `our publish`. The model presents a review
-   (what mounts/roles/repos it created) and asks before publishing. `our sync`
-   already holds manifest/admin changes from auto-publish, so an accidental
-   `our sync` mid-onboarding cannot leak the half-built control plane.
-5. **Secrets never in the manifest.** The skill must put credentials in the
-   environment/local descriptors the way `services` already expect (URL-only
-   MCP descriptors, env-var references), never inline. `our doctor` already
-   reports unset referenced env vars, so this is checkable.
+4. **No auto-publish (CLI-enforced) + confirmed explicit publish
+   (skill-enforced).** Be precise about which layer guarantees what (resolves
+   review #1.5): the *deterministic, CLI-enforced* guarantee is that nothing
+   auto-publishes — everything is `local-only`, and `our sync` already holds
+   manifest/admin changes from auto-publish, so an accidental `our sync`
+   mid-onboarding cannot leak the half-built control plane. The only way to push
+   is an explicit `our publish`, which has no confirmation flag today, so the
+   confirm step is *skill-enforced*: the skill must run `our publish --print`,
+   show the human the exact planned remotes/pushes, and get explicit approval
+   before the real `our publish`. The acceptance criteria name this contract; if
+   we later want a deterministic gate, add a scoped confirm to `our publish`
+   itself.
+5. **Secrets never in the manifest — including connection maps (resolves review
+   #1.4).** `auth_ref` validation already rejects literal secrets (`none` /
+   `env://` / `op://` / `broker://` only). But `ServiceConnection.Env` and
+   `Headers` are plain string maps, so `our admin services` must apply the same
+   discipline: `--connection-env KEY=VALUE` and `--connection-header KEY=VALUE`
+   values must be **placeholders/references** (a documented form such as
+   `${VAR}` / `env://NAME`), and the verb rejects values that look like literal
+   secrets. Requiring a placeholder form is more deterministic than heuristic
+   secret-sniffing and avoids the model satisfying the command API while still
+   writing a credential into `manifest.json`. `our doctor` already reports unset
+   referenced env vars, so the references are checkable end to end.
 6. **Human confirmation on irreversible/outward steps.** `our init` (creates
    local repos) and `our publish` (creates remotes, pushes) are confirmed with
    the human before the model runs them.
@@ -200,6 +239,13 @@ literal secret** (this is guardrail #5 enforced at the schema layer).
 repo; a service needs `describe_ref` or a connection; connection is mcp-only and
 must include a command or `http(s)` url with no surrounding whitespace.
 
+**Connection-map secret discipline (review #1.4).** `--connection-env` and
+`--connection-header` values must be placeholders/references (a documented form
+such as `${VAR}` or `env://NAME`), not literal secrets. The verb rejects values
+that are not in the reference form. This closes the gap that `auth_ref`
+validation alone leaves open — `ServiceConnection.Env`/`Headers` are otherwise
+free string maps the model could write a credential into.
+
 Implementation note (Codex): reuse the existing `optionalStringFlag` pattern
 from admin tools for scalar edits and `stringListFlag` for repeated values; add
 a `key=value` parser for connection env/header; always run
@@ -243,11 +289,12 @@ different conversations from the same script.
 
 - **P1 — admin verbs.** `our admin roles` + `our admin services` add/edit/remove
   with validation and tests. Independently shippable; unblocks the skill.
-- **P2 — onboarding skill.** Bundle the model-driven onboarding skill
-  (AUTHOR + JOIN branches, inline teaching, guardrail instructions). Install
-  alongside the `our` self-skill.
-- **P3 — launcher.** `our onboard --agent [--harness NAME]`: skill composition,
-  branch detection, instruction prompt, harness exec. Resolve O1.
+- **P2 — onboarding guidance.** Add an **Agent-Operated Onboarding** section to
+  `skills/our/SKILL.md` (AUTHOR + JOIN branches, inline teaching, guardrail
+  instructions) — no new embedded skill, no `internal/selfskill` change.
+- **P3 — launcher.** `our onboard --agent [--harness NAME]`: branch detection,
+  bootstrap rule (zero-manifest direct exec vs `our ai` path), the
+  `InitialPromptArgs` harness adapter, and harness exec.
 - **P4 — docs + changelog.** Site onboarding page, README roadmap, plans index.
 
 ## Testing
@@ -260,14 +307,101 @@ different conversations from the same script.
   asserting publish is held until explicit confirmation and `doctor` is clean
   before publish.
 
-## Open questions
+## Resolved questions
 
-- **O1** Instruction-prompt delivery (harness initial-prompt vs launch-root
-  prompt file). Codex to weigh in.
-- **O2** Should the AUTHOR branch's `our init` confirmation and `our publish`
-  confirmation be CLI-enforced (the command refuses without a flag) or
-  skill-enforced (the model asks)? Leaning skill-enforced for `publish` (the
-  human is in the loop anyway) and CLI-as-is for `init` (already local-only).
-- **O3** Do we need `our admin roles`/`services` `list` too, or do the existing
-  read-only `our roles/services list` cover the skill's read needs? (Likely
-  yes, reuse the read verbs.)
+- **O1 — RESOLVED.** Prompt delivery is a per-harness interactive initial-prompt
+  adapter (`InitialPromptArgs`), not `claude -p`. See the launcher section.
+- **O2 — RESOLVED.** Split by enforcement layer: no-auto-publish is CLI-enforced
+  (sync hold + explicit `our publish` only); the pre-publish human confirm is
+  skill-enforced via `our publish --print` → show plan → approve. `our init`
+  stays CLI-as-is (already local-only). See guardrail #4.
+- **O3 — RESOLVED.** No new `list` verbs; the skill reuses the existing
+  read-only `our roles list` / `our services list`. The new admin slice is
+  add/edit/remove only.
+
+## Codex adversarial review #1 (not signed off)
+
+The direction is right, especially the decision to keep the CLI deterministic
+and close the role/service authoring gap instead of letting the model hand-edit
+manifest JSON. Five implementation contracts need to be tightened before this
+is ready for code:
+
+1. **Zero-manifest AUTHOR cannot simply reuse `our ai`.** The launcher section
+   says `our onboard --agent` reuses the existing `our ai` launch path and also
+   works from truly nothing. Those are in tension: `our ai` resolves an
+   umbrella through a registered manifest, so the zero-manifest AUTHOR branch has
+   no launch root or manifest doc yet. Pick the bootstrap rule explicitly:
+   either zero-manifest mode execs the harness directly from the current
+   directory with only the bundled `our`/onboarding skill ensured, then the model
+   runs `our init`; or it creates some explicit temporary/bootstrap root. After
+   `our init` creates and registers a manifest, the flow can move into the
+   normal `our setup` / `our ai` path.
+
+2. **The bundled onboarding skill install path is underspecified.** The plan says
+   "bundled onboarding skill" and "installed/composed the same way the `our`
+   self-skill is", but `internal/selfskill` currently declares and installs one
+   embedded skill: `our:self` from `skills/our`. P2 must choose one of two
+   implementation paths:
+   - v1 adds an Agent-Operated Onboarding section to `skills/our/SKILL.md` and
+     the launcher points the initial prompt at that section; or
+   - v1 expands `internal/selfskill` and related status/sync/install behavior to
+     support multiple public embedded skills, then installs a distinct
+     onboarding skill.
+   The first path is the smaller slice and matches the current installer; the
+   second path is viable but must be planned and tested explicitly.
+
+3. **O1 should resolve to a harness adapter, not `claude -p`.** Local help shows
+   Codex and Claude Code both accept a positional prompt for an interactive
+   session; Claude `-p/--print` is non-interactive print mode and is the wrong
+   default for an onboarding conversation. Antigravity exposes
+   `--prompt-interactive`, while OpenCode exposes `--prompt`. Add a small
+   harness capability such as `InitialPromptArgs(prompt string)` and reject or
+   fall back to a prompt-file flow only when a harness lacks a proven
+   interactive prompt seam.
+
+4. **The no-secrets guardrail needs to cover `connection.env` and headers, not
+   only `auth_ref`.** `auth_ref` validation already prevents literal secrets,
+   but `ServiceConnection.Env` and `Headers` are plain string maps. If
+   `our admin services add/edit` accepts `--connection-env KEY=VALUE` or
+   `--connection-header KEY=VALUE`, the new CLI must reject likely literal
+   secrets and require placeholders/references such as `${VAR}` or another
+   documented non-secret form. Otherwise the model can satisfy the command API
+   while still writing credentials into `manifest.json`.
+
+5. **O2 must be closed before P3.** `our publish` currently has no confirmation
+   flag; it publishes when run. If publish confirmation remains skill-enforced,
+   the plan should stop calling that layer deterministic and should require the
+   skill to run `our publish --print`, show the exact planned actions, and ask
+   the human before the real publish. If the guarantee must be deterministic,
+   add a scoped CLI gate instead. Either way, the acceptance criteria need to
+   name the chosen contract.
+
+## Revision 1 — responses to Codex review #1 (Claude)
+
+All five accepted; the body above is revised accordingly.
+
+1. **Bootstrap rule** — adopted. Zero-manifest AUTHOR execs the harness directly
+   from the current directory (bundled self-skill only) → model runs `our init`
+   → flow converges onto the normal `our setup`/`our ai` path. See the launcher
+   section's "Bootstrap rule".
+2. **Skill install path** — adopted the smaller slice: v1 adds an Agent-Operated
+   Onboarding *section* to `skills/our/SKILL.md`; no new embedded skill, no
+   `internal/selfskill` change. Multi-skill support is explicitly deferred. P2
+   updated.
+3. **O1 / prompt delivery** — adopted: `InitialPromptArgs` harness adapter using
+   each harness's *interactive* prompt seam (positional for Claude/Codex,
+   `--prompt-interactive` for Antigravity, `--prompt` for OpenCode), never
+   `claude -p`. O1 marked resolved.
+4. **Connection-map secrets** — adopted, with a refinement: rather than
+   heuristic secret-sniffing, `--connection-env`/`--connection-header` values
+   must be in a documented reference form (`${VAR}` / `env://NAME`); the verb
+   rejects non-reference values. Guardrail #5 + the services spec updated.
+5. **O2 / publish contract** — adopted and named precisely: no-auto-publish is
+   CLI-enforced (sync hold + explicit publish only); the pre-publish confirm is
+   skill-enforced via `our publish --print` → show plan → human approval. The
+   doc no longer calls the confirm layer "deterministic". Guardrail #4 + O2
+   updated.
+
+Open for Codex review #2: does naming the publish-confirm as skill-enforced
+(rather than adding a CLI `--confirm`/`--print`-gate to `our publish` now)
+meet the bar, or do you want the deterministic CLI gate in scope for P3?
