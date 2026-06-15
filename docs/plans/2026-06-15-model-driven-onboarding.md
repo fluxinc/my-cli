@@ -49,8 +49,10 @@ our onboard --agent [--harness NAME]
    │
    ├─ no manifest registered ─────────►  AUTHOR branch
    │     model interviews the user, builds a new org:
-   │     our init → admin mounts/roles/services/skills/tools/contract
-   │     → repos add → doctor/compile gates → review → publish
+   │     our init → admin services/skills/tools/roles/contract
+   │     → setup/doctor/compile gates → review → publish
+   │     (extra mount/repo catalog declaration authoring is recorded
+   │      as explicit human/admin follow-up unless a command exists)
    │
    └─ manifest registered ────────────►  JOIN branch
          model walks a teammate through setup against the existing
@@ -277,13 +279,17 @@ The skill owns this; it is copy, not code. Rough arc:
 
 1. "What does your organization do, in a sentence?" → org id/name for
    `our init`.
-2. "What kinds of shared knowledge do you keep?" → mounts (handbook,
-   customers, meetings, support, fleet, policy, docs) via `admin mounts add`.
-3. "What roles/teams work differently here?" → roles via `admin roles add`,
-   each scoped to relevant mounts/services.
-4. "Any code repositories to track?" → `repos add`.
-5. "Any external tools/services the org depends on?" → `admin tools add` /
+2. "What kinds of shared knowledge do you keep?" → start with the generated
+   `workspace` mount from `our init`; select/sync any already-declared optional
+   mounts, but record extra mount declarations as a human/admin follow-up
+   because `our mounts add` does not author manifest mount declarations.
+3. "Any external tools/services the org depends on?" → `admin tools add` /
    `admin services add`.
+4. "What roles/teams work differently here?" → roles via `admin roles add`,
+   each scoped to relevant mounts/services.
+5. "Any code repositories to track?" → `repos add` only for repos already
+   declared in `catalog/repos.json`; otherwise record desired repo ids/Git URLs
+   as explicit human/admin follow-up.
 6. "Any binding rules everyone must follow?" → `admin contract add`.
 7. Run `our setup` to materialize the umbrella, `our doctor`/`compile` to
    verify, present a review, then confirm and `our publish`.

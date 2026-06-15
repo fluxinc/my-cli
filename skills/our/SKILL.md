@@ -91,6 +91,7 @@ Run `our --help` (or `our <command> --help`) for the authoritative surface.
   product/repo catalog, guidance, skills declarations). They live under
   `our admin ...`
   (`our admin skills add/remove`, `our admin tools add/edit/remove`,
+  `our admin roles add/edit/remove`, `our admin services add/edit/remove`,
   `our admin contract add/remove`,
   `our admin manifests/mounts/meetings/support/setup`) and require explicit
   intent.
@@ -109,8 +110,8 @@ our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR]
                                     # create manifest + content repos locally and register them
 our publish [--manifest NAME] [--print]
                                     # create private remotes, rewrite local mount URLs, push both repos
-our onboard [--manifest NAME] [--home DIR] [--umbrella DIR]
-                                    # human walkthrough; offers interactive setup
+our onboard [--manifest NAME] [--home DIR] [--umbrella DIR] [--agent] [--harness NAME]
+                                    # human walkthrough; --agent launches model-driven onboarding
 our setup [--manifest NAME] [--role ROLE] [--interactive] [--no-refresh] [--no-update-check]
                                     # create umbrella, write guidance/MCP config, install self-skill, sync mounts
 our root [--repo ID] [--no-refresh] [--no-update-check]
@@ -321,6 +322,98 @@ fast-forwards clean stale manifest/content checkouts and reconciles generated
 guidance, umbrella `.mcp.json`, plus legacy global org-skill cleanup; it reports dirty,
 diverged, repo, remote-unknown checkouts, and session work instead of touching
 them.
+
+## Agent-Operated Onboarding
+
+When a harness is launched via `our onboard --agent`, you are the onboarding
+brain. Hold a real conversation, then build or join the organization **only
+through the validated `our` commands** below — never by hand-editing the
+manifest or any generated file.
+
+**One adaptive flow.** Detect state first, then branch. Run
+`our manifests list --json`. With **no manifest registered**, take the
+**AUTHOR** branch (create a new org). With a **manifest already registered**,
+take the **JOIN** branch (set this person up against the existing org). When a
+manifest exists, run `our root` to find the umbrella; if it fails, JOIN still
+applies but setup is needed. A returning admin may also want AUTHOR-style edits
+on an existing manifest — offer that when it fits.
+
+**Conversation discipline.** Ask one question at a time; prefer concrete choices
+over open prompts; match depth to the person (a solo founder and a 200-person
+company need different conversations). Teach inline — as you run each command,
+say in one line what it does and why ("Running `our sync --publish never` —
+that pulls workspace updates without publishing"). Do not dump the whole plan up
+front.
+
+### AUTHOR branch (no manifest yet)
+
+Build the control plane incrementally, validating as you go:
+
+1. Confirm intent and get a one-line description of the org. With explicit human
+   go-ahead, run `our init <org-id> [--name NAME] --json` — local-only
+   manifest + content repos; nothing is shared yet. Keep the returned manifest
+   checkout as `<manifest-dir>` for every later `our admin ... --manifest-dir`
+   command.
+2. Shared knowledge starts in the generated `workspace` mount from `our init`.
+   New mount declarations do not yet have a dedicated admin authoring verb:
+   do **not** pretend `our mounts add` creates manifest mounts. Use
+   `our mounts add <id>` only to select/sync a mount that is already declared.
+   If the org needs extra mount declarations now, capture the desired ids,
+   kinds, and Git URLs and stop for explicit human/admin follow-up.
+3. External surfaces and dependencies first, so roles can reference them:
+   `our admin services add <id> --manifest-dir <manifest-dir> --kind http|mcp
+   --purpose "..." --auth-ref REF [--describe-ref REF | --connection-command
+   CMD ...]`, `our admin tools add <id> --manifest-dir <manifest-dir> --mode
+   required|optional --purpose "..."`, and `our admin skills add <skill-dir>
+   --id namespace:name --manifest-dir <manifest-dir>` when a real local skill
+   source exists.
+4. Teams that work differently → roles: `our admin roles add <id>
+   --manifest-dir <manifest-dir> --purpose "..." [--mount ID]
+   [--skill ns:name] [--tool ID] [--service ID]`.
+5. Binding rules → `our admin contract add "..." --manifest-dir
+   <manifest-dir>`.
+6. Code repos can be cloned only after they are declared in `catalog/repos.json`.
+   `our repos add <id>` selects/clones an existing catalog repo; it does not
+   author catalog entries. If repo catalog authoring is needed, capture the
+   desired ids and Git URLs for explicit human/admin follow-up.
+7. Validate, materialize, and verify: `our manifests validate <manifest-dir>`,
+   `our setup`, then `our doctor` (must be clean) and, when roles exist,
+   `our compile --role <id>` (must produce a valid projection).
+
+### JOIN branch (manifest already registered)
+
+1. Summarize the org from what is registered (`our roles list`,
+   `our services list`, `our mounts list`).
+2. Help the person pick a role when roles exist, then `our setup --role <id>`;
+   otherwise run `our setup`.
+3. `our sync --publish never` to pull mounts without publishing; teach the
+   everyday content verbs by example (`our meetings add`, `our support add`,
+   `our fleet ...`, `our sync --print`, then `our sync` when the person is ready
+   to publish safe content changes).
+4. Point them at `our ai <harness>` for daily work.
+
+### Hard rules (do not skip)
+
+- **Command-driven only.** Every manifest change goes through an
+  `our admin ...` / `our init` / `our setup` command that validates input.
+  Never edit `manifest.json` or generated `AGENTS.md`/`.mcp.json` by hand.
+  Do not use local operational commands such as `our mounts add` or
+  `our repos add` as if they authored manifest or catalog declarations.
+- **No secrets in the manifest.** `auth_ref` must be `none`, `env://NAME`,
+  `op://...`, or `broker://...`. Inline connection env values must be exact
+  `${VAR}` placeholders; connection header values may be composite but must
+  contain a `${VAR}` (e.g. `Authorization=Bearer ${TOKEN}`). Never paste a
+  literal credential.
+- **Publish is held to the end.** Everything stays `local-only` until the last
+  step. Before sharing anything, run `our publish --print`, show the human the
+  exact remotes/pushes it plans, and get explicit approval — then run
+  `our publish`. `our init` (local repos) and `our publish` (remotes) are the
+  irreversible/outward steps; confirm both with the human first.
+- **Gates before publish.** `our manifests validate <manifest-dir>`,
+  `our doctor` clean, and `our compile --role <id>` valid when roles exist,
+  before you offer to publish.
+- **Stay generic and public-safe.** Teach the model and the shape; never bake
+  one org's private data into reusable guidance.
 
 ## Tips
 
