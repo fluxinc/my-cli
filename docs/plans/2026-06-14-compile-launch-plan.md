@@ -1,9 +1,9 @@
 # Compile: the manifest→Clawdapus launch projection (Mode B, phase 1)
 
-Status: **active implementation**, drafted by Claude 2026-06-14, **revised after
-Codex adversarial reviews #1–#2**, and **signed off by Codex after review #3**
-(same day). **Hard gate: no release until Claude and Codex both sign off on the
-implementation.** Elaborates step 4 ("Next") of
+Status: **shipped in v0.25.0**, drafted by Claude 2026-06-14, **revised after
+Codex adversarial reviews #1–#2**, signed off by Codex after review #3, and
+signed off by Claude after implementation review (same day). Elaborates step 4
+("Next") of
 [`2026-06-10-execution-plane.md`](2026-06-10-execution-plane.md) and Slice 5 of
 [`2026-06-13-data-surfaces.md`](2026-06-13-data-surfaces.md). Pre-1.0, no
 userbase: back-compat is not a constraint.

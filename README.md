@@ -487,13 +487,20 @@ indexed in [docs/plans/](docs/plans/README.md):
   service-backed domain invocation and contained runners remain future/YAGNI.
   Plan:
   [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 3.
-- **Active — contained runners (Mode B phase 1).** Org-side launch-artifact
-  projection (`our compile`): manifest + role + skills + mounts compile into a
-  deterministic Clawdapus-facing JSON artifact for governed fleet agents, with
-  baseline and manifest contract blocks preserved as enforce-level inputs. The
-  Clawdapus pod/context emitter and descriptor fetch/cache remain later phases.
+- **Shipped — contained runner launch projection (v0.25.0).** Org-side
+  launch-artifact projection (`our compile`): manifest + role + skills +
+  mounts compile into a deterministic Clawdapus-facing JSON artifact for
+  governed fleet agents, with baseline and manifest contract blocks preserved
+  as enforce-level inputs. The Clawdapus pod/context emitter and descriptor
+  fetch/cache remain later phases.
   Plans: [compile launch projection](docs/plans/2026-06-14-compile-launch-plan.md),
   [execution plane](docs/plans/2026-06-10-execution-plane.md).
+- **Active — human onboarding walkthrough.** Reclaim `our onboard` as a
+  minimal human tour while keeping `our setup` as the deterministic machine
+  configurator. The slice adds explicit `our setup --interactive`, stores only
+  umbrella-local tour completion, and avoids new top-level verbs such as
+  `configuration`, `configure`, or `tour`. Plan:
+  [onboarding walkthrough](docs/plans/2026-06-14-onboarding-walkthrough.md).
 - **Later — substrate upgrades.** A gnit backend for sessions once umbrellas
   bootstrap as gnit control workspaces, and managed read-only base mounts
   for contained launches. Plan:
