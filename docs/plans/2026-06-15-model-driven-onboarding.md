@@ -77,12 +77,14 @@ the skill, where it belongs.
   decision-making about what *this* org needs. It only mutates state by calling
   CLI commands — never by hand-editing the manifest.
 
-`our onboard --agent` itself still **mutates nothing durable**. It composes the
-onboarding skill into the launch root and execs the chosen harness with an
-instruction prompt. All durable change happens inside the model session,
-through the same validated commands a human could run. This preserves the
-v0.26.0 invariant ("onboard mutates nothing durable except by delegating") —
-here it delegates to a model that delegates to setup/admin/init.
+`our onboard --agent` itself still **mutates nothing durable**. It ensures the
+existing `our` self-skill is available to the selected harness, then execs the
+harness with an instruction prompt. When a manifest is present it can use the
+normal launch-root path; in zero-manifest bootstrap there is no launch root yet.
+All durable change happens inside the model session, through the same validated
+commands a human could run. This preserves the v0.26.0 invariant ("onboard
+mutates nothing durable except by delegating") — here it delegates to a model
+that delegates to setup/admin/init.
 
 ## The launcher: `our onboard --agent`
 
@@ -134,7 +136,9 @@ guidance keys off, or is rejected for `--agent`.
 ## Guardrails (the part that makes model authoring safe)
 
 Biggest risk (Codex): model-authored control-plane drift, premature publish,
-and leaked secrets. Containment is layered and **all deterministic**:
+and leaked secrets. Containment is layered: deterministic CLI gates prevent
+implicit mutation/publish, while the skill owns the human confirmation prompts
+for the explicit model-driven flow.
 
 1. **Command-driven mutations only.** The skill is instructed to never hand-edit
    manifest JSON. Every change goes through a validated admin/init/setup/repos
