@@ -12,12 +12,33 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
+
+// TestMain lets a re-exec'd copy of this test binary act as the self-replace
+// child for TestReplaceTargetReplacesRunningExecutable: when the child env is
+// set, it replaces its own running executable and exits instead of running the
+// suite.
+func TestMain(m *testing.M) {
+	if os.Getenv(selfReplaceChildEnv) == "1" {
+		self, err := os.Executable()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "child os.Executable:", err)
+			os.Exit(3)
+		}
+		if err := replaceTargetForOS(self, []byte(selfReplacePayload), runtime.GOOS); err != nil {
+			fmt.Fprintln(os.Stderr, "child replaceTargetForOS:", err)
+			os.Exit(4)
+		}
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
 
 func TestCompareVersions(t *testing.T) {
 	tests := []struct {
@@ -302,6 +323,93 @@ func ourAIArchive(t *testing.T, binary []byte) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+func ourAIArchiveNamed(t *testing.T, name string, binary []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(binary))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(binary); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func TestExtractAcceptsWindowsExeName(t *testing.T) {
+	want := []byte("windows-our-binary")
+	got, err := extractOurAIBinary(ourAIArchiveNamed(t, "our.exe", want))
+	if err != nil {
+		t.Fatalf("extractOurAIBinary(our.exe): %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("extracted %q, want %q", got, want)
+	}
+}
+
+// TestReplaceTargetWindowsBranchSwapsBinary exercises the Windows code path's
+// rename-aside logic on any OS (it does not replace a *running* exe — see
+// TestReplaceTargetReplacesRunningExecutable for the live-lock proof).
+func TestReplaceTargetWindowsBranchSwapsBinary(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "our.exe")
+	writeFile(t, target, "old-binary", 0o755)
+	// A stale backup from a prior update must not block the replacement.
+	writeFile(t, target+".old", "stale", 0o755)
+
+	if err := replaceTargetForOS(target, []byte("new-binary"), "windows"); err != nil {
+		t.Fatalf("replaceTargetForOS windows: %v", err)
+	}
+	if got, err := os.ReadFile(target); err != nil || string(got) != "new-binary" {
+		t.Fatalf("target = %q err=%v, want new-binary", got, err)
+	}
+}
+
+const selfReplaceChildEnv = "OUR_SELFUPDATE_REPLACE_CHILD"
+const selfReplacePayload = "running-exe-replacement"
+
+// TestReplaceTargetReplacesRunningExecutable proves the real case that matters
+// on Windows: replacing the executable file that backs the *currently running*
+// process. The test re-execs a copy of its own binary, which (via TestMain)
+// calls replaceTargetForOS on its own running executable. It is skipped off
+// Windows, where overwriting a running binary is not locked.
+func TestReplaceTargetReplacesRunningExecutable(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("running-exe lock semantics are Windows-specific")
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := os.ReadFile(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "our.exe")
+	if err := os.WriteFile(target, src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(target)
+	cmd.Env = append(os.Environ(), selfReplaceChildEnv+"=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("self-replace child failed: %v\n%s", err, out)
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != selfReplacePayload {
+		t.Fatalf("running executable was not replaced: got %q", string(got))
+	}
 }
 
 func writeTarget(t *testing.T, body string) string {

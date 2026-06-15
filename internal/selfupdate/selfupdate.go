@@ -646,7 +646,7 @@ func extractOurAIBinary(data []byte) ([]byte, error) {
 		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
 			continue
 		}
-		if filepath.Base(header.Name) != "our" {
+		if base := filepath.Base(header.Name); base != "our" && base != "our.exe" {
 			continue
 		}
 		var out bytes.Buffer
@@ -658,6 +658,15 @@ func extractOurAIBinary(data []byte) ([]byte, error) {
 }
 
 func replaceTarget(target string, binary []byte) error {
+	return replaceTargetForOS(target, binary, runtime.GOOS)
+}
+
+// replaceTargetForOS writes binary over target by staging a temp file in the
+// same directory and renaming it into place. On Windows a running executable is
+// locked and cannot be renamed over or deleted, so the current binary is first
+// moved aside (which Windows permits even while it runs); the moved-aside file
+// keeps backing the running process and is cleaned up on a later update.
+func replaceTargetForOS(target string, binary []byte, goos string) error {
 	dir := filepath.Dir(target)
 	tmp, err := os.CreateTemp(dir, ".our-update-*")
 	if err != nil {
@@ -681,6 +690,22 @@ func replaceTarget(target string, binary []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
+
+	if goos == "windows" {
+		backup := target + ".old"
+		_ = os.Remove(backup) // clear a stale backup from a prior update
+		if err := os.Rename(target, backup); err != nil {
+			return err
+		}
+		if err := os.Rename(tmpName, target); err != nil {
+			_ = os.Rename(backup, target) // best-effort restore
+			return err
+		}
+		keep = true
+		_ = os.Remove(backup) // best effort; fails while the old exe is running
+		return nil
+	}
+
 	if err := os.Rename(tmpName, target); err != nil {
 		return err
 	}

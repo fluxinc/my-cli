@@ -14,6 +14,7 @@ builds:
     goos:
       - linux
       - darwin
+      - windows
     goarch:
       - amd64
       - arm64
@@ -23,7 +24,8 @@ builds:
         -X github.com/fluxinc/our-ai/internal/version.Version={{.Version}}
 
 archives:
-  - format: tar.gz
+  - formats:
+      - tar.gz
     name_template: "our-ai_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:

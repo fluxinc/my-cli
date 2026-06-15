@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.28.0 - 2026-06-15
+
+### Added
+
+- Windows release builds: archives now include `windows/amd64` and
+  `windows/arm64`, so `our update` can fetch a Windows package.
+
+### Fixed
+
+- `our update` on Windows: extract the `our.exe` binary from the release archive,
+  and replace the running executable with a rename-aside (Windows locks a running
+  binary, so the old one is moved to `<path>.old` and cleaned up on a later
+  update).
+
 ## 0.27.0 - 2026-06-14
 
 ### Added
