@@ -6,6 +6,10 @@
 
 - `our admin roles add|edit|remove` and `our admin services add|edit|remove`
   for command-driven manifest authoring of role loadouts and service surfaces.
+- `our onboard --agent [--harness NAME]` to launch a harness with the bundled
+  Agent-Operated Onboarding guidance. Zero-manifest runs start the harness from
+  the current directory for AUTHOR bootstrap; registered-manifest runs reuse the
+  normal `our ai --setup --no-session` launch path for JOIN onboarding.
 
 ## 0.28.0 - 2026-06-15
 

@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/fluxinc/our-ai/internal/manifest"
 	"github.com/fluxinc/our-ai/internal/umbrella"
 )
 
@@ -98,6 +100,123 @@ func TestSetupInteractiveRoleRepromptsOnInvalidInput(t *testing.T) {
 	}
 	if state.SelectedRole != "operator" {
 		t.Fatalf("selected role after reprompt = %q, want operator", state.SelectedRole)
+	}
+}
+
+func TestOnboardAgentZeroManifestExecsHarnessFromCurrentDir(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	var stdout, stderr bytes.Buffer
+	var gotPath, gotDir string
+	var gotArgs []string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			return "/test/bin/codex", nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotPath = path
+			gotArgs = append([]string(nil), args...)
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"our", "onboard", "--agent", "--harness", "codex", "--home", home}); err != nil {
+		t.Fatalf("onboard --agent zero manifest: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if gotPath != "/test/bin/codex" || gotDir != cwd {
+		t.Fatalf("exec path=%q dir=%q, want codex in cwd %q", gotPath, gotDir, cwd)
+	}
+	if len(gotArgs) != 1 || !strings.Contains(gotArgs[0], "Branch: AUTHOR") ||
+		!strings.Contains(gotArgs[0], "Agent-Operated Onboarding") {
+		t.Fatalf("initial prompt args = %#v", gotArgs)
+	}
+	reg, err := manifest.LoadRegistry(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reg.Manifests) != 0 {
+		t.Fatalf("onboard --agent must not register manifests itself: %#v", reg.Manifests)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".codex", "skills", "our")); err != nil {
+		t.Fatalf("self-skill was not installed for zero-manifest agent launch: %v", err)
+	}
+}
+
+func TestOnboardAgentPromptsForHarnessWhenOmitted(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	var stdout, stderr bytes.Buffer
+	var gotPath string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		stdin:  bufio.NewReader(strings.NewReader("2\n")),
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex from prompt choice", name)
+			}
+			return "/test/bin/codex", nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotPath = path
+			return nil
+		},
+	}
+	if err := a.run([]string{"our", "onboard", "--agent", "--home", home}); err != nil {
+		t.Fatalf("onboard --agent prompt harness: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if gotPath != "/test/bin/codex" {
+		t.Fatalf("exec path = %q, want prompted codex", gotPath)
+	}
+	if !strings.Contains(stdout.String(), "Select a harness:") ||
+		!strings.Contains(stdout.String(), "Harness (--harness to skip this prompt):") {
+		t.Fatalf("stdout missing harness prompt:\n%s", stdout.String())
+	}
+}
+
+func TestOnboardAgentManifestLaunchesThroughOurAIWithPrompt(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchFixture(t)
+
+	var stdout, stderr bytes.Buffer
+	var gotPath, gotDir string
+	var gotArgs []string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			return "/test/bin/codex", nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotPath = path
+			gotArgs = append([]string(nil), args...)
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"our", "onboard", "--agent", "--harness", "codex", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+		t.Fatalf("onboard --agent manifest: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if gotPath != "/test/bin/codex" || gotDir != umbrellaRoot {
+		t.Fatalf("exec path=%q dir=%q, want codex in umbrella %q", gotPath, gotDir, umbrellaRoot)
+	}
+	if len(gotArgs) != 1 || !strings.Contains(gotArgs[0], "Branch: JOIN") ||
+		!strings.Contains(gotArgs[0], "acme") || !strings.Contains(gotArgs[0], umbrellaRoot) {
+		t.Fatalf("initial prompt args = %#v", gotArgs)
+	}
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, "AGENTS.md")); err != nil {
+		t.Fatalf("onboard --agent did not run setup before launch: %v", err)
 	}
 }
 

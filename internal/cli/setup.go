@@ -334,6 +334,8 @@ type onboardOptions struct {
 	home          string
 	manifestName  string
 	umbrellaRoot  string
+	agent         bool
+	harnessName   string
 	noRefresh     bool
 	noUpdateCheck bool
 }
@@ -344,6 +346,8 @@ func (a app) runOnboard(args []string) error {
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	fs.StringVar(&opts.manifestName, "manifest", "", "use a registered manifest")
 	fs.StringVar(&opts.umbrellaRoot, "umbrella", "", "override umbrella root")
+	fs.BoolVar(&opts.agent, "agent", false, "launch model-driven onboarding in a harness")
+	fs.StringVar(&opts.harnessName, "harness", "", "harness for --agent (claude-code, codex, opencode, antigravity)")
 	fs.BoolVar(&opts.noRefresh, "no-refresh", false, "skip best-effort auto-refresh during setup")
 	fs.BoolVar(&opts.noUpdateCheck, "no-update-check", false, "skip best-effort update notice during setup")
 	fs.Usage = func() {
@@ -354,12 +358,19 @@ func (a app) runOnboard(args []string) error {
 		"home":     true,
 		"manifest": true,
 		"umbrella": true,
+		"harness":  true,
 	})
 	if err != nil {
 		return err
 	}
 	if len(rest) != 0 {
 		return fmt.Errorf("our onboard does not accept positional arguments")
+	}
+	if opts.harnessName != "" && !opts.agent {
+		return fmt.Errorf("--harness requires --agent")
+	}
+	if opts.agent {
+		return a.runOnboardAgent(opts)
 	}
 	docs, ok, err := a.skillManifestDocs(opts.home, opts.manifestName)
 	if err != nil {
@@ -431,6 +442,128 @@ func (a app) runOnboard(args []string) error {
 	return nil
 }
 
+func (a app) runOnboardAgent(opts onboardOptions) error {
+	docs, ok, err := a.skillManifestDocs(opts.home, opts.manifestName)
+	if err != nil {
+		return err
+	}
+	if ok && len(docs) != 0 && len(docs) != 1 {
+		return fmt.Errorf("our onboard --agent requires exactly one manifest; pass --manifest")
+	}
+	h, err := a.selectOnboardHarness(opts.harnessName)
+	if err != nil {
+		return err
+	}
+	if !ok || len(docs) == 0 {
+		return a.runOnboardAgentAuthor(opts, h)
+	}
+	doc := docs[0]
+	root, err := umbrella.ResolveRoot(opts.home, ".", opts.umbrellaRoot, doc.doc)
+	if err != nil {
+		return err
+	}
+	prompt := onboardAgentPrompt("JOIN", doc.ref.Name, root)
+	args := onboardAgentLaunchArgs(opts, doc.ref.Name, root, h)
+	return a.runLaunchWithInitialPrompt(args, prompt)
+}
+
+func (a app) runOnboardAgentAuthor(opts onboardOptions, h harness.Harness) error {
+	if err := a.ensureLaunchSelfSkill(h, opts.home); err != nil {
+		return err
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	commandName := h.CommandName()
+	args, err := initialPromptArgs(h, onboardAgentPrompt("AUTHOR", "", ""))
+	if err != nil {
+		return err
+	}
+	binary, err := a.lookupPath(commandName)
+	if err != nil {
+		a.printLaunchMissingHarness(commandName, cwd, args, false)
+		return errAlreadyPrinted
+	}
+	return a.runHarness(binary, args, cwd)
+}
+
+func (a app) selectOnboardHarness(name string) (harness.Harness, error) {
+	if name != "" {
+		return harness.Parse(name)
+	}
+	all := harness.All()
+	fmt.Fprintln(a.stdout, "Select a harness:")
+	for i, h := range all {
+		fmt.Fprintf(a.stdout, "  %d) %s\n", i+1, h)
+	}
+	for {
+		line, err := a.promptLine("Harness (--harness to skip this prompt): ")
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return "", fmt.Errorf("harness selection requires input; pass --harness")
+			}
+			return "", err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if n, err := strconv.Atoi(line); err == nil {
+			if n >= 1 && n <= len(all) {
+				return all[n-1], nil
+			}
+			fmt.Fprintf(a.stdout, "Enter a number from 1 to %d, or a harness name.\n", len(all))
+			continue
+		}
+		h, err := harness.Parse(line)
+		if err == nil {
+			return h, nil
+		}
+		fmt.Fprintln(a.stdout, err)
+	}
+}
+
+func onboardAgentLaunchArgs(opts onboardOptions, manifestName, root string, h harness.Harness) []string {
+	args := []string{"--manifest", manifestName, "--umbrella", root, "--setup", "--no-session"}
+	if opts.home != "" {
+		args = append(args, "--home", opts.home)
+	}
+	if opts.noRefresh {
+		args = append(args, "--no-refresh")
+	}
+	if opts.noUpdateCheck {
+		args = append(args, "--no-update-check")
+	}
+	return append(args, string(h))
+}
+
+func onboardAgentPrompt(branch, manifestName, root string) string {
+	var b strings.Builder
+	b.WriteString("Use the bundled `our` skill, section `Agent-Operated Onboarding`, to run model-driven onboarding.\n")
+	switch branch {
+	case "AUTHOR":
+		b.WriteString("Branch: AUTHOR. No Our AI manifest is registered for this invocation. Hold a conversation, ask one question at a time, and make the first durable control-plane action `our init` only after explicit human approval.\n")
+	case "JOIN":
+		b.WriteString("Branch: JOIN by default. A manifest is registered")
+		if manifestName != "" {
+			b.WriteString(": ")
+			b.WriteString(manifestName)
+		}
+		b.WriteString(".")
+		if root != "" {
+			b.WriteString(" Umbrella: ")
+			b.WriteString(root)
+			b.WriteString(".")
+		}
+		b.WriteString(" Set up this person against the existing organization; offer AUTHOR-style admin edits only if the operator asks.\n")
+	default:
+		b.WriteString("Branch: detect from the registered manifest state.\n")
+	}
+	b.WriteString("Hard rules: use validated `our` commands rather than hand-editing manifests or generated files; never collect or store literal secrets; run validation/doctor/compile gates before publish; run `our publish --print` and get explicit human approval before any real `our publish`.")
+	return b.String()
+}
+
 func (a app) printOnboardUnmarkedSetup(opts onboardOptions, manifestName, root string, configured bool, reason string) {
 	fmt.Fprintf(a.stdout, "next\tsetup\t%s\n", shellCommandLine("", "our", append([]string{"setup", "--interactive"}, setupCommandFlags(opts, manifestName, root)...)))
 	message := "run setup to create the umbrella before completion can be recorded"
@@ -446,10 +579,16 @@ func (a app) printOnboardUnmarkedSetup(opts onboardOptions, manifestName, root s
 func (a app) printOnboardUsage() {
 	fmt.Fprintln(a.stderr, `Usage of our onboard:
   our onboard [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  our onboard --agent [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 
 Runs the human walkthrough. The tour explains the Our AI model, then offers to
 run the existing setup configurator interactively. It does not add manifests or
-create new top-level configuration concepts.`)
+create new top-level configuration concepts.
+
+With --agent, launches a harness with the bundled our self-skill and an
+agent-operated onboarding prompt. With no registered manifest, the harness starts
+from the current directory and drives the AUTHOR branch. With a registered
+manifest, it reuses the normal our ai launch path for the JOIN branch.`)
 }
 
 func (a app) printOnboardZeroManifest() {

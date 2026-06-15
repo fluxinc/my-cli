@@ -18,15 +18,19 @@ curl -sSL https://raw.githubusercontent.com/fluxinc/our-ai/master/install.sh | s
 
 our init acme --name "Acme"
 our onboard
+our onboard --agent --harness codex
 our ai codex
 ```
 
 That's the whole first run. `our onboard` is the human walkthrough; it explains
-the model and offers to run `our setup --interactive`. `our setup` remains the
-scriptable machine configurator. `our ai codex` resolves the umbrella, verifies
-the generated guidance, and starts Codex in the base umbrella. Agents that need
-isolated content work opt in with `our ai --new-session codex` or resume a
-known session with `our ai --session <id> codex`.
+the model and offers to run `our setup --interactive`. `our onboard --agent`
+launches a harness with the bundled onboarding guidance so an agent can
+interview, teach inline, and drive AUTHOR/JOIN setup through validated `our`
+commands. `our setup` remains the scriptable machine configurator. `our ai
+codex` resolves the umbrella, verifies the generated guidance, and starts Codex
+in the base umbrella. Agents that need isolated content work opt in with
+`our ai --new-session codex` or resume a known session with
+`our ai --session <id> codex`.
 `our init` creates two local repos — a private manifest repo (the control
 plane: manifest, product/repo catalog, skills) and a content repo at
 `~/acme/workspace` (the actual workspace, including customer records) —
@@ -71,6 +75,8 @@ Run `our --help` for the authoritative surface. The essentials:
 
 ```sh
 our onboard                    # human walkthrough; offers interactive setup
+our onboard --agent --harness codex
+                               # model-driven onboarding; omit --harness to choose interactively
 our setup [harness...] | --all # create umbrella, write guidance/MCP config, install self-skill, sync mounts
                                     # [--manifest NAME] [--umbrella DIR] [--role ROLE] [--copy] [--link] [--print]
                                     # [--interactive] [--no-refresh] [--no-update-check]
@@ -78,7 +84,9 @@ our setup [harness...] | --all # create umbrella, write guidance/MCP config, ins
 
 `setup` is the normal machine path: idempotent, non-interactive, safe to
 re-run. Use `setup --interactive` when you want prompts for manifest and role
-selection.
+selection. Use `onboard --agent` when you want a harness to run the adaptive
+AUTHOR/JOIN onboarding flow; publish still requires `our publish --print` and
+explicit human approval.
 
 ### Startup
 
@@ -536,6 +544,15 @@ indexed in [docs/plans/](docs/plans/README.md):
   Antigravity (`agy`). Plans:
   [launch-scoped skill composition](docs/plans/2026-06-14-launch-scoped-skill-composition.md),
   [ADR 0001](docs/decisions/0001-launch-scoped-skill-composition.md).
+- **Active — model-driven onboarding.** `our onboard --agent [--harness NAME]`
+  launches a harness with the bundled `our` self-skill's Agent-Operated
+  Onboarding guidance. The launcher chooses AUTHOR vs JOIN from manifest state,
+  uses direct harness exec for zero-manifest bootstrap, reuses `our ai --setup`
+  when a manifest exists, and keeps publish behind `our publish --print` plus
+  explicit human approval. Role/service authoring is command-driven; extra
+  mount and repo catalog declaration authoring remains explicit human/admin
+  follow-up in this slice. Plan:
+  [model-driven onboarding](docs/plans/2026-06-15-model-driven-onboarding.md).
 - **Later — substrate upgrades.** A gnit backend for sessions once umbrellas
   bootstrap as gnit control workspaces, and managed read-only base mounts
   for contained launches. Plan:

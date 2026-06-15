@@ -99,6 +99,10 @@ type launchCommandOpts struct {
 }
 
 func (a app) runLaunch(args []string) error {
+	return a.runLaunchWithInitialPrompt(args, "")
+}
+
+func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) error {
 	opts, harnessName, harnessArgs, help, err := parseLaunchArgs(args)
 	if help {
 		a.printLaunchUsage()
@@ -110,6 +114,13 @@ func (a app) runLaunch(args []string) error {
 	h, err := harness.Parse(harnessName)
 	if err != nil {
 		return err
+	}
+	if initialPrompt != "" {
+		promptArgs, err := initialPromptArgs(h, initialPrompt)
+		if err != nil {
+			return err
+		}
+		harnessArgs = append(harnessArgs, promptArgs...)
 	}
 	commandName := h.CommandName()
 	selector, err := launchSelectorFromOpts(opts)
@@ -261,6 +272,17 @@ func (a app) printLaunchMissingHarness(commandName, targetDir string, args []str
 	}
 	line := shellCommandLine(targetDir, commandName, args)
 	fmt.Fprintf(a.stderr, "%s not found on PATH; run:\n%s\n", commandName, line)
+}
+
+func initialPromptArgs(h harness.Harness, prompt string) ([]string, error) {
+	if prompt == "" {
+		return nil, nil
+	}
+	args := h.InitialPromptArgs(prompt)
+	if len(args) == 0 {
+		return nil, fmt.Errorf("harness %s does not support interactive initial prompts", h)
+	}
+	return args, nil
 }
 
 func (a app) launchTargetDir(opts launchCommandOpts, root string) (string, error) {

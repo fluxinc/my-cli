@@ -184,7 +184,7 @@ func (a app) printUsage() {
 
 Usage:
   our setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-  our onboard [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  our onboard [--agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   our root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
   our update [--check] [--version X.Y.Z] [--json] [--yes]
@@ -208,6 +208,8 @@ Usage:
   our admin meetings add ...                 (alias of our meetings add)
   our admin support add ...                  (alias of our support add)
   our admin tools add|edit|remove ...        (edit manifest tool hints)
+  our admin roles add|edit|remove ...        (edit manifest role loadouts)
+  our admin services add|edit|remove ...     (edit manifest service surfaces)
   our admin contract add|remove ...          (edit manifest contract rules)
   our manifests add <name> <git-url>
   our manifests list

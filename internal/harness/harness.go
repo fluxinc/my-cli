@@ -37,6 +37,24 @@ func (h Harness) CommandName() string {
 	return string(h)
 }
 
+// InitialPromptArgs returns arguments that deliver an initial prompt to an
+// interactive harness session.
+func (h Harness) InitialPromptArgs(prompt string) []string {
+	if prompt == "" {
+		return nil
+	}
+	switch h {
+	case ClaudeCode, Codex:
+		return []string{prompt}
+	case OpenCode:
+		return []string{"--prompt", prompt}
+	case Antigravity:
+		return []string{"--prompt-interactive", prompt}
+	default:
+		return nil
+	}
+}
+
 // Parse accepts canonical names and a few common aliases.
 func Parse(s string) (Harness, error) {
 	switch s {
