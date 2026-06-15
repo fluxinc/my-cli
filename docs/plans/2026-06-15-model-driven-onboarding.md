@@ -167,12 +167,18 @@ for the explicit model-driven flow.
    `env://` / `op://` / `broker://` only). But `ServiceConnection.Env` and
    `Headers` are plain string maps, so `our admin services` must apply the same
    discipline: `--connection-env KEY=VALUE` and `--connection-header KEY=VALUE`
-   values must be **placeholders/references** (a documented form such as
-   `${VAR}` / `env://NAME`), and the verb rejects values that look like literal
-   secrets. Requiring a placeholder form is more deterministic than heuristic
-   secret-sniffing and avoids the model satisfying the command API while still
-   writing a credential into `manifest.json`. `our doctor` already reports unset
-   referenced env vars, so the references are checkable end to end.
+   values must be **`${VAR}` placeholders** (not literal secrets), and the verb
+   rejects anything else. `${VAR}` is the form that actually resolves: mcpconfig
+   writes connection `env`/`headers` **verbatim** into `.mcp.json`, and only
+   `${VAR}` is expanded by the harness/MCP runtime at launch. `env://` is an
+   `auth_ref` scheme resolved on a different path and must **not** be used for
+   connection values (review #2 finding F1). Requiring a placeholder form is more
+   deterministic than heuristic secret-sniffing and avoids the model satisfying
+   the command API while still writing a credential into `manifest.json`.
+   `our doctor` already reports unset referenced env vars, so the references are
+   checkable end to end. **Open (F2):** whether composite header values like
+   `Authorization=Bearer ${TOKEN}` are allowed (embedded placeholder) or only a
+   bare whole-value `${VAR}` — headers commonly need the former.
 6. **Human confirmation on irreversible/outward steps.** `our init` (creates
    local repos) and `our publish` (creates remotes, pushes) are confirmed with
    the human before the model runs them.
@@ -243,12 +249,14 @@ literal secret** (this is guardrail #5 enforced at the schema layer).
 repo; a service needs `describe_ref` or a connection; connection is mcp-only and
 must include a command or `http(s)` url with no surrounding whitespace.
 
-**Connection-map secret discipline (review #1.4).** `--connection-env` and
-`--connection-header` values must be placeholders/references (a documented form
-such as `${VAR}` or `env://NAME`), not literal secrets. The verb rejects values
-that are not in the reference form. This closes the gap that `auth_ref`
-validation alone leaves open — `ServiceConnection.Env`/`Headers` are otherwise
-free string maps the model could write a credential into.
+**Connection-map secret discipline (review #1.4, corrected by #2 F1).**
+`--connection-env` and `--connection-header` values must be **`${VAR}`
+placeholders** (not literal secrets); the verb rejects anything else. `env://`
+is **not** accepted here — it is an `auth_ref` scheme and is written verbatim
+into `.mcp.json` (only `${VAR}` is harness-expanded), so an `env://` connection
+value would reach the MCP server as a literal string. This closes the gap that
+`auth_ref` validation alone leaves open — `ServiceConnection.Env`/`Headers` are
+otherwise free string maps the model could write a credential into.
 
 Implementation note (Codex): reuse the existing `optionalStringFlag` pattern
 from admin tools for scalar edits and `stringListFlag` for repeated values; add
