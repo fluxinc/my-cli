@@ -3,8 +3,10 @@
 A session is an isolated unit of work under `<umbrella>/work/<id>`: a git
 worktree of each writable content mount on a fresh `my/work/<id>` branch,
 session-local `scratch/`, a `SESSION.md` summary, and generated session
-guidance. Sessions exist so concurrent agents — or one risky multi-file
-edit — cannot trample the base workspace or each other.
+guidance with the concrete umbrella, organization, role, session, mount, and
+finish/resume commands a launched harness needs at startup. Sessions exist so
+concurrent agents — or one risky multi-file edit — cannot trample the base
+workspace or each other.
 
 ```sh
 my work start [--slug SLUG]
@@ -52,6 +54,11 @@ While your current directory is inside `work/<id>`:
   write to the session's mount worktrees, and
 - plain `my ai` resumes that session instead of the base umbrella. Use
   `my ai --no-session` to deliberately ignore it for base inspection.
+
+`my ai --session <id>` and `my ai -r <id>` rewrite the session guidance before
+launch, so older active sessions pick up the current startup contract. The
+session guidance also embeds the generated base umbrella guidance, including
+manifest contract rules and selected-role guidance.
 
 Work leaves a session only through `my work finish`:
 

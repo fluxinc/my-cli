@@ -220,6 +220,9 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 			return a.maybePrintStructuredCommandError(err)
 		}
 	}
+	if err := ensureSessionLaunchGuidance(root, targetDir, doc); err != nil {
+		return err
+	}
 	if err := a.ensureLaunchOrgSkills(h, opts, doc, root, targetDir, selector); err != nil {
 		return err
 	}
@@ -629,6 +632,47 @@ func launchGuidanceDoc(home, manifestName, root string) (registeredDoc, error) {
 		return registeredDoc{}, err
 	}
 	return loadSingleRegisteredDoc(home, manifestName)
+}
+
+func sessionGuidanceContext(root string, doc registeredDoc) (worksession.GuidanceContext, error) {
+	guidanceOpts, err := guidanceOptionsForSelectedRole(root, doc.doc)
+	if err != nil {
+		return worksession.GuidanceContext{}, err
+	}
+	selectedRole, err := selectedRoleForRoot(root)
+	if err != nil {
+		return worksession.GuidanceContext{}, err
+	}
+	base, err := guidance.ComposeWithOptions(doc.ref.LocalPath, doc.doc, guidanceOpts)
+	if err != nil {
+		return worksession.GuidanceContext{}, err
+	}
+	return worksession.GuidanceContext{
+		UmbrellaRoot:     root,
+		ManifestName:     doc.ref.Name,
+		OrganizationID:   doc.doc.Organization.ID,
+		OrganizationName: doc.doc.Organization.Name,
+		SelectedRole:     selectedRole,
+		BaseGuidance:     base,
+	}, nil
+}
+
+func ensureSessionLaunchGuidance(root, targetDir string, doc registeredDoc) error {
+	if samePath(root, targetDir) {
+		return nil
+	}
+	session, ok, err := activeSessionForPath(root, targetDir)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	guidance, err := sessionGuidanceContext(root, doc)
+	if err != nil {
+		return err
+	}
+	return worksession.EnsureGuidance(session, guidance)
 }
 
 func setupArgsForLaunch(home, manifestName, root string, noRefresh, noUpdateCheck bool) []string {

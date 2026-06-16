@@ -651,6 +651,64 @@ func TestLaunchResumesExplicitSession(t *testing.T) {
 	}
 }
 
+func TestLaunchResumeRegeneratesSessionGuidance(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	configureCLIRecordWorkspaceContractAndRole(t, home, umbrellaRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+	session := startLaunchTestSession(t, home, "resume")
+	if err := os.WriteFile(filepath.Join(session.Path, "AGENTS.md"), []byte("stale session guidance\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	var gotDir string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check", "-r", session.ID, "codex"}); err != nil {
+		t.Fatalf("ai -r: %v\nstderr: %s", err, stderr.String())
+	}
+	if gotDir != session.Path {
+		t.Fatalf("gotDir=%q, want %q", gotDir, session.Path)
+	}
+	agents, err := os.ReadFile(filepath.Join(session.Path, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(agents)
+	for _, want := range []string{
+		"## Session Context",
+		"- Umbrella root: " + umbrellaRoot,
+		"- Session id: " + session.ID,
+		"my ai -r " + session.ID + " <harness>",
+		"Always preserve the example contract.",
+		"Operator role guidance applies.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("regenerated guidance missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "stale session guidance") {
+		t.Fatalf("stale guidance was not replaced:\n%s", body)
+	}
+	claude, err := os.ReadFile(filepath.Join(session.Path, "CLAUDE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(claude) != body {
+		t.Fatal("CLAUDE.md does not match regenerated AGENTS.md")
+	}
+}
+
 func TestLaunchResumeShortcutExplicitSession(t *testing.T) {
 	home, workspaceRoot := setupCLIRecordWorkspace(t)
 	umbrellaRoot := filepath.Dir(workspaceRoot)

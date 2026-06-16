@@ -77,13 +77,17 @@ happens in **sessions** — visible, ordinary directories:
 
 - `my work start [--slug s]` creates a session: a git **worktree** of each
   writable mount on a fresh `my/work/<id>` branch, plus scratch, plus
-  generated session guidance. Cheap (worktrees share the object store),
-  plain (a human can `cd` in, run git, take over), isolated (branches are
-  per-session; the base checkout never sees uncommitted session state).
+  generated session guidance that embeds concrete umbrella, organization,
+  role, session, mount, and exact finish/resume command context. Cheap
+  (worktrees share the object store), plain (a human can `cd` in, run git, take
+  over), isolated (branches are per-session; the base checkout never sees
+  uncommitted session state).
 - `my ai --new-session` creates a fresh session; `my ai --session <id>`
   resumes one. Plain `my ai` launches from the base umbrella, except when the
   current directory is already inside an active session, where it keeps using
-  that session. `--no-session` ignores a current session for admin/debug.
+  that session. Resume launches rewrite the session guidance before exec, so
+  older active sessions pick up the current startup contract. `--no-session`
+  ignores a current session for admin/debug.
 - `my work status` lists sessions: branch, dirty paths, age, harness.
 - `my work finish --land | --publish | --discard` is the only way work
   leaves a session: land merges to the base branch locally; publish lands

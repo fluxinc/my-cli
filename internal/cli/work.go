@@ -86,11 +86,20 @@ func (a app) runWorkStart(args []string) error {
 			remediation: "run my setup to clone the manifest's content mounts first",
 		})
 	}
+	doc, err := launchGuidanceDoc(opts.home, opts.manifestName, root)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	guidanceCtx, err := sessionGuidanceContext(root, doc)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
 
 	session, err := worksession.Start(worksession.StartOptions{
-		Root:   root,
-		Slug:   slug,
-		Mounts: specs,
+		Root:     root,
+		Slug:     slug,
+		Mounts:   specs,
+		Guidance: guidanceCtx,
 	})
 	if err != nil {
 		return a.maybeJSONError(opts.jsonOut, err)

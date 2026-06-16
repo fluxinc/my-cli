@@ -8,8 +8,46 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fluxinc/my-cli/internal/umbrella"
 	"github.com/fluxinc/my-cli/internal/worksession"
 )
+
+func configureCLIRecordWorkspaceContractAndRole(t *testing.T, home, umbrellaRoot string) {
+	t.Helper()
+	manifestDir := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestDir, "guidance", "operator.md"), "Operator role guidance applies.\n")
+	writeCLITestFile(t, filepath.Join(manifestDir, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": "https://github.com/acme/acme-handbook.git",
+      "mode": "default"
+    }
+  ],
+  "roles": [
+    {
+      "id": "operator",
+      "purpose": "Operate the example workspace",
+      "guidance_paths": ["guidance/operator.md"]
+    }
+  ],
+  "contract": [
+    "Always preserve the example contract."
+  ]
+}`)
+	state, err := umbrella.LoadState(umbrellaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.SelectedRole = "operator"
+	if err := umbrella.SaveState(umbrellaRoot, state); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestWorkStartCreatesSessionAndRegistry(t *testing.T) {
 	home, _ := setupCLIRecordWorkspace(t)
@@ -52,6 +90,55 @@ func TestWorkStartCreatesSessionAndRegistry(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(session.Path, "SESSION.md")); err != nil {
 		t.Fatalf("SESSION.md missing: %v", err)
+	}
+}
+
+func TestWorkStartSessionGuidanceIncludesConcreteContextAndContract(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	configureCLIRecordWorkspaceContractAndRole(t, home, umbrellaRoot)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "work", "start",
+		"--slug", "notes",
+		"--home", home,
+		"--json",
+	}); err != nil {
+		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
+	}
+
+	var session worksession.Session
+	if err := json.Unmarshal(stdout.Bytes(), &session); err != nil {
+		t.Fatalf("parse JSON: %v\nstdout: %s", err, stdout.String())
+	}
+	guidance, err := os.ReadFile(filepath.Join(session.Path, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(guidance)
+	for _, want := range []string{
+		"## Session Context",
+		"- Organization: Acme Example (acme)",
+		"- Manifest: acme",
+		"- Selected role: operator",
+		"- Umbrella root: " + umbrellaRoot,
+		"- Session id: " + session.ID,
+		"- Session path: " + session.Path,
+		"- Status: active",
+		session.Mounts[0].WorktreePath,
+		"branch my/work/" + session.ID,
+		"my ai -r " + session.ID + " <harness>",
+		"my work finish " + session.ID + " --land | --publish | --discard",
+		"## Organization Contract",
+		"Always preserve the example contract.",
+		"## Manifest Guidance: guidance/operator.md",
+		"Operator role guidance applies.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("session guidance missing %q:\n%s", want, body)
+		}
 	}
 }
 

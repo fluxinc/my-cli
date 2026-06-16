@@ -80,6 +80,23 @@ type StartOptions struct {
 	Rand   io.Reader
 	Runner Runner
 	Mounts []MountSpec
+
+	// Guidance carries optional CLI-composed organization context. Start still
+	// writes usable session guidance without it, but callers that know the
+	// umbrella and manifest should pass it so launched harnesses can orient
+	// without probing.
+	Guidance GuidanceContext
+}
+
+// GuidanceContext is optional organization context rendered into a session's
+// generated AGENTS.md/CLAUDE.md contract.
+type GuidanceContext struct {
+	UmbrellaRoot     string
+	ManifestName     string
+	OrganizationID   string
+	OrganizationName string
+	SelectedRole     string
+	BaseGuidance     []byte
 }
 
 // MountStatus is one mount's live git state inside a session.
@@ -228,7 +245,7 @@ func Start(opts StartOptions) (Session, error) {
 		cleanup()
 		return Session{}, err
 	}
-	if err := writeSessionGuidance(session); err != nil {
+	if err := writeSessionGuidance(session, opts.Guidance); err != nil {
 		cleanup()
 		return Session{}, err
 	}
@@ -237,6 +254,19 @@ func Start(opts StartOptions) (Session, error) {
 		return Session{}, err
 	}
 	return session, nil
+}
+
+// EnsureGuidance rewrites the generated session guidance for an active
+// session. It is used when an older session is resumed after the guidance
+// contract has changed.
+func EnsureGuidance(session Session, guidance GuidanceContext) error {
+	if session.ID == "" {
+		return errors.New("worksession: session id is required")
+	}
+	if session.Path == "" {
+		return errors.New("worksession: session path is required")
+	}
+	return writeSessionGuidance(session, guidance)
 }
 
 func addWorktree(runner Runner, spec MountSpec, sessionPath, branch string) (Mount, error) {
@@ -278,22 +308,74 @@ func writeSessionDoc(session Session) error {
 	b.WriteString("\nWork in the mount worktrees above; use scratch/ for unversioned\n")
 	b.WriteString("session-local files. Work leaves a session only through\n")
 	b.WriteString("`my work finish --land | --publish | --discard`.\n")
+	b.WriteString("\nUseful commands:\n")
+	b.WriteString("- Status: `my work status`\n")
+	fmt.Fprintf(&b, "- Resume a harness here: `my ai -r %s <harness>`\n", session.ID)
+	fmt.Fprintf(&b, "- Finish: `my work finish %s --land | --publish | --discard`\n", session.ID)
 	return os.WriteFile(filepath.Join(session.Path, "SESSION.md"), []byte(b.String()), 0o644)
 }
 
 // writeSessionGuidance writes a session-aware AGENTS.md (with a CLAUDE.md
 // alias) so harnesses launched inside the session keep their work here.
-func writeSessionGuidance(session Session) error {
+func writeSessionGuidance(session Session, guidance GuidanceContext) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Work Session %s\n\n", session.ID)
-	b.WriteString("This directory is an isolated My AI work session; SESSION.md says what\nit is for. Keep all work inside this session:\n\n")
+	b.WriteString("## Session Context\n\n")
+	if guidance.OrganizationID != "" || guidance.OrganizationName != "" {
+		if guidance.OrganizationID != "" && guidance.OrganizationName != "" {
+			fmt.Fprintf(&b, "- Organization: %s (%s)\n", guidance.OrganizationName, guidance.OrganizationID)
+		} else if guidance.OrganizationName != "" {
+			fmt.Fprintf(&b, "- Organization: %s\n", guidance.OrganizationName)
+		} else {
+			fmt.Fprintf(&b, "- Organization: %s\n", guidance.OrganizationID)
+		}
+	}
+	if guidance.ManifestName != "" {
+		fmt.Fprintf(&b, "- Manifest: %s\n", guidance.ManifestName)
+	}
+	if guidance.SelectedRole != "" {
+		fmt.Fprintf(&b, "- Selected role: %s\n", guidance.SelectedRole)
+	}
+	if guidance.UmbrellaRoot != "" {
+		fmt.Fprintf(&b, "- Umbrella root: %s\n", guidance.UmbrellaRoot)
+	}
+	fmt.Fprintf(&b, "- Session id: %s\n", session.ID)
+	if session.Path != "" {
+		fmt.Fprintf(&b, "- Session path: %s\n", session.Path)
+	}
+	if session.Status != "" {
+		fmt.Fprintf(&b, "- Status: %s\n", session.Status)
+	}
+	if session.CreatedAt != "" {
+		fmt.Fprintf(&b, "- Created: %s\n", session.CreatedAt)
+	}
+	b.WriteString("- Mounts:\n")
+	for _, m := range session.Mounts {
+		fmt.Fprintf(&b, "  - %s/ (%s): worktree %s; branch %s from %s @ %s\n", m.ID, m.Kind, m.WorktreePath, m.Branch, m.BaseBranch, shortHead(m.BaseHead))
+	}
+	fmt.Fprintf(&b, "\nExact commands for this session:\n\n")
+	b.WriteString("```sh\n")
+	b.WriteString("my work status\n")
+	fmt.Fprintf(&b, "my ai -r %s <harness>\n", session.ID)
+	fmt.Fprintf(&b, "my work finish %s --land | --publish | --discard\n", session.ID)
+	b.WriteString("```\n\n")
+
+	b.WriteString("## Session Rules\n\n")
+	b.WriteString("This directory is an isolated My AI work session. Keep all work inside this session:\n\n")
+	b.WriteString("- SESSION.md records the session creation facts and mount list.\n")
 	b.WriteString("- Edit content only in the session's mount worktrees:\n")
 	for _, m := range session.Mounts {
-		fmt.Fprintf(&b, "  - %s/ — git worktree on branch %s, isolated from the base umbrella\n", m.ID, m.Branch)
+		fmt.Fprintf(&b, "  - %s/ - git worktree on branch %s, isolated from the base umbrella\n", m.ID, m.Branch)
 	}
 	b.WriteString("- Use scratch/ for unversioned session-local files; never commit them.\n")
 	b.WriteString("- Commit changes inside the worktrees as you go; `my work status` shows\n  dirty and unlanded state.\n")
 	b.WriteString("- Work leaves the session only through\n  `my work finish --land | --publish | --discard`.\n")
+	if base := strings.TrimSpace(string(guidance.BaseGuidance)); base != "" {
+		b.WriteString("\n## Base Umbrella Guidance\n\n")
+		b.WriteString("The generated umbrella guidance below still applies inside this session. Interpret base-layout paths relative to the umbrella root above.\n\n")
+		b.WriteString(base)
+		b.WriteString("\n")
+	}
 	content := []byte(b.String())
 	agentsPath := filepath.Join(session.Path, "AGENTS.md")
 	if err := os.WriteFile(agentsPath, content, 0o644); err != nil {

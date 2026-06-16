@@ -103,13 +103,16 @@ the CLI).
 **Session** — an isolated unit of work under `work/<id>` in the umbrella: a
 git worktree of each writable content mount on a fresh `my/work/<id>`
 branch, plus session-local scratch, a `SESSION.md` summary, and generated
-session guidance, recorded in a registry under `.my-cli/sessions/`. Sessions are
-opt-in: `my work start` or `my ai --new-session` creates one, `my ai
---session <id>` or `my ai -r <id>` resumes one, and plain `my ai` launches
-from the base umbrella. Commands are session-aware by working directory — run
-inside an active session, content commands write to that session's mount
-worktrees and plain `my ai` stays in the session; a directory under `work/`
-that matches no active session is an error, never a silent fallback to base.
+session guidance with concrete umbrella, organization, selected-role, session,
+mount, and exact finish/resume command context, recorded in a registry under
+`.my-cli/sessions/`. Sessions are opt-in: `my work start` or `my ai
+--new-session` creates one, `my ai --session <id>` or `my ai -r <id>` resumes
+one, and plain `my ai` launches from the base umbrella. Resume launches rewrite
+session guidance before exec so older active sessions pick up the current
+startup contract. Commands are session-aware by working directory — run inside
+an active session, content commands write to that session's mount worktrees and
+plain `my ai` stays in the session; a directory under `work/` that matches no
+active session is an error, never a silent fallback to base.
 Work leaves a
 session only through `my work finish --land | --publish | --discard`, and
 `my sync` holds outbound publish of a mount while an active session on it is

@@ -55,7 +55,7 @@ so agents know how to use the CLI itself.
 | **Skill** | A capability exposed to harnesses. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer); `my ai` composes them into the launch root for harnesses with a project-local skill seam. The CLI also ships one public, organization-neutral *self-skill* named `my`, embedded in the binary, that teaches harnesses how to use `my` itself. |
 | **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.my-cli/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Gnit control workspace so multi-repo commits and pushes have one substrate. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, customers, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
-| **Session** | An isolated unit of work under `work/<id>`: a git worktree per content mount on a fresh branch, plus session-local scratch. Create one with `my work start` or `my ai --new-session`; inspect it with `my work status` or `my work list`; work leaves only through `my work finish --land\|--publish\|--discard`. |
+| **Session** | An isolated unit of work under `work/<id>`: a git worktree per content mount on a fresh branch, plus session-local scratch and generated guidance with concrete startup context. Create one with `my work start` or `my ai --new-session`; inspect it with `my work status` or `my work list`; work leaves only through `my work finish --land\|--publish\|--discard`. |
 | **Catalog** | JSON inventories for products (business entities, which may link repos) and repos (the organization's repositories). Users opt specific repos into their umbrella on demand. Customer identities are mounted workspace records, not manifest catalog rows. |
 | **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared and role-specific fragments. `CLAUDE.md` points to the same file. |
 | **Tool** | An external executable the org depends on. `my` reports presence and install hints — it never silently installs tools. |
@@ -480,7 +480,8 @@ indexed in [docs/plans/](docs/plans/README.md):
   session, a session registry consulted by `my sync` and `my doctor`,
   session-aware content commands, and opt-in launches via
   `my ai --new-session`, `--session`, and `-r`/`--resume` (base umbrella
-  remains the default).
+  remains the default). Session guidance now includes concrete startup context
+  and is refreshed on resume.
   Plan: [execution plane](docs/plans/2026-06-10-execution-plane.md), Mode A.
 - **Shipped — products/repos split (v0.15.0).** Catalog products are pure
   business entities (no `git_url`) that may link implementing repos;

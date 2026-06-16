@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Work-session guidance now embeds concrete startup context for launched
+  harnesses: umbrella root, organization, selected role, session id/path,
+  mount worktrees, exact resume/finish commands, and the generated base
+  umbrella guidance including organization contract rules. Resuming a session
+  with `my ai --session` or `my ai -r` rewrites stale session guidance before
+  launch.
+
 ## 0.31.0 - 2026-06-16
 
 ### Added
