@@ -10,7 +10,8 @@ edit — cannot trample the base workspace or each other.
 my work start [--slug SLUG]
 my work status [--all]
 my work list [--all]
-my work resume [session-id]
+my ai -r [session-id] [harness]
+my work resume [session-id]  # print a cd command for a shell
 my work finish [session-id] --land|--publish|--discard [--message TEXT]
 ```
 
@@ -26,9 +27,26 @@ Reach for a session when:
 ## Lifecycle
 
 Start one explicitly with `my work start`, or launch a harness straight into
-a fresh session with `my ai --new-session <harness>`. Resume with
-`my ai --session <id>` or `my work resume`. While your current directory is
-inside `work/<id>`:
+a fresh session with `my ai --new-session <harness>`. Resume work by launching
+a harness in the session:
+
+```sh
+my ai -r codex
+my ai -r <session-id> codex
+my ai -r <session-id> claude-code
+```
+
+With one active session, `my ai -r codex` selects it automatically. With
+multiple active sessions in an interactive terminal, `my ai -r codex` prompts
+for the session. In scripts or agentic runs, pass the id explicitly; without a
+TTY, multiple active sessions produce an error that lists the ids instead of
+prompting.
+
+Use `my work resume [session-id]` only when you want a shell command such as
+`cd <path>` for manual navigation or shell evaluation. It does not launch a
+harness and cannot change the parent shell by itself.
+
+While your current directory is inside `work/<id>`:
 
 - record commands (`my meetings add`, `my support add`, `my fleet add`)
   write to the session's mount worktrees, and
@@ -51,3 +69,17 @@ archived counts) alongside workspace diagnostics.
 
 Sessions are harness-agnostic by design: they are plain git worktrees and
 directories, no hooks into any harness's internal state.
+
+## Catalog Repos
+
+Work sessions currently include writable content mounts, not catalog code
+repos. Launch a harness in a selected repo checkout with:
+
+```sh
+my ai --repo <repo-id> codex
+```
+
+That launch uses the base `repos/<repo-id>` checkout. Land and publish code
+changes with that repository's normal Git or pull-request workflow. Do not
+expect `my work finish` to land catalog repo changes until repo-inclusive
+sessions are designed.

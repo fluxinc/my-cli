@@ -180,12 +180,63 @@ func TestOnboardingInteractiveDefaultExecsHarness(t *testing.T) {
 	if gotPath != "/test/bin/codex" || gotDir != umbrellaRoot {
 		t.Fatalf("exec path=%q dir=%q, want codex in umbrella %q", gotPath, gotDir, umbrellaRoot)
 	}
-	if len(gotArgs) != 1 || !strings.Contains(gotArgs[0], "reply \"OK\"") ||
-		!strings.Contains(gotArgs[0], "Do not run any command until they respond") {
+	if len(gotArgs) != 1 ||
+		!strings.Contains(gotArgs[0], "learn-by-example walkthrough") ||
+		!strings.Contains(gotArgs[0], "terminal window or split pane") ||
+		!strings.Contains(gotArgs[0], "The human runs the commands") ||
+		!strings.Contains(gotArgs[0], "basic human workflows") ||
+		strings.Contains(gotArgs[0], "reply \"OK\"") ||
+		strings.Contains(gotArgs[0], "Do not run any command until") {
 		t.Fatalf("initial prompt args = %#v", gotArgs)
 	}
 	if !strings.Contains(stdout.String(), "Onboarding with codex (installed).") {
 		t.Fatalf("stdout missing harness cue:\n%s", stdout.String())
+	}
+}
+
+func TestBundledOnboardingSkillUsesLearnByExampleBasics(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "skills", "my", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	start := strings.Index(text, "## Agent-Operated Onboarding")
+	if start < 0 {
+		t.Fatal("Agent-Operated Onboarding section missing")
+	}
+	end := strings.Index(text[start+1:], "\n## ")
+	section := text[start:]
+	if end >= 0 {
+		section = text[start : start+1+end]
+	}
+	for _, want := range []string{
+		"learn-by-example walkthrough",
+		"second terminal window",
+		"The operator runs the commands",
+		"After every set, stop",
+		"my ai --new-session <harness>",
+		"my ai -r <session-id> <harness>",
+		"my work finish <session-id> --land",
+		"my sync --print",
+		"paste it into the harness conversation",
+	} {
+		if !strings.Contains(section, want) {
+			t.Fatalf("onboarding skill section missing %q:\n%s", want, section)
+		}
+	}
+	for _, unwanted := range []string{
+		"reply `OK`",
+		"reply \"OK\"",
+		"Do not run any command until",
+		"my meetings add",
+		"my support add",
+		"my fleet",
+		"my admin services add",
+		"my admin roles add",
+	} {
+		if strings.Contains(section, unwanted) {
+			t.Fatalf("onboarding skill section contains %q:\n%s", unwanted, section)
+		}
 	}
 }
 

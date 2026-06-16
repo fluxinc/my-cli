@@ -3,9 +3,9 @@
 `my` has two setup-shaped commands with different jobs:
 
 - `my onboarding` is the guided first-run experience. In an interactive
-  terminal it launches a harness, introduces the operator to My AI, confirms the
-  session with an `OK` handshake, then configures the workspace through
-  validated `my` commands.
+  terminal it launches a harness and starts a learn-by-example walkthrough. The
+  operator opens a second terminal or split pane, runs small sets of validated
+  `my` commands, and confirms each set before the model continues.
 - `my onboarding --no-agent` is the deterministic walkthrough. It explains the
   model and points at `my setup --interactive` without launching a harness.
 - `my setup` is the machine configurator. It remains deterministic and safe for
@@ -25,28 +25,41 @@ harness. If the choice is ambiguous, `my` asks which harness to use. Pass
 `--harness codex`, `--harness claude-code`, `--harness opencode`, or
 `--harness antigravity` to skip detection.
 
-The launched model starts by greeting the operator and asking for `OK`. After
-that handshake, it detects whether this machine is authoring a new organization
-or joining an existing one:
+The launched model starts by greeting the operator and immediately sets up the
+split-pane workflow. It gives a small first command set, waits for the operator
+to confirm whether it worked, and then continues one set at a time. The normal
+path is conversational: ask whether the command worked, answer questions, and
+move on. If something fails or the operator is unsure, the model can offer
+read-only checks such as `my doctor`, but verification is support, not a hard
+gate.
+
+The walkthrough detects whether this machine is authoring a new organization or
+joining an existing one:
 
 - With no registered manifest, the harness starts from the current directory
   and takes the AUTHOR branch. The model interviews the operator, asks for
-  approval before `my init`, then builds the local manifest/workspace through
-  validated commands such as `my admin services add`, `my admin roles add`,
-  `my setup`, `my doctor`, and `my compile`.
+  approval before presenting `my init`, then walks through the smallest useful
+  local setup and verification path: `my setup`, `my doctor`, harness launch,
+  work sessions, and sync.
 - With a registered manifest, the launcher reuses the normal
   `my ai --setup --no-session` path and takes the JOIN branch. The model helps
-  pick a role, runs setup, pulls workspace content, and points the person at
-  `my ai <harness>` for daily work.
+  pick a role when needed, has the operator run setup, pulls workspace content,
+  and teaches the basic daily loop: launch a harness, start/resume/finish a
+  work session, and run `my sync --print`, `my sync`, and `my doctor`.
+
+Onboarding deliberately avoids teaching the full CLI. For meeting transcripts,
+fleet/support context, notes, screenshots, or issue details, the human should
+paste the raw context into the harness chat. Agents are the primary operators
+and can choose the right deeper `my` commands when records need to be created.
 
 If a selected launch skill already exists from a manual install or old
 workspace rename, interactive onboarding asks whether to replace or skip that
 entry and then continues launching the harness.
 
 The launcher itself does not publish anything. The onboarding guidance keeps
-publish at the end: the model must run `my publish --print`, show the planned
-remotes and pushes, and get explicit human approval before the real
-`my publish`.
+publish at the end: the model must have the operator run `my publish --print`,
+review the planned remotes and pushes, and get explicit human approval before
+the real `my publish`.
 
 ## Deterministic Walkthrough
 

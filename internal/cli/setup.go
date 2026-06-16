@@ -560,8 +560,8 @@ func (a app) printOnboardHarnessChoice(h harness.Harness, reason string) {
 // autoDetectHarness picks a harness without prompting when the choice is
 // unambiguous: a single logged-in harness wins, otherwise a single installed
 // harness. Anything ambiguous returns ok=false so the caller prompts. Login
-// detection is best-effort; the launched session's "reply OK" handshake is the
-// real check that the chosen harness can actually run.
+// detection is best-effort; the launched assistant's first response is the
+// practical check that the chosen harness can actually run.
 func (a app) autoDetectHarness(home string) (harness.Harness, string, bool) {
 	var installed, loggedIn []harness.Harness
 	for _, h := range harness.All() {
@@ -616,11 +616,12 @@ func onboardAgentLaunchArgs(opts onboardOptions, manifestName, root string, h ha
 
 func onboardAgentPrompt(branch, manifestName, root string) string {
 	var b strings.Builder
-	b.WriteString("You are this person's My AI onboarding assistant. Start by greeting them in one or two warm sentences, introduce yourself, and ask them to reply \"OK\" so you can confirm you are connected before doing anything else. Do not run any command until they respond.\n")
-	b.WriteString("Once they reply, use the bundled `my` skill, section `Agent-Operated Onboarding`, to run model-driven onboarding. Hold a real conversation, ask one question at a time, and teach inline: say in one short line what each `my` command does as you run it.\n")
+	b.WriteString("You are this person's My AI onboarding assistant. Start by greeting them in one or two warm sentences, introduce yourself, and immediately begin a learn-by-example walkthrough.\n")
+	b.WriteString("Use the bundled `my` skill, section `Agent-Operated Onboarding`, as the source of truth. Tell the operator to open another terminal window or split pane, give them small command sets to run there, and pause after every set to ask whether it worked, whether there were errors, and whether they have questions before continuing. The human runs the commands; you guide and explain. Offer read-only verification only when the operator reports trouble or uncertainty, never as a hard gate.\n")
+	b.WriteString("Keep the walkthrough focused on basic human workflows: setup, launching harnesses, starting/resuming/finishing work sessions, `my sync --print`/`my sync`, and `my doctor`. Do not teach content-record, fleet, catalog, or full admin command surfaces during onboarding; humans can paste transcripts or raw context into harness chat and let agents operate deeper CLI surfaces.\n")
 	switch branch {
 	case "AUTHOR":
-		b.WriteString("Branch: AUTHOR. No My AI manifest is registered for this invocation. Hold a conversation, ask one question at a time, and make the first durable control-plane action `my init` only after explicit human approval.\n")
+		b.WriteString("Branch: AUTHOR. No My AI manifest is registered for this invocation. Guide the operator through authoring a new organization one small command set at a time, and present `my init` only after explicit human approval.\n")
 	case "JOIN":
 		b.WriteString("Branch: JOIN by default. A manifest is registered")
 		if manifestName != "" {
@@ -633,7 +634,7 @@ func onboardAgentPrompt(branch, manifestName, root string) string {
 			b.WriteString(root)
 			b.WriteString(".")
 		}
-		b.WriteString(" Set up this person against the existing organization; offer AUTHOR-style admin edits only if the operator asks.\n")
+		b.WriteString(" Set up this person against the existing organization through the split-pane walkthrough; offer AUTHOR-style admin edits only if the operator asks.\n")
 	default:
 		b.WriteString("Branch: detect from the registered manifest state.\n")
 	}
@@ -660,11 +661,11 @@ func (a app) printOnboardUsage() {
   my onboarding [--agent|--no-agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 
 Run interactively, my onboarding launches a harness with the bundled my self-skill
-and an agent-operated onboarding prompt: the model greets the operator, confirms
-it is connected, then introduces the My AI model and configures the workspace
-through validated my commands. With no registered manifest the harness starts
-from the current directory and drives the AUTHOR branch; with a registered
-manifest it reuses the normal my ai launch path for the JOIN branch. A harness is
+and an agent-operated onboarding prompt: the model greets the operator, starts a
+split-pane learn-by-example walkthrough, and has the operator run validated my
+commands in small sets. With no registered manifest the harness starts from the
+current directory and drives the AUTHOR branch; with a registered manifest it
+reuses the normal my ai launch path for the JOIN branch. A harness is
 auto-detected (preferring one that is logged in); pass --harness to choose.
 
 --agent forces the harness launch even when stdout is not a TTY. --no-agent (and
@@ -863,7 +864,11 @@ func (a app) promptConfirm(prompt string, def bool) (bool, bool, error) {
 }
 
 func (a app) promptLine(prompt string) (string, error) {
-	fmt.Fprint(a.stdout, prompt)
+	return a.promptLineTo(a.stdout, prompt)
+}
+
+func (a app) promptLineTo(out io.Writer, prompt string) (string, error) {
+	fmt.Fprint(out, prompt)
 	if a.stdin == nil {
 		return "", io.EOF
 	}

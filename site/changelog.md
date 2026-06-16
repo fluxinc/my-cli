@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `my ai -r` / `my ai --resume` launches a harness in an active work session,
+  with single-session auto-selection, an interactive picker, and deterministic
+  non-interactive errors that list active session ids.
+
+### Changed
+
+- Model-driven onboarding now starts a split-pane learn-by-example walkthrough
+  instead of asking for an `OK` handshake. The operator runs small command
+  sets, the assistant pauses after each set, and onboarding focuses on basic
+  workflows while deeper record and admin work stays agent-operated.
+- `my work resume` is documented as a shell `cd` helper; use
+  `my ai -r [session-id] [harness]` to resume work in a harness.
+
+### Fixed
+
+- Repo-session documentation now states that catalog code repos launch with
+  `my ai --repo` and are not landed by `my work finish` yet.
+
 ## 0.30.1 - 2026-06-16
 
 ### Changed

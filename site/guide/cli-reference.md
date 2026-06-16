@@ -36,7 +36,7 @@ my publish [--manifest NAME] [--home DIR] [--print] [--json]
 my onboarding [--agent|--no-agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 my setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 my root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-my ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 my sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
 my doctor [--no-fetch] [--fix] [--json]
 my update [--check] [--version X.Y.Z] [--json] [--yes]
@@ -50,11 +50,12 @@ prints the follow-up `my setup`, `my ai`, and `my publish` commands. Both
 repos work offline and report `local-only` until published.
 
 `my onboarding` is the guided first-run path. In an interactive terminal it
-launches a harness with the bundled Agent-Operated Onboarding guidance, asks the
-model to greet the operator and wait for an `OK` handshake, then runs the
-adaptive AUTHOR/JOIN flow through validated `my` commands. A harness is
-auto-detected when the choice is unambiguous; pass `--harness NAME` to choose.
-`--agent` forces the harness path from non-interactive contexts.
+launches a harness with the bundled Agent-Operated Onboarding guidance. The
+model greets the operator, starts a split-pane learn-by-example walkthrough, and
+has the operator run small sets of validated `my` commands with a pause after
+each set. A harness is auto-detected when the choice is unambiguous; pass
+`--harness NAME` to choose. `--agent` forces the harness path from
+non-interactive contexts.
 
 `my onboarding --no-agent` and non-interactive runs use the deterministic
 walkthrough: with no registered manifest it prints the
@@ -197,11 +198,13 @@ They leave dirty, diverged, repo, and remote-unknown checkouts untouched.
 `my ai` also ensures the bundled `my` self-skill exists for the selected
 filesystem harness before launching it. By default it launches from the base
 umbrella, or from the current active session when run inside `work/<id>`. Use
-`--new-session` to create a fresh isolated session, `--session <id>` to
-resume, or `--no-session` to ignore a current session for base
-inspection/admin/debug. Repo launches use `--repo <id>`. Use `--no-refresh`
-for one command, `MYCLI_NO_AUTO_REFRESH=1` globally, or `MYCLI_REFRESH_TTL=30m`
-to tune the default six-hour window.
+`--new-session` to create a fresh isolated session, `--session <id>` or
+`-r <id>` to resume a known active session, `-r <harness>` to select the only
+active session or pick one in an interactive terminal, or `--no-session` to
+ignore a current session for base inspection/admin/debug. Repo launches use
+`--repo <id>` and are not included in work sessions yet. Use `--no-refresh` for
+one command, `MYCLI_NO_AUTO_REFRESH=1` globally, or `MYCLI_REFRESH_TTL=30m` to
+tune the default six-hour window.
 
 Manifest roles are selected locally with `my setup --role <id>`. The choice
 is stored in `.my-cli/state.json`, appends that role's guidance fragments to

@@ -176,6 +176,18 @@ func (a app) runWorkResume(args []string) error {
 	var opts workCommonOpts
 	fs := newFlagSet("my work resume", a.stderr)
 	bindWorkCommonFlags(fs, &opts)
+	fs.Usage = func() {
+		fmt.Fprintln(a.stderr, `Usage of my work resume:
+  my work resume [session-id] [--json]
+
+Print a shell cd command for an active work session. This command does not
+change the parent shell by itself. To launch a harness in the session, use:
+
+  my ai -r [session-id] [harness]
+
+Options:`)
+		fs.PrintDefaults()
+	}
 	rest, err := parseInterspersed(fs, args, workValueFlags())
 	if err != nil {
 		return err
@@ -313,15 +325,9 @@ func selectWorkSessionID(root string, args []string) (string, error) {
 	if len(args) == 1 {
 		return args[0], nil
 	}
-	sessions, err := worksession.List(root)
+	active, err := activeWorkSessions(root)
 	if err != nil {
 		return "", err
-	}
-	var active []worksession.Session
-	for _, session := range sessions {
-		if session.Status == worksession.StatusActive {
-			active = append(active, session)
-		}
 	}
 	switch len(active) {
 	case 1:
@@ -331,6 +337,20 @@ func selectWorkSessionID(root string, args []string) (string, error) {
 	default:
 		return "", fmt.Errorf("multiple active sessions; pass a session id")
 	}
+}
+
+func activeWorkSessions(root string) ([]worksession.Session, error) {
+	sessions, err := worksession.List(root)
+	if err != nil {
+		return nil, err
+	}
+	var active []worksession.Session
+	for _, session := range sessions {
+		if session.Status == worksession.StatusActive {
+			active = append(active, session)
+		}
+	}
+	return active, nil
 }
 
 func (a app) syncFinishedSessionMounts(home, manifestName, root string, session worksession.Session, message string) (syncer.Report, error) {

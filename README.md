@@ -22,14 +22,15 @@ my ai codex
 ```
 
 That's the whole first run. `my onboarding` launches a harness in an interactive
-terminal, greets the operator, waits for an `OK` handshake, and then interviews,
-teaches inline, and drives AUTHOR/JOIN setup through validated `my` commands.
+terminal, greets the operator, and starts a split-pane walkthrough where the
+operator runs small sets of validated `my` commands while the model explains
+and pauses after each set.
 Use `my onboarding --no-agent` for the deterministic walkthrough that explains
 the model and points at `my setup --interactive`. `my setup` remains the
 scriptable machine configurator. `my ai codex` resolves the umbrella, verifies
 the generated guidance, and starts Codex in the base umbrella. Agents that need
 isolated content work opt in with `my ai --new-session codex` or resume a known
-session with `my ai --session <id> codex`.
+session with `my ai -r <id> codex`.
 
 `my init` creates two local repos — a private manifest repo (the control
 plane: manifest, product/repo catalog, skills) and a content repo at
@@ -93,11 +94,13 @@ Publish still requires `my publish --print` and explicit human approval.
 ```sh
 my root [--repo ID] [--no-refresh] [--no-update-check]
                                              # print the umbrella or repo path
-my ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--no-refresh] [--no-update-check] [harness]
+my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--no-refresh] [--no-update-check] [harness]
                                              # verify guidance, then start a harness
 my ai codex --model gpt-5              # pass harness flags after the harness name
 my ai --new-session codex
 my ai --session 2026-06-11-work-ab12 codex
+my ai -r codex                         # resume the only active session, or pick in a TTY
+my ai -r 2026-06-11-work-ab12 codex
 my ai --repo sample-service codex
 my ai --print codex                    # print cd <umbrella> && codex
 ```
@@ -106,8 +109,9 @@ my ai --print codex                    # print cd <umbrella> && codex
 `--setup` to reconcile first, or run `my setup` directly. By default it
 launches from the base umbrella, or from the current active work session when
 run inside `work/<id>`. Use `--new-session` to create a fresh isolated session,
-`--session` to resume a known active session, and `--no-session` to ignore a
-current session for base inspection/admin/debug.
+`--session` or `-r <id>` to resume a known active session, `-r <harness>` to
+resume the single active session or pick one interactively, and `--no-session`
+to ignore a current session for base inspection/admin/debug.
 `root`, `ai`, and `setup` also run a best-effort, TTL-gated refresh of
 clean manifest/content checkouts so startup sees current context without
 touching dirty, diverged, repo, or remote-unknown checkouts. Use
@@ -475,7 +479,8 @@ indexed in [docs/plans/](docs/plans/README.md):
   start|status|list|resume|finish`: visible `work/<id>` git worktrees per
   session, a session registry consulted by `my sync` and `my doctor`,
   session-aware content commands, and opt-in launches via
-  `my ai --new-session`/`--session` (base umbrella remains the default).
+  `my ai --new-session`, `--session`, and `-r`/`--resume` (base umbrella
+  remains the default).
   Plan: [execution plane](docs/plans/2026-06-10-execution-plane.md), Mode A.
 - **Shipped — products/repos split (v0.15.0).** Catalog products are pure
   business entities (no `git_url`) that may link implementing repos;
@@ -551,10 +556,12 @@ indexed in [docs/plans/](docs/plans/README.md):
   self-skill's Agent-Operated Onboarding guidance, and `my onboard` remains a
   compatibility alias. The launcher chooses AUTHOR vs JOIN from manifest state,
   uses direct harness exec for zero-manifest bootstrap, reuses `my ai --setup`
-  when a manifest exists, and keeps publish behind `my publish --print` plus
-  explicit human approval. Role/service authoring is command-driven; extra
-  mount and repo catalog declaration authoring remains explicit human/admin
-  follow-up in this slice. Plan:
+  when a manifest exists, and now teaches through split-pane command sets
+  instead of an `OK` handshake. Onboarding stays focused on basic human
+  workflows: launch harnesses, start/resume/finish sessions, check sync/doctor,
+  and paste raw context into harness chat for agents to operate deeper record
+  and admin commands. Publish remains behind `my publish --print` plus explicit
+  human approval. Plan:
   [model-driven onboarding](docs/plans/2026-06-15-model-driven-onboarding.md).
 - **Later — substrate upgrades.** A gnit backend for sessions once umbrellas
   bootstrap as gnit control workspaces, and managed read-only base mounts

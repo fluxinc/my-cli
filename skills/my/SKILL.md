@@ -116,7 +116,7 @@ my setup [--manifest NAME] [--role ROLE] [--interactive] [--no-refresh] [--no-up
                                     # create umbrella, write guidance/MCP config, install self-skill, sync mounts
 my root [--repo ID] [--no-refresh] [--no-update-check]
                                     # print the umbrella (or repo) path
-my ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--no-refresh] [--no-update-check] [harness]
+my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--no-refresh] [--no-update-check] [harness]
                                     # verify guidance is current, compose launch-scoped org skills, then start a harness
                                     # --skills / --profile pick the org skill loadout (mutually exclusive); see the Skill model above
                                     # --setup reconciles the umbrella first when guidance is stale or missing
@@ -171,7 +171,7 @@ current active session when run inside `<umbrella>/work/<id>`. Treat the base
 umbrella as inspection/admin space; do not create shared content directly in
 base mounts unless the operator explicitly asks for a base edit. Use
 `my ai --new-session <harness>` to create an isolated content session,
-`my ai --session <id> <harness>` to resume an active session, and
+`my ai -r <id> <harness>` to resume an active session, and
 `my ai --no-session <harness>` to ignore a current session for base
 inspection/admin/debug. Repo launches are base checkouts in this release, so
 use `my ai --repo <id> <harness>` for them. Products are business catalog
@@ -197,11 +197,19 @@ Work in sessions:
 my work start [--slug SLUG]      # create an isolated session: worktree per content mount + scratch/
 my work status [--all]           # list sessions with per-mount dirty and unlanded state
 my work list [--all]             # alias for status
-my work resume [session-id]      # print the cd command for an active session
+my ai -r [session-id] [harness]  # launch a harness in an active session; prompts only in an interactive TTY
+my work resume [session-id]      # print the cd command for manual shell navigation
 my work finish [session-id] --land     # commit session content, merge into base, remove worktrees
 my work finish [session-id] --publish  # land, then publish landed content per the sync policy
 my work finish [session-id] --discard  # delete the session's worktrees, branches, and directory
 ```
+
+Use `my ai -r <id> <harness>` to run multiple harnesses in the same session;
+for example, `my ai -r <id> claude-code` and `my ai -r <id> codex` launch into
+the same session directory. With exactly one active session, `my ai -r codex`
+auto-selects it. With multiple active sessions, an interactive terminal gets a
+picker; non-interactive agent use must pass an explicit id and never waits on a
+prompt. `my work resume` is only a shell helper that prints `cd <path>`.
 
 If you are running inside a session (the working directory is under
 `<umbrella>/work/<id>`), keep all edits in the session's mount worktrees and
@@ -213,6 +221,10 @@ committing them, so adopt records first (`my meetings/support/fleet add` do
 this automatically). While a session is dirty or unlanded, `my sync` holds
 outbound publish of that mount and names the session — finish or discard the
 session rather than working around the hold.
+
+Catalog code repos are not included in work sessions yet. Use
+`my ai --repo <id> <harness>` for a base repo checkout, and land code changes
+through that repository's normal Git or pull-request workflow.
 
 Update My AI when explicitly requested:
 
@@ -332,81 +344,141 @@ them.
 ## Agent-Operated Onboarding
 
 When a harness is launched via `my onboarding`, you are the onboarding
-assistant. Start by greeting the operator, introduce yourself in one or two
-sentences, and ask the operator to reply `OK` so you can confirm the harness is
-connected. Do not run any command until the operator replies. Then hold a real
-conversation and build or join the organization **only through the validated
-`my` commands** below - never by hand-editing the manifest or any generated
-file.
+assistant. Start by greeting the operator and immediately begin a
+learn-by-example walkthrough. Tell the operator to open a second terminal window
+or split pane in the same starting directory. The operator runs the commands;
+you guide, explain, and pace the tour. Build or join the organization **only
+through the validated `my` commands** below - never by hand-editing the manifest
+or any generated file.
 
-**One adaptive flow.** Detect state first, then branch. Run
-`my manifests list --json`. With **no manifest registered**, take the
-**AUTHOR** branch (create a new org). With a **manifest already registered**,
-take the **JOIN** branch (set this person up against the existing org). When a
-manifest exists, run `my root` to find the umbrella; if it fails, JOIN still
-applies but setup is needed. A returning admin may also want AUTHOR-style edits
-on an existing manifest — offer that when it fits.
+**Walkthrough discipline.** Present one small command set at a time, usually one
+to three commands in a fenced `sh` block. Before the block, say in one short
+line what the set teaches or changes. After every set, stop and ask whether it
+worked, whether there were errors, and whether the operator has questions before
+the next set. Do not chain multiple sets without confirmation.
+
+**Human runs commands.** Do not perform the main onboarding commands yourself
+while the operator watches. If the operator reports trouble or uncertainty,
+offer a read-only verification step such as `my doctor`, `my root`,
+`my manifests list --json`, or inspecting generated state. Verification is
+optional support, not a hard gate; the normal path is ask-and-proceed.
+
+**One adaptive flow.** Detect state first, then branch. Start with a command set
+for the operator:
+
+```sh
+my manifests list --json
+```
+
+With **no manifest registered**, take the **AUTHOR** branch (create a new org).
+With a **manifest already registered**, take the **JOIN** branch (set this
+person up against the existing org). When a manifest exists, have the operator
+run `my root` to find the umbrella; if it fails, JOIN still applies but setup is
+needed. A returning admin may also want AUTHOR-style edits on an existing
+manifest — offer that when it fits.
 
 **Conversation discipline.** Ask one question at a time; prefer concrete choices
 over open prompts; match depth to the person (a solo founder and a 200-person
-company need different conversations). Teach inline: before each command, say
-in one short line what it does and why ("Running `my sync --publish never` -
-that pulls workspace updates without publishing"). Do not dump the whole plan up
-front.
+company need different conversations). Do not dump the whole plan up front.
 
 ### AUTHOR branch (no manifest yet)
 
-Build the control plane incrementally, validating as you go:
+Create the smallest useful local organization and stop there. Do not teach the
+whole admin/catalog CLI during onboarding; deeper manifest design belongs in a
+normal harness conversation after the operator is oriented.
 
 1. Confirm intent and get a one-line description of the org. With explicit human
-   go-ahead, run `my init <org-id> [--name NAME] --json` — local-only
-   manifest + content repos; nothing is shared yet. Keep the returned manifest
-   checkout as `<manifest-dir>` for every later `my admin ... --manifest-dir`
-   command.
-2. Shared knowledge starts in the generated `workspace` mount from `my init`.
-   New mount declarations do not yet have a dedicated admin authoring verb:
-   do **not** pretend `my mounts add` creates manifest mounts. Use
-   `my mounts add <id>` only to select/sync a mount that is already declared.
-   If the org needs extra mount declarations now, capture the desired ids,
-   kinds, and Git URLs and stop for explicit human/admin follow-up.
-3. External surfaces and dependencies first, so roles can reference them:
-   `my admin services add <id> --manifest-dir <manifest-dir> --kind http|mcp
-   --purpose "..." --auth-ref REF [--describe-ref REF | --connection-command
-   CMD ...]`, `my admin tools add <id> --manifest-dir <manifest-dir> --mode
-   required|optional --purpose "..."`, and `my admin skills add <skill-dir>
-   --id namespace:name --manifest-dir <manifest-dir>` when a real local skill
-   source exists.
-4. Teams that work differently → roles: `my admin roles add <id>
-   --manifest-dir <manifest-dir> --purpose "..." [--mount ID]
-   [--skill ns:name] [--tool ID] [--service ID]`.
-5. Binding rules → `my admin contract add "..." --manifest-dir
-   <manifest-dir>`.
-6. Code repos can be cloned only after they are declared in `catalog/repos.json`.
-   `my repos add <id>` selects/clones an existing catalog repo; it does not
-   author catalog entries. If repo catalog authoring is needed, capture the
-   desired ids and Git URLs for explicit human/admin follow-up.
-7. Validate, materialize, and verify: `my manifests validate <manifest-dir>`,
-   `my setup`, then `my doctor` (must be clean) and, when roles exist,
-   `my compile --role <id>` (must produce a valid projection).
+   go-ahead, give the first durable command set:
+
+   ```sh
+   my init <org-id> --name "<Name>" --json
+   ```
+
+   This creates local-only manifest + content repos; nothing is shared yet. Ask
+   the operator to confirm success and keep the returned manifest checkout for
+   any later agent-guided admin work.
+2. Materialize and verify as small sets. First:
+
+   ```sh
+   my manifests validate <manifest-dir>
+   my setup
+   ```
+
+   Then pause. If that worked, give:
+
+   ```sh
+   my doctor
+   ```
+
+3. Teach the everyday harness/session loop from the new umbrella:
+
+   ```sh
+   my ai <harness>
+   my ai --new-session <harness>
+   my work status
+   my ai -r <session-id> <harness>
+   my work finish <session-id> --land
+   ```
+
+   Explain that operators can paste transcripts, notes, screenshots, or issue
+   context into the harness chat; the agent will choose the right deeper `my`
+   commands when records need to be created.
 
 ### JOIN branch (manifest already registered)
 
-1. Summarize the org from what is registered (`my roles list`,
-   `my services list`, `my mounts list`) and use that summary to orient the
-   operator before changing settings.
-2. Help the person pick a role when roles exist, then `my setup --role <id>`;
-   otherwise run `my setup`.
-3. `my sync --publish never` to pull mounts without publishing; teach the
-   everyday content verbs by example (`my meetings add`, `my support add`,
-   `my fleet ...`, `my sync --print`, then `my sync` when the person is ready
-   to publish safe content changes).
-4. Point them at `my ai <harness>` for daily work.
+1. Have the operator inspect the basic workspace state, then summarize it back:
+
+   ```sh
+   my mounts list
+   my doctor
+   ```
+
+2. Help the person pick a role when roles exist. Then give the setup command:
+
+   ```sh
+   my setup --role <id>
+   ```
+
+   If there are no roles, use:
+
+   ```sh
+   my setup
+   ```
+
+3. Teach the basic daily loop in small sets:
+
+   ```sh
+   my sync --publish never
+   my ai <harness>
+   ```
+
+   Then:
+
+   ```sh
+   my ai --new-session <harness>
+   my work status
+   my ai -r <session-id> <harness>
+   my work finish <session-id> --land
+   ```
+
+   Then:
+
+   ```sh
+   my sync --print
+   my sync
+   ```
+
+4. Explain the operator/agent split: humans provide intent and raw context in
+   harness chat. For example, if the operator has a new meeting transcript or
+   fleet/support context, they paste it into the harness conversation; the agent
+   decides whether and how to create records. Do not teach the full content,
+   support, fleet, catalog, or admin CLI in onboarding.
 
 ### Hard rules (do not skip)
 
-- **Command-driven only.** Every manifest change goes through an
-  `my admin ...` / `my init` / `my setup` command that validates input.
-  Never edit `manifest.json` or generated `AGENTS.md`/`.mcp.json` by hand.
+- **Command-driven only.** Every manifest change goes through a
+  validated `my` command. Never edit `manifest.json` or generated
+  `AGENTS.md`/`.mcp.json` by hand.
   Do not use local operational commands such as `my mounts add` or
   `my repos add` as if they authored manifest or catalog declarations.
 - **No secrets in the manifest.** `auth_ref` must be `none`, `env://NAME`,
@@ -420,8 +492,7 @@ Build the control plane incrementally, validating as you go:
   `my publish`. `my init` (local repos) and `my publish` (remotes) are the
   irreversible/outward steps; confirm both with the human first.
 - **Gates before publish.** `my manifests validate <manifest-dir>`,
-  `my doctor` clean, and `my compile --role <id>` valid when roles exist,
-  before you offer to publish.
+  `my setup`, and a clean `my doctor` before you offer to publish.
 - **Stay generic and public-safe.** Teach the model and the shape; never bake
   one org's private data into reusable guidance.
 

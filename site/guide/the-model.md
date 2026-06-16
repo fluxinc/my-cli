@@ -81,13 +81,14 @@ An isolated unit of work under `<umbrella>/work/<id>`: a git worktree of each
 content mount on a fresh `my/work/<id>` branch, session-local `scratch/`, a
 `SESSION.md` summary, and generated session guidance, recorded in a registry
 under `.my-cli/sessions/`. Create one with `my work start` or
-`my ai --new-session`; `my ai --session <id>` resumes it. When the current
-directory is inside an active session, content commands write to that session's
-mount worktree, so session work does not leak into the base umbrella. Work
-leaves a session only through `my work finish --land | --publish |
---discard`, and `my sync` holds outbound publish of a mount while an active
-session on it is dirty or unlanded. `my work status` and `my work list` show
-active session state; `my doctor` includes session health alongside workspace
+`my ai --new-session`; `my ai -r <id> <harness>` resumes it by launching a
+harness in the session directory. When the current directory is inside an
+active session, content commands write to that session's mount worktree, so
+session work does not leak into the base umbrella. Work leaves a session only
+through `my work finish --land | --publish | --discard`, and `my sync` holds
+outbound publish of a mount while an active session on it is dirty or unlanded.
+`my work status` and `my work list` show active session state; `my doctor`
+includes session health alongside workspace
 diagnostics.
 
 ## Catalog

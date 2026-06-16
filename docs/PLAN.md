@@ -49,7 +49,7 @@ local scratch under `personal/`.
   `my record adopt`.
 - Work sessions, opt-in: `work/<id>` git worktrees per writable mount
   (`my work start|status|list|resume|finish`, `my ai
-  --new-session|--session <id>`); content commands and plain `my ai` are
+  --new-session|--session <id>|-r <id>`); content commands and plain `my ai` are
   session-aware when run inside one; `my doctor` reports session health;
   `my sync` holds mounts with dirty or unlanded active sessions.
 - Manifest `data_bindings`: stable operational data nouns (`customers`,
@@ -88,8 +88,8 @@ operator-approved combined path):
    Harness-agnostic by principle: no integration with any harness's internal
    isolation mechanisms. The launch default was revised after dogfood
    (v0.17.0): `my ai` launches from the base umbrella, sessions are opt-in
-   via `--new-session`/`--session <id>`, and content commands resolve to the
-   session's mount worktrees when run inside one.
+   via `--new-session`/`--session <id>`/`-r <id>`, and content commands resolve
+   to the session's mount worktrees when run inside one.
 3. **Shipped in v0.18.0** — manifest `roles` + `services` (org APIs, MCP
    servers as `kind: mcp`; reference-first descriptions; URI secret
    references such as `op://`), `my services`/`my roles` inspection,

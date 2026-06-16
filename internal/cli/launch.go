@@ -4,8 +4,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/fluxinc/my-cli/internal/guidance"
@@ -88,6 +90,8 @@ type launchCommandOpts struct {
 	repoID                      string
 	legacyProduct               string
 	sessionID                   string
+	resumeSession               bool
+	resumeSessionID             string
 	newSession                  bool
 	noSession                   bool
 	onboard                     bool
@@ -140,6 +144,16 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 			return errAlreadyPrinted
 		}
 		return err
+	}
+	if opts.resumeSession {
+		sessionID := opts.resumeSessionID
+		if sessionID == "" {
+			sessionID, err = a.selectLaunchResumeSessionID(root)
+			if err != nil {
+				return err
+			}
+		}
+		opts.sessionID = sessionID
 	}
 	if opts.printOnly {
 		targetDir, err := a.launchTargetDir(opts, root)
@@ -217,6 +231,15 @@ func launchCreatesNewSession(opts launchCommandOpts) bool {
 }
 
 func validateLaunchSessionOptions(opts launchCommandOpts) error {
+	if opts.resumeSession && opts.sessionID != "" {
+		return fmt.Errorf("--resume cannot be combined with --session")
+	}
+	if opts.resumeSession && opts.noSession {
+		return fmt.Errorf("--resume cannot be combined with --no-session")
+	}
+	if opts.resumeSession && opts.newSession {
+		return fmt.Errorf("--resume cannot be combined with --new-session")
+	}
 	if opts.noSession && opts.sessionID != "" {
 		return fmt.Errorf("--session cannot be combined with --no-session")
 	}
@@ -231,6 +254,13 @@ func validateLaunchSessionOptions(opts launchCommandOpts) error {
 			code:        "product_flag_removed",
 			message:     "products are business catalog entries, not checkouts; --product was removed from my ai",
 			remediation: "use my ai --repo " + opts.legacyProduct + " (see my repos list)",
+		}
+	}
+	if opts.repoID != "" && opts.resumeSession {
+		return structuredCommandError{
+			code:        "repo_requires_no_session",
+			message:     "my ai --repo cannot be combined with --resume; repo worktrees are not included in work sessions yet",
+			remediation: "omit --resume for a base repo launch, or omit --repo to resume the content session",
 		}
 	}
 	if opts.repoID != "" && (opts.sessionID != "" || opts.newSession) {
@@ -376,7 +406,7 @@ func (a app) printLaunchSelfSkillBlock(result skills.Result) {
 
 func (a app) printLaunchUsage() {
 	fmt.Fprintln(a.stderr, `Usage of my ai:
-  my ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+  my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 
 Harness defaults to claude-code. By default, harnesses launch from the base
 umbrella, or from the current work session when run inside one. Harness flags go
@@ -387,6 +417,8 @@ Examples:
   my ai codex --model gpt-5
   my ai --new-session codex
   my ai --session 2026-06-11-work-ab12 codex
+  my ai -r codex
+  my ai -r 2026-06-11-work-ab12 codex
   my ai --repo sample-service codex
   my ai --print codex
 
@@ -396,6 +428,7 @@ Options:
   --umbrella DIR    override umbrella root
   --new-session     create and launch from a fresh work session
   --session ID      resume an active work session
+  -r, --resume [ID] resume an active work session, picking the only active session or prompting on a TTY
   --no-session      ignore any current work session and launch from the base umbrella
   --repo ID         run from repos/<id> under the umbrella
   --skills VALUE    select org skills: all, none, or comma-separated manifest skill ids
@@ -427,6 +460,16 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			opts.printOnly = true
 		case arg == "--new-session":
 			opts.newSession = true
+		case arg == "-r" || arg == "--resume":
+			opts.resumeSession = true
+			if i+1 < len(args) && !isFlagArg(args[i+1]) {
+				next := args[i+1]
+				if parsed, err := harness.Parse(next); err == nil {
+					return opts, string(parsed), args[i+2:], false, nil
+				}
+				opts.resumeSessionID = next
+				i++
+			}
 		case arg == "--no-session":
 			opts.noSession = true
 		case arg == "--no-refresh":
@@ -451,6 +494,12 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			opts.legacyProduct = strings.TrimPrefix(arg, "--product=")
 		case strings.HasPrefix(arg, "--session="):
 			opts.sessionID = strings.TrimPrefix(arg, "--session=")
+		case strings.HasPrefix(arg, "--resume="):
+			opts.resumeSession = true
+			opts.resumeSessionID = strings.TrimPrefix(arg, "--resume=")
+		case strings.HasPrefix(arg, "-r="):
+			opts.resumeSession = true
+			opts.resumeSessionID = strings.TrimPrefix(arg, "-r=")
 		case strings.HasPrefix(arg, "--skills="):
 			opts.skillsSelector = strings.TrimPrefix(arg, "--skills=")
 		case strings.HasPrefix(arg, "--profile="):
@@ -483,6 +532,68 @@ func setLaunchValue(opts *launchCommandOpts, name, value string) {
 	case "profile":
 		opts.profileID = value
 	}
+}
+
+func (a app) selectLaunchResumeSessionID(root string) (string, error) {
+	active, err := activeWorkSessions(root)
+	if err != nil {
+		return "", err
+	}
+	switch len(active) {
+	case 1:
+		return active[0].ID, nil
+	case 0:
+		return "", fmt.Errorf("no active sessions; run my work start")
+	}
+	if !a.interactive {
+		return "", multipleActiveSessionsError(active)
+	}
+	return a.promptLaunchResumeSession(active)
+}
+
+func (a app) promptLaunchResumeSession(active []worksession.Session) (string, error) {
+	fmt.Fprintln(a.stderr, "Select a work session:")
+	for i, session := range active {
+		fmt.Fprintf(a.stderr, "  %d) %s  created %s\n", i+1, session.ID, session.CreatedAt)
+	}
+	for {
+		line, err := a.promptLineTo(a.stderr, "Session (-r <id> to skip this prompt): ")
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return "", fmt.Errorf("session selection requires input; pass -r <session-id>")
+			}
+			return "", err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if n, err := strconv.Atoi(line); err == nil {
+			if n >= 1 && n <= len(active) {
+				return active[n-1].ID, nil
+			}
+			fmt.Fprintf(a.stderr, "Enter a number from 1 to %d, or a session id.\n", len(active))
+			continue
+		}
+		for _, session := range active {
+			if line == session.ID {
+				return session.ID, nil
+			}
+		}
+		fmt.Fprintf(a.stderr, "Unknown active session %q; enter a number from 1 to %d, or pass -r <session-id>.\n", line, len(active))
+	}
+}
+
+func multipleActiveSessionsError(active []worksession.Session) error {
+	var b strings.Builder
+	b.WriteString("multiple active sessions; pass a session id")
+	for _, session := range active {
+		fmt.Fprintf(&b, "\n  %s  created %s", session.ID, session.CreatedAt)
+	}
+	if len(active) > 0 {
+		fmt.Fprintf(&b, "\nexamples:\n  my ai -r %s codex\n  my work status", active[0].ID)
+	}
+	return errors.New(b.String())
 }
 
 func resolveMyRoot(home, manifestName, explicit string) (string, error) {

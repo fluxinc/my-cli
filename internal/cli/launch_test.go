@@ -651,6 +651,124 @@ func TestLaunchResumesExplicitSession(t *testing.T) {
 	}
 }
 
+func TestLaunchResumeShortcutExplicitSession(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+	session := startLaunchTestSession(t, home, "shortcut")
+
+	var stdout, stderr bytes.Buffer
+	var gotDir string
+	var gotArgs []string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotDir = dir
+			gotArgs = append([]string(nil), args...)
+			return nil
+		},
+	}
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check", "-r", session.ID, "codex", "--model", "gpt-5"}); err != nil {
+		t.Fatalf("ai -r explicit: %v\nstderr: %s", err, stderr.String())
+	}
+	if gotDir != session.Path {
+		t.Fatalf("gotDir=%q, want session path %q", gotDir, session.Path)
+	}
+	if strings.Join(gotArgs, " ") != "--model gpt-5" {
+		t.Fatalf("gotArgs=%#v, want harness args", gotArgs)
+	}
+}
+
+func TestLaunchResumeShortcutHarnessTokenAutoSelectsSingleSession(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+	session := startLaunchTestSession(t, home, "single")
+
+	var stdout, stderr bytes.Buffer
+	var gotPath, gotDir string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			return "/test/bin/codex", nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotPath = path
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check", "-r", "codex"}); err != nil {
+		t.Fatalf("ai -r codex: %v\nstderr: %s", err, stderr.String())
+	}
+	if gotPath != "/test/bin/codex" || gotDir != session.Path {
+		t.Fatalf("path=%q dir=%q, want codex in %q", gotPath, gotDir, session.Path)
+	}
+}
+
+func TestLaunchResumeShortcutMultipleActiveNonInteractiveListsIDs(t *testing.T) {
+	home, _ := setupCLIRecordWorkspace(t)
+	first := startLaunchTestSession(t, home, "alpha")
+	second := startLaunchTestSession(t, home, "beta")
+
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			t.Fatalf("lookPath called despite unresolved resume selection for %q", name)
+			return "", exec.ErrNotFound
+		},
+	}
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check", "-r", "codex"})
+	if err == nil {
+		t.Fatal("ai -r with multiple active sessions succeeded without a TTY")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "multiple active sessions; pass a session id") ||
+		!strings.Contains(msg, first.ID) ||
+		!strings.Contains(msg, second.ID) ||
+		!strings.Contains(msg, "my ai -r "+first.ID+" codex") {
+		t.Fatalf("error = %q, want active ids and example", msg)
+	}
+	if stdout.String() != "" || stderr.String() != "" {
+		t.Fatalf("stdout=%q stderr=%q, want no prompt output", stdout.String(), stderr.String())
+	}
+}
+
+func TestLaunchResumeShortcutInteractivePickerKeepsPrintStdoutPure(t *testing.T) {
+	home, _ := setupCLIRecordWorkspace(t)
+	_ = startLaunchTestSession(t, home, "alpha")
+	second := startLaunchTestSession(t, home, "beta")
+
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout:      &stdout,
+		stderr:      &stderr,
+		stdin:       strings.NewReader("2\n"),
+		interactive: true,
+	}
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check", "--print", "-r", "codex"}); err != nil {
+		t.Fatalf("ai -r picker print: %v\nstderr: %s", err, stderr.String())
+	}
+	want := "cd " + second.Path + " && codex\n"
+	if stdout.String() != want {
+		t.Fatalf("stdout = %q, want only command %q", stdout.String(), want)
+	}
+	if !strings.Contains(stderr.String(), "Select a work session:") ||
+		!strings.Contains(stderr.String(), second.ID) {
+		t.Fatalf("stderr = %q, want picker", stderr.String())
+	}
+}
+
 func TestLaunchFromInsideSessionUsesCurrentSession(t *testing.T) {
 	home, workspaceRoot := setupCLIRecordWorkspace(t)
 	umbrellaRoot := filepath.Dir(workspaceRoot)
@@ -686,6 +804,24 @@ func TestLaunchFromInsideSessionUsesCurrentSession(t *testing.T) {
 	if gotDir != session.Path {
 		t.Fatalf("gotDir=%q, want current session path %q", gotDir, session.Path)
 	}
+}
+
+func startLaunchTestSession(t *testing.T, home, slug string) worksession.Session {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	args := []string{"my", "work", "start", "--home", home, "--json"}
+	if slug != "" {
+		args = append(args, "--slug", slug)
+	}
+	if err := a.run(args); err != nil {
+		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
+	}
+	var session worksession.Session
+	if err := json.Unmarshal(stdout.Bytes(), &session); err != nil {
+		t.Fatalf("parse session JSON: %v\nstdout: %s", err, stdout.String())
+	}
+	return session
 }
 
 func TestLaunchNewSessionInsideSessionCreatesFreshSession(t *testing.T) {
