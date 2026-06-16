@@ -2,10 +2,12 @@
 
 Services and roles are manifest vocabulary for the organization's remote
 surfaces and operating profiles. They are declared in `manifest.json`,
-inspected with read-only verbs, and materialized locally as `.mcp.json` —
-never the other way around.
+edited through `my admin`, inspected with read-only verbs, and materialized
+locally as `.mcp.json` — never the other way around.
 
 ```sh
+my admin services add|edit|remove ...
+my admin roles add|edit|remove ...
 my services list [--manifest NAME] [--json]
 my services get <id> [--manifest NAME] [--json]
 my roles list [--manifest NAME] [--json]
@@ -44,6 +46,24 @@ references:
 `connection` uses MCP `server.json` field names; a `describe_ref` can point
 at a checked-in descriptor file instead.
 
+Create or update service declarations from a maintainer checkout:
+
+```sh
+my admin services add docs-search \
+  --manifest-dir ~/src/acme-manifest \
+  --kind mcp \
+  --purpose "Search the handbook" \
+  --auth-ref env://ACME_DOCS_TOKEN \
+  --connection-type stdio \
+  --connection-command acme-docs-mcp \
+  --connection-arg --stdio \
+  --connection-env ACME_DOCS_TOKEN='${ACME_DOCS_TOKEN}'
+```
+
+Inline connection env values must be exact `${VAR}` placeholders. Header values
+may include protocol syntax, but must include a `${VAR}` placeholder; literal
+credentials are rejected before the manifest is saved.
+
 ## Roles
 
 A role is a named local loadout that selects mounts, skills, tools, services,
@@ -51,6 +71,11 @@ and optional guidance fragments. Roles do not grant authority; the backing Git
 host or service enforces access. Select one locally:
 
 ```sh
+my admin roles add operator \
+  --manifest-dir ~/src/acme-manifest \
+  --purpose "Default operator role" \
+  --service docs-search
+
 my setup --role operator
 ```
 

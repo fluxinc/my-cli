@@ -544,7 +544,7 @@ indexed in [docs/plans/](docs/plans/README.md):
   Antigravity (`agy`). Plans:
   [launch-scoped skill composition](docs/plans/2026-06-14-launch-scoped-skill-composition.md),
   [ADR 0001](docs/decisions/0001-launch-scoped-skill-composition.md).
-- **Active — model-driven onboarding.** `my onboard --agent [--harness NAME]`
+- **Shipped (v0.29.0) — model-driven onboarding.** `my onboard --agent [--harness NAME]`
   launches a harness with the bundled `my` self-skill's Agent-Operated
   Onboarding guidance. The launcher chooses AUTHOR vs JOIN from manifest state,
   uses direct harness exec for zero-manifest bootstrap, reuses `my ai --setup`

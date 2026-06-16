@@ -68,34 +68,31 @@ or docs URLs with the matching `--clear-*` flags).
 ## Services and roles
 
 Manifest `services` and `roles` are shared control-plane configuration. There
-are inspection verbs (`my services list|get`, `my roles list|get`) but no
-admin writer yet, so edit them in a maintainer checkout, validate, commit, and
-push:
+are inspection verbs (`my services list|get`, `my roles list|get`) and admin
+writers for maintainer checkouts:
 
-```json
-{
-  "services": [
-    {
-      "id": "docs-search",
-      "kind": "mcp",
-      "purpose": "Search workspace docs",
-      "auth_ref": "env://ACME_DOCS_TOKEN",
-      "connection": {
-        "type": "stdio",
-        "command": "acme-docs-mcp"
-      }
-    }
-  ],
-  "roles": [
-    {
-      "id": "operator",
-      "purpose": "Default operator role",
-      "guidance_paths": ["agent-guidance/operator.md"],
-      "services": ["docs-search"]
-    }
-  ]
-}
+```sh
+my admin services add docs-search \
+  --manifest-dir ~/src/acme-manifest \
+  --kind mcp \
+  --purpose "Search workspace docs" \
+  --auth-ref env://ACME_DOCS_TOKEN \
+  --connection-type stdio \
+  --connection-command acme-docs-mcp \
+  --connection-env ACME_DOCS_TOKEN='${ACME_DOCS_TOKEN}'
+
+my admin roles add operator \
+  --manifest-dir ~/src/acme-manifest \
+  --purpose "Default operator role" \
+  --guidance agent-guidance/operator.md \
+  --service docs-search
 ```
+
+`my admin services edit|remove` and `my admin roles edit|remove` update the
+same declarations. Service removal refuses role-selected services unless
+`--prune-roles` is supplied. Inline connection env values must be exact
+`${VAR}` placeholders, and connection header values must include a `${VAR}`;
+literal credentials are rejected before the manifest is saved.
 
 `my setup --role operator` stores the selected role locally, appends role
 guidance to generated `AGENTS.md`, and materializes umbrella-root `.mcp.json`

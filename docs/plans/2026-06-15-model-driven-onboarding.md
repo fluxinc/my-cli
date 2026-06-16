@@ -1,9 +1,10 @@
 # Model-Driven Onboarding
 
-Status: **active (draft, revision 1)**, 2026-06-15. Brainstormed between Claude
+Status: **shipped (v0.29.0)**, 2026-06-16. Brainstormed between Claude
 and Codex over Talking Stick; scope decisions made by Wojtek. Revised once to
-answer Codex adversarial review #1 (all five points). Not yet implemented;
-awaiting Codex sign-off.
+answer Codex adversarial review #1 (all five points), then implemented as
+`my onboard --agent`, bundled Agent-Operated Onboarding guidance, and
+command-driven role/service authoring.
 
 ## Problem
 

@@ -34,6 +34,7 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
 my init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
 my publish [--manifest NAME] [--home DIR] [--print] [--json]
 my onboard [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+my onboard --agent [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 my setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 my root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 my ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
@@ -54,6 +55,11 @@ repos work offline and report `local-only` until published.
 manifest, it explains the model, offers `my setup --interactive`, and records
 tour completion in the umbrella. Plain `my setup` remains non-interactive and
 scriptable; `--interactive` prompts for manifest and role selection.
+
+`my onboard --agent` launches a harness with the bundled Agent-Operated
+Onboarding guidance. With no registered manifest it starts the harness from the
+current directory for AUTHOR bootstrap; with a registered manifest it reuses the
+normal `my ai --setup --no-session` launch path for JOIN onboarding.
 
 `my publish` takes the organization online idempotently: it creates private
 remotes (`<org>-workspace`, `<org>-manifest`) via `gh`, or adopts existing
