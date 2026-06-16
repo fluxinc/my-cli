@@ -26,6 +26,33 @@
   letter-spacing: 0;
 }
 
+.VPHomeHero .my-home-title {
+  display: inline;
+}
+
+.my-home-title-cursor {
+  display: inline-block;
+  width: 0.08em;
+  height: 0.86em;
+  margin-left: 0.08em;
+  transform: translateY(0.08em);
+  background: currentColor;
+  animation: my-title-cursor-blink 1s steps(2, start) infinite;
+}
+
+@keyframes my-title-cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .my-home-title-cursor {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 .VPFeature {
   border-radius: 8px;
   transition: border-color 160ms ease, transform 160ms ease;
