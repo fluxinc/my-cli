@@ -4,12 +4,26 @@
 
 ### Changed
 
+- `my sync` is pull-only by default. Publishing local changes now requires
+  `my sync --push` or an explicit `--publish` mode; manifest
+  `sync.publish_policy` selects the mode for `--push` rather than making bare
+  sync publish.
+- Human output for setup, sync, and work-session finish is shorter by default,
+  with `--verbose` available for full row-level detail.
+- Agent-operated onboarding now anchors walkthrough commands at the umbrella
+  root and treats explicit "file it" requests as authorization to file a
+  public-safe project issue.
 - Work-session guidance now embeds concrete startup context for launched
   harnesses: umbrella root, organization, selected role, session id/path,
   mount worktrees, exact resume/finish commands, and the generated base
   umbrella guidance including organization contract rules. Resuming a session
   with `my ai --session` or `my ai -r` rewrites stale session guidance before
   launch.
+
+### Fixed
+
+- `my doctor` no longer reports an older cached latest release as if the
+  installed CLI were stale.
 
 ## 0.31.0 - 2026-06-16
 

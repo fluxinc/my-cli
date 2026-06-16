@@ -186,7 +186,7 @@ func (a app) runManifestSync(args []string) error {
 			fmt.Fprintln(a.stdout, line)
 		}
 		if derived != nil {
-			a.printDerivedReconcileReport(*derived)
+			a.printDerivedReconcileReport(*derived, true)
 		}
 		printManifestSyncDerivedNotices(a.stdout, results, derivedNotices)
 	}

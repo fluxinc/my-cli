@@ -197,7 +197,7 @@ func (a app) printUsage() {
 	fmt.Fprintln(a.stdout, `my installs and manages manifest-backed AI workspace tooling.
 
 Usage:
-  my setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  my setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--verbose] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   my onboarding [--agent|--no-agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   my root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
@@ -205,7 +205,7 @@ Usage:
   my init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
   my publish [--manifest NAME] [--home DIR] [--print] [--json]
   my compile --role ROLE [--manifest NAME] [--home DIR]
-  my sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
+  my sync [--backend auto|gnit|builtin] [--push|--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--no-derived] [--print] [--verbose] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
   my skills self install|uninstall|status ...
   my skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
   my skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
@@ -255,7 +255,7 @@ Usage:
   my work status [--all] [--json]
   my work list [--all] [--json]
   my work resume [session-id] [--json]
-  my work finish [session-id] --land|--publish|--discard [--message TEXT] [--json]
+  my work finish [session-id] --land|--publish|--discard [--message TEXT] [--verbose] [--json]
   my customers list
   my products list
   my repos list [--json]

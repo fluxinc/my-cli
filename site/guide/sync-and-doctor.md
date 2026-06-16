@@ -6,37 +6,42 @@ diagnoses it, and `my update` keeps the CLI itself current.
 ## my sync
 
 ```sh
-my sync --print     # plan only: show what would pull, push, or hold
-my sync             # reconcile and publish per policy
+my sync                 # pull/reconcile only; never publishes local changes
+my sync --print         # plan the pull-only default
+my sync --push --print  # preview explicit publish work
+my sync --push          # publish eligible local changes per policy
 ```
 
 One routine verb: it pulls every registered repository (manifest cache,
 content mounts, catalog repo clones), reconciles derived state when the
 manifest changed (generated guidance, umbrella `.mcp.json`, launch-scoped skill
-reconciliation notices), and publishes local content that is safe to publish.
-When a startup notice says something is stale or unpublished, this is the
-command it means.
+reconciliation notices), and never publishes local changes unless `--push` or
+an explicit `--publish` mode is passed. When a startup notice says something is
+stale, bare `my sync` is the command it means. When local changes should be
+shared, preview with `my sync --push --print`, then run `my sync --push`.
 
-What publishes under the default `auto` policy: committed-or-adopted,
-content-only changes in private repos — new meeting notes, support records,
-fleet updates. What holds: manifest/catalog/admin changes (review-commit-push
-by hand), public repos, diverged branches, plain untracked files that were
-never adopted (see `my record adopt`), and mounts with dirty or unlanded
-active sessions.
+What publishes under the `auto` policy after explicit `--push`:
+committed-or-adopted, content-only changes in private repos — new meeting
+notes, support records, fleet updates. What holds: manifest/catalog/admin
+changes (review-commit-push by hand), public repos, diverged branches, plain
+untracked files that were never adopted (see `my record adopt`), and mounts
+with dirty or unlanded active sessions.
 
 Scoping and policy:
 
 ```sh
 my sync --scope all|local|content|manifest|repos
+my sync --push
 my sync --publish auto|never|direct|pr
 my sync --no-derived          # skip the derived reconcile
-my sync --message TEXT        # commit message for published content
+my sync --push --message TEXT # commit message for published content
 ```
 
-A manifest can set `sync.publish_policy` as the default; an explicit flag
-always wins. `--backend auto` prefers Gnit when the umbrella is a Gnit
-control workspace, with a guarded built-in Git path otherwise. Every
-non-print sync writes an audit to `.my-cli/last-sync.json`.
+A manifest can set `sync.publish_policy` as the mode used by `--push`; an
+explicit `--publish` flag always wins. Bare `my sync` ignores that policy and
+stays pull-only. `--backend auto` prefers Gnit when the umbrella is a Gnit
+control workspace, with a guarded built-in Git path otherwise. Every non-print
+sync writes an audit to `.my-cli/last-sync.json`.
 
 ## my doctor
 

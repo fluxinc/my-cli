@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -126,13 +127,129 @@ func TestSyncExplicitGnitBackendReportsMissingWorkspace(t *testing.T) {
 	out := stdout.String()
 	for _, want := range []string{
 		`"backend": "gnit"`,
-		"Gnit workspace not initialized",
+		"umbrella is not a Gnit control workspace",
 		`"status": "held back"`,
 		`"id": "handbook"`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("sync stdout = %q, missing %q", out, want)
 		}
+	}
+}
+
+func TestSyncBareDefaultPullOnlyAndExplicitPublish(t *testing.T) {
+	root := t.TempDir()
+	remote, clone, _ := setupCLIRemoteRepo(t, root, "handbook", map[string]string{
+		"README.md": "seed\n",
+	})
+	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": "`+remote+`", "mode": "required" }
+  ]
+}`)
+	mountPath := filepath.Join(umbrellaRoot, "handbook")
+	if err := os.MkdirAll(umbrellaRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(clone, mountPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, state, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	} else {
+		state = umbrella.UpsertMount(state, umbrella.MountStatus{
+			ID:        "handbook",
+			Kind:      "handbook",
+			SourceRef: "manifest:acme:handbook",
+			Status:    "synced",
+		})
+		if err := umbrella.SaveState(umbrellaRoot, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeCLITestFile(t, filepath.Join(mountPath, "meetings", "publish.md"), "publish\n")
+	runCLIGit(t, mountPath, "add", "-N", "meetings/publish.md")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+		"--json",
+	}); err != nil {
+		t.Fatalf("bare sync: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"publish": "never"`) ||
+		!strings.Contains(stdout.String(), "publish disabled") {
+		t.Fatalf("bare sync stdout = %q, want pull-only publish disabled hold", stdout.String())
+	}
+	if out, err := exec.Command("git", "-C", remote, "show", "master:meetings/publish.md").CombinedOutput(); err == nil {
+		t.Fatalf("bare sync published unexpectedly: %s", out)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--push",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+		"--json",
+	}); err != nil {
+		t.Fatalf("sync --push: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"publish": "auto"`) {
+		t.Fatalf("sync --push stdout = %q, want auto policy", stdout.String())
+	}
+	if out, err := exec.Command("git", "-C", remote, "show", "master:meetings/publish.md").CombinedOutput(); err == nil {
+		t.Fatalf("sync --push without private visibility published unexpectedly: %s", out)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--publish", "direct",
+		"--print",
+		"--message", "Ship publish",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+	}); err != nil {
+		t.Fatalf("sync --publish direct --print: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "next\tapply\tmy sync --publish direct --message 'Ship publish'") {
+		t.Fatalf("sync --publish direct --print stdout = %q, want explicit publish apply hint", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--publish", "direct",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+		"--json",
+	}); err != nil {
+		t.Fatalf("sync --publish direct: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"publish": "direct"`) ||
+		!strings.Contains(stdout.String(), `"status": "pushed"`) {
+		t.Fatalf("sync --publish direct stdout = %q, want direct push", stdout.String())
+	}
+	if got := strings.TrimSpace(gitCLIOutput(t, remote, "show", "master:meetings/publish.md")); got != "publish" {
+		t.Fatalf("remote publish.md = %q", got)
 	}
 }
 
@@ -253,6 +370,7 @@ description: Acme handbook
 		"--backend", "builtin",
 		"--publish", "never",
 		"--scope", "manifest",
+		"--verbose",
 		"--manifest", "acme",
 		"--home", home,
 		"--umbrella", umbrellaRoot,
@@ -389,7 +507,7 @@ func TestSyncScopeReposAcceptedAndProductsRejected(t *testing.T) {
 	}
 }
 
-func TestSyncUsesManifestPublishPolicyAndCLIOverride(t *testing.T) {
+func TestSyncPushUsesManifestPublishPolicyAndCLIOverride(t *testing.T) {
 	home, _, _, _, _ := setupCLITrackedManifestBody(t, `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -402,7 +520,15 @@ func TestSyncUsesManifestPublishPolicyAndCLIOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), `"publish": "never"`) {
-		t.Fatalf("sync stdout = %q, want manifest publish policy", stdout.String())
+		t.Fatalf("sync stdout = %q, want bare sync publish never", stdout.String())
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"my", "sync", "--backend", "builtin", "--push", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), `"publish": "never"`) {
+		t.Fatalf("sync --push stdout = %q, want manifest publish policy", stdout.String())
 	}
 
 	stdout.Reset()
@@ -414,7 +540,7 @@ func TestSyncUsesManifestPublishPolicyAndCLIOverride(t *testing.T) {
 	}
 }
 
-func TestSyncUsesManifestPRPublishPolicy(t *testing.T) {
+func TestSyncPushUsesManifestPRPublishPolicy(t *testing.T) {
 	home, _, _, _, _ := setupCLITrackedManifestBody(t, `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -426,7 +552,63 @@ func TestSyncUsesManifestPRPublishPolicy(t *testing.T) {
 	if err := a.run([]string{"my", "sync", "--backend", "builtin", "--manifest", "acme", "--home", home, "--json"}); err != nil {
 		t.Fatal(err)
 	}
+	if !strings.Contains(stdout.String(), `"publish": "never"`) {
+		t.Fatalf("sync stdout = %q, want bare sync publish never", stdout.String())
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"my", "sync", "--backend", "builtin", "--push", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(stdout.String(), `"publish": "pr"`) {
 		t.Fatalf("sync stdout = %q, want manifest PR policy", stdout.String())
+	}
+}
+
+func TestSyncRejectsPushWithPublishMode(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{"my", "sync", "--push", "--publish", "auto", "--home", t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "--push and --publish cannot be combined") {
+		t.Fatalf("err = %v, want --push/--publish conflict", err)
+	}
+}
+
+func TestSyncHumanOutputConciseAndVerbose(t *testing.T) {
+	home, umbrellaRoot, _, _ := setupCLITrackedManifest(t)
+	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--print",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "up to date" {
+		t.Fatalf("concise sync stdout = %q, want up to date", stdout.String())
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--print",
+		"--verbose",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "# backend: builtin") || !strings.Contains(out, "already landed") {
+		t.Fatalf("verbose sync stdout = %q, want backend and clean row", out)
 	}
 }

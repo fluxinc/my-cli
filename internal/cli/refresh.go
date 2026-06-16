@@ -142,9 +142,9 @@ func freshnessNotice(result syncer.Result) (string, bool) {
 	case dirty > 0 && result.Behind > 0:
 		return fmt.Sprintf("behind remote by %d with %d uncommitted file(s); commit or stash, then run `my sync`", result.Behind, dirty), true
 	case dirty > 0:
-		return fmt.Sprintf("%d uncommitted file(s); run `my sync` to review and publish", dirty), true
+		return fmt.Sprintf("%d uncommitted file(s); run `my sync --push --print` to review publish work", dirty), true
 	case result.Ahead > 0:
-		return fmt.Sprintf("ahead of remote by %d unpublished commit(s); run `my sync` to publish", result.Ahead), true
+		return fmt.Sprintf("ahead of remote by %d unpublished commit(s); run `my sync --push` to publish", result.Ahead), true
 	case result.Behind > 0:
 		return fmt.Sprintf("behind remote by %d; run `my sync`", result.Behind), true
 	}

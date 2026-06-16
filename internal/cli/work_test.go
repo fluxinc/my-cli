@@ -503,6 +503,7 @@ func TestSyncHoldsContentMountWithActiveSession(t *testing.T) {
 	if err := a.run([]string{
 		"my", "sync",
 		"--backend", "builtin",
+		"--push",
 		"--print",
 		"--manifest", "acme",
 		"--home", home,
@@ -546,6 +547,7 @@ func TestSyncHoldsContentMountWithActiveSession(t *testing.T) {
 	if err := a.run([]string{
 		"my", "sync",
 		"--backend", "builtin",
+		"--push",
 		"--print",
 		"--manifest", "acme",
 		"--home", home,

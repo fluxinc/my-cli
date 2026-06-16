@@ -3,7 +3,7 @@
 Workspace content is markdown records with frontmatter, living in mounted
 content repos. Customer identities are read from mounted `customers/*.md`
 records. Meetings, support, and fleet also expose write-oriented record
-commands, with `my sync` publishing adopted changes.
+commands, with `my sync --push` publishing adopted changes.
 
 ```sh
 my customers list [--json]
@@ -85,7 +85,7 @@ identifiers. Its output ends with the concrete next step: a seeded
 run when no relevant record exists yet.
 
 Record workflow transitions with `my fleet set <id> status=<value>`, then
-publish with the suggested `my sync --message` command so each transition is
+publish with the suggested `my sync --push --message` command so each transition is
 a readable git commit.
 
 The built-in fleet work contract ties these together — see
@@ -93,9 +93,9 @@ The built-in fleet work contract ties these together — see
 
 ## Adoption: why your file did not publish
 
-`my sync` only auto-publishes content it knows is intentional. Records
-created by the CLI are adopted automatically (Git intent-to-add). A file you
-created by hand stays held until you adopt it:
+`my sync --push` only publishes content it knows is intentional. Records created
+by the CLI are adopted automatically (Git intent-to-add). A file you created by
+hand stays held until you adopt it:
 
 ```sh
 my record adopt <path>

@@ -139,12 +139,15 @@ status: finalized
 	runMy(t, bin, home, "manifests", "add", "acme", "https://github.com/acme/acme-ai-manifest.git", "--home", home)
 	installOut := runMy(t, bin, home, "setup", "--home", home)
 	// ADR 0001: organization and tool skills are no longer installed user-global.
-	// Setup reports them as launch-scoped (my ai materializes them into the
-	// launch root); only the bundled self-skill is ensured in the harness dir.
-	for _, want := range []string{"launch-scoped", "my:self", "installed"} {
+	// Concise setup output hides launch-scoped org/tool skill rows; only the
+	// bundled self-skill is ensured in the harness dir.
+	for _, want := range []string{"my:self", "installed"} {
 		if !strings.Contains(installOut, want) {
 			t.Fatalf("setup output = %q, missing %q", installOut, want)
 		}
+	}
+	if strings.Contains(installOut, "launch-scoped") {
+		t.Fatalf("setup output = %q, want concise default without launch-scoped rows", installOut)
 	}
 	selfTarget := filepath.Join(home, ".claude", "skills", "my")
 	if _, err := os.Lstat(selfTarget); err != nil {

@@ -52,7 +52,8 @@ Manifests can also set the default sync publish policy:
 ```
 
 Allowed values are `auto`, `never`, and `pr`. The setting applies when
-`my sync` is run without `--publish`; an explicit CLI flag overrides it.
+`my sync --push` is run; bare `my sync` stays pull-only. An explicit
+`--publish` flag overrides it.
 `my sync --scope all|local|content|manifest|repos` limits a run to local-only
 changes, content mounts, manifest checkouts, or catalog repo clones
 (`repos`).

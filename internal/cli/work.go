@@ -237,12 +237,14 @@ func (a app) runWorkFinish(args []string) error {
 	var land bool
 	var publish bool
 	var discard bool
+	var verbose bool
 	var message string
 	fs := newFlagSet("my work finish", a.stderr)
 	bindWorkCommonFlags(fs, &opts)
 	fs.BoolVar(&land, "land", false, "merge the session into the base checkouts")
 	fs.BoolVar(&publish, "publish", false, "land the session and publish landed content")
 	fs.BoolVar(&discard, "discard", false, "discard the session worktrees and branches")
+	fs.BoolVar(&verbose, "verbose", false, "show per-mount and sync detail in human output")
 	fs.StringVar(&message, "message", "", "commit message for dirty session content")
 	rest, err := parseInterspersed(fs, args, workValueFlags())
 	if err != nil {
@@ -305,7 +307,7 @@ func (a app) runWorkFinish(args []string) error {
 				return printErr
 			}
 		} else {
-			a.printWorkFinishReport(report)
+			a.printWorkFinishReport(report, verbose)
 		}
 		if err != nil {
 			return a.maybeJSONError(opts.jsonOut, err)
@@ -316,7 +318,7 @@ func (a app) runWorkFinish(args []string) error {
 	if opts.jsonOut {
 		return printJSON(a.stdout, report)
 	}
-	a.printWorkFinishReport(report)
+	a.printWorkFinishReport(report, verbose)
 	return nil
 }
 
@@ -397,10 +399,14 @@ func (a app) syncFinishedSessionMounts(home, manifestName, root string, session 
 	if err != nil {
 		return syncer.Report{}, err
 	}
+	publish, err := a.syncPushPublish(home, manifestName)
+	if err != nil {
+		return syncer.Report{}, err
+	}
 	report := syncer.Run(selected, syncer.Options{
 		Backend:      backend,
 		GnitRoot:     gnitRoot,
-		Publish:      "auto",
+		Publish:      publish,
 		Message:      message,
 		Visibility:   a.githubRepoVisibility,
 		SessionHolds: sessionHolds,
@@ -426,7 +432,7 @@ func syncReportFullyPublished(report syncer.Report) bool {
 	return true
 }
 
-func (a app) printWorkFinishReport(report workFinishCommandReport) {
+func (a app) printWorkFinishReport(report workFinishCommandReport, verbose bool) {
 	session := report.Finish.Session
 	fmt.Fprintf(a.stdout, "session\t%s\t%s", session.ID, session.Status)
 	if session.Outcome != "" {
@@ -434,6 +440,9 @@ func (a app) printWorkFinishReport(report workFinishCommandReport) {
 	}
 	fmt.Fprintln(a.stdout)
 	for _, mount := range report.Finish.Mounts {
+		if !workFinishMountVisible(mount, verbose) {
+			continue
+		}
 		line := fmt.Sprintf("mount\t%s\t%s\t%s", mount.ID, mount.Branch, mount.Status)
 		if mount.Commit != "" {
 			line += "\tcommit=" + mount.Commit
@@ -450,7 +459,10 @@ func (a app) printWorkFinishReport(report workFinishCommandReport) {
 		fmt.Fprintln(a.stdout, line)
 	}
 	if report.Sync != nil {
-		a.printSyncReport(*report.Sync)
+		a.printSyncReport(*report.Sync, verbose, syncNextCommands{
+			Apply:  "my sync --push",
+			Review: "my sync --push --print",
+		})
 	}
 	if label, command := workFinishNextStep(report); command != "" {
 		fmt.Fprintf(a.stdout, "next\t%s\t%s\n", label, command)
@@ -460,17 +472,27 @@ func (a app) printWorkFinishReport(report workFinishCommandReport) {
 func workFinishNextStep(report workFinishCommandReport) (string, string) {
 	switch report.Mode {
 	case "land":
-		return "publish", "my sync"
+		return "publish", "my sync --push"
 	case "publish":
 		if report.Finish.Session.Outcome == worksession.OutcomePublished {
 			return "status", "my work status"
 		}
-		return "review", "my sync --print"
+		if report.Sync != nil && syncReportHasPublishDisabledHold(*report.Sync) {
+			return "", ""
+		}
+		return "review", "my sync --push --print"
 	case "discard":
 		return "status", "my work status"
 	default:
 		return "", ""
 	}
+}
+
+func workFinishMountVisible(mount worksession.MountFinishResult, verbose bool) bool {
+	if verbose {
+		return true
+	}
+	return mount.Status != "landed" && mount.Status != "discarded"
 }
 
 // collectSessionHolds reports the active sessions with dirty files or

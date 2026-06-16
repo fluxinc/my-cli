@@ -294,7 +294,8 @@ and support are dated, append-only journals, fleet keeps one record per
 deployed instance under `fleet/<id>.md`, keyed by a stable id and updated in
 place with `my fleet set` (which preserves untouched frontmatter and body).
 State history is the record's git history rather than event files, so each
-meaningful transition should publish with a descriptive `my sync --message`.
+meaningful transition should publish with a descriptive
+`my sync --push --message`.
 The `identifiers` frontmatter list is the join currency with support records:
 `my fleet get` resolves any identifier and surfaces related incidents, and
 `my support add --identifier` warns when an identifier is unknown to the

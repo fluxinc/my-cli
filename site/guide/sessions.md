@@ -19,7 +19,8 @@ my work finish [session-id] --land|--publish|--discard [--message TEXT]
 
 ## When to use one
 
-The base umbrella plus content verbs plus `my sync` is the default flow.
+The base umbrella plus content verbs plus `my sync` and explicit
+`my sync --push` publishing is the default flow.
 Reach for a session when:
 
 - multiple agents work the same workspace concurrently,

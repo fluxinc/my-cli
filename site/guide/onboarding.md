@@ -45,7 +45,8 @@ joining an existing one:
   `my ai --setup --no-session` path and takes the JOIN branch. The model helps
   pick a role when needed, has the operator run setup, pulls workspace content,
   and teaches the basic daily loop: launch a harness, start/resume/finish a
-  work session, and run `my sync --print`, `my sync`, and `my doctor`.
+  work session, run pull-only `my sync`, preview publish with
+  `my sync --push --print`, publish with `my sync --push`, and run `my doctor`.
 
 Onboarding deliberately avoids teaching the full CLI. For meeting transcripts,
 fleet/support context, notes, screenshots, or issue details, the human should

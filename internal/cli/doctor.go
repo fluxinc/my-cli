@@ -202,11 +202,17 @@ func (a app) doctorVersion(home string) doctorItem {
 		item.Details = append(item.Details, err.Error())
 		return item
 	}
-	item.Message = fmt.Sprintf("current=v%s latest=v%s", notice.CurrentVersion, notice.LatestVersion)
 	if notice.UpdateAvailable {
 		item.Status = "stale"
-		item.Message += " run my update"
+		item.Message = fmt.Sprintf("current=v%s latest=v%s run my update", notice.CurrentVersion, notice.LatestVersion)
+		return item
 	}
+	cmp, cmpErr := selfupdate.CompareVersions(notice.CurrentVersion, notice.LatestVersion)
+	if cmpErr == nil && cmp >= 0 {
+		item.Message = "current=v" + notice.CurrentVersion + " up to date"
+		return item
+	}
+	item.Message = fmt.Sprintf("current=v%s latest=v%s up to date", notice.CurrentVersion, notice.LatestVersion)
 	return item
 }
 

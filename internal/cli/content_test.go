@@ -802,7 +802,7 @@ The delivery failed with a clear timeout.
 		t.Fatal(err)
 	}
 	out = stdout.String()
-	for _, want := range []string{"updated ", `status: "live" -> "mourn"`, "my sync --message", "Update fleet acme-box-1:"} {
+	for _, want := range []string{"updated ", `status: "live" -> "mourn"`, "my sync --push --message", "Update fleet acme-box-1:"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("fleet set stdout = %q, missing %q", out, want)
 		}

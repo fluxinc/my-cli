@@ -24,7 +24,7 @@ var baselineFleetWorkContract = []string{
 	"Continue an existing relevant support record when one is listed, or create a new dated anonymized record with `my support add` for a distinct incident or work session.",
 	"Put the fleet record id and every useful fleet identifier on the support record with repeated `--identifier` flags, plus customer, product, and area frontmatter when known.",
 	"Treat support records as the incident/work log. Fleet records hold registry state; use `my fleet set` only for meaningful state transitions.",
-	"Publish the resulting content with `my sync`.",
+	"Publish the resulting content with `my sync --push`.",
 }
 
 // Options controls launch projection compilation.

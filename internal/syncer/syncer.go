@@ -213,8 +213,8 @@ func runGnit(entries []Entry, opts Options) Report {
 	}
 	report := Report{Publish: opts.Publish, Backend: "gnit", GnitRoot: opts.GnitRoot, DryRun: opts.DryRun}
 	if opts.GnitRoot == "" || !hasGnitWorkspace(opts.GnitRoot) {
-		report.BackendMessage = "Gnit workspace not initialized; run gnit init --control for the My AI umbrella before using the Gnit backend"
-		report.Results = heldResults(entries, "Gnit workspace not initialized")
+		report.BackendMessage = "umbrella is not a Gnit control workspace; use the built-in sync backend or initialize Gnit before forcing --backend gnit"
+		report.Results = heldResults(entries, "umbrella is not a Gnit control workspace")
 		return report
 	}
 	if opts.Publish == "pr" {

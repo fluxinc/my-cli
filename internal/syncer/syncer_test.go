@@ -250,11 +250,11 @@ func TestRunGnitHoldsWhenWorkspaceIsNotInitialized(t *testing.T) {
 		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: "https://github.com/acme/handbook.git", LocalPath: "/tmp/handbook"},
 	}, Options{Backend: "gnit", GnitRoot: t.TempDir(), Publish: "auto"})
 
-	if report.Backend != "gnit" || !strings.Contains(report.BackendMessage, "Gnit workspace not initialized") {
+	if report.Backend != "gnit" || !strings.Contains(report.BackendMessage, "not a Gnit control workspace") {
 		t.Fatalf("report = %#v, want Gnit initialization hold", report)
 	}
 	result := findResult(t, report, "handbook")
-	if result.Status != "held back" || !strings.Contains(result.Message, "Gnit workspace not initialized") {
+	if result.Status != "held back" || !strings.Contains(result.Message, "not a Gnit control workspace") {
 		t.Fatalf("result = %#v, want held back", result)
 	}
 }

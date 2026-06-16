@@ -830,6 +830,7 @@ type skillsCommandOpts struct {
 	linkMode               bool
 	force                  bool
 	jsonOut                bool
+	verbose                bool
 	noPrune                bool
 	noRefresh              bool
 	noUpdateCheck          bool

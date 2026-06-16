@@ -292,25 +292,29 @@ in the umbrella; legacy `products/` checkouts migrate automatically at
 ### Sync
 
 ```sh
-my sync --print                           # plan inbound refresh and outbound publish
-my sync [--backend auto|gnit|builtin]         # auto prefers Gnit once the umbrella is initialized
+my sync                                   # pull/reconcile only; never publishes local changes
+my sync --print                           # plan the pull-only default
+my sync --push --print                    # preview explicit publish work
+my sync --push [--backend auto|gnit|builtin]  # publish eligible local changes per policy
 my sync --publish auto|never|direct|pr    # explicit override; direct is CLI-only
 my sync --scope all|local|content|manifest|repos  # limit to one repo class; repos = catalog repo clones
 my sync --no-derived                      # skip derived guidance/MCP/skill reconcile after manifest changes
 ```
 
-`my sync` is the routine reconciliation command. My AI classifies changes,
-handles private/public and content/admin policy, and blocks duplicate checkouts
-of the same remote until they are collapsed to one canonical checkout. Gnit is
-the intended backend for real multi-repo Change creation, ordered push, and
-resume; Pins are reserved for intentional recorded workspace states. The My AI
-backend is a guarded bootstrap fallback when a workspace has not been
-initialized as a Gnit control workspace. `--publish direct` can publish existing
-local commits directly, but dirty non-content/admin files are still held back
-instead of being quietly committed. A manifest can set top-level
-`sync.publish_policy` to `auto`, `never`, or `pr` as the default when
-`--publish` is omitted; an explicit CLI flag always wins. Non-print syncs write
-`.my-cli/last-sync.json` so `my doctor` can show the last sync/publish audit.
+`my sync` is the routine reconciliation command. Bare `my sync` pulls inbound
+updates and never publishes local changes. Use `my sync --push` to publish
+eligible local changes according to the manifest policy, or `--publish` to
+choose an explicit mode. My AI classifies changes, handles private/public and
+content/admin policy, and blocks duplicate checkouts of the same remote until
+they are collapsed to one canonical checkout. Gnit is the intended backend for
+real multi-repo Change creation, ordered push, and resume; Pins are reserved for
+intentional recorded workspace states. The My AI backend is a guarded bootstrap
+fallback when a workspace has not been initialized as a Gnit control workspace.
+`--publish direct` can publish existing local commits directly, but dirty
+non-content/admin files are still held back instead of being quietly committed.
+A manifest can set top-level `sync.publish_policy` to `auto`, `never`, or `pr`
+as the mode for `--push`; an explicit `--publish` flag always wins. Non-print
+syncs write `.my-cli/last-sync.json` so `my doctor` can show the last sync/publish audit.
 When sync pulls or publishes a manifest checkout, it reconciles generated
 guidance, umbrella MCP config, and launch-scoped skill reconciliation notices
 unless `--no-derived` is passed.
@@ -374,7 +378,7 @@ stable id (hostname or node name) and updated in place. `get` resolves any
 entry in the record's `identifiers` list — a sales order, functional location,
 or serial — and lists support records sharing an identifier. `set` updates
 scalar frontmatter fields while preserving everything else, and suggests an
-`my sync --message` command so workflow transitions stay readable in git
+`my sync --push --message` command so workflow transitions stay readable in git
 history. The status vocabulary is organization-defined.
 
 ### Diagnostics

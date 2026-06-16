@@ -31,7 +31,7 @@ Use the `my` CLI before falling back to ad hoc file searches:
   `my fleet get <id|identifier>` query the deployed-instance registry; `get`
   resolves any identifier (order, location, serial) and lists related support
   records. Update workflow state with `my fleet set <id> status=<value>` and
-  publish each meaningful transition with the suggested `my sync --message`
+  publish each meaningful transition with the suggested `my sync --push --message`
   command.
 - Add `--json` when a harness needs structured output.
 
@@ -48,7 +48,7 @@ Fleet work contract:
   frontmatter when known.
 - Treat support records as the incident/work log. Fleet records hold registry
   state; use `my fleet set` only for meaningful state transitions.
-- Publish the resulting content with `my sync`.
+- Publish the resulting content with `my sync --push`.
 
 Default layout:
 

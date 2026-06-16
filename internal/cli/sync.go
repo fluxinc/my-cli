@@ -26,18 +26,22 @@ func (a app) runSync(args []string) error {
 	var scope string
 	var message string
 	var printOnly bool
+	var push bool
 	var noDerived bool
+	var verbose bool
 	var jsonOut bool
 	fs := newFlagSet("my sync", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
 	fs.StringVar(&backend, "backend", "auto", "sync backend: auto, gnit, or builtin")
-	fs.StringVar(&publish, "publish", "auto", "publish mode: auto, never, direct, or pr")
+	fs.StringVar(&publish, "publish", "never", "explicit publish mode: auto, never, direct, or pr")
 	fs.StringVar(&scope, "scope", "all", "sync scope: all, local, content, manifest, or repos")
 	fs.StringVar(&message, "message", "", "commit message for newly committed content")
 	fs.BoolVar(&printOnly, "print", false, "print planned actions without changing files or remotes")
+	fs.BoolVar(&push, "push", false, "publish eligible local changes using the manifest policy or auto policy")
 	fs.BoolVar(&noDerived, "no-derived", false, "skip derived skill/guidance reconciliation after manifest changes")
+	fs.BoolVar(&verbose, "verbose", false, "show full human-readable sync detail")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
 	fs.Usage = func() {
 		a.printSyncUsage()
@@ -68,12 +72,16 @@ func (a app) runSync(args []string) error {
 		return fmt.Errorf("--scope must be one of all, local, content, manifest, or repos")
 	}
 	publishExplicit := flagWasSet(fs, "publish")
-	if !publishExplicit {
-		var err error
-		publish, err = a.defaultSyncPublish(home, manifestName, publish)
+	if push && publishExplicit {
+		return fmt.Errorf("--push and --publish cannot be combined")
+	}
+	if push {
+		publish, err = a.syncPushPublish(home, manifestName)
 		if err != nil {
 			return a.maybeJSONError(jsonOut, err)
 		}
+	} else if !publishExplicit {
+		publish = "never"
 	}
 	entries, err := a.collectSyncEntries(home, manifestName, umbrellaRoot, scope)
 	if err != nil {
@@ -105,8 +113,8 @@ func (a app) runSync(args []string) error {
 			effectiveBackend = "builtin"
 			if publish == "pr" {
 				backendMessage = "PR mode is handled by My AI/gh; Gnit remains the publish substrate after PR support lands"
-			} else {
-				backendMessage = "Gnit workspace not initialized; using My AI guard backend"
+			} else if publish != "never" {
+				backendMessage = "using built-in sync backend; initialize this umbrella as a Gnit control workspace only when coordinated multi-repo publishing is needed"
 			}
 		}
 	}
@@ -147,9 +155,12 @@ func (a app) runSync(args []string) error {
 			return err
 		}
 	} else {
-		a.printSyncReport(report)
+		a.printSyncReport(report, verbose, syncNextCommands{
+			Apply:  syncApplyCommand(push, publishExplicit, publish, message),
+			Review: syncReviewCommand(message),
+		})
 		if derived != nil {
-			a.printDerivedReconcileReport(*derived)
+			a.printDerivedReconcileReport(*derived, verbose)
 		}
 	}
 	if syncReportFailed(report) {
@@ -230,17 +241,18 @@ type syncCommandReport struct {
 
 func (a app) printSyncUsage() {
 	fmt.Fprintln(a.stderr, `Usage of my sync:
-  my sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
+  my sync [--backend auto|gnit|builtin] [--push|--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--verbose] [--json]
 
 Synchronizes registered My AI repositories in both directions. The default
 backend uses Gnit when the umbrella is a Gnit workspace; otherwise My AI uses a
-guarded Git fallback until bootstrap/canonicalization is complete. The default
-publish mode only pushes private content-only changes when sibling checkouts of
-the same remote are clean. Direct mode can push existing commits, but dirty
-non-content changes still require an explicit admin or review workflow.
-Non-print runs write .my-cli/last-sync.json when an umbrella is present. When a
-manifest checkout changes, sync also reconciles generated guidance and
-manifest skills unless --no-derived is passed.`)
+guarded Git fallback until bootstrap/canonicalization is complete. Bare my sync
+pulls/reconciles only and never publishes local changes. Use --push to publish
+eligible changes with the manifest policy (or auto policy when none is set), or
+--publish to choose an explicit publish mode. Direct mode can push existing
+commits, but dirty non-content changes still require an explicit admin or
+review workflow. Non-print runs write .my-cli/last-sync.json when an umbrella is
+present. When a manifest checkout changes, sync also reconciles generated
+guidance and manifest skills unless --no-derived is passed.`)
 }
 
 func syncScopeAllowsDerived(scope string) bool {
@@ -285,13 +297,13 @@ func syncManifestResultChanged(result syncer.Result) bool {
 	return len(result.Changed) != 0 && result.Status != "dry-run"
 }
 
-func (a app) defaultSyncPublish(home, manifestName, fallback string) (string, error) {
+func (a app) syncPushPublish(home, manifestName string) (string, error) {
 	doc, err := loadSingleRegisteredDoc(home, manifestName)
 	if err != nil {
-		return fallback, nil
+		return "auto", nil
 	}
 	if doc.doc.Sync.PublishPolicy == "" {
-		return fallback, nil
+		return "auto", nil
 	}
 	return doc.doc.Sync.PublishPolicy, nil
 }
@@ -486,8 +498,13 @@ func githubRepoSlug(gitURL string) (string, bool) {
 	}
 }
 
-func (a app) printSyncReport(report syncer.Report) {
-	if report.Backend != "" {
+type syncNextCommands struct {
+	Apply  string
+	Review string
+}
+
+func (a app) printSyncReport(report syncer.Report, verbose bool, next syncNextCommands) {
+	if verbose && report.Backend != "" {
 		line := "# backend: " + report.Backend
 		if report.GnitRoot != "" {
 			line += "\tgnit_root=" + report.GnitRoot
@@ -497,7 +514,12 @@ func (a app) printSyncReport(report syncer.Report) {
 		}
 		fmt.Fprintln(a.stdout, line)
 	}
+	visible := 0
 	for _, result := range report.Results {
+		if !syncResultVisible(result, verbose) {
+			continue
+		}
+		visible++
 		line := fmt.Sprintf("%s\t%s\t%s\t%s\t%s", result.Manifest, result.ID, result.Role, result.Status, result.LocalPath)
 		if result.Ahead != 0 || result.Behind != 0 {
 			line += fmt.Sprintf("\tahead=%d behind=%d", result.Ahead, result.Behind)
@@ -516,6 +538,69 @@ func (a app) printSyncReport(report syncer.Report) {
 		}
 		fmt.Fprintln(a.stdout, line)
 	}
+	if visible == 0 {
+		fmt.Fprintln(a.stdout, "up to date")
+	}
+	if label, command := syncNextStep(report, next); command != "" {
+		fmt.Fprintf(a.stdout, "next\t%s\t%s\n", label, command)
+	}
+}
+
+func syncResultVisible(result syncer.Result, verbose bool) bool {
+	if verbose {
+		return true
+	}
+	return result.Status != "already landed"
+}
+
+func syncNextStep(report syncer.Report, next syncNextCommands) (string, string) {
+	if report.Publish != "never" && report.DryRun && syncReportHasOutboundDryRun(report) {
+		return "apply", next.Apply
+	}
+	if report.Publish == "never" && syncReportHasPublishDisabledHold(report) {
+		return "review", next.Review
+	}
+	return "", ""
+}
+
+func syncApplyCommand(push, publishExplicit bool, publish, message string) string {
+	if push {
+		return appendSyncMessageFlag("my sync --push", message)
+	}
+	if publishExplicit && publish != "never" {
+		return appendSyncMessageFlag("my sync --publish "+publish, message)
+	}
+	return appendSyncMessageFlag("my sync --push", message)
+}
+
+func syncReviewCommand(message string) string {
+	return appendSyncMessageFlag("my sync --push --print", message)
+}
+
+func appendSyncMessageFlag(command, message string) string {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return command
+	}
+	return command + " --message " + shellQuote(message)
+}
+
+func syncReportHasOutboundDryRun(report syncer.Report) bool {
+	for _, result := range report.Results {
+		if result.Status == "dry-run" && result.Direction == "outbound" {
+			return true
+		}
+	}
+	return false
+}
+
+func syncReportHasPublishDisabledHold(report syncer.Report) bool {
+	for _, result := range report.Results {
+		if result.Status == "held back" && strings.Contains(result.Message, "publish disabled") {
+			return true
+		}
+	}
+	return false
 }
 
 func syncReportFailed(report syncer.Report) bool {

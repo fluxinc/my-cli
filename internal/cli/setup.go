@@ -76,7 +76,7 @@ func (a app) reconcileDerived(home, manifestName, root string) (derivedReconcile
 	return derivedReconcileReport{Guidance: guidanceResult, Skills: skillResults, MCP: mcpResult}, nil
 }
 
-func (a app) printDerivedReconcileReport(report derivedReconcileReport) {
+func (a app) printDerivedReconcileReport(report derivedReconcileReport, verbose bool) {
 	line := fmt.Sprintf("derived\tguidance\t%s\t%s", report.Guidance.Status, report.Guidance.TargetPath)
 	if report.Guidance.Message != "" {
 		line += "\t" + report.Guidance.Message
@@ -90,6 +90,9 @@ func (a app) printDerivedReconcileReport(report derivedReconcileReport) {
 		fmt.Fprintln(a.stdout, line)
 	}
 	for _, result := range report.Skills {
+		if !skillResultVisible(result, verbose) {
+			continue
+		}
 		line := fmt.Sprintf("derived-skill\t%s\t%s\t%s", result.Harness, result.Skill, result.Status)
 		if result.TargetPath != "" {
 			line += "\t" + result.TargetPath
@@ -136,6 +139,7 @@ func (a app) runSetup(args []string) error {
 	fs.BoolVar(&opts.force, "force", false, "replace non-My AI-managed targets")
 	fs.BoolVar(&opts.interactive, "interactive", false, "prompt for manifest and role choices")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
+	fs.BoolVar(&opts.verbose, "verbose", false, "show full human-readable setup detail")
 	fs.BoolVar(&opts.noRefresh, "no-refresh", false, "skip best-effort auto-refresh")
 	fs.BoolVar(&opts.noUpdateCheck, "no-update-check", false, "skip best-effort update notice")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
@@ -320,7 +324,7 @@ func (a app) runSetup(args []string) error {
 	a.printGuidanceResult(guidanceResult)
 	a.printMCPResult(mcpResult)
 	a.printWorkspaceResults(results)
-	if err := a.printResults(skillResults, false); err != nil {
+	if err := a.printSetupSkillResults(skillResults, opts.verbose); err != nil {
 		return err
 	}
 	if guidanceResult.Status == "blocked" || mcpResult.Status == "blocked" {
@@ -328,6 +332,39 @@ func (a app) runSetup(args []string) error {
 	}
 	a.printLaunchHints(root)
 	return nil
+}
+
+func (a app) printSetupSkillResults(results []skills.Result, verbose bool) error {
+	for _, r := range results {
+		if !skillResultVisible(r, verbose) {
+			continue
+		}
+		line := fmt.Sprintf("%s\t%s\t%s", r.Harness, r.Skill, r.Status)
+		if r.CanonicalID != "" {
+			line += "\t" + r.CanonicalID
+		}
+		if r.TargetPath != "" {
+			line += "\t" + r.TargetPath
+		}
+		if r.Message != "" {
+			line += "\t" + r.Message
+		}
+		if r.Err != nil {
+			line += "\t" + r.Err.Error()
+		}
+		fmt.Fprintln(a.stdout, line)
+	}
+	if resultsFailed(results) {
+		return fmt.Errorf("one or more operations failed")
+	}
+	return nil
+}
+
+func skillResultVisible(result skills.Result, verbose bool) bool {
+	if verbose {
+		return true
+	}
+	return result.Status != skills.StatusSkipped || result.Err != nil
 }
 
 type onboardOptions struct {
@@ -617,8 +654,8 @@ func onboardAgentLaunchArgs(opts onboardOptions, manifestName, root string, h ha
 func onboardAgentPrompt(branch, manifestName, root string) string {
 	var b strings.Builder
 	b.WriteString("You are this person's My AI onboarding assistant. Start by greeting them in one or two warm sentences, introduce yourself, and immediately begin a learn-by-example walkthrough.\n")
-	b.WriteString("Use the bundled `my` skill, section `Agent-Operated Onboarding`, as the source of truth. Tell the operator to open another terminal window or split pane, give them small command sets to run there, and pause after every set to ask whether it worked, whether there were errors, and whether they have questions before continuing. The human runs the commands; you guide and explain. Offer read-only verification only when the operator reports trouble or uncertainty, never as a hard gate.\n")
-	b.WriteString("Keep the walkthrough focused on basic human workflows: setup, launching harnesses, starting/resuming/finishing work sessions, `my sync --print`/`my sync`, and `my doctor`. Do not teach content-record, fleet, catalog, or full admin command surfaces during onboarding; humans can paste transcripts or raw context into harness chat and let agents operate deeper CLI surfaces.\n")
+	b.WriteString("Use the bundled `my` skill, section `Agent-Operated Onboarding`, as the source of truth. Tell the operator to open another terminal window or split pane, explicitly move it to the umbrella root with `cd \"$(my root)\"` or the provided umbrella path, give them small command sets to run there, and pause after every set to ask whether it worked, whether there were errors, and whether they have questions before continuing. The human runs the commands; you guide and explain. Offer read-only verification only when the operator reports trouble or uncertainty, never as a hard gate.\n")
+	b.WriteString("Keep the walkthrough focused on basic human workflows: setup, launching harnesses, starting/resuming/finishing work sessions, `my sync`, `my sync --push --print`/`my sync --push`, and `my doctor`. Do not teach content-record, fleet, catalog, or full admin command surfaces during onboarding; humans can paste transcripts or raw context into harness chat and let agents operate deeper CLI surfaces.\n")
 	switch branch {
 	case "AUTHOR":
 		b.WriteString("Branch: AUTHOR. No My AI manifest is registered for this invocation. Guide the operator through authoring a new organization one small command set at a time, and present `my init` only after explicit human approval.\n")
@@ -638,7 +675,7 @@ func onboardAgentPrompt(branch, manifestName, root string) string {
 	default:
 		b.WriteString("Branch: detect from the registered manifest state.\n")
 	}
-	b.WriteString("Hard rules: use validated `my` commands rather than hand-editing manifests or generated files; never collect or store literal secrets; run validation/doctor/compile gates before publish; run `my publish --print` and get explicit human approval before any real `my publish`.")
+	b.WriteString("Hard rules: use validated `my` commands rather than hand-editing manifests or generated files; never collect or store literal secrets; if the operator says to file an issue, treat that as authorization to file a public-safe project issue and do not substitute a personal scratch or memory note unless the target repo or privacy boundary is ambiguous; run validation/doctor/compile gates before publish; run `my publish --print` and get explicit human approval before any real `my publish`.")
 	return b.String()
 }
 

@@ -10,9 +10,10 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
 - **`my sync`** converges the whole workspace. It pulls every registered
   repository (manifest cache, content mounts, catalog repo clones), reconciles
   generated guidance, umbrella MCP config, and launch-scoped skill notices when
-  the manifest changed, and publishes local content that is safe to publish.
-  This is the one routine verb — when a startup notice says something is stale
-  or unpublished, run this.
+  the manifest changed, and never publishes local changes unless the operator
+  passes `--push` or an explicit `--publish` mode. This is the one routine verb
+  for stale inbound state; use `my sync --push --print` then `my sync --push`
+  when local changes should be shared.
 - **`my doctor`** is the dry run for installation and workspace repair: it
   diagnoses manifest validity, per-checkout Git freshness, derived
   guidance/MCP drift, legacy global org-skill drift, service materialization
@@ -34,10 +35,10 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
 my init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
 my publish [--manifest NAME] [--home DIR] [--print] [--json]
 my onboarding [--agent|--no-agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-my setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+my setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--verbose] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 my root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
-my sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
+my sync [--backend auto|gnit|builtin] [--push|--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--verbose] [--json]
 my doctor [--no-fetch] [--fix] [--json]
 my update [--check] [--version X.Y.Z] [--json] [--yes]
 my version
@@ -133,7 +134,7 @@ my work start [--slug SLUG] [--json]
 my work status [--all] [--json]
 my work list [--all] [--json]
 my work resume [session-id] [--json]
-my work finish [session-id] --land|--publish|--discard [--message TEXT] [--json]
+my work finish [session-id] --land|--publish|--discard [--message TEXT] [--verbose] [--json]
 ```
 
 ## Content and diagnostics
@@ -172,17 +173,19 @@ my contract list [--manifest NAME] [--home DIR] [--json]
 my compile --role <id> [--manifest NAME] [--home DIR]
 ```
 
-`my sync` is the routine reconciliation command. `--backend auto` prefers Gnit
-when the umbrella is initialized as a Gnit control workspace; My AI keeps the
-bootstrap, policy, duplicate-remote, and PR layers. `--publish direct` can
-publish existing local commits directly, but dirty non-content/admin files are
-still held back for explicit admin or review handling. Plain untracked (`??`)
-files under declared content paths are also held; create records with
-`my meetings add`, `my support add`, or `my fleet add`, or run
-`my record adopt <path>` to mark a manually created file as intentional
-publish content. A manifest can set top-level `sync.publish_policy` to `auto`,
-`never`, or `pr` as the default when `--publish` is omitted; an explicit CLI
-flag always wins. Non-print syncs write `.my-cli/last-sync.json`; `my doctor`
+`my sync` is the routine pull/reconcile command. Bare `my sync` never publishes
+local changes. `--backend auto` prefers Gnit when the umbrella is initialized as
+a Gnit control workspace; My AI keeps the bootstrap, policy, duplicate-remote,
+and PR layers. `my sync --push` publishes eligible local changes per manifest
+policy; `--publish direct` can publish existing local commits directly, but
+dirty non-content/admin files are still held back for explicit admin or review
+handling. Plain untracked (`??`) files under declared content paths are also
+held; create records with `my meetings add`, `my support add`, or
+`my fleet add`, or run `my record adopt <path>` to mark a manually created file
+as intentional publish content. A manifest can set top-level
+`sync.publish_policy` to `auto`, `never`, or `pr` as the mode for `--push`; an
+explicit `--publish` flag always wins. Non-print syncs write
+`.my-cli/last-sync.json`; `my doctor`
 reports that audit, per-checkout Git freshness, active and archived work
 sessions, service health, derived guidance/MCP drift, and legacy global
 org-skill drift. Doctor fetches

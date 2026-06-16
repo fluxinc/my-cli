@@ -212,12 +212,15 @@ func TestBundledOnboardingSkillUsesLearnByExampleBasics(t *testing.T) {
 	for _, want := range []string{
 		"learn-by-example walkthrough",
 		"second terminal window",
-		"The operator runs the commands",
+		"operator runs the",
 		"After every set, stop",
 		"my ai --new-session <harness>",
 		"my ai -r <session-id> <harness>",
 		"my work finish <session-id> --land",
-		"my sync --print",
+		`cd "$(my root)"`,
+		"my sync --push --print",
+		"file an issue",
+		"personal scratch note",
 		"paste it into the harness conversation",
 	} {
 		if !strings.Contains(section, want) {

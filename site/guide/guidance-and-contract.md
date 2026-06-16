@@ -44,7 +44,7 @@ to support records:
   with repeated `--identifier` flags.
 - Treat support records as the incident/work log; fleet records hold registry
   state, updated with `my fleet set` only for meaningful transitions.
-- Publish the resulting content with `my sync`.
+- Publish the resulting content with `my sync --push`.
 
 `my fleet get` reinforces this at the moment it matters: its human output
 ends with a ready-to-run `my support add` command seeded with the customer

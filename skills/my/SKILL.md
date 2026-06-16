@@ -83,8 +83,8 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
   `my compile`, `my root`,
   `my ai`, `my doctor`, `my manifests list`, `my mounts list`,
   `my work start/status/list/resume/finish` (sessions are local execution-plane
-  state; `finish --publish` only publishes what the sync policy allows), and
-  `my sync --print`.
+  state; `finish --publish` only publishes what the sync policy allows),
+  `my sync`, and `my sync --print`.
   `my update --check` is also safe for inspection. Run `my update` itself
   only when the user explicitly asks to update the local CLI binary.
 - **Admin** commands mutate the shared source of truth (the manifest,
@@ -280,17 +280,22 @@ my roles list|get                # manifest-declared operating roles
 my contract list                 # binding organization contract rules
 ```
 
-## Sync: reconcile and publish
+## Sync: reconcile, review, and publish
 
-`my sync` is the routine "make this workspace current and publish what is safe
-to publish" command. It pulls inbound updates and, by default (`--publish
-auto`), direct-pushes only **private, content-only** changes (e.g. new meeting
-notes or support records); manifest/catalog/admin changes, public repos,
-divergent branches, and unsafe duplicate-remote checkouts are held back.
+`my sync` is the routine "make this workspace current" command. Bare `my sync`
+pulls inbound updates and reconciles local guard state; it never publishes local
+changes. Publishing requires an explicit operator action: use `my sync --push`
+to publish eligible local changes according to the manifest policy (or the
+default auto policy when none is set). Auto policy only direct-pushes **private,
+content-only** changes (e.g. new meeting notes or support records);
+manifest/catalog/admin changes, public repos, divergent branches, and unsafe
+duplicate-remote checkouts are held back.
 
 ```sh
-my sync --print                  # plan only: show what would pull/push/hold (always safe)
-my sync                          # reconcile + publish per the auto policy
+my sync                          # pull/reconcile only; never publishes local changes
+my sync --print                  # plan the pull-only default
+my sync --push --print           # preview explicit publish work
+my sync --push                   # publish eligible local changes per policy
 my sync --scope repos            # limit to catalog repo clones (all|local|content|manifest|repos)
 my sync --no-derived             # skip derived guidance/MCP/skill reconcile after manifest changes
 my sync --publish never          # explicit local-only reconcile
@@ -298,7 +303,7 @@ my sync --publish pr             # currently holds changes and reports PR-mode f
 ```
 
 Plain untracked (`??`) files under declared content paths are held instead of
-auto-published. Use `my meetings add`, `my support add`, or `my fleet add`
+being published. Use `my meetings add`, `my support add`, or `my fleet add`
 for new records; those commands mark the created file with Git intent-to-add.
 For a manually created file that should publish, run `my record adopt <path>`
 after checking that it belongs in the shared content repo. Explicit `git add`
@@ -313,8 +318,9 @@ During interactive onboarding, if an existing launch-scope skill entry collides
 with the selected manifest skill, the CLI asks whether to replace or skip it and
 then continues. Treat this as an operator choice, not a fatal setup condition.
 
-Rule of thumb for the three similar verbs: `my sync` converges everything
-(use it by default); `my doctor` is the repair dry run — it diagnoses,
+Rule of thumb for the similar verbs: `my sync` converges inbound state and
+local guards (use it by default); `my sync --push` is the explicit publish
+step; `my doctor` is the repair dry run — it diagnoses,
 marks each repairable finding with `would ...`, and prints a fixable count,
 while `my doctor --fix` applies exactly that plan; `my manifests sync`
 refreshes the registered manifest checkout. Use `my manifests sync` before an
@@ -322,13 +328,14 @@ umbrella exists or for multi-manifest administration; when exactly one
 manifest changes and an umbrella is known, it also reconciles generated
 guidance, umbrella `.mcp.json`, and launch-scoped skill notices.
 
-`my sync` uses **Gnit** as its multi-repo publish backend once the umbrella is
-a Gnit control workspace; otherwise it uses a guarded built-in Git path. Run
-`my sync --print` first to see the plan before publishing. GitHub PR creation
-is a My AI policy layer planned on top of Gnit and `gh`; it is not implemented in
-the current CLI yet. A manifest can set top-level `sync.publish_policy` to
-`auto`, `never`, or `pr` as the default when `--publish` is omitted; an
-explicit CLI flag always wins. A non-print sync writes `.my-cli/last-sync.json`;
+`my sync --push` uses **Gnit** as its multi-repo publish backend once the
+umbrella is a Gnit control workspace; otherwise it uses a guarded built-in Git
+path. Run `my sync --push --print` first to see the explicit publish plan.
+GitHub PR creation is a My AI policy layer planned on top of Gnit and `gh`; it
+is not implemented in the current CLI yet. A manifest can set top-level
+`sync.publish_policy` to `auto`, `never`, or `pr` as the default mode for
+`--push`; an explicit `--publish` flag always wins. Bare `my sync` ignores that
+policy and stays pull-only. A non-print sync writes `.my-cli/last-sync.json`;
 use `my doctor` to review the last publish/sync audit. `my doctor` fetches
 refs before reporting behind/ahead counts by default; pass `--no-fetch` for an
 offline view labeled as of the last fetch. It also reports service
@@ -346,10 +353,12 @@ them.
 When a harness is launched via `my onboarding`, you are the onboarding
 assistant. Start by greeting the operator and immediately begin a
 learn-by-example walkthrough. Tell the operator to open a second terminal window
-or split pane in the same starting directory. The operator runs the commands;
-you guide, explain, and pace the tour. Build or join the organization **only
-through the validated `my` commands** below - never by hand-editing the manifest
-or any generated file.
+or split pane, then explicitly move it to the umbrella root with
+`cd "$(my root)"` once a registered manifest/root exists. Do not assume the
+operator's current directory is already the umbrella. The operator runs the
+commands; you guide, explain, and pace the tour. Build or join the organization
+**only through the validated `my` commands** below - never by hand-editing the
+manifest or any generated file.
 
 **Walkthrough discipline.** Present one small command set at a time, usually one
 to three commands in a fenced `sh` block. Before the block, say in one short
@@ -363,6 +372,11 @@ offer a read-only verification step such as `my doctor`, `my root`,
 `my manifests list --json`, or inspecting generated state. Verification is
 optional support, not a hard gate; the normal path is ask-and-proceed.
 
+**Issue filing.** If the operator says to file an issue about a generic,
+public-safe CLI problem, treat that as authorization to file it in the project
+tracker. Do not write a personal scratch note or memory as a substitute. Ask at
+most once when the target repository or privacy boundary is genuinely ambiguous.
+
 **One adaptive flow.** Detect state first, then branch. Start with a command set
 for the operator:
 
@@ -373,7 +387,8 @@ my manifests list --json
 With **no manifest registered**, take the **AUTHOR** branch (create a new org).
 With a **manifest already registered**, take the **JOIN** branch (set this
 person up against the existing org). When a manifest exists, have the operator
-run `my root` to find the umbrella; if it fails, JOIN still applies but setup is
+run `my root` to find the umbrella; if it succeeds, the next command set starts
+with `cd "$(my root)"`. If `my root` fails, JOIN still applies but setup is
 needed. A returning admin may also want AUTHOR-style edits on an existing
 manifest — offer that when it fits.
 
@@ -413,6 +428,7 @@ normal harness conversation after the operator is oriented.
 3. Teach the everyday harness/session loop from the new umbrella:
 
    ```sh
+   cd "$(my root)"
    my ai <harness>
    my ai --new-session <harness>
    my work status
@@ -429,6 +445,7 @@ normal harness conversation after the operator is oriented.
 1. Have the operator inspect the basic workspace state, then summarize it back:
 
    ```sh
+   cd "$(my root)"
    my mounts list
    my doctor
    ```
@@ -448,7 +465,7 @@ normal harness conversation after the operator is oriented.
 3. Teach the basic daily loop in small sets:
 
    ```sh
-   my sync --publish never
+   my sync
    my ai <harness>
    ```
 
@@ -464,8 +481,8 @@ normal harness conversation after the operator is oriented.
    Then:
 
    ```sh
-   my sync --print
-   my sync
+   my sync --push --print
+   my sync --push
    ```
 
 4. Explain the operator/agent split: humans provide intent and raw context in
@@ -505,7 +522,7 @@ normal harness conversation after the operator is oriented.
 - Data-returning commands accept `--json`; structured errors carry a concrete
   remediation command — read it and follow it.
 - To record what happened in a meeting, use `my meetings add` and then
-  `my sync` to publish it, rather than editing files and pushing by hand.
+  `my sync --push` to publish it, rather than editing files and pushing by hand.
 - To record a resolved support problem, use `my support add` with anonymized
   body text; put linkable attribution in frontmatter — the canonical customer
   ID, every applicable device, order, or asset identifier (`--identifier`,
@@ -520,7 +537,7 @@ normal harness conversation after the operator is oriented.
   anonymized one with `my support add`; put the fleet record id and every
   useful device, order, or asset identifier on the support record with repeated
   `--identifier` flags. Record workflow transitions with `my fleet set <id>
-  status=<value>`, then publish with the suggested `my sync --message`
+  status=<value>`, then publish with the suggested `my sync --push --message`
   command so each transition stays a readable git commit.
 - This skill is installed and kept current by the `my` CLI itself; do not
   hand-edit the installed copy.

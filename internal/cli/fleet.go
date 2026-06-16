@@ -48,7 +48,7 @@ order, functional location, or serial from the record's identifiers list —
 and reports related support records that share an identifier. set updates
 scalar frontmatter fields in place (for example status=live) and preserves
 every other line; state history is the record's git history, so publish each
-meaningful transition with my sync --message. status vocabulary is
+	meaningful transition with my sync --push --message. status vocabulary is
 organization-defined. --where filters on any top-level frontmatter field.`)
 }
 
@@ -296,7 +296,7 @@ func (a app) runFleetSet(args []string) error {
 		for _, change := range changes {
 			parts = append(parts, change.Key+"="+change.New)
 		}
-		syncCommand = fmt.Sprintf("my sync --message %s", shellQuote(fmt.Sprintf("Update fleet %s: %s", rec.ID, strings.Join(parts, ", "))))
+		syncCommand = fmt.Sprintf("my sync --push --message %s", shellQuote(fmt.Sprintf("Update fleet %s: %s", rec.ID, strings.Join(parts, ", "))))
 	}
 	if opts.jsonOut {
 		return printJSON(a.stdout, struct {
