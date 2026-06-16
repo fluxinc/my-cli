@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.32.1 - 2026-06-16
+
+### Fixed
+
+- Release CI: CLI Git test clones now get a local commit identity, so the test
+  suite that goreleaser runs no longer fails on runners without a global Git
+  identity. (v0.32.0 was tagged but failed to publish for this reason.)
+
+### Changed
+
+- Docs site: the header and homepage hero now use the text wordmark `> my ai`
+  instead of an image logo.
+
 ## 0.32.0 - 2026-06-16
 
 ### Changed
