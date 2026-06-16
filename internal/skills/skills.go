@@ -15,15 +15,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/bundle"
-	"github.com/fluxinc/our-ai/internal/harness"
+	"github.com/fluxinc/my-cli/internal/bundle"
+	"github.com/fluxinc/my-cli/internal/harness"
 )
 
 type Skill struct {
 	Name        string   // portable install slug / directory name
 	SkillName   string   // SKILL.md `name:` field
 	SourcePath  string   // absolute path to the skill directory
-	SourceRoot  string   // root considered Our AI-managed for provenance
+	SourceRoot  string   // root considered My AI-managed for provenance
 	CanonicalID string   // manifest namespace:name identity, when known
 	Description string   // first line / folded scalar from SKILL.md
 	Requires    []string // manifest workspace:/tool:/service: dependencies
@@ -204,7 +204,7 @@ type InstallOpts struct {
 	DryRun      bool     // print plan only
 	SkipMissing bool     // skip harnesses whose config dir doesn't exist
 	Home        string   // override; defaults to os.UserHomeDir()
-	Force       bool     // replace/remove non-Our AI-managed targets
+	Force       bool     // replace/remove non-My AI-managed targets
 	SourceRoot  string   // resolved skills source root for provenance checks
 	SourceRoots []string // additional managed source roots
 	Scope       string   // provenance scope: manual, launch, or empty legacy
@@ -270,9 +270,9 @@ func Install(s Skill, h harness.Harness, opts InstallOpts) Result {
 	info, err := os.Lstat(target)
 	if err == nil {
 		updated = true
-		if !opts.Force && !isOurManagedTarget(target, info, managedSourceRoots(sourceRootFor(s, opts), opts.SourceRoots, home)) {
+		if !opts.Force && !isMyManagedTarget(target, info, managedSourceRoots(sourceRootFor(s, opts), opts.SourceRoots, home)) {
 			res.Status = StatusBlocked
-			res.Message = "target exists and is not Our AI-managed; re-run with --force to replace it"
+			res.Message = "target exists and is not My AI-managed; re-run with --force to replace it"
 			return res
 		}
 	} else if !errors.Is(err, fs.ErrNotExist) {
@@ -361,9 +361,9 @@ func Uninstall(skillName string, h harness.Harness, opts InstallOpts) Result {
 		return res
 	}
 
-	if !opts.Force && !isOurManagedTarget(target, info, managedSourceRoots(opts.SourceRoot, opts.SourceRoots, home)) {
+	if !opts.Force && !isMyManagedTarget(target, info, managedSourceRoots(opts.SourceRoot, opts.SourceRoots, home)) {
 		res.Status = StatusBlocked
-		res.Message = "target exists and is not Our AI-managed; re-run with --force to remove it"
+		res.Message = "target exists and is not My AI-managed; re-run with --force to remove it"
 		return res
 	}
 
@@ -526,7 +526,7 @@ func ListInstalled(h harness.Harness, opts InstallOpts) ([]InstalledSkill, error
 				installed.Scope = indexed.Scope
 			}
 		}
-		installed.Managed = isOurManagedTarget(target, info, sourceRoots)
+		installed.Managed = isMyManagedTarget(target, info, sourceRoots)
 		out = append(out, installed)
 	}
 	return out, nil
@@ -544,8 +544,8 @@ func sourceRootFor(s Skill, opts InstallOpts) string {
 
 func managedSourceRoots(sourceRoot string, sourceRoots []string, home string) []string {
 	roots := []string{
-		filepath.Join(home, ".local", "share", "our", "skills"),
-		filepath.Join(home, ".local", "share", "our-ai", "skills"),
+		filepath.Join(home, ".local", "share", "my-cli", "skills"),
+		filepath.Join(home, ".local", "share", "my-cli", "skills"),
 	}
 	if sourceRoot != "" {
 		roots = append(roots, sourceRoot)
@@ -554,7 +554,7 @@ func managedSourceRoots(sourceRoot string, sourceRoots []string, home string) []
 	return roots
 }
 
-func isOurManagedTarget(target string, info fs.FileInfo, sourceRoots []string) bool {
+func isMyManagedTarget(target string, info fs.FileInfo, sourceRoots []string) bool {
 	if info.Mode()&os.ModeSymlink != 0 {
 		link, err := os.Readlink(target)
 		if err != nil {
@@ -587,7 +587,7 @@ func readManagedMarker(dir string) (bundle.Marker, bool) {
 	if err := json.Unmarshal(data, &marker); err != nil {
 		return bundle.Marker{}, false
 	}
-	if marker.Installer != "our" && marker.Installer != "our-ai" {
+	if marker.Installer != "my" && marker.Installer != "my-cli" {
 		return bundle.Marker{}, false
 	}
 	return marker, true
@@ -635,7 +635,7 @@ func sameFilesystemPath(a, b string) bool {
 
 func writeManagedMarker(dir, mode, source, canonicalID, scope string) error {
 	marker := bundle.Marker{
-		Installer:   "our",
+		Installer:   "my",
 		Version:     bundle.Version(),
 		Mode:        mode,
 		Source:      source,
@@ -671,7 +671,7 @@ func readManagedIndex(dir string) managedIndex {
 	if err := json.Unmarshal(data, &index); err != nil {
 		return managedIndex{Skills: map[string]managedIndexItem{}}
 	}
-	if index.Installer != "our" && index.Installer != "our-ai" {
+	if index.Installer != "my" && index.Installer != "my-cli" {
 		return managedIndex{Skills: map[string]managedIndexItem{}}
 	}
 	if index.Mode != "index" {
@@ -685,7 +685,7 @@ func readManagedIndex(dir string) managedIndex {
 
 func updateManagedIndex(dir, skillName, canonicalID, scope string) error {
 	index := readManagedIndex(dir)
-	index.Installer = "our"
+	index.Installer = "my"
 	index.Version = bundle.Version()
 	index.Mode = "index"
 	if index.Skills == nil {

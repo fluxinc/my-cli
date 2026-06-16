@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 // setupCLIRepoCatalog builds a registered manifest with one catalog repo
@@ -17,7 +17,7 @@ import (
 func setupCLIRepoCatalog(t *testing.T) (home, umbrellaRoot, remote string) {
 	t.Helper()
 	home = t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	umbrellaRoot = filepath.Join(home, "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
@@ -46,7 +46,7 @@ func setupCLIRepoCatalog(t *testing.T) (home, umbrellaRoot, remote string) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -60,7 +60,7 @@ func TestReposAddClonesAndRecordsSelection(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 
-	if err := a.run([]string{"our", "repos", "add", "sample-service", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "repos", "add", "sample-service", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatalf("repos add: %v\nstderr: %s", err, stderr.String())
 	}
 	clone := filepath.Join(umbrellaRoot, "repos", "sample-service")
@@ -92,7 +92,7 @@ func TestReposAddAdoptsExistingMatchingClone(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "repos", "add", "sample-service", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "repos", "add", "sample-service", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatalf("repos add over existing clone: %v\nstderr: %s", err, stderr.String())
 	}
 	state, err := umbrella.LoadState(umbrellaRoot)
@@ -115,7 +115,7 @@ func TestReposAddRejectsMismatchedRemote(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	err := a.run([]string{"our", "repos", "add", "sample-service", "--home", home, "--umbrella", umbrellaRoot})
+	err := a.run([]string{"my", "repos", "add", "sample-service", "--home", home, "--umbrella", umbrellaRoot})
 	if err == nil || !strings.Contains(err.Error(), "tracks") {
 		t.Fatalf("err = %v, want remote mismatch", err)
 	}
@@ -125,11 +125,11 @@ func TestReposListReportsCatalogAndCloneState(t *testing.T) {
 	home, umbrellaRoot, _ := setupCLIRepoCatalog(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "repos", "add", "sample-service", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "repos", "add", "sample-service", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	stdout.Reset()
-	if err := a.run([]string{"our", "repos", "list", "--home", home, "--umbrella", umbrellaRoot, "--json"}); err != nil {
+	if err := a.run([]string{"my", "repos", "list", "--home", home, "--umbrella", umbrellaRoot, "--json"}); err != nil {
 		t.Fatalf("repos list: %v\nstderr: %s", err, stderr.String())
 	}
 	var entries []struct {
@@ -147,7 +147,7 @@ func TestReposListReportsCatalogAndCloneState(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "repos", "list", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "repos", "list", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "sample-service") {
@@ -159,12 +159,12 @@ func TestReposRemoveDeselectsAndKeepsCloneWithoutForce(t *testing.T) {
 	home, umbrellaRoot, _ := setupCLIRepoCatalog(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "repos", "add", "sample-service", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "repos", "add", "sample-service", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	clone := filepath.Join(umbrellaRoot, "repos", "sample-service")
 
-	if err := a.run([]string{"our", "repos", "remove", "sample-service", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "repos", "remove", "sample-service", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatalf("repos remove: %v\nstderr: %s", err, stderr.String())
 	}
 	state, err := umbrella.LoadState(umbrellaRoot)
@@ -178,7 +178,7 @@ func TestReposRemoveDeselectsAndKeepsCloneWithoutForce(t *testing.T) {
 		t.Fatalf("clone deleted without --force: %v", err)
 	}
 
-	if err := a.run([]string{"our", "repos", "remove", "sample-service", "--force", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "repos", "remove", "sample-service", "--force", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatalf("repos remove --force: %v\nstderr: %s", err, stderr.String())
 	}
 	if _, err := os.Stat(clone); !os.IsNotExist(err) {
@@ -188,7 +188,7 @@ func TestReposRemoveDeselectsAndKeepsCloneWithoutForce(t *testing.T) {
 
 func TestSetupClonesDefaultRepos(t *testing.T) {
 	home, umbrellaRoot, remote := setupCLIRepoCatalog(t)
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "repos.json"), `[
   {
     "id": "sample-service",
@@ -200,7 +200,7 @@ func TestSetupClonesDefaultRepos(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "setup", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "setup", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatalf("setup: %v\nstderr: %s", err, stderr.String())
 	}
 	if _, err := os.Stat(filepath.Join(umbrellaRoot, "repos", "sample-service", "main.go")); err != nil {
@@ -219,7 +219,7 @@ func TestRootProductFlagRemoved(t *testing.T) {
 	home, umbrellaRoot, _ := setupCLIRepoCatalog(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	err := a.run([]string{"our", "root", "--product", "sample-service", "--home", home, "--umbrella", umbrellaRoot})
+	err := a.run([]string{"my", "root", "--product", "sample-service", "--home", home, "--umbrella", umbrellaRoot})
 	if !errors.Is(err, errAlreadyPrinted) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}

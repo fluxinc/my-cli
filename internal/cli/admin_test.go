@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 func TestAdminSkillsAddCopiesAndDeclares(t *testing.T) {
@@ -20,7 +20,7 @@ func TestAdminSkillsAddCopiesAndDeclares(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "admin", "skills", "add", skillDir,
+		"my", "admin", "skills", "add", skillDir,
 		"--id", "acme:demo-skill",
 		"--manifest-dir", manifestDir,
 	}); err != nil {
@@ -53,7 +53,7 @@ func TestAdminSkillsAddHarnessVisibleSourceRequiresChoice(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	err := a.run([]string{
-		"our", "admin", "skills", "add", skillDir,
+		"my", "admin", "skills", "add", skillDir,
 		"--id", "acme:demo-skill",
 		"--manifest-dir", manifestDir,
 	})
@@ -62,7 +62,7 @@ func TestAdminSkillsAddHarnessVisibleSourceRequiresChoice(t *testing.T) {
 	}
 
 	if err := a.run([]string{
-		"our", "admin", "skills", "add", skillDir,
+		"my", "admin", "skills", "add", skillDir,
 		"--id", "acme:demo-skill",
 		"--manifest-dir", manifestDir,
 		"--remove-original",
@@ -93,7 +93,7 @@ func TestAdminSkillsRemoveBlocksThenPrunesRelatedProducts(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	err := a.run([]string{
-		"our", "admin", "skills", "remove", "acme:demo-skill",
+		"my", "admin", "skills", "remove", "acme:demo-skill",
 		"--manifest-dir", manifestDir,
 	})
 	if err == nil || !strings.Contains(err.Error(), "related_skills") {
@@ -103,7 +103,7 @@ func TestAdminSkillsRemoveBlocksThenPrunesRelatedProducts(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	if err := a.run([]string{
-		"our", "admin", "skills", "remove", "demo-skill",
+		"my", "admin", "skills", "remove", "demo-skill",
 		"--manifest-dir", manifestDir,
 		"--prune-related",
 		"--delete-source",
@@ -176,7 +176,7 @@ func TestAdminSkillsRemoveReportsAndPrunesOrphanDependencies(t *testing.T) {
 		var stdout, stderr bytes.Buffer
 		a := app{stdout: &stdout, stderr: &stderr}
 		if err := a.run([]string{
-			"our", "admin", "skills", "remove", "spark:use-spark",
+			"my", "admin", "skills", "remove", "spark:use-spark",
 			"--manifest-dir", manifestDir,
 			"--json",
 		}); err != nil {
@@ -203,7 +203,7 @@ func TestAdminSkillsRemoveReportsAndPrunesOrphanDependencies(t *testing.T) {
 		var stdout, stderr bytes.Buffer
 		a := app{stdout: &stdout, stderr: &stderr}
 		if err := a.run([]string{
-			"our", "admin", "skills", "remove", "spark:use-spark",
+			"my", "admin", "skills", "remove", "spark:use-spark",
 			"--manifest-dir", manifestDir,
 			"--prune-orphans",
 			"--json",
@@ -244,7 +244,7 @@ func TestAdminSkillsDirtyCheckoutRequiresForce(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	err := a.run([]string{
-		"our", "admin", "skills", "add", skillDir,
+		"my", "admin", "skills", "add", skillDir,
 		"--id", "acme:demo-skill",
 		"--manifest-dir", manifestDir,
 	})
@@ -253,7 +253,7 @@ func TestAdminSkillsDirtyCheckoutRequiresForce(t *testing.T) {
 	}
 
 	if err := a.run([]string{
-		"our", "admin", "skills", "add", skillDir,
+		"my", "admin", "skills", "add", skillDir,
 		"--id", "acme:demo-skill",
 		"--manifest-dir", manifestDir,
 		"--force",
@@ -269,7 +269,7 @@ func TestAdminToolsAddEditRemove(t *testing.T) {
 		var stdout, stderr bytes.Buffer
 		a := app{stdout: &stdout, stderr: &stderr}
 		if err := a.run([]string{
-			"our", "admin", "tools", "add", "gnit",
+			"my", "admin", "tools", "add", "gnit",
 			"--manifest-dir", manifestDir,
 			"--mode", "required",
 			"--purpose", "Multi-repo workspace publishing",
@@ -289,7 +289,7 @@ func TestAdminToolsAddEditRemove(t *testing.T) {
 
 		stdout.Reset()
 		if err := a.run([]string{
-			"our", "admin", "tools", "edit", "gnit",
+			"my", "admin", "tools", "edit", "gnit",
 			"--manifest-dir", manifestDir,
 			"--purpose", "Gnit workspace publishing",
 			"--clear-install-commands",
@@ -327,7 +327,7 @@ func TestAdminToolsAddEditRemove(t *testing.T) {
 		var stdout, stderr bytes.Buffer
 		a := app{stdout: &stdout, stderr: &stderr}
 		err := a.run([]string{
-			"our", "admin", "tools", "remove", "gnit",
+			"my", "admin", "tools", "remove", "gnit",
 			"--manifest-dir", manifestDir,
 		})
 		if err == nil || !strings.Contains(err.Error(), "referenced by skills") {
@@ -348,7 +348,7 @@ func TestAdminToolsAddEditRemove(t *testing.T) {
 		var stdout, stderr bytes.Buffer
 		a := app{stdout: &stdout, stderr: &stderr}
 		if err := a.run([]string{
-			"our", "admin", "tools", "remove", "gnit",
+			"my", "admin", "tools", "remove", "gnit",
 			"--manifest-dir", manifestDir,
 			"--json",
 		}); err != nil {
@@ -374,7 +374,7 @@ func TestAdminToolsAddEditRemove(t *testing.T) {
 func TestAdminCustomersRemoved(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	err := a.run([]string{"our", "admin", "customers", "add", "sampleco.example.com", "--manifest-dir", t.TempDir()})
+	err := a.run([]string{"my", "admin", "customers", "add", "sampleco.example.com", "--manifest-dir", t.TempDir()})
 	if err == nil || !strings.Contains(err.Error(), `unknown admin subcommand "customers"`) {
 		t.Fatalf("err = %v", err)
 	}
@@ -382,7 +382,7 @@ func TestAdminCustomersRemoved(t *testing.T) {
 
 func TestAdminRoutingDelegatesToTopLevelHandlers(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -399,11 +399,11 @@ func TestAdminRoutingDelegatesToTopLevelHandlers(t *testing.T) {
     {
       "id": "handbook",
       "git_url": "https://github.com/acme/acme-handbook.git",
-      "local_path": "~/.our/workspaces/handbook"
+      "local_path": "~/.my-cli/workspaces/handbook"
     }
   ]
 }`)
-	writeCLITestFile(t, filepath.Join(home, ".our", "workspaces", "handbook", "meetings", ".keep"), "")
+	writeCLITestFile(t, filepath.Join(home, ".my-cli", "workspaces", "handbook", "meetings", ".keep"), "")
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
@@ -412,14 +412,14 @@ func TestAdminRoutingDelegatesToTopLevelHandlers(t *testing.T) {
 	t.Run("manifest add alias", func(t *testing.T) {
 		stdout.Reset()
 		if err := a.run([]string{
-			"our", "admin", "manifests", "add", "extra",
+			"my", "admin", "manifests", "add", "extra",
 			"https://github.com/acme/extra-manifest.git",
 			"--home", home,
 		}); err != nil {
-			t.Fatalf("our admin manifests add err = %v", err)
+			t.Fatalf("my admin manifests add err = %v", err)
 		}
 		stdout.Reset()
-		if err := a.run([]string{"our", "manifests", "list", "--home", home}); err != nil {
+		if err := a.run([]string{"my", "manifests", "list", "--home", home}); err != nil {
 			t.Fatal(err)
 		}
 		if !strings.Contains(stdout.String(), "extra-manifest") {
@@ -429,8 +429,8 @@ func TestAdminRoutingDelegatesToTopLevelHandlers(t *testing.T) {
 
 	t.Run("mount add alias", func(t *testing.T) {
 		stdout.Reset()
-		if err := a.run([]string{"our", "admin", "mounts", "add", "meetings:leadership", "--manifest", "acme", "--home", home, "--print"}); err != nil {
-			t.Fatalf("our admin mounts add err = %v", err)
+		if err := a.run([]string{"my", "admin", "mounts", "add", "meetings:leadership", "--manifest", "acme", "--home", home, "--print"}); err != nil {
+			t.Fatalf("my admin mounts add err = %v", err)
 		}
 		if !strings.Contains(stdout.String(), "leadership\tdry-run") {
 			t.Fatalf("mount add stdout = %q", stdout.String())
@@ -440,7 +440,7 @@ func TestAdminRoutingDelegatesToTopLevelHandlers(t *testing.T) {
 	t.Run("meetings add alias", func(t *testing.T) {
 		stdout.Reset()
 		if err := a.run([]string{
-			"our", "admin", "meetings", "add", "sampleco-followup",
+			"my", "admin", "meetings", "add", "sampleco-followup",
 			"--manifest", "acme",
 			"--workspace", "handbook",
 			"--home", home,
@@ -448,7 +448,7 @@ func TestAdminRoutingDelegatesToTopLevelHandlers(t *testing.T) {
 			"--customer", "sampleco",
 			"--print",
 		}); err != nil {
-			t.Fatalf("our admin meetings add err = %v", err)
+			t.Fatalf("my admin meetings add err = %v", err)
 		}
 		if !strings.Contains(stdout.String(), "2026-05-13-sampleco-followup") {
 			t.Fatalf("meetings add stdout = %q", stdout.String())
@@ -459,10 +459,10 @@ func TestAdminRoutingDelegatesToTopLevelHandlers(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"our", "admin", "skills", "list"}, "use our skills list"},
-		{[]string{"our", "admin", "manifests", "list"}, "use our manifests list"},
-		{[]string{"our", "admin", "mounts", "list"}, "use our mounts list"},
-		{[]string{"our", "admin", "meetings", "search", "cleanup"}, "use our meetings search"},
+		{[]string{"my", "admin", "skills", "list"}, "use my skills list"},
+		{[]string{"my", "admin", "manifests", "list"}, "use my manifests list"},
+		{[]string{"my", "admin", "mounts", "list"}, "use my mounts list"},
+		{[]string{"my", "admin", "meetings", "search", "cleanup"}, "use my meetings search"},
 	} {
 		t.Run(strings.Join(tc.args[2:], " "), func(t *testing.T) {
 			err := a.run(tc.args)
@@ -476,9 +476,9 @@ func TestAdminRoutingDelegatesToTopLevelHandlers(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"our", "admin", "manifests"}, "missing admin manifests subcommand"},
-		{[]string{"our", "admin", "mounts"}, "missing admin mounts subcommand"},
-		{[]string{"our", "admin", "meetings"}, "missing admin meetings subcommand"},
+		{[]string{"my", "admin", "manifests"}, "missing admin manifests subcommand"},
+		{[]string{"my", "admin", "mounts"}, "missing admin mounts subcommand"},
+		{[]string{"my", "admin", "meetings"}, "missing admin meetings subcommand"},
 	} {
 		t.Run(strings.Join(tc.args[2:], " "), func(t *testing.T) {
 			err := a.run(tc.args)
@@ -491,30 +491,30 @@ func TestAdminRoutingDelegatesToTopLevelHandlers(t *testing.T) {
 	t.Run("onboard", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
 		a := app{stdout: &stdout, stderr: &stderr}
-		err := a.run([]string{"our", "admin", "setup", "--home", t.TempDir()})
+		err := a.run([]string{"my", "admin", "setup", "--home", t.TempDir()})
 		if err == nil || !strings.Contains(err.Error(), "manifest") {
-			t.Fatalf("our admin setup err = %v, want a manifest-related error", err)
+			t.Fatalf("my admin setup err = %v, want a manifest-related error", err)
 		}
 	})
 
 	t.Run("unknown", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
 		a := app{stdout: &stdout, stderr: &stderr}
-		err := a.run([]string{"our", "admin", "bogus"})
+		err := a.run([]string{"my", "admin", "bogus"})
 		if err == nil || !strings.Contains(err.Error(), "unknown admin subcommand") {
-			t.Fatalf("our admin bogus err = %v, want unknown admin subcommand", err)
+			t.Fatalf("my admin bogus err = %v, want unknown admin subcommand", err)
 		}
 	})
 
 	t.Run("help", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
 		a := app{stdout: &stdout, stderr: &stderr}
-		if err := a.run([]string{"our", "admin", "--help"}); err != nil {
-			t.Fatalf("our admin --help err = %v", err)
+		if err := a.run([]string{"my", "admin", "--help"}); err != nil {
+			t.Fatalf("my admin --help err = %v", err)
 		}
-		for _, want := range []string{"our admin setup", "our admin manifests", "our admin mounts", "our admin meetings"} {
+		for _, want := range []string{"my admin setup", "my admin manifests", "my admin mounts", "my admin meetings"} {
 			if !strings.Contains(stdout.String(), want) {
-				t.Fatalf("our admin --help missing %q in:\n%s", want, stdout.String())
+				t.Fatalf("my admin --help missing %q in:\n%s", want, stdout.String())
 			}
 		}
 	})

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 func TestManifestCommands(t *testing.T) {
@@ -24,7 +24,7 @@ func TestManifestCommands(t *testing.T) {
     {
       "id": "handbook",
       "git_url": "https://github.com/acme/acme-handbook.git",
-      "local_path": "~/.our/workspaces/handbook"
+      "local_path": "~/.my-cli/workspaces/handbook"
     }
   ]
 }`), 0o644); err != nil {
@@ -34,7 +34,7 @@ func TestManifestCommands(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -45,7 +45,7 @@ func TestManifestCommands(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "manifests", "list", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "manifests", "list", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "acme-ai-manifest") {
@@ -53,7 +53,7 @@ func TestManifestCommands(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "manifests", "sync", "acme", "--print", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "manifests", "sync", "acme", "--print", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "git clone") {
@@ -61,7 +61,7 @@ func TestManifestCommands(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "manifests", "validate", manifestDir}); err != nil {
+	if err := a.run([]string{"my", "manifests", "validate", manifestDir}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "ok") {
@@ -83,7 +83,7 @@ func TestManifestSyncReconcilesDerivedAfterPull(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "skills", "self", "install", "claude-code", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "skills", "self", "install", "claude-code", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	writeCLITestFile(t, filepath.Join(writer, "manifest.json"), `{
@@ -106,7 +106,7 @@ description: Acme handbook
 	stdout.Reset()
 	stderr.Reset()
 	if err := a.run([]string{
-		"our", "manifests", "sync", "acme",
+		"my", "manifests", "sync", "acme",
 		"--home", home,
 		"--umbrella", umbrellaRoot,
 	}); err != nil {
@@ -129,7 +129,7 @@ description: Acme handbook
 	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); !os.IsNotExist(err) {
 		t.Fatalf("manifest sync installed org skill globally: %v", err)
 	}
-	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "our")); err != nil {
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "my")); err != nil {
 		t.Fatalf("self-skill was pruned by manifest sync derived reconcile: %v", err)
 	}
 }
@@ -166,7 +166,7 @@ description: Acme handbook
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "sync", "acme",
+		"my", "manifests", "sync", "acme",
 		"--home", home,
 		"--umbrella", umbrellaRoot,
 		"--no-derived",
@@ -206,7 +206,7 @@ func TestManifestSyncPrintSkipsDerivedReconcile(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "sync", "acme",
+		"my", "manifests", "sync", "acme",
 		"--home", home,
 		"--umbrella", umbrellaRoot,
 		"--print",
@@ -239,7 +239,7 @@ func TestManifestSyncChangedManifestWithoutUmbrellaPrintsRemediation(t *testing.
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "sync", "acme",
+		"my", "manifests", "sync", "acme",
 		"--home", home,
 	}); err != nil {
 		t.Fatal(err)
@@ -247,7 +247,7 @@ func TestManifestSyncChangedManifestWithoutUmbrellaPrintsRemediation(t *testing.
 	out := stdout.String()
 	if !strings.Contains(out, "derived\tmanifest:acme\tskipped") ||
 		!strings.Contains(out, "no existing umbrella found") ||
-		!strings.Contains(out, "run our setup --manifest acme --umbrella "+umbrellaRoot) {
+		!strings.Contains(out, "run my setup --manifest acme --umbrella "+umbrellaRoot) {
 		t.Fatalf("manifest sync stdout = %q", out)
 	}
 }
@@ -273,7 +273,7 @@ func TestManifestSyncWrongUmbrellaSkipsDerivedWithNotice(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "sync", "acme",
+		"my", "manifests", "sync", "acme",
 		"--home", home,
 		"--umbrella", umbrellaRoot,
 	}); err != nil {
@@ -311,7 +311,7 @@ func TestManifestSyncJSONIncludesDerivedOnChangedManifest(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "sync", "acme",
+		"my", "manifests", "sync", "acme",
 		"--home", home,
 		"--umbrella", umbrellaRoot,
 		"--json",

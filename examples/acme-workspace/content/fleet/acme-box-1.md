@@ -23,5 +23,5 @@ source: fleet
 
 Free-form notes about this deployed instance. Incident history belongs in
 support records linked by shared identifiers; state history belongs in the
-record's git log, so update fields with `our fleet set` instead of accreting
+record's git log, so update fields with `my fleet set` instead of accreting
 prose here.

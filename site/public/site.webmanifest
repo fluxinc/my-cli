@@ -1,9 +1,9 @@
 {
-  "name": "Our AI",
-  "short_name": "Our AI",
+  "name": "My AI",
+  "short_name": "My AI",
   "icons": [
     {
-      "src": "/our-ai/favicon.svg?v=2",
+      "src": "/favicon.svg?v=2",
       "sizes": "64x64",
       "type": "image/svg+xml"
     }

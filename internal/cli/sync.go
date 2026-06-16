@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
-	"github.com/fluxinc/our-ai/internal/syncer"
-	"github.com/fluxinc/our-ai/internal/umbrella"
-	"github.com/fluxinc/our-ai/internal/workspace"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/syncer"
+	"github.com/fluxinc/my-cli/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/workspace"
 )
 
 func (a app) runSync(args []string) error {
@@ -28,7 +28,7 @@ func (a app) runSync(args []string) error {
 	var printOnly bool
 	var noDerived bool
 	var jsonOut bool
-	fs := newFlagSet("our sync", a.stderr)
+	fs := newFlagSet("my sync", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
@@ -89,7 +89,7 @@ func (a app) runSync(args []string) error {
 	}
 	gnitRoot := ""
 	var sessionHolds []syncer.SessionHold
-	if root, err := resolveOurRoot(home, manifestName, umbrellaRoot); err == nil {
+	if root, err := resolveMyRoot(home, manifestName, umbrellaRoot); err == nil {
 		gnitRoot = findGnitWorkspaceRoot(root)
 		sessionHolds, err = collectSessionHolds(root)
 		if err != nil {
@@ -104,9 +104,9 @@ func (a app) runSync(args []string) error {
 		} else {
 			effectiveBackend = "builtin"
 			if publish == "pr" {
-				backendMessage = "PR mode is handled by Our AI/gh; Gnit remains the publish substrate after PR support lands"
+				backendMessage = "PR mode is handled by My AI/gh; Gnit remains the publish substrate after PR support lands"
 			} else {
-				backendMessage = "Gnit workspace not initialized; using Our AI guard backend"
+				backendMessage = "Gnit workspace not initialized; using My AI guard backend"
 			}
 		}
 	}
@@ -180,7 +180,7 @@ func (a app) localMountSyncBlocks(home, manifestName string) ([]syncer.Result, e
 			GitURL:    doc.ref.GitURL,
 			LocalPath: doc.ref.LocalPath,
 			Status:    "held back",
-			Message:   "manifest has local mount URL(s): " + strings.Join(localMounts, ", ") + "; run our publish --manifest " + doc.ref.Name,
+			Message:   "manifest has local mount URL(s): " + strings.Join(localMounts, ", ") + "; run my publish --manifest " + doc.ref.Name,
 		})
 	}
 	return out, nil
@@ -229,16 +229,16 @@ type syncCommandReport struct {
 }
 
 func (a app) printSyncUsage() {
-	fmt.Fprintln(a.stderr, `Usage of our sync:
-  our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
+	fmt.Fprintln(a.stderr, `Usage of my sync:
+  my sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
 
-Synchronizes registered Our AI repositories in both directions. The default
-backend uses Gnit when the umbrella is a Gnit workspace; otherwise Our AI uses a
+Synchronizes registered My AI repositories in both directions. The default
+backend uses Gnit when the umbrella is a Gnit workspace; otherwise My AI uses a
 guarded Git fallback until bootstrap/canonicalization is complete. The default
 publish mode only pushes private content-only changes when sibling checkouts of
 the same remote are clean. Direct mode can push existing commits, but dirty
 non-content changes still require an explicit admin or review workflow.
-Non-print runs write .our/last-sync.json when an umbrella is present. When a
+Non-print runs write .my-cli/last-sync.json when an umbrella is present. When a
 manifest checkout changes, sync also reconciles generated guidance and
 manifest skills unless --no-derived is passed.`)
 }

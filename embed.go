@@ -1,4 +1,4 @@
-package ourai
+package mycli
 
 import "embed"
 

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 func TestACMEOperatorGolden(t *testing.T) {

@@ -70,8 +70,8 @@ func TestCompareVersions(t *testing.T) {
 }
 
 func TestUpdateReplacesTargetAfterChecksumVerification(t *testing.T) {
-	target := writeTarget(t, "old our\n")
-	server := newReleaseServer(t, "0.2.0", runtimeAsset("0.2.0"), []byte("new our\n"), false)
+	target := writeTarget(t, "old my\n")
+	server := newReleaseServer(t, "0.2.0", runtimeAsset("0.2.0"), []byte("new my\n"), false)
 	res, err := Update(context.Background(), Options{
 		CurrentVersion: "0.1.0",
 		TargetPath:     target,
@@ -83,14 +83,14 @@ func TestUpdateReplacesTargetAfterChecksumVerification(t *testing.T) {
 	if !res.Updated || res.TargetVersion != "0.2.0" {
 		t.Fatalf("result = %#v", res)
 	}
-	if got := readFile(t, target); got != "new our\n" {
+	if got := readFile(t, target); got != "new my\n" {
 		t.Fatalf("target = %q, want new binary", got)
 	}
 }
 
 func TestUpdateChecksumMismatchAbortsWithTargetUnchanged(t *testing.T) {
-	target := writeTarget(t, "old our\n")
-	server := newReleaseServer(t, "0.2.0", runtimeAsset("0.2.0"), []byte("new our\n"), true)
+	target := writeTarget(t, "old my\n")
+	server := newReleaseServer(t, "0.2.0", runtimeAsset("0.2.0"), []byte("new my\n"), true)
 	_, err := Update(context.Background(), Options{
 		CurrentVersion: "0.1.0",
 		TargetPath:     target,
@@ -99,14 +99,14 @@ func TestUpdateChecksumMismatchAbortsWithTargetUnchanged(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
 		t.Fatalf("err = %v, want checksum mismatch", err)
 	}
-	if got := readFile(t, target); got != "old our\n" {
+	if got := readFile(t, target); got != "old my\n" {
 		t.Fatalf("target changed after checksum mismatch: %q", got)
 	}
 }
 
 func TestUpdateMissingAssetFailsWithTargetUnchanged(t *testing.T) {
-	target := writeTarget(t, "old our\n")
-	server := newReleaseServer(t, "0.2.0", "our-ai_0.2.0_plan9_amd64.tar.gz", []byte("new our\n"), false)
+	target := writeTarget(t, "old my\n")
+	server := newReleaseServer(t, "0.2.0", "my-cli_0.2.0_plan9_amd64.tar.gz", []byte("new my\n"), false)
 	_, err := Update(context.Background(), Options{
 		CurrentVersion: "0.1.0",
 		TargetPath:     target,
@@ -115,14 +115,14 @@ func TestUpdateMissingAssetFailsWithTargetUnchanged(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("err = %v, want missing asset", err)
 	}
-	if got := readFile(t, target); got != "old our\n" {
+	if got := readFile(t, target); got != "old my\n" {
 		t.Fatalf("target changed after missing asset: %q", got)
 	}
 }
 
 func TestCheckOnlyDoesNotReplaceTarget(t *testing.T) {
-	target := writeTarget(t, "old our\n")
-	server := newReleaseServer(t, "0.2.0", runtimeAsset("0.2.0"), []byte("new our\n"), false)
+	target := writeTarget(t, "old my\n")
+	server := newReleaseServer(t, "0.2.0", runtimeAsset("0.2.0"), []byte("new my\n"), false)
 	res, err := Update(context.Background(), Options{
 		CurrentVersion: "0.1.0",
 		TargetPath:     target,
@@ -135,7 +135,7 @@ func TestCheckOnlyDoesNotReplaceTarget(t *testing.T) {
 	if !res.UpdateAvailable || res.Updated {
 		t.Fatalf("result = %#v", res)
 	}
-	if got := readFile(t, target); got != "old our\n" {
+	if got := readFile(t, target); got != "old my\n" {
 		t.Fatalf("target changed during check: %q", got)
 	}
 	if server.assetRequests != 0 {
@@ -144,8 +144,8 @@ func TestCheckOnlyDoesNotReplaceTarget(t *testing.T) {
 }
 
 func TestPinnedVersionCanDowngrade(t *testing.T) {
-	target := writeTarget(t, "current our\n")
-	server := newReleaseServer(t, "0.9.0", runtimeAsset("0.4.0"), []byte("older our\n"), false)
+	target := writeTarget(t, "current my\n")
+	server := newReleaseServer(t, "0.9.0", runtimeAsset("0.4.0"), []byte("older my\n"), false)
 	res, err := Update(context.Background(), Options{
 		CurrentVersion: "0.5.0",
 		TargetVersion:  "0.4.0",
@@ -158,16 +158,16 @@ func TestPinnedVersionCanDowngrade(t *testing.T) {
 	if !res.Updated || res.TargetVersion != "0.4.0" {
 		t.Fatalf("result = %#v", res)
 	}
-	if got := readFile(t, target); got != "older our\n" {
+	if got := readFile(t, target); got != "older my\n" {
 		t.Fatalf("target = %q, want pinned binary", got)
 	}
 }
 
 func TestManagedInstallRefusesWithGuidance(t *testing.T) {
 	root := t.TempDir()
-	target := filepath.Join(root, "Cellar", "our", "0.1.0", "bin", "our")
-	writeFile(t, target, "old our\n", 0o755)
-	server := newReleaseServer(t, "0.2.0", runtimeAsset("0.2.0"), []byte("new our\n"), false)
+	target := filepath.Join(root, "Cellar", "my", "0.1.0", "bin", "my")
+	writeFile(t, target, "old my\n", 0o755)
+	server := newReleaseServer(t, "0.2.0", runtimeAsset("0.2.0"), []byte("new my\n"), false)
 	_, err := Update(context.Background(), Options{
 		CurrentVersion: "0.1.0",
 		TargetPath:     target,
@@ -177,10 +177,10 @@ func TestManagedInstallRefusesWithGuidance(t *testing.T) {
 		t.Fatal("expected managed install refusal")
 	}
 	var refusal RefusalError
-	if !errors.As(err, &refusal) || !strings.Contains(refusal.Remedy, "brew upgrade our") {
+	if !errors.As(err, &refusal) || !strings.Contains(refusal.Remedy, "brew upgrade my") {
 		t.Fatalf("err = %#v, want Homebrew refusal", err)
 	}
-	if got := readFile(t, target); got != "old our\n" {
+	if got := readFile(t, target); got != "old my\n" {
 		t.Fatalf("target changed after refusal: %q", got)
 	}
 }
@@ -216,7 +216,7 @@ func TestNoticeZeroTTLAlwaysRefreshes(t *testing.T) {
 	if err := saveLatestVersion(cachePath, "0.2.0", now); err != nil {
 		t.Fatal(err)
 	}
-	server := newReleaseServer(t, "0.3.0", runtimeAsset("0.3.0"), []byte("new our\n"), false)
+	server := newReleaseServer(t, "0.3.0", runtimeAsset("0.3.0"), []byte("new my\n"), false)
 	notice, err := CheckNotice(context.Background(), NoticeOptions{
 		CurrentVersion: "0.1.0",
 		CachePath:      cachePath,
@@ -235,7 +235,7 @@ func TestNoticeZeroTTLAlwaysRefreshes(t *testing.T) {
 func TestNoticeRefreshesStaleOrCorruptCache(t *testing.T) {
 	cachePath := filepath.Join(t.TempDir(), "update-check.json")
 	writeFile(t, cachePath, "{not-json", 0o644)
-	server := newReleaseServer(t, "0.3.0", runtimeAsset("0.3.0"), []byte("new our\n"), false)
+	server := newReleaseServer(t, "0.3.0", runtimeAsset("0.3.0"), []byte("new my\n"), false)
 	notice, err := CheckNotice(context.Background(), NoticeOptions{
 		CurrentVersion: "0.2.0",
 		CachePath:      cachePath,
@@ -267,7 +267,7 @@ type releaseServer struct {
 func newReleaseServer(t *testing.T, version, asset string, binary []byte, corruptChecksum bool) *releaseServer {
 	t.Helper()
 	rs := &releaseServer{t: t, version: version, asset: asset}
-	rs.archive = ourAIArchive(t, binary)
+	rs.archive = myCLIArchive(t, binary)
 	sum := sha256.Sum256(rs.archive)
 	if corruptChecksum {
 		rs.checksums = []byte(strings.Repeat("0", sha256.Size*2) + "  " + asset + "\n")
@@ -305,12 +305,12 @@ func runtimeAsset(version string) string {
 	return assetName(version, runtime.GOOS, runtime.GOARCH)
 }
 
-func ourAIArchive(t *testing.T, binary []byte) []byte {
+func myCLIArchive(t *testing.T, binary []byte) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	if err := tw.WriteHeader(&tar.Header{Name: "our", Mode: 0o755, Size: int64(len(binary))}); err != nil {
+	if err := tw.WriteHeader(&tar.Header{Name: "my", Mode: 0o755, Size: int64(len(binary))}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tw.Write(binary); err != nil {
@@ -325,7 +325,7 @@ func ourAIArchive(t *testing.T, binary []byte) []byte {
 	return buf.Bytes()
 }
 
-func ourAIArchiveNamed(t *testing.T, name string, binary []byte) []byte {
+func myCLIArchiveNamed(t *testing.T, name string, binary []byte) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
@@ -346,10 +346,10 @@ func ourAIArchiveNamed(t *testing.T, name string, binary []byte) []byte {
 }
 
 func TestExtractAcceptsWindowsExeName(t *testing.T) {
-	want := []byte("windows-our-binary")
-	got, err := extractOurAIBinary(ourAIArchiveNamed(t, "our.exe", want))
+	want := []byte("windows-my-binary")
+	got, err := extractMyCLIBinary(myCLIArchiveNamed(t, "my.exe", want))
 	if err != nil {
-		t.Fatalf("extractOurAIBinary(our.exe): %v", err)
+		t.Fatalf("extractMyCLIBinary(my.exe): %v", err)
 	}
 	if !bytes.Equal(got, want) {
 		t.Fatalf("extracted %q, want %q", got, want)
@@ -361,7 +361,7 @@ func TestExtractAcceptsWindowsExeName(t *testing.T) {
 // TestReplaceTargetReplacesRunningExecutable for the live-lock proof).
 func TestReplaceTargetWindowsBranchSwapsBinary(t *testing.T) {
 	dir := t.TempDir()
-	target := filepath.Join(dir, "our.exe")
+	target := filepath.Join(dir, "my.exe")
 	writeFile(t, target, "old-binary", 0o755)
 	// A stale backup from a prior update must not block the replacement.
 	writeFile(t, target+".old", "stale", 0o755)
@@ -374,7 +374,7 @@ func TestReplaceTargetWindowsBranchSwapsBinary(t *testing.T) {
 	}
 }
 
-const selfReplaceChildEnv = "OUR_SELFUPDATE_REPLACE_CHILD"
+const selfReplaceChildEnv = "MYCLI_SELFUPDATE_REPLACE_CHILD"
 const selfReplacePayload = "running-exe-replacement"
 
 // TestReplaceTargetReplacesRunningExecutable proves the real case that matters
@@ -394,7 +394,7 @@ func TestReplaceTargetReplacesRunningExecutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := filepath.Join(t.TempDir(), "our.exe")
+	target := filepath.Join(t.TempDir(), "my.exe")
 	if err := os.WriteFile(target, src, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -414,7 +414,7 @@ func TestReplaceTargetReplacesRunningExecutable(t *testing.T) {
 
 func writeTarget(t *testing.T, body string) string {
 	t.Helper()
-	target := filepath.Join(t.TempDir(), "our")
+	target := filepath.Join(t.TempDir(), "my")
 	writeFile(t, target, body, 0o755)
 	return target
 }

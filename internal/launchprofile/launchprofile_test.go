@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 func TestComposeUmbrellaDefaultSelectsAllOrgSkills(t *testing.T) {

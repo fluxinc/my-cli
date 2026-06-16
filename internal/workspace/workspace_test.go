@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 func TestListReadsSyncedManifest(t *testing.T) {
@@ -24,7 +24,7 @@ func TestListReadsSyncedManifest(t *testing.T) {
     {
       "id": "handbook",
       "git_url": "https://github.com/acme/acme-handbook.git",
-      "local_path": "~/.our/workspaces/handbook"
+      "local_path": "~/.my-cli/workspaces/handbook"
     }
   ]
 }`)
@@ -39,7 +39,7 @@ func TestListReadsSyncedManifest(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("entries = %#v", entries)
 	}
-	if entries[0].LocalPath != filepath.Join(home, ".our", "workspaces", "handbook") {
+	if entries[0].LocalPath != filepath.Join(home, ".my-cli", "workspaces", "handbook") {
 		t.Fatalf("LocalPath = %q", entries[0].LocalPath)
 	}
 }
@@ -56,7 +56,7 @@ func TestSyncDryRunPlansCloneAndPull(t *testing.T) {
     {
       "id": "handbook",
       "git_url": "https://github.com/acme/acme-handbook.git",
-      "local_path": "~/.our/workspaces/handbook"
+      "local_path": "~/.my-cli/workspaces/handbook"
     }
   ]
 }`)
@@ -69,7 +69,7 @@ func TestSyncDryRunPlansCloneAndPull(t *testing.T) {
 		t.Fatalf("clone message = %q", got)
 	}
 
-	workspacePath := filepath.Join(home, ".our", "workspaces", "handbook")
+	workspacePath := filepath.Join(home, ".my-cli", "workspaces", "handbook")
 	if err := os.MkdirAll(filepath.Join(workspacePath, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -97,11 +97,11 @@ func TestSyncRejectsExistingNonGitDirectory(t *testing.T) {
     {
       "id": "handbook",
       "git_url": "https://github.com/acme/acme-handbook.git",
-      "local_path": "~/.our/workspaces/handbook"
+      "local_path": "~/.my-cli/workspaces/handbook"
     }
   ]
 }`)
-	if err := os.MkdirAll(filepath.Join(home, ".our", "workspaces", "handbook"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".my-cli", "workspaces", "handbook"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -126,7 +126,7 @@ func TestSyncChecksGitHubAuthBeforeClone(t *testing.T) {
     {
       "id": "handbook",
       "git_url": "https://github.com/acme/acme-handbook.git",
-      "local_path": "~/.our/workspaces/handbook"
+      "local_path": "~/.my-cli/workspaces/handbook"
     }
   ]
 }`)
@@ -355,7 +355,7 @@ func initGitRepo(t *testing.T, dir string) {
 	t.Helper()
 	runGit(t, dir, "init", "-q")
 	runGit(t, dir, "add", ".")
-	runGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=our-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed workspace")
+	runGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=my-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed workspace")
 }
 
 func runGit(t *testing.T, dir string, args ...string) {

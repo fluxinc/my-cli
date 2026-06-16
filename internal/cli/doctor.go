@@ -11,14 +11,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/guidance"
-	"github.com/fluxinc/our-ai/internal/harness"
-	"github.com/fluxinc/our-ai/internal/manifest"
-	"github.com/fluxinc/our-ai/internal/selfskill"
-	"github.com/fluxinc/our-ai/internal/selfupdate"
-	"github.com/fluxinc/our-ai/internal/skills"
-	"github.com/fluxinc/our-ai/internal/syncer"
-	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/guidance"
+	"github.com/fluxinc/my-cli/internal/harness"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/selfskill"
+	"github.com/fluxinc/my-cli/internal/selfupdate"
+	"github.com/fluxinc/my-cli/internal/skills"
+	"github.com/fluxinc/my-cli/internal/syncer"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 func (a app) runDoctor(args []string) error {
@@ -28,7 +28,7 @@ func (a app) runDoctor(args []string) error {
 	var noFetch bool
 	var fix bool
 	var jsonOut bool
-	fs := newFlagSet("our doctor", a.stderr)
+	fs := newFlagSet("my doctor", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
@@ -149,7 +149,7 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 				continue
 			}
 			if item.Name == "selfskill" {
-				item.WouldFix = "reinstall the our self-skill"
+				item.WouldFix = "reinstall the my self-skill"
 			} else if item.WouldFix == "" {
 				item.WouldFix = "reconcile derived guidance and skills"
 			}
@@ -177,7 +177,7 @@ func doctorLocalMountURLs(ref manifest.Ref, doc manifest.Document) []doctorItem 
 			Name:    ref.Name + ":mount:" + mount.ID,
 			Status:  "local-only",
 			Path:    mount.GitURL,
-			Message: "mount git_url is local-only; run our publish --manifest " + ref.Name,
+			Message: "mount git_url is local-only; run my publish --manifest " + ref.Name,
 			Details: []string{
 				"manifest=" + ref.LocalPath,
 			},
@@ -187,8 +187,8 @@ func doctorLocalMountURLs(ref manifest.Ref, doc manifest.Document) []doctorItem 
 }
 
 func (a app) doctorVersion(home string) doctorItem {
-	current := a.currentOurVersion()
-	item := doctorItem{Name: "our", Status: "ok", Message: "current=v" + strings.TrimPrefix(current, "v")}
+	current := a.currentMyVersion()
+	item := doctorItem{Name: "my", Status: "ok", Message: "current=v" + strings.TrimPrefix(current, "v")}
 	notice, err := selfupdate.CheckNotice(context.Background(), selfupdate.NoticeOptions{
 		CurrentVersion: current,
 		Home:           home,
@@ -205,7 +205,7 @@ func (a app) doctorVersion(home string) doctorItem {
 	item.Message = fmt.Sprintf("current=v%s latest=v%s", notice.CurrentVersion, notice.LatestVersion)
 	if notice.UpdateAvailable {
 		item.Status = "stale"
-		item.Message += " run our update"
+		item.Message += " run my update"
 	}
 	return item
 }
@@ -223,7 +223,7 @@ func doctorLegacy(home, root string) []doctorItem {
 				Name:    ".flux",
 				Status:  "warning",
 				Path:    legacyUmbrella,
-				Message: "legacy Flux workspace marker found; migrate state to .our or re-run our setup in the intended umbrella",
+				Message: "legacy Flux workspace marker found; migrate state to .my-cli or re-run my setup in the intended umbrella",
 			})
 		}
 	}
@@ -233,7 +233,7 @@ func doctorLegacy(home, root string) []doctorItem {
 			Name:    "flux data",
 			Status:  "warning",
 			Path:    legacyShare,
-			Message: "legacy Flux data directory found; Our AI uses ~/.local/share/our",
+			Message: "legacy Flux data directory found; My AI uses ~/.local/share/my-cli",
 		})
 	}
 	legacyManifestRegistry := filepath.Join(homeDir, ".config", "flux", "manifests.json")
@@ -242,7 +242,7 @@ func doctorLegacy(home, root string) []doctorItem {
 			Name:    "flux manifest registry",
 			Status:  "warning",
 			Path:    legacyManifestRegistry,
-			Message: "legacy Flux manifest registry found; Our AI uses ~/.config/our/manifests.json",
+			Message: "legacy Flux manifest registry found; My AI uses ~/.config/my-cli/manifests.json",
 		})
 	}
 	var legacyEnv []string
@@ -257,7 +257,7 @@ func doctorLegacy(home, root string) []doctorItem {
 		items = append(items, doctorItem{
 			Name:    "FLUX_* env",
 			Status:  "warning",
-			Message: "legacy Flux environment variables are set; rename them to OUR_*",
+			Message: "legacy Flux environment variables are set; rename them to MYCLI_*",
 			Details: legacyEnv,
 		})
 	}
@@ -266,7 +266,7 @@ func doctorLegacy(home, root string) []doctorItem {
 			Name:    "flux binary",
 			Status:  "warning",
 			Path:    path,
-			Message: "legacy flux binary is still on PATH; remove it or replace workflows with our",
+			Message: "legacy flux binary is still on PATH; remove it or replace workflows with my",
 		})
 	}
 	for _, h := range []harness.Harness{harness.ClaudeCode, harness.Codex, harness.OpenCode} {
@@ -276,7 +276,7 @@ func doctorLegacy(home, root string) []doctorItem {
 				Name:    string(h) + ":flux skill",
 				Status:  "warning",
 				Path:    target,
-				Message: "legacy flux self-skill is installed; run our skills self install " + string(h),
+				Message: "legacy flux self-skill is installed; run my skills self install " + string(h),
 			})
 		}
 	}
@@ -500,7 +500,7 @@ func (a app) doctorFixSelfSkill(home string) []doctorItem {
 			Message: result.Message,
 		}
 		if item.Message == "" {
-			item.Message = "reinstalled our self-skill"
+			item.Message = "reinstalled my self-skill"
 		}
 		if result.Err != nil {
 			item.Details = append(item.Details, result.Err.Error())
@@ -582,7 +582,7 @@ func doctorDerivedHasDrift(items []doctorItem) bool {
 
 func (a app) doctorFixDerived(home, manifestName, root string) []doctorItem {
 	if root == "" {
-		return []doctorItem{{Name: "derived", Status: "skipped", Message: "no our umbrella found; run our setup or pass --umbrella"}}
+		return []doctorItem{{Name: "derived", Status: "skipped", Message: "no my umbrella found; run my setup or pass --umbrella"}}
 	}
 	report, err := a.reconcileDerived(home, manifestName, root)
 	if err != nil {
@@ -757,7 +757,7 @@ func (a app) doctorSelfSkill(home string) []doctorItem {
 		items = append(items, item)
 	}
 	if len(items) == 0 {
-		items = append(items, doctorItem{Name: "selfskill", Status: "ok", Message: "our self-skill installed for present harnesses"})
+		items = append(items, doctorItem{Name: "selfskill", Status: "ok", Message: "my self-skill installed for present harnesses"})
 	}
 	return items
 }
@@ -795,7 +795,7 @@ func doctorLastSync(root string) doctorItem {
 		return doctorItem{Name: "last publish", Status: "error", Path: path, Message: err.Error()}
 	}
 	if !ok {
-		return doctorItem{Name: "last publish", Status: "missing", Path: path, Message: "run our sync to record an audit"}
+		return doctorItem{Name: "last publish", Status: "missing", Path: path, Message: "run my sync to record an audit"}
 	}
 	item := doctorItem{
 		Name:    "last publish",
@@ -888,7 +888,7 @@ func doctorWorkspaces(home, manifestName string, declared []manifest.Workspace) 
 		}
 		if info, err := os.Stat(path); err != nil {
 			item.Status = "missing"
-			item.Message = "run our workspaces sync " + w.ID + " --manifest " + manifestName
+			item.Message = "run my workspaces sync " + w.ID + " --manifest " + manifestName
 		} else if !info.IsDir() {
 			item.Status = "error"
 			item.Message = "target exists and is not a directory"
@@ -1046,7 +1046,7 @@ func (a app) printDoctorReport(report doctorReport) {
 	printItems("tool", report.Tools)
 	printItems("service", report.Services)
 	if fixable > 0 {
-		fmt.Fprintf(a.stdout, "fixable\t%d\trun `our doctor --fix` to apply\n", fixable)
+		fmt.Fprintf(a.stdout, "fixable\t%d\trun `my doctor --fix` to apply\n", fixable)
 	}
 }
 

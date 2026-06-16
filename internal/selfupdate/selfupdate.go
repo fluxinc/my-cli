@@ -1,4 +1,4 @@
-// Package selfupdate implements release-backed our binary updates.
+// Package selfupdate implements release-backed my binary updates.
 package selfupdate
 
 import (
@@ -24,14 +24,14 @@ import (
 )
 
 const (
-	defaultAPIBaseURL      = "https://api.github.com/repos/fluxinc/our-ai"
-	defaultDownloadBaseURL = "https://github.com/fluxinc/our-ai"
+	defaultAPIBaseURL      = "https://api.github.com/repos/fluxinc/my-cli"
+	defaultDownloadBaseURL = "https://github.com/fluxinc/my-cli"
 	DefaultCheckTTL        = 24 * time.Hour
 	cacheSchemaVersion     = 1
 	cacheFileName          = "update-check.json"
 )
 
-// Source fetches Our AI GitHub release metadata and assets.
+// Source fetches My AI GitHub release metadata and assets.
 type Source struct {
 	Client          *http.Client
 	APIBaseURL      string
@@ -97,7 +97,7 @@ type semver struct {
 	pre   string
 }
 
-// RefusalError is returned when our detects an install it should not replace.
+// RefusalError is returned when the CLI detects an install it should not replace.
 type RefusalError struct {
 	Reason string
 	Remedy string
@@ -150,7 +150,7 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 	return res, nil
 }
 
-// Update replaces the our binary with the requested release, unless CheckOnly is set.
+// Update replaces the my binary with the requested release, unless CheckOnly is set.
 func Update(ctx context.Context, opts Options) (Result, error) {
 	res, err := Check(ctx, opts)
 	if err != nil {
@@ -188,7 +188,7 @@ func Update(ctx context.Context, opts Options) (Result, error) {
 	if err := verifyChecksum(asset, archiveData, checksumData); err != nil {
 		return Result{}, err
 	}
-	binary, err := extractOurAIBinary(archiveData)
+	binary, err := extractMyCLIBinary(archiveData)
 	if err != nil {
 		return Result{}, err
 	}
@@ -196,7 +196,7 @@ func Update(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, err
 	}
 	res.Updated = true
-	res.Message = fmt.Sprintf("updated our %s -> %s", res.CurrentVersion, res.TargetVersion)
+	res.Message = fmt.Sprintf("updated my %s -> %s", res.CurrentVersion, res.TargetVersion)
 	return res, nil
 }
 
@@ -235,12 +235,12 @@ func CachePath(homeOverride string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local", "share", "our", cacheFileName), nil
+	return filepath.Join(home, ".local", "share", "my-cli", cacheFileName), nil
 }
 
-// UpdateCheckTTLFromEnv parses OUR_UPDATE_CHECK_TTL.
+// UpdateCheckTTLFromEnv parses MYCLI_UPDATE_CHECK_TTL.
 func UpdateCheckTTLFromEnv() time.Duration {
-	value := strings.TrimSpace(os.Getenv("OUR_UPDATE_CHECK_TTL"))
+	value := strings.TrimSpace(os.Getenv("MYCLI_UPDATE_CHECK_TTL"))
 	if value == "" {
 		return DefaultCheckTTL
 	}
@@ -329,7 +329,7 @@ func (s Source) get(ctx context.Context, rawURL string, timeout time.Duration) (
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "our-self-update")
+	req.Header.Set("User-Agent", "my-self-update")
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -394,17 +394,17 @@ func parseSemver(value string) (semver, error) {
 func checkMessage(current, target, latest string, pinned, updateAvailable bool) string {
 	if !updateAvailable {
 		if pinned {
-			return fmt.Sprintf("already at requested our version %s", current)
+			return fmt.Sprintf("already at requested my version %s", current)
 		}
 		return fmt.Sprintf("already up to date (%s)", current)
 	}
 	if pinned {
-		return fmt.Sprintf("our %s can be replaced with requested version %s", current, target)
+		return fmt.Sprintf("my %s can be replaced with requested version %s", current, target)
 	}
 	if latest == "" {
 		latest = target
 	}
-	return fmt.Sprintf("newer our %s is available (current %s)", latest, current)
+	return fmt.Sprintf("newer my %s is available (current %s)", latest, current)
 }
 
 func executableTarget(explicit string) (string, error) {
@@ -433,13 +433,13 @@ func GuardInstallTarget(target, home string) error {
 	switch method {
 	case "homebrew":
 		return RefusalError{
-			Reason: "our appears to be managed by Homebrew",
-			Remedy: "update with your package manager: brew upgrade our",
+			Reason: "my appears to be managed by Homebrew",
+			Remedy: "update with your package manager: brew upgrade my",
 		}
 	case "go":
 		return RefusalError{
-			Reason: "our appears to be installed by go install",
-			Remedy: "update with: go install github.com/fluxinc/our-ai/cmd/our@latest",
+			Reason: "my appears to be installed by go install",
+			Remedy: "update with: go install github.com/fluxinc/my-cli/cmd/my@latest",
 		}
 	}
 	info, err := os.Stat(target)
@@ -448,14 +448,14 @@ func GuardInstallTarget(target, home string) error {
 	}
 	if info.Mode().Perm()&0o222 == 0 {
 		return RefusalError{
-			Reason: "our binary is not writable",
-			Remedy: "re-run install.sh or set OUR_INSTALL_DIR to a writable directory",
+			Reason: "my binary is not writable",
+			Remedy: "re-run install.sh or set MYCLI_INSTALL_DIR to a writable directory",
 		}
 	}
 	if err := checkDirWritable(filepath.Dir(target)); err != nil {
 		return RefusalError{
-			Reason: "our install directory is not writable",
-			Remedy: "re-run install.sh or set OUR_INSTALL_DIR to a writable directory",
+			Reason: "my install directory is not writable",
+			Remedy: "re-run install.sh or set MYCLI_INSTALL_DIR to a writable directory",
 		}
 	}
 	return nil
@@ -565,7 +565,7 @@ func pathWithin(path, root string) bool {
 }
 
 func checkDirWritable(dir string) error {
-	tmp, err := os.CreateTemp(dir, ".our-write-check-*")
+	tmp, err := os.CreateTemp(dir, ".my-cli-write-check-*")
 	if err != nil {
 		return err
 	}
@@ -579,7 +579,7 @@ func checkDirWritable(dir string) error {
 }
 
 func assetName(version, goos, goarch string) string {
-	return fmt.Sprintf("our-ai_%s_%s_%s.tar.gz", version, goos, goarch)
+	return fmt.Sprintf("my-cli_%s_%s_%s.tar.gz", version, goos, goarch)
 }
 
 func releaseTag(version string) string {
@@ -628,7 +628,7 @@ func checksumForAsset(asset string, data []byte) (string, error) {
 	return "", fmt.Errorf("checksums.txt does not contain %s", asset)
 }
 
-func extractOurAIBinary(data []byte) ([]byte, error) {
+func extractMyCLIBinary(data []byte) ([]byte, error) {
 	gz, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
@@ -638,7 +638,7 @@ func extractOurAIBinary(data []byte) ([]byte, error) {
 	for {
 		header, err := tr.Next()
 		if errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("archive does not contain our binary")
+			return nil, fmt.Errorf("archive does not contain my binary")
 		}
 		if err != nil {
 			return nil, err
@@ -646,7 +646,7 @@ func extractOurAIBinary(data []byte) ([]byte, error) {
 		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
 			continue
 		}
-		if base := filepath.Base(header.Name); base != "our" && base != "our.exe" {
+		if base := filepath.Base(header.Name); base != "my" && base != "my.exe" {
 			continue
 		}
 		var out bytes.Buffer
@@ -668,7 +668,7 @@ func replaceTarget(target string, binary []byte) error {
 // keeps backing the running process and is cleaned up on a later update.
 func replaceTargetForOS(target string, binary []byte, goos string) error {
 	dir := filepath.Dir(target)
-	tmp, err := os.CreateTemp(dir, ".our-update-*")
+	tmp, err := os.CreateTemp(dir, ".my-cli-update-*")
 	if err != nil {
 		return err
 	}

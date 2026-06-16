@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fluxinc/our-ai/internal/record"
+	"github.com/fluxinc/my-cli/internal/record"
 )
 
 // Root is one workspace root that may contain meetings/.

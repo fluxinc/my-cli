@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/guidance"
-	"github.com/fluxinc/our-ai/internal/manifest"
-	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/guidance"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 func (a app) runServices(args []string) error {
@@ -30,8 +30,8 @@ func (a app) runServices(args []string) error {
 
 func (a app) printServicesUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our services list [--manifest NAME] [--home DIR] [--json]
-  our services get <id> [--manifest NAME] [--home DIR] [--json]
+  my services list [--manifest NAME] [--home DIR] [--json]
+  my services get <id> [--manifest NAME] [--home DIR] [--json]
 
 Services are the organization's remote surfaces declared in the manifest.
 Secret material is always referenced (op://, env://, broker://), never stored.`)
@@ -40,7 +40,7 @@ Secret material is always referenced (op://, env://, broker://), never stored.`)
 func (a app) runServicesList(args []string) error {
 	var home, manifestName string
 	var jsonOut bool
-	fs := newFlagSet("our services list", a.stderr)
+	fs := newFlagSet("my services list", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -52,7 +52,7 @@ func (a app) runServicesList(args []string) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return fmt.Errorf("usage: our services list")
+		return fmt.Errorf("usage: my services list")
 	}
 	services, err := loadManifestServices(home, manifestName)
 	if err != nil {
@@ -73,7 +73,7 @@ func (a app) runServicesList(args []string) error {
 func (a app) runServicesGet(args []string) error {
 	var home, manifestName string
 	var jsonOut bool
-	fs := newFlagSet("our services get", a.stderr)
+	fs := newFlagSet("my services get", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -85,7 +85,7 @@ func (a app) runServicesGet(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our services get <id>")
+		return fmt.Errorf("usage: my services get <id>")
 	}
 	services, err := loadManifestServices(home, manifestName)
 	if err != nil {
@@ -100,7 +100,7 @@ func (a app) runServicesGet(args []string) error {
 			return nil
 		}
 	}
-	return a.maybeJSONError(jsonOut, fmt.Errorf("service %q not found; run our services list", rest[0]))
+	return a.maybeJSONError(jsonOut, fmt.Errorf("service %q not found; run my services list", rest[0]))
 }
 
 func (a app) printService(service manifest.Service) {
@@ -161,7 +161,7 @@ func roleByID(doc manifest.Document, selectedRole string) (manifest.Role, error)
 			return role, nil
 		}
 	}
-	return manifest.Role{}, fmt.Errorf("role %q not found; run our roles list", selectedRole)
+	return manifest.Role{}, fmt.Errorf("role %q not found; run my roles list", selectedRole)
 }
 
 func guidanceOptionsForSelectedRole(root string, doc manifest.Document) (guidance.Options, error) {
@@ -217,8 +217,8 @@ func (a app) runRoles(args []string) error {
 
 func (a app) printRolesUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our roles list [--manifest NAME] [--home DIR] [--json]
-  our roles get <id> [--manifest NAME] [--home DIR] [--json]
+  my roles list [--manifest NAME] [--home DIR] [--json]
+  my roles get <id> [--manifest NAME] [--home DIR] [--json]
 
 Roles are named loadouts declared in the manifest. A role selects generated
 guidance and visible services; it never grants authority or prunes mounts.`)
@@ -227,7 +227,7 @@ guidance and visible services; it never grants authority or prunes mounts.`)
 func (a app) runRolesList(args []string) error {
 	var home, manifestName string
 	var jsonOut bool
-	fs := newFlagSet("our roles list", a.stderr)
+	fs := newFlagSet("my roles list", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -239,7 +239,7 @@ func (a app) runRolesList(args []string) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return fmt.Errorf("usage: our roles list")
+		return fmt.Errorf("usage: my roles list")
 	}
 	roles, err := loadManifestRoles(home, manifestName)
 	if err != nil {
@@ -260,7 +260,7 @@ func (a app) runRolesList(args []string) error {
 func (a app) runRolesGet(args []string) error {
 	var home, manifestName string
 	var jsonOut bool
-	fs := newFlagSet("our roles get", a.stderr)
+	fs := newFlagSet("my roles get", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -272,7 +272,7 @@ func (a app) runRolesGet(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our roles get <id>")
+		return fmt.Errorf("usage: my roles get <id>")
 	}
 	roles, err := loadManifestRoles(home, manifestName)
 	if err != nil {
@@ -287,7 +287,7 @@ func (a app) runRolesGet(args []string) error {
 			return nil
 		}
 	}
-	return a.maybeJSONError(jsonOut, fmt.Errorf("role %q not found; run our roles list", rest[0]))
+	return a.maybeJSONError(jsonOut, fmt.Errorf("role %q not found; run my roles list", rest[0]))
 }
 
 func (a app) printRole(role manifest.Role) {

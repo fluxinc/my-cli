@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
-	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 // Boundary regression tests authored during Claude's boundary-test turn
@@ -28,7 +28,7 @@ func TestOnboardUnconfiguredEOFDoesNotMutate(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader(""))}
-	if err := a.run([]string{"our", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("onboard EOF: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	if _, err := umbrella.LoadState(umbrellaRoot); !os.IsNotExist(err) {
@@ -47,7 +47,7 @@ func TestOnboardConfiguredEOFDoesNotMarkTour(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader(""))}
-	if err := a.run([]string{"our", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("onboard configured EOF: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	assertTourUnmarkedRolePreserved(t, umbrellaRoot)
@@ -61,7 +61,7 @@ func TestOnboardConfiguredDeclineDoesNotMarkTour(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader("n\n"))}
-	if err := a.run([]string{"our", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("onboard configured decline: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	assertTourUnmarkedRolePreserved(t, umbrellaRoot)
@@ -75,7 +75,7 @@ func TestOnboardConfirmRepromptsOnInvalidInput(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader("maybe\nn\n"))}
-	if err := a.run([]string{"our", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("onboard invalid-then-decline should not error: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	if _, err := umbrella.LoadState(umbrellaRoot); !os.IsNotExist(err) {
@@ -91,7 +91,7 @@ func TestSetupInteractiveRoleRepromptsOnInvalidInput(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader("bogus-role\noperator\n"))}
-	if err := a.run([]string{"our", "setup", "--interactive", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "setup", "--interactive", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("setup --interactive invalid-then-valid role should not error: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	state, err := umbrella.LoadState(umbrellaRoot)
@@ -127,7 +127,7 @@ func TestOnboardAgentZeroManifestExecsHarnessFromCurrentDir(t *testing.T) {
 			return nil
 		},
 	}
-	if err := a.run([]string{"our", "onboard", "--agent", "--harness", "codex", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "onboard", "--agent", "--harness", "codex", "--home", home}); err != nil {
 		t.Fatalf("onboard --agent zero manifest: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	if gotPath != "/test/bin/codex" || gotDir != cwd {
@@ -144,7 +144,7 @@ func TestOnboardAgentZeroManifestExecsHarnessFromCurrentDir(t *testing.T) {
 	if len(reg.Manifests) != 0 {
 		t.Fatalf("onboard --agent must not register manifests itself: %#v", reg.Manifests)
 	}
-	if _, err := os.Lstat(filepath.Join(home, ".codex", "skills", "our")); err != nil {
+	if _, err := os.Lstat(filepath.Join(home, ".codex", "skills", "my")); err != nil {
 		t.Fatalf("self-skill was not installed for zero-manifest agent launch: %v", err)
 	}
 }
@@ -171,7 +171,7 @@ func TestOnboardAgentPromptsForHarnessWhenOmitted(t *testing.T) {
 			return nil
 		},
 	}
-	if err := a.run([]string{"our", "onboard", "--agent", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "onboard", "--agent", "--home", home}); err != nil {
 		t.Fatalf("onboard --agent prompt harness: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	if gotPath != "/test/bin/codex" {
@@ -183,7 +183,7 @@ func TestOnboardAgentPromptsForHarnessWhenOmitted(t *testing.T) {
 	}
 }
 
-func TestOnboardAgentManifestLaunchesThroughOurAIWithPrompt(t *testing.T) {
+func TestOnboardAgentManifestLaunchesThroughMyCLIWithPrompt(t *testing.T) {
 	home, umbrellaRoot := setupCLILaunchFixture(t)
 
 	var stdout, stderr bytes.Buffer
@@ -205,7 +205,7 @@ func TestOnboardAgentManifestLaunchesThroughOurAIWithPrompt(t *testing.T) {
 			return nil
 		},
 	}
-	if err := a.run([]string{"our", "onboard", "--agent", "--harness", "codex", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "onboard", "--agent", "--harness", "codex", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("onboard --agent manifest: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	if gotPath != "/test/bin/codex" || gotDir != umbrellaRoot {
@@ -227,7 +227,7 @@ func configuredUmbrella(t *testing.T, home string) string {
 	umbrellaRoot := writeRoleSetupManifest(t, home)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "setup", "--manifest", "acme", "--home", home, "--role", "operator", "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "setup", "--manifest", "acme", "--home", home, "--role", "operator", "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("pre-configure setup: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	state, err := umbrella.LoadState(umbrellaRoot)

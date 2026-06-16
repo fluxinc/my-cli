@@ -1,19 +1,19 @@
 # CLI Reference
 
-Run `our --help` for the authoritative surface. This page groups the current
+Run `my --help` for the authoritative surface. This page groups the current
 commands by job.
 
 ## Which command do I run?
 
 Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
 
-- **`our sync`** converges the whole workspace. It pulls every registered
+- **`my sync`** converges the whole workspace. It pulls every registered
   repository (manifest cache, content mounts, catalog repo clones), reconciles
   generated guidance, umbrella MCP config, and launch-scoped skill notices when
   the manifest changed, and publishes local content that is safe to publish.
   This is the one routine verb — when a startup notice says something is stale
   or unpublished, run this.
-- **`our doctor`** is the dry run for installation and workspace repair: it
+- **`my doctor`** is the dry run for installation and workspace repair: it
   diagnoses manifest validity, per-checkout Git freshness, derived
   guidance/MCP drift, legacy global org-skill drift, service materialization
   health, work-session health, and the last sync audit,
@@ -21,63 +21,63 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
   count. Nothing changes until you re-run with `--fix`, which applies exactly
   that plan; findings `--fix` cannot repair (dirty, diverged, repo checkouts,
   session work) keep their explanatory remediation text instead.
-- **`our manifests sync`** refreshes the registered manifest cache. You need
+- **`my manifests sync`** refreshes the registered manifest cache. You need
   it before an umbrella exists (bootstrap) or when managing several
   registered manifests; when exactly one manifest changes and an umbrella is
   known, it also reconciles generated guidance, umbrella MCP config, and
   launch-scoped skill reconciliation notices. Once an umbrella is set up, plain
-  `our sync` is still the routine command.
+  `my sync` is still the routine command.
 
 ## Setup and launch
 
 ```sh
-our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
-our publish [--manifest NAME] [--home DIR] [--print] [--json]
-our onboard [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-our setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-our root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-our ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
-our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
-our doctor [--no-fetch] [--fix] [--json]
-our update [--check] [--version X.Y.Z] [--json] [--yes]
-our version
+my init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
+my publish [--manifest NAME] [--home DIR] [--print] [--json]
+my onboard [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+my setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+my root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+my ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+my sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--json]
+my doctor [--no-fetch] [--fix] [--json]
+my update [--check] [--version X.Y.Z] [--json] [--yes]
+my version
 ```
 
-`our init` creates two local repositories — a private manifest repo at the
+`my init` creates two local repositories — a private manifest repo at the
 registry path (the control plane) and a content repo at
 `<umbrella>/workspace` (`--path` overrides) — commits and registers them, and
-prints the follow-up `our setup`, `our ai`, and `our publish` commands. Both
+prints the follow-up `my setup`, `my ai`, and `my publish` commands. Both
 repos work offline and report `local-only` until published.
 
-`our onboard` is the human tour. With no registered manifest it prints the
-`our manifests add <name> <git-url>` next step and writes no state. With a
-manifest, it explains the model, offers `our setup --interactive`, and records
-tour completion in the umbrella. Plain `our setup` remains non-interactive and
+`my onboard` is the human tour. With no registered manifest it prints the
+`my manifests add <name> <git-url>` next step and writes no state. With a
+manifest, it explains the model, offers `my setup --interactive`, and records
+tour completion in the umbrella. Plain `my setup` remains non-interactive and
 scriptable; `--interactive` prompts for manifest and role selection.
 
-`our publish` takes the organization online idempotently: it creates private
+`my publish` takes the organization online idempotently: it creates private
 remotes (`<org>-workspace`, `<org>-manifest`) via `gh`, or adopts existing
 origins and pushes (verifying GitHub remotes are private), rewrites local
 mount URLs to the published repositories in a commit scoped to
 `manifest.json`, updates the registry, and prints the teammate join command.
-`our sync` refuses to publish a manifest that still references local mount
-paths, and `our doctor` names each such mount with the `our publish`
+`my sync` refuses to publish a manifest that still references local mount
+paths, and `my doctor` names each such mount with the `my publish`
 remediation.
 
 ## Skills
 
 ```sh
-our skills self install [harness...] | --all [--home DIR] [--copy] [--link] [--force] [--json]
-our skills self uninstall [harness...] | --all [--home DIR] [--force] [--json]
-our skills self status [harness...] | --all [--home DIR] [--json]
+my skills self install [harness...] | --all [--home DIR] [--copy] [--link] [--force] [--json]
+my skills self uninstall [harness...] | --all [--home DIR] [--force] [--json]
+my skills self status [harness...] | --all [--home DIR] [--json]
 
-our skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
-our skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
-our skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
-our skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
-our skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
-our skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
-our skills purge <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
+my skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
+my skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
+my skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
+my skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+my skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
+my skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+my skills purge <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
 ```
 
 `--manifest NAME` reads skills from a synced manifest (the default when one is
@@ -88,16 +88,16 @@ ones that are not present.
 ## Admin
 
 ```sh
-our admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
-our admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
-our admin setup ...
-our admin manifests add|sync|validate ...
-our admin mounts add|remove|sync ...
-our admin meetings add ...
-our admin support add ...
-our admin tools add|edit|remove <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
-our admin contract add "RULE TEXT" --manifest-dir DIR [--force] [--json]
-our admin contract remove <index|"RULE TEXT"> --manifest-dir DIR [--force] [--json]
+my admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
+my admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
+my admin setup ...
+my admin manifests add|sync|validate ...
+my admin mounts add|remove|sync ...
+my admin meetings add ...
+my admin support add ...
+my admin tools add|edit|remove <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
+my admin contract add "RULE TEXT" --manifest-dir DIR [--force] [--json]
+my admin contract remove <index|"RULE TEXT"> --manifest-dir DIR [--force] [--json]
 ```
 
 See the [admin guide](./admin.md) for the full flag set and the
@@ -106,73 +106,73 @@ review-commit-push workflow that follows every admin edit.
 ## Manifests, mounts, and workspace
 
 ```sh
-our manifests add <name> <git-url>
-our manifests list
-our manifests sync <name...> | --all [--home DIR] [--umbrella DIR] [--no-derived] [--print] [--json]
-our manifests validate <name|path>
+my manifests add <name> <git-url>
+my manifests list
+my manifests sync <name...> | --all [--home DIR] [--umbrella DIR] [--no-derived] [--print] [--json]
+my manifests validate <name|path>
 
-our mounts list [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
-our mounts add <kind:id|id> [--manifest NAME] [--home DIR] [--umbrella DIR] [--print] [--json]
-our mounts sync <mount...> | --all [--manifest NAME] [--home DIR] [--umbrella DIR] [--print] [--json]
-our mounts remove <mount...> [--home DIR] [--umbrella DIR] [--print] [--force] [--json]
+my mounts list [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+my mounts add <kind:id|id> [--manifest NAME] [--home DIR] [--umbrella DIR] [--print] [--json]
+my mounts sync <mount...> | --all [--manifest NAME] [--home DIR] [--umbrella DIR] [--print] [--json]
+my mounts remove <mount...> [--home DIR] [--umbrella DIR] [--print] [--force] [--json]
 
-our workspaces list [--manifest NAME]
-our workspaces sync <workspace...> | --all [--manifest NAME] [--print]
+my workspaces list [--manifest NAME]
+my workspaces sync <workspace...> | --all [--manifest NAME] [--print]
 
-our work start [--slug SLUG] [--json]
-our work status [--all] [--json]
-our work list [--all] [--json]
-our work resume [session-id] [--json]
-our work finish [session-id] --land|--publish|--discard [--message TEXT] [--json]
+my work start [--slug SLUG] [--json]
+my work status [--all] [--json]
+my work list [--all] [--json]
+my work resume [session-id] [--json]
+my work finish [session-id] --land|--publish|--discard [--message TEXT] [--json]
 ```
 
 ## Content and diagnostics
 
 ```sh
-our meetings list
-our meetings search <text>
-our meetings get <id|path>
-our meetings add <slug>
+my meetings list
+my meetings search <text>
+my meetings get <id|path>
+my meetings add <slug>
 
-our support list
-our support search <text>
-our support get <id|path>
-our support add <slug>
+my support list
+my support search <text>
+my support get <id|path>
+my support add <slug>
 
-our fleet list
-our fleet search <text>
-our fleet get <id|identifier|path>
-our fleet add <id>
-our fleet set <id> KEY=VALUE...
+my fleet list
+my fleet search <text>
+my fleet get <id|identifier|path>
+my fleet add <id>
+my fleet set <id> KEY=VALUE...
 
-our record adopt <path>
+my record adopt <path>
 
-our customers list                     # mounted customer identity records
-our products list
-our repos list [--json]
-our repos add <id> [--print] [--json]
-our repos remove <id> [--force] [--json]
-our tools list
-our tools info <name>
-our services list [--manifest NAME] [--home DIR] [--json]
-our services get <id> [--manifest NAME] [--home DIR] [--json]
-our roles list [--manifest NAME] [--home DIR] [--json]
-our roles get <id> [--manifest NAME] [--home DIR] [--json]
-our contract list [--manifest NAME] [--home DIR] [--json]
-our compile --role <id> [--manifest NAME] [--home DIR]
+my customers list                     # mounted customer identity records
+my products list
+my repos list [--json]
+my repos add <id> [--print] [--json]
+my repos remove <id> [--force] [--json]
+my tools list
+my tools info <name>
+my services list [--manifest NAME] [--home DIR] [--json]
+my services get <id> [--manifest NAME] [--home DIR] [--json]
+my roles list [--manifest NAME] [--home DIR] [--json]
+my roles get <id> [--manifest NAME] [--home DIR] [--json]
+my contract list [--manifest NAME] [--home DIR] [--json]
+my compile --role <id> [--manifest NAME] [--home DIR]
 ```
 
-`our sync` is the routine reconciliation command. `--backend auto` prefers Gnit
-when the umbrella is initialized as a Gnit control workspace; Our AI keeps the
+`my sync` is the routine reconciliation command. `--backend auto` prefers Gnit
+when the umbrella is initialized as a Gnit control workspace; My AI keeps the
 bootstrap, policy, duplicate-remote, and PR layers. `--publish direct` can
 publish existing local commits directly, but dirty non-content/admin files are
 still held back for explicit admin or review handling. Plain untracked (`??`)
 files under declared content paths are also held; create records with
-`our meetings add`, `our support add`, or `our fleet add`, or run
-`our record adopt <path>` to mark a manually created file as intentional
+`my meetings add`, `my support add`, or `my fleet add`, or run
+`my record adopt <path>` to mark a manually created file as intentional
 publish content. A manifest can set top-level `sync.publish_policy` to `auto`,
 `never`, or `pr` as the default when `--publish` is omitted; an explicit CLI
-flag always wins. Non-print syncs write `.our/last-sync.json`; `our doctor`
+flag always wins. Non-print syncs write `.my-cli/last-sync.json`; `my doctor`
 reports that audit, per-checkout Git freshness, active and archived work
 sessions, service health, derived guidance/MCP drift, and legacy global
 org-skill drift. Doctor fetches
@@ -182,34 +182,34 @@ and reconciles generated guidance, umbrella `.mcp.json`, and legacy global
 org-skill cleanup. Sync performs the same derived reconcile after manifest
 checkout changes unless `--no-derived` is passed.
 
-`our root`, `our ai`, and `our setup` run a best-effort, TTL-gated
+`my root`, `my ai`, and `my setup` run a best-effort, TTL-gated
 refresh for clean manifest/content checkouts before using workspace context.
 They leave dirty, diverged, repo, and remote-unknown checkouts untouched.
-`our ai` also ensures the bundled `our` self-skill exists for the selected
+`my ai` also ensures the bundled `my` self-skill exists for the selected
 filesystem harness before launching it. By default it launches from the base
 umbrella, or from the current active session when run inside `work/<id>`. Use
 `--new-session` to create a fresh isolated session, `--session <id>` to
 resume, or `--no-session` to ignore a current session for base
 inspection/admin/debug. Repo launches use `--repo <id>`. Use `--no-refresh`
-for one command, `OUR_NO_AUTO_REFRESH=1` globally, or `OUR_REFRESH_TTL=30m`
+for one command, `MYCLI_NO_AUTO_REFRESH=1` globally, or `MYCLI_REFRESH_TTL=30m`
 to tune the default six-hour window.
 
-Manifest roles are selected locally with `our setup --role <id>`. The choice
-is stored in `.our/state.json`, appends that role's guidance fragments to
+Manifest roles are selected locally with `my setup --role <id>`. The choice
+is stored in `.my-cli/state.json`, appends that role's guidance fragments to
 `AGENTS.md`, and scopes generated `.mcp.json` to MCP services selected by the
 role. Services and roles are manifest vocabulary: inspect them with
-`our services list|get` and `our roles list|get`; they do not prune mounts.
-`our compile --role <id>` prints the deterministic contained-runner launch
+`my services list|get` and `my roles list|get`; they do not prune mounts.
+`my compile --role <id>` prints the deterministic contained-runner launch
 projection JSON for that role without launching containers, resolving
 credentials, or fetching service descriptors.
 
-Those startup commands also emit a stderr-only notice when a newer Our AI release
+Those startup commands also emit a stderr-only notice when a newer My AI release
 is available. Stdout remains clean for command substitutions such as
-`cd "$(our root)"`. Use `--no-update-check`, `OUR_NO_UPDATE_CHECK=1`, or
-`OUR_UPDATE_CHECK_TTL=12h` to suppress or tune that check.
+`cd "$(my root)"`. Use `--no-update-check`, `MYCLI_NO_UPDATE_CHECK=1`, or
+`MYCLI_UPDATE_CHECK_TTL=12h` to suppress or tune that check.
 
-`our update` downloads the selected GitHub release tarball, verifies it against
+`my update` downloads the selected GitHub release tarball, verifies it against
 `checksums.txt`, and atomically replaces the running binary when the install is
-writable and not package-managed. Use `our update --check` for a read-only
-version comparison, or `our update --version X.Y.Z` to install a specific
+writable and not package-managed. Use `my update --check` for a read-only
+version comparison, or `my update --version X.Y.Z` to install a specific
 release.

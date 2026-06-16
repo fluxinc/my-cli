@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/record"
-	"github.com/fluxinc/our-ai/internal/syncer"
+	"github.com/fluxinc/my-cli/internal/record"
+	"github.com/fluxinc/my-cli/internal/syncer"
 )
 
 func (a app) runRecord(args []string) error {
@@ -28,11 +28,11 @@ func (a app) runRecord(args []string) error {
 
 func (a app) printRecordUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our record adopt <path> [--manifest NAME] [--workspace ID] [--home DIR] [--umbrella DIR] [--json]
+  my record adopt <path> [--manifest NAME] [--workspace ID] [--home DIR] [--umbrella DIR] [--json]
 
 Record commands operate on local markdown records under declared content
 mounts. adopt marks an existing untracked file as intentional publish content
-using Git intent-to-add; our sync still stages the final content when it
+using Git intent-to-add; my sync still stages the final content when it
 publishes.`)
 }
 
@@ -45,14 +45,14 @@ type recordAdoptResult struct {
 
 func (a app) runRecordAdopt(args []string) error {
 	var opts meetingCommonOpts
-	fs := newFlagSet("our record adopt", a.stderr)
+	fs := newFlagSet("my record adopt", a.stderr)
 	bindMeetingCommonFlags(fs, &opts)
 	rest, err := parseInterspersed(fs, args, meetingValueFlags())
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our record adopt <path>")
+		return fmt.Errorf("usage: my record adopt <path>")
 	}
 	path, err := filepath.Abs(rest[0])
 	if err != nil {
@@ -112,7 +112,7 @@ func (a app) recordAdoptTarget(home, manifestName, workspaceID, umbrellaRoot, pa
 		}{entry: entry, rel: rel})
 	}
 	if len(matches) == 0 {
-		return syncer.Entry{}, "", fmt.Errorf("path %s is not under a declared content path; run our mounts list or pass --workspace", path)
+		return syncer.Entry{}, "", fmt.Errorf("path %s is not under a declared content path; run my mounts list or pass --workspace", path)
 	}
 	sort.Slice(matches, func(i, j int) bool {
 		return len(matches[i].entry.LocalPath) > len(matches[j].entry.LocalPath)

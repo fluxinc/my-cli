@@ -58,7 +58,7 @@ func TestStartCreatesWorktreeScratchGuidanceAndRegistry(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(worktree, "README.md")); err != nil {
 		t.Fatalf("worktree missing seeded file: %v", err)
 	}
-	if got := gitOut(t, worktree, "rev-parse", "--abbrev-ref", "HEAD"); got != "our/work/"+session.ID {
+	if got := gitOut(t, worktree, "rev-parse", "--abbrev-ref", "HEAD"); got != "my/work/"+session.ID {
 		t.Fatalf("worktree branch = %q", got)
 	}
 	if got := gitOut(t, repo, "rev-parse", "--abbrev-ref", "HEAD"); got != "master" {
@@ -71,7 +71,7 @@ func TestStartCreatesWorktreeScratchGuidanceAndRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SESSION.md missing: %v", err)
 	}
-	for _, want := range []string{session.ID, "handbook", "our work finish"} {
+	for _, want := range []string{session.ID, "handbook", "my work finish"} {
 		if !strings.Contains(string(sessionDoc), want) {
 			t.Fatalf("SESSION.md missing %q:\n%s", want, sessionDoc)
 		}
@@ -80,7 +80,7 @@ func TestStartCreatesWorktreeScratchGuidanceAndRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AGENTS.md missing: %v", err)
 	}
-	for _, want := range []string{session.ID, "handbook/", "scratch/", "SESSION.md", "our work finish"} {
+	for _, want := range []string{session.ID, "handbook/", "scratch/", "SESSION.md", "my work finish"} {
 		if !strings.Contains(string(agentsDoc), want) {
 			t.Fatalf("AGENTS.md missing %q:\n%s", want, agentsDoc)
 		}
@@ -110,7 +110,7 @@ func TestStartCreatesWorktreeScratchGuidanceAndRegistry(t *testing.T) {
 	if m.WorktreePath != worktree {
 		t.Fatalf("worktree path = %q, want %q", m.WorktreePath, worktree)
 	}
-	if m.BaseBranch != "master" || m.BaseHead != baseHead || m.Branch != "our/work/"+session.ID {
+	if m.BaseBranch != "master" || m.BaseHead != baseHead || m.Branch != "my/work/"+session.ID {
 		t.Fatalf("mount git fields = %#v (base head %s)", m, baseHead)
 	}
 }
@@ -169,10 +169,10 @@ func TestStartFailsCleanlyOnNonGitMount(t *testing.T) {
 	if entries, _ := os.ReadDir(filepath.Join(root, "work")); len(entries) != 0 {
 		t.Fatalf("work dir not cleaned up: %v", entries)
 	}
-	if out := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Contains(out, "our/work/") {
+	if out := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Contains(out, "my/work/") {
 		t.Fatalf("stale worktree left behind:\n%s", out)
 	}
-	if out := gitOut(t, repo, "branch", "--list", "our/work/*"); strings.TrimSpace(out) != "" {
+	if out := gitOut(t, repo, "branch", "--list", "my/work/*"); strings.TrimSpace(out) != "" {
 		t.Fatalf("stale branch left behind: %q", out)
 	}
 }

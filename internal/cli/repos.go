@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
-	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 type repoCommonOpts struct {
@@ -34,7 +34,7 @@ func repoValueFlags() map[string]bool {
 
 func (a app) runRepos(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: our repos list|add|remove [flags]")
+		return fmt.Errorf("usage: my repos list|add|remove [flags]")
 	}
 	switch args[0] {
 	case "list":
@@ -61,14 +61,14 @@ type repoListEntry struct {
 
 func (a app) runReposList(args []string) error {
 	var opts repoCommonOpts
-	fs := newFlagSet("our repos list", a.stderr)
+	fs := newFlagSet("my repos list", a.stderr)
 	bindRepoCommonFlags(fs, &opts)
 	rest, err := parseInterspersed(fs, args, repoValueFlags())
 	if err != nil {
 		return err
 	}
 	if len(rest) != 0 {
-		return fmt.Errorf("usage: our repos list [--json]")
+		return fmt.Errorf("usage: my repos list [--json]")
 	}
 	repos, err := manifest.LoadRepoCatalog(opts.home, opts.manifestName)
 	if err != nil {
@@ -128,7 +128,7 @@ func (a app) runReposList(args []string) error {
 func (a app) runReposAdd(args []string) error {
 	var opts repoCommonOpts
 	var printOnly bool
-	fs := newFlagSet("our repos add", a.stderr)
+	fs := newFlagSet("my repos add", a.stderr)
 	bindRepoCommonFlags(fs, &opts)
 	fs.BoolVar(&printOnly, "print", false, "print the planned clone without changing files")
 	rest, err := parseInterspersed(fs, args, repoValueFlags())
@@ -136,7 +136,7 @@ func (a app) runReposAdd(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our repos add <id>")
+		return fmt.Errorf("usage: my repos add <id>")
 	}
 	return a.repoAddByID(opts.home, opts.manifestName, opts.umbrellaRoot, rest[0], printOnly, opts.jsonOut)
 }
@@ -144,7 +144,7 @@ func (a app) runReposAdd(args []string) error {
 func (a app) runReposRemove(args []string) error {
 	var opts repoCommonOpts
 	var force bool
-	fs := newFlagSet("our repos remove", a.stderr)
+	fs := newFlagSet("my repos remove", a.stderr)
 	bindRepoCommonFlags(fs, &opts)
 	fs.BoolVar(&force, "force", false, "also delete the local clone directory")
 	rest, err := parseInterspersed(fs, args, repoValueFlags())
@@ -152,7 +152,7 @@ func (a app) runReposRemove(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our repos remove <id> [--force]")
+		return fmt.Errorf("usage: my repos remove <id> [--force]")
 	}
 	id := rest[0]
 	root, err := resolveUmbrellaRoot(opts.home, opts.umbrellaRoot)

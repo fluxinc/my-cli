@@ -8,11 +8,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
-	"github.com/fluxinc/our-ai/internal/record"
-	"github.com/fluxinc/our-ai/internal/umbrella"
-	"github.com/fluxinc/our-ai/internal/worksession"
-	"github.com/fluxinc/our-ai/internal/workspace"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/record"
+	"github.com/fluxinc/my-cli/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/worksession"
+	"github.com/fluxinc/my-cli/internal/workspace"
 )
 
 func contentRoots(home, manifestName, workspaceID, umbrellaRoot, noun string, kinds []string) ([]record.Root, error) {
@@ -56,7 +56,7 @@ func contentRoots(home, manifestName, workspaceID, umbrellaRoot, noun string, ki
 		return filterRoots(roots)
 	}
 	if manifestName == "" {
-		return nil, noUmbrellaError("no our umbrella found; run our setup or pass --umbrella", "run our setup or pass --umbrella <path>")
+		return nil, noUmbrellaError("no my umbrella found; run my setup or pass --umbrella", "run my setup or pass --umbrella <path>")
 	}
 	entries, err := workspace.List(home, manifestName)
 	if err != nil {
@@ -177,12 +177,12 @@ func configuredUmbrellaContentRoots(home, manifestName, workspaceID, noun string
 		return roots, true, err
 	}
 	if len(candidates) > 1 {
-		return nil, true, fmt.Errorf("multiple our umbrellas configured; pass --manifest or --umbrella")
+		return nil, true, fmt.Errorf("multiple my umbrellas configured; pass --manifest or --umbrella")
 	}
 	if manifestName == "" && len(configured) == 1 {
 		return nil, true, noUmbrellaError(
-			fmt.Sprintf("no our umbrella found; configured umbrella is %s", configured[0].root),
-			fmt.Sprintf("run our setup --manifest %s or pass --umbrella %s", configured[0].ref, configured[0].root),
+			fmt.Sprintf("no my umbrella found; configured umbrella is %s", configured[0].root),
+			fmt.Sprintf("run my setup --manifest %s or pass --umbrella %s", configured[0].ref, configured[0].root),
 		)
 	}
 	return nil, false, nil
@@ -287,5 +287,5 @@ func activeSessionForPath(root, path string) (worksession.Session, bool, error) 
 			return session, true, nil
 		}
 	}
-	return worksession.Session{}, true, fmt.Errorf("current directory is under %s but no active work session matched; run our work status or cd %s", workRoot, root)
+	return worksession.Session{}, true, fmt.Errorf("current directory is under %s but no active work session matched; run my work status or cd %s", workRoot, root)
 }

@@ -15,7 +15,7 @@ func TestCompileCommandPrintsLaunchProjection(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -23,7 +23,7 @@ func TestCompileCommandPrintsLaunchProjection(t *testing.T) {
 	}
 	stdout.Reset()
 
-	if err := a.run([]string{"our", "compile", "--manifest", "acme", "--role", "operator", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "compile", "--manifest", "acme", "--role", "operator", "--home", home}); err != nil {
 		t.Fatalf("compile: %v\nstderr:\n%s", err, stderr.String())
 	}
 	var projection struct {
@@ -50,12 +50,12 @@ func TestCompileCommandRequiresRoleWhenRolesDeclared(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "manifests", "add", "acme", "https://github.com/acme/acme-ai-manifest.git", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "manifests", "add", "acme", "https://github.com/acme/acme-ai-manifest.git", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	stdout.Reset()
 
-	err := a.run([]string{"our", "compile", "--manifest", "acme", "--home", home})
+	err := a.run([]string{"my", "compile", "--manifest", "acme", "--home", home})
 	if err == nil || !strings.Contains(err.Error(), "role is required") {
 		t.Fatalf("compile without role err = %v", err)
 	}
@@ -64,7 +64,7 @@ func TestCompileCommandRequiresRoleWhenRolesDeclared(t *testing.T) {
 func TestLaunchAliasRemoved(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	err := a.run([]string{"our", "launch", "--help"})
+	err := a.run([]string{"my", "launch", "--help"})
 	if err == nil || !strings.Contains(err.Error(), `unknown command "launch"`) {
 		t.Fatalf("launch alias err = %v", err)
 	}
@@ -72,7 +72,7 @@ func TestLaunchAliasRemoved(t *testing.T) {
 
 func writeCompileManifest(t *testing.T, home string) {
 	t.Helper()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },

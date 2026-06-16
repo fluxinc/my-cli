@@ -2,7 +2,7 @@
 
 Status: shipped (v0.20.0-v0.21.0). Kept as the debate record; the converged
 section at the bottom is what shipped. Open-question resolutions: the generated
-`our support add` hint stays customer + identifiers for v1 (product/area can
+`my support add` hint stays customer + identifiers for v1 (product/area can
 join later if fleet records grow reliable passthrough fields); bare contract
 strings are sufficient for v0.20.0 given the documented future Mode B mapping
 to enforce-level Clawdapus includes.
@@ -10,7 +10,7 @@ to enforce-level Clawdapus includes.
 ## Goal (operator)
 
 Design, debate, converge on, implement, review, test, and release a way to add
-to the basic `our` contract — e.g. "Always create and update a support record
+to the basic `my` contract — e.g. "Always create and update a support record
 when working on any fleet member." Explicit constraint: **don't
 over-complicate.**
 
@@ -65,12 +65,12 @@ These rules are binding for all agents in this workspace:
 
 Stable IDs in the rendering let handoffs and reviews cite "per contract rule
 `support-record-on-fleet-work`". Zero rules → no section (no litter).
-Existing drift machinery (Check/Ensure, doctor, `our sync` derived reconcile)
+Existing drift machinery (Check/Ensure, doctor, `my sync` derived reconcile)
 picks this up for free because the contract changes composed bytes.
 
 ### Inspection
 
-`our contract list [--json]` — operational, read-only, lists id + rule per
+`my contract list [--json]` — operational, read-only, lists id + rule per
 registered manifest (manifest-prefixed like other nouns). No `get` (rules are
 one-liners; list shows everything). No `add/edit` admin verbs in v1 — the
 existing admin path for guidance (edit manifest JSON, sync) applies; verbs can
@@ -102,8 +102,8 @@ come later if editing friction proves real.
 
 1. Manifest schema + validation + tests (`internal/manifest`).
 2. Guidance rendering + tests (`internal/guidance`), example workspace fixture.
-3. `our contract list` + tests, baseline AGENTS.md mention, docs
-   (site cli-reference + the-model), skills/our/SKILL.md, CHANGELOG ×2.
+3. `my contract list` + tests, baseline AGENTS.md mention, docs
+   (site cli-reference + the-model), skills/my/SKILL.md, CHANGELOG ×2.
 4. Cross-review, live smoke in /tmp sandbox, release vNEXT.
 
 ## Codex critique
@@ -112,17 +112,17 @@ I agree with the problem framing: short imperative rules are different from
 long guidance, and agents should see them as obligations rather than background
 reading.
 
-I disagree with shipping a new manifest `contract` schema plus `our contract
+I disagree with shipping a new manifest `contract` schema plus `my contract
 list` as v1. It is modest by itself, but it still creates a new top-level
 manifest concept, validation surface, CLI noun, docs surface, and future
 compatibility obligation before we have evidence that organizations need
 machine-enumerable rule metadata. The immediate operator example is not an
-org-specific custom rule; it is a generic rule connecting two public Our AI
+org-specific custom rule; it is a generic rule connecting two public My AI
 nouns that already exist: fleet registry records and support records. That
 belongs in the public baseline contract first, so every existing umbrella gets
 it after normal derived guidance reconcile with no manifest edit.
 
-The `our contract list` verb is also weak as the first affordance. Agents read
+The `my contract list` verb is also weak as the first affordance. Agents read
 `AGENTS.md` at startup; humans will rarely run a separate listing command; and
 the rendered section already makes the rules inspectable. A list command starts
 to matter once rules have machine behavior: role filtering, provenance,
@@ -136,25 +136,25 @@ Handoffs can cite the section name or quote the rule text.
 
 The missing ergonomic contract is more concrete:
 
-- Before substantive work on a deployed instance, run `our fleet get
+- Before substantive work on a deployed instance, run `my fleet get
   <id|identifier>` so the agent starts from the registry record and sees any
   related support records.
 - During the work, use an existing open/relevant support record if one is
-  listed; otherwise create a dated anonymized record with `our support add`.
+  listed; otherwise create a dated anonymized record with `my support add`.
 - Put the fleet record id and every useful fleet identifier on the support
   record via repeated `--identifier`, plus canonical customer/product/area when
   known.
 - Treat support records as the incident/work log. Fleet records hold registry
-  state; update them with `our fleet set` only for meaningful state changes.
-- Publish the resulting content with the normal `our sync` flow.
+  state; update them with `my fleet set` only for meaningful state changes.
+- Publish the resulting content with the normal `my sync` flow.
 
 That can ship without a new manifest schema:
 
 1. Add a compact **Fleet Work Contract** section to the public baseline
-   `AGENTS.md` and the bundled `our` self-skill.
-2. Make `our fleet get` the obvious launch point by printing a short follow-up
+   `AGENTS.md` and the bundled `my` self-skill.
+2. Make `my fleet get` the obvious launch point by printing a short follow-up
    hint after the related support records section. If no related support exists,
-   say to create one with `our support add ... --identifier ...`; if related
+   say to create one with `my support add ... --identifier ...`; if related
    records exist, say to continue the relevant support record or create a new
    dated one for a distinct incident.
 3. Add focused tests that generated guidance contains the rule and that the
@@ -164,7 +164,7 @@ That can ship without a new manifest schema:
 
 For org-specific one-line obligations, v1 can document a convention instead of
 parsing a schema: put a `## Organization Contract` heading in a manifest
-guidance fragment. Existing guidance drift checks and `our setup` already make
+guidance fragment. Existing guidance drift checks and `my setup` already make
 that reliable. If two or three real manifests grow enough rules that discovery
 or citation becomes painful, then add Claude's structured `contract` list as a
 small later step with better evidence.
@@ -173,12 +173,12 @@ small later step with better evidence.
 
 Accepted from the critique:
 
-- The operator's example is generic Our AI workflow, not an org-specific rule.
+- The operator's example is generic My AI workflow, not an org-specific rule.
   It belongs in the public baseline so every umbrella gets it with no manifest
   edit. Adopted as the **Fleet Work Contract** baseline section.
-- The `our fleet get` follow-up hint is the right ergonomic delivery point.
+- The `my fleet get` follow-up hint is the right ergonomic delivery point.
 - Rendered rule IDs are ceremony; dropped. `ContractRule{ID, Rule}` struct;
-  dropped. `our contract list` verb: dropped — AGENTS.md is the inspection
+  dropped. `my contract list` verb: dropped — AGENTS.md is the inspection
   surface, and `--json` on the manifest itself covers machine needs.
 - "update a support record" should read "continue an existing relevant record
   or create a new dated record" (Codex open question 2: yes).
@@ -196,15 +196,15 @@ rendered, and testable.
 ## Converged scope (proposed by Claude; Codex to ratify or amend)
 
 1. **Baseline Fleet Work Contract** (Codex design): compact section in
-   `internal/guidance/baseline/AGENTS.md` and the bundled `our` self-skill —
-   before substantive work on a deployed instance run `our fleet get`;
+   `internal/guidance/baseline/AGENTS.md` and the bundled `my` self-skill —
+   before substantive work on a deployed instance run `my fleet get`;
    continue an existing relevant support record or create a new dated one with
-   `our support add`; carry fleet identifiers via repeated `--identifier`;
-   fleet records hold registry state (`our fleet set` for meaningful
-   transitions); publish via `our sync`.
-2. **`our fleet get` hint** (Codex design): after the related-support section
+   `my support add`; carry fleet identifiers via repeated `--identifier`;
+   fleet records hold registry state (`my fleet set` for meaningful
+   transitions); publish via `my sync`.
+2. **`my fleet get` hint** (Codex design): after the related-support section
    in human output, print the concrete next step (continue listed record /
-   create with `our support add ... --identifier ...`). JSON output unchanged.
+   create with `my support add ... --identifier ...`). JSON output unchanged.
 3. **Manifest `contract: []string`** (Claude design, minimized): short,
    binding enforce-level obligations. Rendered
    between the baseline and any `## Manifest Guidance:` fragments as
@@ -221,10 +221,10 @@ rendered, and testable.
    Validation in `validateOrgManifest`: entries non-empty after trim, no
    duplicates. Zero rules → no section. No new CLI noun, no admin verbs, no
    IDs, no role scoping. For Clawdapus/Mode B compatibility, this list maps to
-   a generated `x-claw.include`/`enforce` contract block when Our AI compiles
+   a generated `x-claw.include`/`enforce` contract block when My AI compiles
    contained agents, instead of becoming a parallel contract dialect.
    Drift/reconcile is free via existing composed-bytes machinery.
-4. **Docs + release**: site manifest/guidance docs, skills/our/SKILL.md,
+4. **Docs + release**: site manifest/guidance docs, skills/my/SKILL.md,
    CHANGELOG ×2, README Roadmap + plans index, release **v0.20.0**.
 
 Slice split: Claude takes 3 (manifest + guidance rendering, TDD); Codex takes
@@ -237,11 +237,11 @@ Dogfooding showed that inspectable and editable contract rules are useful even
 without IDs or richer schema. The follow-up kept the string-list model and
 added only the minimal CLI surface:
 
-- `our contract list [--manifest NAME] [--json]` for operational inspection,
+- `my contract list [--manifest NAME] [--json]` for operational inspection,
   including the manifest name and 1-based position.
-- `our admin contract add "RULE" --manifest-dir DIR` for maintainer checkout
+- `my admin contract add "RULE" --manifest-dir DIR` for maintainer checkout
   edits, rejecting duplicate, empty, and multiline rules.
-- `our admin contract remove <index|"RULE"> --manifest-dir DIR` for the
+- `my admin contract remove <index|"RULE"> --manifest-dir DIR` for the
   standard review-commit-push admin flow.
 
 This preserves the Mode B compatibility direction: the manifest contract

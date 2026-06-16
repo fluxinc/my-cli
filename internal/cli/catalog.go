@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 func (a app) runTools(args []string) error {
@@ -26,8 +26,8 @@ func (a app) runTools(args []string) error {
 
 func (a app) printToolsUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our tools list [--manifest NAME] [--home DIR] [--json]
-  our tools info <name> [--manifest NAME] [--home DIR] [--json]
+  my tools list [--manifest NAME] [--home DIR] [--json]
+  my tools info <name> [--manifest NAME] [--home DIR] [--json]
 
 Tool entries are operator-facing hints from synced organization manifests.`)
 }
@@ -41,7 +41,7 @@ func (a app) runToolsList(args []string) error {
 	var home string
 	var manifestName string
 	var jsonOut bool
-	fs := newFlagSet("our tools list", a.stderr)
+	fs := newFlagSet("my tools list", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -72,7 +72,7 @@ func (a app) runToolsInfo(args []string) error {
 	var home string
 	var manifestName string
 	var jsonOut bool
-	fs := newFlagSet("our tools info", a.stderr)
+	fs := newFlagSet("my tools info", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -84,7 +84,7 @@ func (a app) runToolsInfo(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our tools info <name>")
+		return fmt.Errorf("usage: my tools info <name>")
 	}
 	infos, err := a.findToolInfo(home, manifestName, rest[0])
 	if err != nil {
@@ -122,7 +122,7 @@ func (a app) runProducts(args []string) error {
 
 func (a app) printProductsUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our products list [--manifest NAME] [--home DIR] [--json]
+  my products list [--manifest NAME] [--home DIR] [--json]
 
 Catalog data comes from synced organization manifests.`)
 }
@@ -131,7 +131,7 @@ func (a app) runProductsList(args []string) error {
 	var home string
 	var manifestName string
 	var jsonOut bool
-	fs := newFlagSet("our products list", a.stderr)
+	fs := newFlagSet("my products list", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -143,7 +143,7 @@ func (a app) runProductsList(args []string) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return fmt.Errorf("usage: our products list")
+		return fmt.Errorf("usage: my products list")
 	}
 	products, err := manifest.LoadCatalog(home, manifestName)
 	if err != nil {

@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 // contractEntry is one organization contract rule with its manifest and
-// 1-based position, the handle `our admin contract remove` accepts.
+// 1-based position, the handle `my admin contract remove` accepts.
 type contractEntry struct {
 	Manifest string `json:"manifest"`
 	Index    int    `json:"index"`
@@ -34,7 +34,7 @@ func (a app) runContract(args []string) error {
 	case "list":
 		return a.runContractList(args[1:])
 	case "add", "remove":
-		return fmt.Errorf("our contract %s edits the manifest; use our admin contract %s", args[0], args[0])
+		return fmt.Errorf("my contract %s edits the manifest; use my admin contract %s", args[0], args[0])
 	case "-h", "--help", "help":
 		a.printContractUsage()
 		return nil
@@ -45,16 +45,16 @@ func (a app) runContract(args []string) error {
 
 func (a app) printContractUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our contract list [--manifest NAME] [--home DIR] [--json]
+  my contract list [--manifest NAME] [--home DIR] [--json]
 
 The organization contract is the manifest's list of short, binding rules,
-rendered into generated AGENTS.md. Edit it with our admin contract add|remove.`)
+rendered into generated AGENTS.md. Edit it with my admin contract add|remove.`)
 }
 
 func (a app) runContractList(args []string) error {
 	var home, manifestName string
 	var jsonOut bool
-	fs := newFlagSet("our contract list", a.stderr)
+	fs := newFlagSet("my contract list", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -66,7 +66,7 @@ func (a app) runContractList(args []string) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return fmt.Errorf("usage: our contract list")
+		return fmt.Errorf("usage: my contract list")
 	}
 	entries, err := loadManifestContracts(home, manifestName)
 	if err != nil {
@@ -119,12 +119,12 @@ func (a app) runAdminContract(args []string) error {
 }
 
 func (a app) runAdminContractAdd(args []string) error {
-	manifestDir, force, jsonOut, rest, err := parseAdminContractOpts("our admin contract add", a.stderr, args)
+	manifestDir, force, jsonOut, rest, err := parseAdminContractOpts("my admin contract add", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 || manifestDir == "" {
-		return fmt.Errorf("usage: our admin contract add \"RULE TEXT\" --manifest-dir DIR")
+		return fmt.Errorf("usage: my admin contract add \"RULE TEXT\" --manifest-dir DIR")
 	}
 	result, err := a.adminContractAdd(rest[0], manifestDir, force)
 	if err != nil {
@@ -134,12 +134,12 @@ func (a app) runAdminContractAdd(args []string) error {
 }
 
 func (a app) runAdminContractRemove(args []string) error {
-	manifestDir, force, jsonOut, rest, err := parseAdminContractOpts("our admin contract remove", a.stderr, args)
+	manifestDir, force, jsonOut, rest, err := parseAdminContractOpts("my admin contract remove", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 || manifestDir == "" {
-		return fmt.Errorf("usage: our admin contract remove <index|\"RULE TEXT\"> --manifest-dir DIR")
+		return fmt.Errorf("usage: my admin contract remove <index|\"RULE TEXT\"> --manifest-dir DIR")
 	}
 	result, err := a.adminContractRemove(rest[0], manifestDir, force)
 	if err != nil {
@@ -198,7 +198,7 @@ func (a app) adminContractRemove(target, manifestDir string, force bool) (adminC
 	}
 	idx := contractRuleIndex(doc.Contract, target)
 	if idx == -1 {
-		return adminContractResult{}, fmt.Errorf("contract rule %q not found; run our contract list", target)
+		return adminContractResult{}, fmt.Errorf("contract rule %q not found; run my contract list", target)
 	}
 	removed := doc.Contract[idx]
 	doc.Contract = append(doc.Contract[:idx], doc.Contract[idx+1:]...)
@@ -222,7 +222,7 @@ func (a app) adminContractRemove(target, manifestDir string, force bool) (adminC
 }
 
 // contractRuleIndex resolves a removal target that is either the 1-based
-// position shown by `our contract list` or the exact rule text.
+// position shown by `my contract list` or the exact rule text.
 func contractRuleIndex(rules []string, target string) int {
 	target = strings.TrimSpace(target)
 	if n, err := strconv.Atoi(target); err == nil {

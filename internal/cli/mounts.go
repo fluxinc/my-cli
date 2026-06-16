@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
-	"github.com/fluxinc/our-ai/internal/umbrella"
-	"github.com/fluxinc/our-ai/internal/workspace"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/workspace"
 )
 
 func (a app) runWorkspace(args []string) error {
@@ -33,8 +33,8 @@ func (a app) runWorkspace(args []string) error {
 
 func (a app) printWorkspaceUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our workspaces list [--manifest NAME] [--home DIR] [--json]
-  our workspaces sync <workspace...> | --all [--manifest NAME] [--home DIR] [--print] [--json]
+  my workspaces list [--manifest NAME] [--home DIR] [--json]
+  my workspaces sync <workspace...> | --all [--manifest NAME] [--home DIR] [--print] [--json]
 
 Workspace data comes from synced organization manifests. Use manifest:workspace
 to disambiguate duplicate workspace IDs across manifests.`)
@@ -44,7 +44,7 @@ func (a app) runWorkspaceList(args []string) error {
 	var home string
 	var manifestName string
 	var jsonOut bool
-	fs := newFlagSet("our workspaces list", a.stderr)
+	fs := newFlagSet("my workspaces list", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -77,7 +77,7 @@ func (a app) runWorkspaceSync(args []string) error {
 	var all bool
 	var printOnly bool
 	var jsonOut bool
-	fs := newFlagSet("our workspaces sync", a.stderr)
+	fs := newFlagSet("my workspaces sync", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.BoolVar(&all, "all", false, "sync every selected workspace")
@@ -218,7 +218,7 @@ func removeMountsFromState(root string, mountIDs []string, repoIDs []string) err
 func addStateMountEntries(home, manifestName, umbrellaRoot string, entries []workspace.Entry) ([]workspace.Entry, error) {
 	root, err := resolveUmbrellaRoot(home, umbrellaRoot)
 	if err != nil {
-		if strings.Contains(err.Error(), "no our umbrella found") {
+		if strings.Contains(err.Error(), "no my umbrella found") {
 			return entries, nil
 		}
 		return nil, err
@@ -297,10 +297,10 @@ func (a app) runMount(args []string) error {
 
 func (a app) printMountUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our mounts list [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
-  our mounts add <kind:id|id> [--manifest NAME] [--home DIR] [--umbrella DIR] [--print] [--json]
-  our mounts sync <mount...> | --all [--manifest NAME] [--home DIR] [--umbrella DIR] [--print] [--json]
-  our mounts remove <mount...> [--home DIR] [--umbrella DIR] [--print] [--force] [--json]
+  my mounts list [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my mounts add <kind:id|id> [--manifest NAME] [--home DIR] [--umbrella DIR] [--print] [--json]
+  my mounts sync <mount...> | --all [--manifest NAME] [--home DIR] [--umbrella DIR] [--print] [--json]
+  my mounts remove <mount...> [--home DIR] [--umbrella DIR] [--print] [--force] [--json]
 
 Mounts are detached content sources inside the local organization umbrella.`)
 }
@@ -310,7 +310,7 @@ func (a app) runMountList(args []string) error {
 	var manifestName string
 	var umbrellaRoot string
 	var jsonOut bool
-	fs := newFlagSet("our mounts list", a.stderr)
+	fs := newFlagSet("my mounts list", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
@@ -349,7 +349,7 @@ func (a app) runMountAdd(args []string) error {
 	var umbrellaRoot string
 	var printOnly bool
 	var jsonOut bool
-	fs := newFlagSet("our mounts add", a.stderr)
+	fs := newFlagSet("my mounts add", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
@@ -364,14 +364,14 @@ func (a app) runMountAdd(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our mounts add <kind:id|id>")
+		return fmt.Errorf("usage: my mounts add <kind:id|id>")
 	}
 	kind, id := splitMountRef(rest[0])
 	if kind == "product" {
 		return a.maybeJSONError(jsonOut, structuredCommandError{
 			code:        "product_mounts_removed",
 			message:     "products are business catalog entries, not checkouts; mount product:" + id + " was removed",
-			remediation: "use our repos add " + id + " (declared in catalog/repos.json)",
+			remediation: "use my repos add " + id + " (declared in catalog/repos.json)",
 		})
 	}
 	if kind == "repo" {
@@ -427,7 +427,7 @@ func (a app) repoAddByID(home, manifestName, umbrellaRoot, id string, printOnly 
 		return a.maybeJSONError(jsonOut, structuredCommandError{
 			code:        "unknown_repo",
 			message:     fmt.Sprintf("repo %q is not in catalog/repos.json for manifest %q", id, doc.ref.Name),
-			remediation: "our repos list --manifest " + doc.ref.Name,
+			remediation: "my repos list --manifest " + doc.ref.Name,
 		})
 	}
 	if err := checkRepoCloneTarget(umbrella.RepoPath(root, id), repo.GitURL); err != nil {
@@ -465,7 +465,7 @@ func (a app) runMountSync(args []string) error {
 	var all bool
 	var printOnly bool
 	var jsonOut bool
-	fs := newFlagSet("our mounts sync", a.stderr)
+	fs := newFlagSet("my mounts sync", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
@@ -522,7 +522,7 @@ func (a app) syncRepoMounts(home, manifestName, umbrellaRoot string, repoIDs []s
 	}
 	root, err := resolveUmbrellaRoot(home, umbrellaRoot)
 	if err != nil {
-		if all && strings.Contains(err.Error(), "no our umbrella found") {
+		if all && strings.Contains(err.Error(), "no my umbrella found") {
 			return nil, nil
 		}
 		return nil, err
@@ -600,7 +600,7 @@ func (a app) syncSelectedRepos(home string, doc registeredDoc, root string, prin
 			return nil, structuredCommandError{
 				code:        "unknown_repo",
 				message:     fmt.Sprintf("repo %q is not in catalog/repos.json for manifest %q", id, doc.ref.Name),
-				remediation: "our repos list --manifest " + doc.ref.Name,
+				remediation: "my repos list --manifest " + doc.ref.Name,
 			}
 		}
 		entries = append(entries, repoEntry(doc, root, repo))
@@ -639,7 +639,7 @@ func repoEntryFromState(home, manifestName, root string, state umbrella.State, i
 		return workspace.Entry{}, structuredCommandError{
 			code:        "unknown_repo",
 			message:     fmt.Sprintf("repo %q is not in catalog/repos.json for manifest %q", id, manifestName),
-			remediation: "our repos list --manifest " + manifestName,
+			remediation: "my repos list --manifest " + manifestName,
 		}
 	}
 	return workspace.Entry{
@@ -660,7 +660,7 @@ func (a app) runMountRemove(args []string) error {
 	var printOnly bool
 	var force bool
 	var jsonOut bool
-	fs := newFlagSet("our mounts remove", a.stderr)
+	fs := newFlagSet("my mounts remove", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
 	fs.BoolVar(&printOnly, "print", false, "print planned removals without changing files")
@@ -674,7 +674,7 @@ func (a app) runMountRemove(args []string) error {
 		return err
 	}
 	if len(rest) == 0 {
-		return fmt.Errorf("usage: our mounts remove <mount...>")
+		return fmt.Errorf("usage: my mounts remove <mount...>")
 	}
 	if !force && !printOnly {
 		return fmt.Errorf("mount remove requires --force or --print")
@@ -694,7 +694,7 @@ func (a app) runMountRemove(args []string) error {
 	for _, ref := range rest {
 		kind, id := splitMountRef(ref)
 		if kind == "product" {
-			return fmt.Errorf("products are business catalog entries, not checkouts; use repo:%s (see our repos list)", id)
+			return fmt.Errorf("products are business catalog entries, not checkouts; use repo:%s (see my repos list)", id)
 		}
 		if !portableMountID(id) {
 			return fmt.Errorf("mount id %q must be lowercase kebab-case", id)
@@ -758,7 +758,7 @@ func splitMountSyncRefs(refs []string, all bool) ([]string, []string, error) {
 	for _, ref := range refs {
 		kind, id := splitMountRef(ref)
 		if kind == "product" {
-			return nil, nil, fmt.Errorf("products are business catalog entries, not checkouts; use repo:%s (see our repos list)", id)
+			return nil, nil, fmt.Errorf("products are business catalog entries, not checkouts; use repo:%s (see my repos list)", id)
 		}
 		if kind == "repo" {
 			if !portableMountID(id) {
@@ -789,7 +789,7 @@ func checkRepoCloneTarget(path, gitURL string) error {
 		return structuredCommandError{
 			code:        "repo_path_conflict",
 			message:     fmt.Sprintf("repo path %s exists and is not a directory", path),
-			remediation: "move the conflicting file aside, then rerun our repos add",
+			remediation: "move the conflicting file aside, then rerun my repos add",
 		}
 	}
 	if !isGitCheckout(path) {
@@ -799,7 +799,7 @@ func checkRepoCloneTarget(path, gitURL string) error {
 		return structuredCommandError{
 			code:        "repo_path_conflict",
 			message:     fmt.Sprintf("repo path %s exists but is not a git checkout", path),
-			remediation: "move the conflicting directory aside, then rerun our repos add",
+			remediation: "move the conflicting directory aside, then rerun my repos add",
 		}
 	}
 	origin, _ := gitCmdOutput(path, "remote", "get-url", "origin")
@@ -807,7 +807,7 @@ func checkRepoCloneTarget(path, gitURL string) error {
 		return structuredCommandError{
 			code:        "repo_remote_mismatch",
 			message:     fmt.Sprintf("repo path %s tracks %s, not the declared %s", path, origin, gitURL),
-			remediation: "reconcile or move the existing checkout, then rerun our repos add",
+			remediation: "reconcile or move the existing checkout, then rerun my repos add",
 		}
 	}
 	return nil
@@ -897,5 +897,5 @@ func resolveUmbrellaRoot(home, explicit string) (string, error) {
 	if root, ok := umbrella.FindRoot("."); ok {
 		return root, nil
 	}
-	return "", fmt.Errorf("no our umbrella found; run our setup or pass --umbrella")
+	return "", fmt.Errorf("no my umbrella found; run my setup or pass --umbrella")
 }

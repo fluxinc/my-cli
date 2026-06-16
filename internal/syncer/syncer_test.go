@@ -56,7 +56,7 @@ func TestRunHoldsUnadoptedUntrackedContent(t *testing.T) {
 		t.Fatalf("result = %#v, want unadopted content hold", result)
 	}
 	if !strings.Contains(result.Message, "meetings/2026-06-08-draft.md") ||
-		!strings.Contains(result.Message, "our record adopt") {
+		!strings.Contains(result.Message, "my record adopt") {
 		t.Fatalf("message = %q, want file name and adopt remediation", result.Message)
 	}
 	if log := gitOut(t, content, "log", "--oneline", "--all"); strings.Contains(log, "Add meeting note") {
@@ -458,8 +458,8 @@ func writeFile(t *testing.T, path, body string) {
 
 func configGitUser(t *testing.T, dir string) {
 	t.Helper()
-	runGit(t, dir, "config", "user.name", "Our AI Test")
-	runGit(t, dir, "config", "user.email", "our-test@example.com")
+	runGit(t, dir, "config", "user.name", "My AI Test")
+	runGit(t, dir, "config", "user.email", "my-test@example.com")
 	runGit(t, dir, "config", "commit.gpgsign", "false")
 }
 

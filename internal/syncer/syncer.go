@@ -1,4 +1,4 @@
-// Package syncer reconciles local Our AI-managed Git repositories with remotes.
+// Package syncer reconciles local My AI-managed Git repositories with remotes.
 package syncer
 
 import (
@@ -20,7 +20,7 @@ type DirRunner func(dir, name string, args ...string) ([]byte, error)
 // VisibilityFunc returns a repository visibility string such as PRIVATE.
 type VisibilityFunc func(gitURL string) (string, error)
 
-// Entry is one local repository Our AI knows how to sync.
+// Entry is one local repository My AI knows how to sync.
 type Entry struct {
 	Manifest     string   `json:"manifest,omitempty"`
 	ID           string   `json:"id"`
@@ -182,7 +182,7 @@ func runBuiltin(entries []Entry, opts Options) Report {
 		opts.Publish = "auto"
 	}
 	if opts.Message == "" {
-		opts.Message = "Sync Our AI content"
+		opts.Message = "Sync My AI content"
 	}
 	runner := opts.Runner
 	if runner == nil {
@@ -205,7 +205,7 @@ func runGnit(entries []Entry, opts Options) Report {
 		opts.Publish = "auto"
 	}
 	if opts.Message == "" {
-		opts.Message = "Sync Our AI content"
+		opts.Message = "Sync My AI content"
 	}
 	runner := opts.Runner
 	if runner == nil {
@@ -213,12 +213,12 @@ func runGnit(entries []Entry, opts Options) Report {
 	}
 	report := Report{Publish: opts.Publish, Backend: "gnit", GnitRoot: opts.GnitRoot, DryRun: opts.DryRun}
 	if opts.GnitRoot == "" || !hasGnitWorkspace(opts.GnitRoot) {
-		report.BackendMessage = "Gnit workspace not initialized; run gnit init --control for the Our AI umbrella before using the Gnit backend"
+		report.BackendMessage = "Gnit workspace not initialized; run gnit init --control for the My AI umbrella before using the Gnit backend"
 		report.Results = heldResults(entries, "Gnit workspace not initialized")
 		return report
 	}
 	if opts.Publish == "pr" {
-		report.BackendMessage = "PR mode belongs to Our AI's gh policy layer; Gnit handles branch publishing, not PR creation"
+		report.BackendMessage = "PR mode belongs to My AI's gh policy layer; Gnit handles branch publishing, not PR creation"
 		report.Results = heldResults(entries, "PR mode is not implemented yet")
 		return report
 	}
@@ -240,7 +240,7 @@ func runGnit(entries []Entry, opts Options) Report {
 				hold(&inspections[i], reason)
 			}
 		}
-		report.BackendMessage = "Our AI must reconcile unsafe duplicate checkouts before delegating those remotes to Gnit"
+		report.BackendMessage = "My AI must reconcile unsafe duplicate checkouts before delegating those remotes to Gnit"
 	}
 
 	var stagePaths []string
@@ -354,12 +354,12 @@ func inspectWithMode(entry Entry, opts Options, runner Runner, mode inspectMode)
 	in := inspection{entry: entry, result: res, remoteKey: normalizeRemote(entry.GitURL)}
 	if !isGitRepo(entry.LocalPath, runner) {
 		in.result.Status = "held back"
-		in.result.Message = "not cloned; run our mounts sync or our setup first"
+		in.result.Message = "not cloned; run my mounts sync or my setup first"
 		return in
 	}
 	if _, err := git(runner, entry.LocalPath, "remote", "get-url", "origin"); err != nil {
 		in.result.Status = "local-only"
-		in.result.Message = "no origin remote configured; nothing to pull or push until the repository is published (run our publish)"
+		in.result.Message = "no origin remote configured; nothing to pull or push until the repository is published (run my publish)"
 		return in
 	}
 	fetchFailed := false
@@ -610,7 +610,7 @@ func sessionHoldMessage(sessionHold SessionHold) string {
 		location += " (" + sessionHold.SessionPath + ")"
 	}
 	return fmt.Sprintf(
-		"active session %s has %s on mount %s; run our work finish %s --land|--publish (or --discard), or our work status to inspect",
+		"active session %s has %s on mount %s; run my work finish %s --land|--publish (or --discard), or my work status to inspect",
 		location, detail, sessionHold.MountID, sessionHold.SessionID,
 	)
 }
@@ -645,9 +645,9 @@ func unadoptedContentPaths(in *inspection) []string {
 
 func unadoptedContentMessage(paths []string) string {
 	if len(paths) == 1 {
-		return fmt.Sprintf("unadopted untracked content file %s; run our record adopt %s", paths[0], paths[0])
+		return fmt.Sprintf("unadopted untracked content file %s; run my record adopt %s", paths[0], paths[0])
 	}
-	return fmt.Sprintf("unadopted untracked content files: %s; run our record adopt <path> for each file to publish", strings.Join(paths, ", "))
+	return fmt.Sprintf("unadopted untracked content files: %s; run my record adopt <path> for each file to publish", strings.Join(paths, ", "))
 }
 
 func markDuplicatePending(inspections []inspection) {
@@ -970,7 +970,7 @@ func duplicateRemoteKeys(inspections []inspection) map[string]bool {
 func gnitDryRunMessage(hasDirty bool) string {
 	var steps []string
 	if hasDirty {
-		steps = append(steps, "would run gnit add for Our AI-approved content paths")
+		steps = append(steps, "would run gnit add for My AI-approved content paths")
 		steps = append(steps, "would run gnit commit -m")
 	}
 	steps = append(steps, "would run gnit push")

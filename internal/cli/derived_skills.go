@@ -3,9 +3,9 @@ package cli
 import (
 	"fmt"
 
-	"github.com/fluxinc/our-ai/internal/harness"
-	"github.com/fluxinc/our-ai/internal/selfskill"
-	"github.com/fluxinc/our-ai/internal/skills"
+	"github.com/fluxinc/my-cli/internal/harness"
+	"github.com/fluxinc/my-cli/internal/selfskill"
+	"github.com/fluxinc/my-cli/internal/skills"
 )
 
 type globalOrgSkill struct {
@@ -40,7 +40,7 @@ func (a app) collectLaunchScopedOrgSkillResults(opts skillsCommandOpts, hs []har
 			Harness: h,
 			Skill:   "*",
 			Status:  skills.StatusSkipped,
-			Message: launchScopedOrgSkillSummary(found) + "; our ai materializes them into the launch root",
+			Message: launchScopedOrgSkillSummary(found) + "; my ai materializes them into the launch root",
 		})
 	}
 	for _, leftover := range leftovers {
@@ -51,7 +51,7 @@ func (a app) collectLaunchScopedOrgSkillResults(opts skillsCommandOpts, hs []har
 			CanonicalID: existing.CanonicalID,
 			TargetPath:  existing.TargetPath,
 			Status:      skills.StatusSkipped,
-			Message:     "legacy user-global org skill remains; run our doctor --fix to remove it",
+			Message:     "legacy user-global org skill remains; run my doctor --fix to remove it",
 		})
 	}
 	return results, nil

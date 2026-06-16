@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/support"
+	"github.com/fluxinc/my-cli/internal/support"
 )
 
 func (a app) runSupport(args []string) error {
@@ -31,10 +31,10 @@ func (a app) runSupport(args []string) error {
 
 func (a app) printSupportUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our support list [--manifest NAME] [--workspace ID] [--since DATE] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
-  our support search <text> [--manifest NAME] [--workspace ID] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
-  our support get <id|path> [--manifest NAME] [--workspace ID] [--json]
-  our support add <slug> [--manifest NAME] [--workspace ID] [--date DATE] [--title TEXT] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--observed-by MEMBER] [--approved-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--status open|workaround|resolved] [--feature-candidate] [--print] [--json]
+  my support list [--manifest NAME] [--workspace ID] [--since DATE] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
+  my support search <text> [--manifest NAME] [--workspace ID] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
+  my support get <id|path> [--manifest NAME] [--workspace ID] [--json]
+  my support add <slug> [--manifest NAME] [--workspace ID] [--date DATE] [--title TEXT] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--observed-by MEMBER] [--approved-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--status open|workaround|resolved] [--feature-candidate] [--print] [--json]
 
 Support commands use local markdown files under workspace support/ directories.
 Repeat --identifier for each device, order, or asset identifier (for example a
@@ -46,7 +46,7 @@ approved_by empty unless the operator explicitly approves.`)
 }
 
 func (a app) runSupportList(args []string) error {
-	opts, rest, err := parseSupportReadOpts("our support list", a.stderr, args)
+	opts, rest, err := parseSupportReadOpts("my support list", a.stderr, args)
 	if err != nil {
 		return err
 	}
@@ -66,12 +66,12 @@ func (a app) runSupportList(args []string) error {
 }
 
 func (a app) runSupportSearch(args []string) error {
-	opts, rest, err := parseSupportReadOpts("our support search", a.stderr, args)
+	opts, rest, err := parseSupportReadOpts("my support search", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our support search <text>")
+		return fmt.Errorf("usage: my support search <text>")
 	}
 	roots, err := supportRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
 	if err != nil {
@@ -87,14 +87,14 @@ func (a app) runSupportSearch(args []string) error {
 
 func (a app) runSupportGet(args []string) error {
 	var opts meetingCommonOpts
-	fs := newFlagSet("our support get", a.stderr)
+	fs := newFlagSet("my support get", a.stderr)
 	bindMeetingCommonFlags(fs, &opts)
 	rest, err := parseInterspersed(fs, args, meetingValueFlags())
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our support get <id|path>")
+		return fmt.Errorf("usage: my support get <id|path>")
 	}
 	roots, err := supportRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
 	if err != nil {
@@ -116,7 +116,7 @@ func (a app) runSupportGet(args []string) error {
 
 func (a app) runSupportAdd(args []string) error {
 	var opts supportAddOpts
-	fs := newFlagSet("our support add", a.stderr)
+	fs := newFlagSet("my support add", a.stderr)
 	bindMeetingCommonFlags(fs, &opts.meetingCommonOpts)
 	fs.StringVar(&opts.date, "date", "", "support record date, YYYY-MM-DD")
 	fs.StringVar(&opts.title, "title", "", "support record title")
@@ -152,7 +152,7 @@ func (a app) runSupportAdd(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our support add <slug>")
+		return fmt.Errorf("usage: my support add <slug>")
 	}
 	roots, err := supportRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
 	if err != nil {

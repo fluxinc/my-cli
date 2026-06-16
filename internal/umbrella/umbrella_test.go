@@ -5,13 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 func TestResolveRootUsesManifestRecommendation(t *testing.T) {
 	home := t.TempDir()
 	root, err := ResolveRoot(home, "", "", manifest.Document{
-		Organization: manifest.Organization{ID: "our"},
+		Organization: manifest.Organization{ID: "my"},
 		Umbrella:     manifest.Umbrella{RecommendedPath: "~/acme"},
 	})
 	if err != nil {
@@ -23,12 +23,12 @@ func TestResolveRootUsesManifestRecommendation(t *testing.T) {
 }
 
 func TestEnsureWritesWorkspaceAndState(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "our")
-	ws, state, err := Ensure(root, "our", "acme")
+	root := filepath.Join(t.TempDir(), "my")
+	ws, state, err := Ensure(root, "my", "acme")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ws.Organization != "our" || ws.ManifestRef != "acme" {
+	if ws.Organization != "my" || ws.ManifestRef != "acme" {
 		t.Fatalf("workspace = %#v", ws)
 	}
 	if state.SchemaVersion != SchemaVersion || len(state.Mounts) != 0 {
@@ -53,7 +53,7 @@ func TestEnsureWritesWorkspaceAndState(t *testing.T) {
 }
 
 func TestEnsureMigratesLegacyProductsToRepos(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "our")
+	root := filepath.Join(t.TempDir(), "my")
 	legacyFile := filepath.Join(root, "products", "sample", "README.md")
 	if err := os.MkdirAll(filepath.Dir(legacyFile), 0o755); err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestEnsureMigratesLegacyProductsToRepos(t *testing.T) {
 	if err := os.WriteFile(legacyFile, []byte("seed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := Ensure(root, "our", "acme"); err != nil {
+	if _, _, err := Ensure(root, "my", "acme"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "repos", "sample", "README.md")); err != nil {

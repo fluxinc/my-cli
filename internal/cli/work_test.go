@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/worksession"
+	"github.com/fluxinc/my-cli/internal/worksession"
 )
 
 func TestWorkStartCreatesSessionAndRegistry(t *testing.T) {
@@ -18,7 +18,7 @@ func TestWorkStartCreatesSessionAndRegistry(t *testing.T) {
 	a := app{stdout: &stdout, stderr: &stderr}
 
 	if err := a.run([]string{
-		"our", "work", "start",
+		"my", "work", "start",
 		"--slug", "notes",
 		"--home", home,
 		"--json",
@@ -41,7 +41,7 @@ func TestWorkStartCreatesSessionAndRegistry(t *testing.T) {
 		t.Fatalf("worktree missing: %v", err)
 	}
 	branch := strings.TrimSpace(gitCLIOutput(t, worktree, "rev-parse", "--abbrev-ref", "HEAD"))
-	if branch != "our/work/"+session.ID {
+	if branch != "my/work/"+session.ID {
 		t.Fatalf("worktree branch = %q", branch)
 	}
 	if _, err := worksession.Load(umbrellaRoot, session.ID); err != nil {
@@ -59,7 +59,7 @@ func TestWorkStartHumanOutputIncludesSessionFinishCommand(t *testing.T) {
 	home, _ := setupCLIRecordWorkspace(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--slug", "notes", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--slug", "notes", "--home", home}); err != nil {
 		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
 	}
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
@@ -67,7 +67,7 @@ func TestWorkStartHumanOutputIncludesSessionFinishCommand(t *testing.T) {
 		t.Fatalf("work start stdout = %q", stdout.String())
 	}
 	sessionID := strings.TrimPrefix(lines[0], "started session ")
-	want := "finish with: our work finish " + sessionID + " --land | --publish | --discard"
+	want := "finish with: my work finish " + sessionID + " --land | --publish | --discard"
 	if !strings.Contains(stdout.String(), want) {
 		t.Fatalf("work start stdout = %q, want %q", stdout.String(), want)
 	}
@@ -75,7 +75,7 @@ func TestWorkStartHumanOutputIncludesSessionFinishCommand(t *testing.T) {
 
 func TestWorkStartExcludesCatalogReposAndMissingMounts(t *testing.T) {
 	home, _ := setupCLIRecordWorkspace(t)
-	manifestDir := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestDir := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestDir, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -104,7 +104,7 @@ func TestWorkStartExcludesCatalogReposAndMissingMounts(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
 	}
 
@@ -126,7 +126,7 @@ func TestWorkStartExpandsTildeUmbrella(t *testing.T) {
 	a := app{stdout: &stdout, stderr: &stderr}
 
 	if err := a.run([]string{
-		"our", "work", "start",
+		"my", "work", "start",
 		"--home", home,
 		"--umbrella", "~/acme",
 		"--json",
@@ -147,7 +147,7 @@ func TestWorkStartWithoutEligibleMountsFails(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	err := a.run([]string{"our", "work", "start", "--home", home})
+	err := a.run([]string{"my", "work", "start", "--home", home})
 	if err == nil {
 		t.Fatal("want error without umbrella/mounts")
 	}
@@ -166,7 +166,7 @@ func startCLIDoctorSession(t *testing.T, a *app, home string) worksession.Sessio
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	starter := app{stdout: &stdout, stderr: &stderr}
-	if err := starter.run([]string{"our", "work", "start", "--slug", "notes", "--home", home, "--json"}); err != nil {
+	if err := starter.run([]string{"my", "work", "start", "--slug", "notes", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
 	}
 	var session worksession.Session
@@ -184,7 +184,7 @@ func TestDoctorReportsActiveSessionDirty(t *testing.T) {
 	session := startCLIDoctorSession(t, &a, home)
 	writeCLITestFile(t, filepath.Join(session.Mounts[0].WorktreePath, "notes.md"), "draft\n")
 
-	if err := a.run([]string{"our", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
 		t.Fatalf("doctor: %v\nstderr: %s", err, stderr.String())
 	}
 	var report doctorSessionsReport
@@ -198,12 +198,12 @@ func TestDoctorReportsActiveSessionDirty(t *testing.T) {
 	if item.Name != session.ID || item.Status != "warning" || item.Path != session.Path {
 		t.Fatalf("item = %#v", item)
 	}
-	if !strings.Contains(item.Message, "1 dirty") || !strings.Contains(item.Message, "our work finish "+session.ID) {
+	if !strings.Contains(item.Message, "1 dirty") || !strings.Contains(item.Message, "my work finish "+session.ID) {
 		t.Fatalf("message = %q", item.Message)
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch"}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "session\t"+session.ID+"\twarning") {
@@ -218,7 +218,7 @@ func TestDoctorReportsCleanActiveSessionOK(t *testing.T) {
 	a := app{stdout: &stdout, stderr: &stderr}
 	session := startCLIDoctorSession(t, &a, home)
 
-	if err := a.run([]string{"our", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
 		t.Fatalf("doctor: %v\nstderr: %s", err, stderr.String())
 	}
 	var report doctorSessionsReport
@@ -240,7 +240,7 @@ func TestDoctorReportsSessionMissingWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := a.run([]string{"our", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
 		t.Fatalf("doctor: %v\nstderr: %s", err, stderr.String())
 	}
 	var report doctorSessionsReport
@@ -261,12 +261,12 @@ func TestDoctorCountsArchivedSessions(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	session := startCLIDoctorSession(t, &a, home)
-	if err := a.run([]string{"our", "work", "finish", session.ID, "--discard", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "work", "finish", session.ID, "--discard", "--home", home}); err != nil {
 		t.Fatalf("work finish --discard: %v\nstderr: %s", err, stderr.String())
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
 		t.Fatalf("doctor: %v\nstderr: %s", err, stderr.String())
 	}
 	var report doctorSessionsReport
@@ -287,7 +287,7 @@ func TestDoctorOmitsSessionsWhenNone(t *testing.T) {
 	umbrellaRoot := filepath.Join(home, "acme")
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--home", home, "--umbrella", umbrellaRoot, "--no-fetch", "--json"}); err != nil {
 		t.Fatalf("doctor: %v\nstderr: %s", err, stderr.String())
 	}
 	if strings.Contains(stdout.String(), `"sessions"`) {
@@ -299,7 +299,7 @@ func TestWorkStatusReportsActiveSessionState(t *testing.T) {
 	home, _ := setupCLIRecordWorkspace(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--slug", "fix", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--slug", "fix", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
 	}
 	var session worksession.Session
@@ -309,7 +309,7 @@ func TestWorkStatusReportsActiveSessionState(t *testing.T) {
 	writeCLITestFile(t, filepath.Join(session.Mounts[0].WorktreePath, "meetings", "draft.md"), "draft\n")
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "work", "status", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "status", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work status: %v\nstderr: %s", err, stderr.String())
 	}
 	var statuses []worksession.SessionStatus
@@ -325,7 +325,7 @@ func TestWorkStatusReportsActiveSessionState(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "work", "status", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "work", "status", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	human := stdout.String()
@@ -338,7 +338,7 @@ func TestWorkStatusEmptyWithoutSessions(t *testing.T) {
 	home, _ := setupCLIRecordWorkspace(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "status", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "status", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work status: %v\nstderr: %s", err, stderr.String())
 	}
 	if got := strings.TrimSpace(stdout.String()); got != "[]" {
@@ -350,20 +350,20 @@ func TestWorkListAliasesStatus(t *testing.T) {
 	home, _ := setupCLIRecordWorkspace(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--slug", "list", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--slug", "list", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
 	}
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "work", "status", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "status", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work status: %v\nstderr: %s", err, stderr.String())
 	}
 	statusOut := stdout.String()
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "work", "list", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "list", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work list: %v\nstderr: %s", err, stderr.String())
 	}
 	if stdout.String() != statusOut {
@@ -375,7 +375,7 @@ func TestWorkResumePrintsSessionPath(t *testing.T) {
 	home, _ := setupCLIRecordWorkspace(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--slug", "resume", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--slug", "resume", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v", err)
 	}
 	var session worksession.Session
@@ -384,7 +384,7 @@ func TestWorkResumePrintsSessionPath(t *testing.T) {
 	}
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "work", "resume", session.ID, "--home", home}); err != nil {
+	if err := a.run([]string{"my", "work", "resume", session.ID, "--home", home}); err != nil {
 		t.Fatalf("work resume: %v\nstderr: %s", err, stderr.String())
 	}
 	if stdout.String() != "cd "+session.Path+"\n" {
@@ -401,7 +401,7 @@ func TestSyncHoldsContentMountWithActiveSession(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--slug", "hold", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--slug", "hold", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
 	}
 	var session worksession.Session
@@ -414,7 +414,7 @@ func TestSyncHoldsContentMountWithActiveSession(t *testing.T) {
 
 	stdout.Reset()
 	if err := a.run([]string{
-		"our", "sync",
+		"my", "sync",
 		"--backend", "builtin",
 		"--print",
 		"--manifest", "acme",
@@ -442,7 +442,7 @@ func TestSyncHoldsContentMountWithActiveSession(t *testing.T) {
 		found = true
 		if result.Status != "held back" ||
 			!strings.Contains(result.Message, session.ID) ||
-			!strings.Contains(result.Message, "our work finish "+session.ID) {
+			!strings.Contains(result.Message, "my work finish "+session.ID) {
 			t.Fatalf("content result = %#v, want session hold naming %s", result, session.ID)
 		}
 	}
@@ -452,12 +452,12 @@ func TestSyncHoldsContentMountWithActiveSession(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "work", "finish", session.ID, "--discard", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "finish", session.ID, "--discard", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work finish --discard: %v\nstderr: %s", err, stderr.String())
 	}
 	stdout.Reset()
 	if err := a.run([]string{
-		"our", "sync",
+		"my", "sync",
 		"--backend", "builtin",
 		"--print",
 		"--manifest", "acme",
@@ -480,7 +480,7 @@ func TestWorkFinishPublishHeldByOtherActiveSession(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--slug", "first", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--slug", "first", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v", err)
 	}
 	var finishing worksession.Session
@@ -488,7 +488,7 @@ func TestWorkFinishPublishHeldByOtherActiveSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout.Reset()
-	if err := a.run([]string{"our", "work", "start", "--slug", "second", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--slug", "second", "--home", home, "--json"}); err != nil {
 		t.Fatalf("second work start: %v", err)
 	}
 	var other worksession.Session
@@ -502,7 +502,7 @@ func TestWorkFinishPublishHeldByOtherActiveSession(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	if err := a.run([]string{
-		"our", "work", "finish", finishing.ID,
+		"my", "work", "finish", finishing.ID,
 		"--publish",
 		"--message", "Publish finished session",
 		"--home", home,
@@ -530,7 +530,7 @@ func TestWorkFinishLandCommitsDirtySessionContent(t *testing.T) {
 	home, workspaceRoot := setupCLIRecordWorkspace(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--slug", "finish", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--slug", "finish", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
 	}
 	var session worksession.Session
@@ -544,7 +544,7 @@ func TestWorkFinishLandCommitsDirtySessionContent(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	if err := a.run([]string{
-		"our", "work", "finish", session.ID,
+		"my", "work", "finish", session.ID,
 		"--land",
 		"--message", "Land session content",
 		"--home", home,
@@ -574,7 +574,7 @@ func TestWorkFinishDefaultsToSingleActiveSessionAndHoldsUnadopted(t *testing.T) 
 	home, workspaceRoot := setupCLIRecordWorkspace(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v", err)
 	}
 	var session worksession.Session
@@ -585,7 +585,7 @@ func TestWorkFinishDefaultsToSingleActiveSessionAndHoldsUnadopted(t *testing.T) 
 
 	stdout.Reset()
 	stderr.Reset()
-	err := a.run([]string{"our", "work", "finish", "--land", "--home", home})
+	err := a.run([]string{"my", "work", "finish", "--land", "--home", home})
 	if err == nil || !strings.Contains(err.Error(), "unadopted untracked content file") {
 		t.Fatalf("err = %v, want unadopted hold", err)
 	}
@@ -605,7 +605,7 @@ func TestWorkFinishDiscardRemovesSession(t *testing.T) {
 	home, _ := setupCLIRecordWorkspace(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v", err)
 	}
 	var session worksession.Session
@@ -616,7 +616,7 @@ func TestWorkFinishDiscardRemovesSession(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "work", "finish", session.ID, "--discard", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "finish", session.ID, "--discard", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work finish --discard: %v\nstderr: %s", err, stderr.String())
 	}
 	var report workFinishCommandReport
@@ -632,7 +632,7 @@ func TestWorkFinishDiscardRemovesSession(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "work", "status", "--all", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "status", "--all", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work status --all: %v\nstderr: %s", err, stderr.String())
 	}
 	var statuses []worksession.SessionStatus
@@ -651,7 +651,7 @@ func TestWorkFinishHumanOutputIncludesNextCommand(t *testing.T) {
 	home, _ := setupCLIRecordWorkspace(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v", err)
 	}
 	var session worksession.Session
@@ -661,12 +661,12 @@ func TestWorkFinishHumanOutputIncludesNextCommand(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "work", "finish", session.ID, "--discard", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "work", "finish", session.ID, "--discard", "--home", home}); err != nil {
 		t.Fatalf("work finish --discard: %v\nstderr: %s", err, stderr.String())
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "session\t"+session.ID) ||
-		!strings.Contains(out, "next\tstatus\tour work status") {
+		!strings.Contains(out, "next\tstatus\tmy work status") {
 		t.Fatalf("work finish stdout = %q", out)
 	}
 }
@@ -675,7 +675,7 @@ func TestWorkFinishPublishLandsAndReportsLocalOnlySync(t *testing.T) {
 	home, workspaceRoot := setupCLIRecordWorkspace(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v", err)
 	}
 	var session worksession.Session
@@ -687,7 +687,7 @@ func TestWorkFinishPublishLandsAndReportsLocalOnlySync(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "work", "finish", session.ID, "--publish", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "finish", session.ID, "--publish", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work finish --publish: %v\nstderr: %s\nstdout: %s", err, stderr.String(), stdout.String())
 	}
 	var report workFinishCommandReport

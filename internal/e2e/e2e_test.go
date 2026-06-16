@@ -11,15 +11,15 @@ import (
 
 func TestRegisteredManifestAdoptionSmoke(t *testing.T) {
 	root := repoRoot(t)
-	bin := filepath.Join(t.TempDir(), "our")
-	build := exec.Command("go", "build", "-o", bin, "./cmd/our")
+	bin := filepath.Join(t.TempDir(), "my")
+	build := exec.Command("go", "build", "-o", bin, "./cmd/my")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("go build failed: %v\n%s", err, out)
 	}
 
 	home := t.TempDir()
-	manifestRoot := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestRoot := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	umbrellaRoot := filepath.Join(home, "acme")
 	workspaceRoot := filepath.Join(umbrellaRoot, "handbook")
 	workspaceSource := filepath.Join(home, "workspace-source")
@@ -136,17 +136,17 @@ status: finalized
 		t.Fatal(err)
 	}
 
-	runOur(t, bin, home, "manifests", "add", "acme", "https://github.com/acme/acme-ai-manifest.git", "--home", home)
-	installOut := runOur(t, bin, home, "setup", "--home", home)
+	runMy(t, bin, home, "manifests", "add", "acme", "https://github.com/acme/acme-ai-manifest.git", "--home", home)
+	installOut := runMy(t, bin, home, "setup", "--home", home)
 	// ADR 0001: organization and tool skills are no longer installed user-global.
-	// Setup reports them as launch-scoped (our ai materializes them into the
+	// Setup reports them as launch-scoped (my ai materializes them into the
 	// launch root); only the bundled self-skill is ensured in the harness dir.
-	for _, want := range []string{"launch-scoped", "our:self", "installed"} {
+	for _, want := range []string{"launch-scoped", "my:self", "installed"} {
 		if !strings.Contains(installOut, want) {
 			t.Fatalf("setup output = %q, missing %q", installOut, want)
 		}
 	}
-	selfTarget := filepath.Join(home, ".claude", "skills", "our")
+	selfTarget := filepath.Join(home, ".claude", "skills", "my")
 	if _, err := os.Lstat(selfTarget); err != nil {
 		t.Fatalf("self-skill was not ensured in the harness dir: err=%v\n%s", err, installOut)
 	}
@@ -174,8 +174,8 @@ status: finalized
 		}
 	}
 	for _, path := range []string{
-		filepath.Join(umbrellaRoot, ".our", "workspace.json"),
-		filepath.Join(umbrellaRoot, ".our", "state.json"),
+		filepath.Join(umbrellaRoot, ".my-cli", "workspace.json"),
+		filepath.Join(umbrellaRoot, ".my-cli", "state.json"),
 		filepath.Join(umbrellaRoot, "personal"),
 		filepath.Join(umbrellaRoot, "repos"),
 		filepath.Join(umbrellaRoot, "AGENTS.md"),
@@ -188,7 +188,7 @@ status: finalized
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Our AI Workspace", "Acme Agent Defaults", "our customers list", "our meetings search <text>"} {
+	for _, want := range []string{"My AI Workspace", "Acme Agent Defaults", "my customers list", "my meetings search <text>"} {
 		if !strings.Contains(string(agents), want) {
 			t.Fatalf("AGENTS.md = %s, missing %q", agents, want)
 		}
@@ -197,20 +197,20 @@ status: finalized
 		t.Fatalf("CLAUDE.md is not a symlink to AGENTS.md: target=%q err=%v", target, err)
 	}
 
-	searchOut := runOurDir(t, bin, home, umbrellaRoot, "meetings", "search", "SampleCo", "--home", home, "--json")
+	searchOut := runMyDir(t, bin, home, umbrellaRoot, "meetings", "search", "SampleCo", "--home", home, "--json")
 	for _, want := range []string{"2026-03-12-sampleco-implementation", "# SampleCo implementation"} {
 		if !strings.Contains(searchOut, want) {
 			t.Fatalf("meetings search output = %q, missing %q", searchOut, want)
 		}
 	}
-	getOut := runOurDir(t, bin, home, umbrellaRoot, "meetings", "get", "2026-03-12-sampleco-implementation", "--home", home, "--json")
+	getOut := runMyDir(t, bin, home, umbrellaRoot, "meetings", "get", "2026-03-12-sampleco-implementation", "--home", home, "--json")
 	for _, want := range []string{"June 1 review", "data cleanup commitment"} {
 		if !strings.Contains(getOut, want) {
 			t.Fatalf("meetings get output = %q, missing %q", getOut, want)
 		}
 	}
 
-	addRepoOut := runOurDir(t, bin, home, umbrellaRoot, "repos", "add", "sample-service", "--home", home, "--json")
+	addRepoOut := runMyDir(t, bin, home, umbrellaRoot, "repos", "add", "sample-service", "--home", home, "--json")
 	for _, want := range []string{"repo:sample-service", "synced"} {
 		if !strings.Contains(addRepoOut, want) {
 			t.Fatalf("repos add output = %q, missing %q", addRepoOut, want)
@@ -219,11 +219,11 @@ status: finalized
 	if _, err := os.Stat(filepath.Join(umbrellaRoot, "repos", "sample-service", ".git")); err != nil {
 		t.Fatalf("repo was not cloned: %v", err)
 	}
-	reposListOut := runOurDir(t, bin, home, umbrellaRoot, "repos", "list", "--home", home, "--json")
+	reposListOut := runMyDir(t, bin, home, umbrellaRoot, "repos", "list", "--home", home, "--json")
 	if !strings.Contains(reposListOut, `"id": "sample-service"`) || !strings.Contains(reposListOut, `"cloned": true`) {
 		t.Fatalf("repos list output = %q", reposListOut)
 	}
-	state, err := os.ReadFile(filepath.Join(umbrellaRoot, ".our", "state.json"))
+	state, err := os.ReadFile(filepath.Join(umbrellaRoot, ".my-cli", "state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,15 +232,15 @@ status: finalized
 			t.Fatalf("state = %s, missing %q", state, want)
 		}
 	}
-	runOurDir(t, bin, home, umbrellaRoot, "repos", "add", "sample-service", "--home", home)
-	runOurDir(t, bin, home, umbrellaRoot, "mounts", "sync", "repo:sample-service", "--home", home)
+	runMyDir(t, bin, home, umbrellaRoot, "repos", "add", "sample-service", "--home", home)
+	runMyDir(t, bin, home, umbrellaRoot, "mounts", "sync", "repo:sample-service", "--home", home)
 }
 
-func runOur(t *testing.T, bin, home string, args ...string) string {
-	return runOurDir(t, bin, home, "", args...)
+func runMy(t *testing.T, bin, home string, args ...string) string {
+	return runMyDir(t, bin, home, "", args...)
 }
 
-func runOurDir(t *testing.T, bin, home, dir string, args ...string) string {
+func runMyDir(t *testing.T, bin, home, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	if dir != "" {
@@ -249,7 +249,7 @@ func runOurDir(t *testing.T, bin, home, dir string, args ...string) string {
 	cmd.Env = append(os.Environ(), "HOME="+home, "PATH="+isolatedPathWithGit(t, home))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("our %s failed: %v\n%s", strings.Join(args, " "), err, out)
+		t.Fatalf("my %s failed: %v\n%s", strings.Join(args, " "), err, out)
 	}
 	return string(out)
 }
@@ -258,7 +258,7 @@ func initGitRepo(t *testing.T, dir string) {
 	t.Helper()
 	runGit(t, dir, "init", "-q")
 	runGit(t, dir, "add", ".")
-	runGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=our-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed workspace")
+	runGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=my-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed workspace")
 }
 
 func runGit(t *testing.T, dir string, args ...string) {
@@ -294,7 +294,7 @@ func repoRoot(t *testing.T) string {
 		t.Fatal(err)
 	}
 	for {
-		if data, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil && strings.Contains(string(data), "module github.com/fluxinc/our-ai") {
+		if data, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil && strings.Contains(string(data), "module github.com/fluxinc/my-cli") {
 			return dir
 		}
 		parent := filepath.Dir(dir)

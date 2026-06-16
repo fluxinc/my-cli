@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fluxinc/our-ai/internal/syncer"
-	"github.com/fluxinc/our-ai/internal/umbrella"
-	"github.com/fluxinc/our-ai/internal/worksession"
-	"github.com/fluxinc/our-ai/internal/workspace"
+	"github.com/fluxinc/my-cli/internal/syncer"
+	"github.com/fluxinc/my-cli/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/worksession"
+	"github.com/fluxinc/my-cli/internal/workspace"
 )
 
 type workCommonOpts struct {
@@ -41,7 +41,7 @@ func workValueFlags() map[string]bool {
 
 func (a app) runWork(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: our work start|status|list|resume|finish [flags]")
+		return fmt.Errorf("usage: my work start|status|list|resume|finish [flags]")
 	}
 	switch args[0] {
 	case "start":
@@ -60,7 +60,7 @@ func (a app) runWork(args []string) error {
 func (a app) runWorkStart(args []string) error {
 	var opts workCommonOpts
 	var slug string
-	fs := newFlagSet("our work start", a.stderr)
+	fs := newFlagSet("my work start", a.stderr)
 	bindWorkCommonFlags(fs, &opts)
 	fs.StringVar(&slug, "slug", "", "short session slug (lowercase, digits, hyphens)")
 	rest, err := parseInterspersed(fs, args, workValueFlags())
@@ -68,7 +68,7 @@ func (a app) runWorkStart(args []string) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return fmt.Errorf("usage: our work start [--slug SLUG] [--json]")
+		return fmt.Errorf("usage: my work start [--slug SLUG] [--json]")
 	}
 
 	root, err := resolveWorkUmbrella(opts.home, opts.manifestName, opts.umbrellaRoot)
@@ -83,7 +83,7 @@ func (a app) runWorkStart(args []string) error {
 		return a.maybeJSONError(opts.jsonOut, structuredCommandError{
 			code:        "no_session_mounts",
 			message:     "no synced content mounts eligible for a session worktree under " + root,
-			remediation: "run our setup to clone the manifest's content mounts first",
+			remediation: "run my setup to clone the manifest's content mounts first",
 		})
 	}
 
@@ -103,14 +103,14 @@ func (a app) runWorkStart(args []string) error {
 	for _, m := range session.Mounts {
 		fmt.Fprintf(a.stdout, "  %s -> %s (from %s)\n", m.ID, m.Branch, m.BaseBranch)
 	}
-	fmt.Fprintf(a.stdout, "finish with: our work finish %s --land | --publish | --discard\n", session.ID)
+	fmt.Fprintf(a.stdout, "finish with: my work finish %s --land | --publish | --discard\n", session.ID)
 	return nil
 }
 
 func (a app) runWorkStatus(args []string, command string) error {
 	var opts workCommonOpts
 	var all bool
-	fs := newFlagSet("our work "+command, a.stderr)
+	fs := newFlagSet("my work "+command, a.stderr)
 	bindWorkCommonFlags(fs, &opts)
 	fs.BoolVar(&all, "all", false, "include finished and discarded sessions")
 	rest, err := parseInterspersed(fs, args, workValueFlags())
@@ -118,7 +118,7 @@ func (a app) runWorkStatus(args []string, command string) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return fmt.Errorf("usage: our work %s [--all] [--json]", command)
+		return fmt.Errorf("usage: my work %s [--all] [--json]", command)
 	}
 
 	root, err := resolveWorkUmbrella(opts.home, opts.manifestName, opts.umbrellaRoot)
@@ -174,14 +174,14 @@ func archivedWorkSessionStatus(session worksession.Session) worksession.SessionS
 
 func (a app) runWorkResume(args []string) error {
 	var opts workCommonOpts
-	fs := newFlagSet("our work resume", a.stderr)
+	fs := newFlagSet("my work resume", a.stderr)
 	bindWorkCommonFlags(fs, &opts)
 	rest, err := parseInterspersed(fs, args, workValueFlags())
 	if err != nil {
 		return err
 	}
 	if len(rest) > 1 {
-		return fmt.Errorf("usage: our work resume [session-id] [--json]")
+		return fmt.Errorf("usage: my work resume [session-id] [--json]")
 	}
 	root, err := resolveWorkUmbrella(opts.home, opts.manifestName, opts.umbrellaRoot)
 	if err != nil {
@@ -217,7 +217,7 @@ func (a app) runWorkFinish(args []string) error {
 	var publish bool
 	var discard bool
 	var message string
-	fs := newFlagSet("our work finish", a.stderr)
+	fs := newFlagSet("my work finish", a.stderr)
 	bindWorkCommonFlags(fs, &opts)
 	fs.BoolVar(&land, "land", false, "merge the session into the base checkouts")
 	fs.BoolVar(&publish, "publish", false, "land the session and publish landed content")
@@ -228,7 +228,7 @@ func (a app) runWorkFinish(args []string) error {
 		return err
 	}
 	if len(rest) > 1 {
-		return fmt.Errorf("usage: our work finish [session-id] --land|--publish|--discard")
+		return fmt.Errorf("usage: my work finish [session-id] --land|--publish|--discard")
 	}
 	modeCount := boolCount(land, publish, discard)
 	if modeCount != 1 {
@@ -431,14 +431,14 @@ func (a app) printWorkFinishReport(report workFinishCommandReport) {
 func workFinishNextStep(report workFinishCommandReport) (string, string) {
 	switch report.Mode {
 	case "land":
-		return "publish", "our sync"
+		return "publish", "my sync"
 	case "publish":
 		if report.Finish.Session.Outcome == worksession.OutcomePublished {
-			return "status", "our work status"
+			return "status", "my work status"
 		}
-		return "review", "our sync --print"
+		return "review", "my sync --print"
 	case "discard":
-		return "status", "our work status"
+		return "status", "my work status"
 	default:
 		return "", ""
 	}
@@ -510,7 +510,7 @@ func resolveWorkUmbrella(home, manifestName, explicit string) (string, error) {
 	case 1:
 		return candidates[0], nil
 	case 0:
-		return "", noUmbrellaError("no our umbrella found; run our setup or pass --umbrella", "run our setup or pass --umbrella <path>")
+		return "", noUmbrellaError("no my umbrella found; run my setup or pass --umbrella", "run my setup or pass --umbrella <path>")
 	default:
 		return "", structuredCommandError{
 			code:        "ambiguous_umbrella",
@@ -583,7 +583,7 @@ func doctorSessionItem(session worksession.Session) doctorItem {
 		if _, err := os.Stat(mount.WorktreePath); err != nil {
 			item.Status = "error"
 			item.Message = "worktree missing for mount " + mount.ID
-			item.Details = append(item.Details, "discard the session record with: our work finish "+session.ID+" --discard")
+			item.Details = append(item.Details, "discard the session record with: my work finish "+session.ID+" --discard")
 			return item
 		}
 	}
@@ -609,6 +609,6 @@ func doctorSessionItem(session worksession.Session) doctorItem {
 		return item
 	}
 	item.Status = "warning"
-	item.Message = fmt.Sprintf("active: %d dirty, %d unlanded; finish with: our work finish %s --land", dirty, unlanded, session.ID)
+	item.Message = fmt.Sprintf("active: %d dirty, %d unlanded; finish with: my work finish %s --land", dirty, unlanded, session.ID)
 	return item
 }

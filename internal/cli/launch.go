@@ -8,12 +8,12 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/guidance"
-	"github.com/fluxinc/our-ai/internal/harness"
-	"github.com/fluxinc/our-ai/internal/selfskill"
-	"github.com/fluxinc/our-ai/internal/skills"
-	"github.com/fluxinc/our-ai/internal/umbrella"
-	"github.com/fluxinc/our-ai/internal/worksession"
+	"github.com/fluxinc/my-cli/internal/guidance"
+	"github.com/fluxinc/my-cli/internal/harness"
+	"github.com/fluxinc/my-cli/internal/selfskill"
+	"github.com/fluxinc/my-cli/internal/skills"
+	"github.com/fluxinc/my-cli/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/worksession"
 )
 
 func (a app) runRoot(args []string) error {
@@ -24,7 +24,7 @@ func (a app) runRoot(args []string) error {
 	var legacyProductID string
 	var noRefresh bool
 	var noUpdateCheck bool
-	fs := newFlagSet("our root", a.stderr)
+	fs := newFlagSet("my root", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "use a registered manifest when no umbrella is found")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
@@ -49,7 +49,7 @@ func (a app) runRoot(args []string) error {
 	if len(rest) != 0 {
 		return fmt.Errorf("root does not accept positional arguments")
 	}
-	root, err := resolveOurRoot(home, manifestName, umbrellaRoot)
+	root, err := resolveMyRoot(home, manifestName, umbrellaRoot)
 	if err != nil {
 		return err
 	}
@@ -59,8 +59,8 @@ func (a app) runRoot(args []string) error {
 	if legacyProductID != "" {
 		return a.maybePrintStructuredCommandError(structuredCommandError{
 			code:        "product_flag_removed",
-			message:     "products are business catalog entries, not checkouts; --product was removed from our root",
-			remediation: "use our root --repo " + legacyProductID + " (see our repos list)",
+			message:     "products are business catalog entries, not checkouts; --product was removed from my root",
+			remediation: "use my root --repo " + legacyProductID + " (see my repos list)",
 		})
 	}
 	if repoID != "" {
@@ -71,12 +71,12 @@ func (a app) runRoot(args []string) error {
 }
 
 func (a app) printRootUsage() {
-	fmt.Fprintln(a.stderr, `Usage of our root:
-  our root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+	fmt.Fprintln(a.stderr, `Usage of my root:
+  my root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 
 Examples:
-  cd "$(our root)" && claude
-  cd "$(our root --repo sample-service)" && codex
+  cd "$(my root)" && claude
+  cd "$(my root --repo sample-service)" && codex
 
 Options:`)
 }
@@ -127,7 +127,7 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 	if err != nil {
 		return err
 	}
-	root, err := resolveOurRoot(opts.home, opts.manifestName, opts.umbrellaRoot)
+	root, err := resolveMyRoot(opts.home, opts.manifestName, opts.umbrellaRoot)
 	if err != nil {
 		return err
 	}
@@ -227,21 +227,21 @@ func validateLaunchSessionOptions(opts launchCommandOpts) error {
 	if opts.legacyProduct != "" {
 		return structuredCommandError{
 			code:        "product_flag_removed",
-			message:     "products are business catalog entries, not checkouts; --product was removed from our ai",
-			remediation: "use our ai --repo " + opts.legacyProduct + " (see our repos list)",
+			message:     "products are business catalog entries, not checkouts; --product was removed from my ai",
+			remediation: "use my ai --repo " + opts.legacyProduct + " (see my repos list)",
 		}
 	}
 	if opts.repoID != "" && (opts.sessionID != "" || opts.newSession) {
 		if opts.sessionID != "" {
 			return structuredCommandError{
 				code:        "repo_requires_no_session",
-				message:     "our ai --repo cannot be combined with --session; repo worktrees are not included in work sessions yet",
+				message:     "my ai --repo cannot be combined with --session; repo worktrees are not included in work sessions yet",
 				remediation: "omit session flags for a base repo launch, or omit --repo to resume the content session",
 			}
 		}
 		return structuredCommandError{
 			code:        "repo_requires_no_session",
-			message:     "our ai --repo launches the base repo checkout; repo worktrees are not included in work sessions yet",
+			message:     "my ai --repo launches the base repo checkout; repo worktrees are not included in work sessions yet",
 			remediation: "omit --new-session for a base repo launch, or omit --repo to start a content session",
 		}
 	}
@@ -267,7 +267,7 @@ func (a app) maybePrintStructuredCommandError(err error) error {
 func (a app) printLaunchMissingHarness(commandName, targetDir string, args []string, newSession bool) {
 	if newSession {
 		fmt.Fprintf(a.stderr, "%s not found on PATH; no work session was created\n", commandName)
-		fmt.Fprintf(a.stderr, "install %s, then rerun the same our ai command\n", commandName)
+		fmt.Fprintf(a.stderr, "install %s, then rerun the same my ai command\n", commandName)
 		return
 	}
 	line := shellCommandLine(targetDir, commandName, args)
@@ -319,7 +319,7 @@ func (a app) launchTargetDir(opts launchCommandOpts, root string) (string, error
 		return "", structuredCommandError{
 			code:        "no_session_mounts",
 			message:     "no synced content mounts eligible for a session worktree under " + root,
-			remediation: "run our setup to clone the manifest's content mounts first, or pass --no-session for a base umbrella launch",
+			remediation: "run my setup to clone the manifest's content mounts first, or pass --no-session for a base umbrella launch",
 		}
 	}
 	session, err := worksession.Start(worksession.StartOptions{
@@ -358,7 +358,7 @@ func (a app) ensureLaunchSelfSkill(h harness.Harness, home string) error {
 }
 
 func (a app) printLaunchSelfSkillBlock(result skills.Result) {
-	fmt.Fprintf(a.stderr, "our self-skill %s for %s", result.Status, result.Harness)
+	fmt.Fprintf(a.stderr, "my self-skill %s for %s", result.Status, result.Harness)
 	if result.TargetPath != "" {
 		fmt.Fprintf(a.stderr, " at %s", result.TargetPath)
 	}
@@ -369,24 +369,24 @@ func (a app) printLaunchSelfSkillBlock(result skills.Result) {
 	if result.Err != nil {
 		fmt.Fprintln(a.stderr, result.Err)
 	}
-	fmt.Fprintf(a.stderr, "run: our skills self install %s --force\n", result.Harness)
+	fmt.Fprintf(a.stderr, "run: my skills self install %s --force\n", result.Harness)
 }
 
 func (a app) printLaunchUsage() {
-	fmt.Fprintln(a.stderr, `Usage of our ai:
-  our ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+	fmt.Fprintln(a.stderr, `Usage of my ai:
+  my ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 
 Harness defaults to claude-code. By default, harnesses launch from the base
 umbrella, or from the current work session when run inside one. Harness flags go
 after the harness name.
 
 Examples:
-  our ai claude-code
-  our ai codex --model gpt-5
-  our ai --new-session codex
-  our ai --session 2026-06-11-work-ab12 codex
-  our ai --repo sample-service codex
-  our ai --print codex
+  my ai claude-code
+  my ai codex --model gpt-5
+  my ai --new-session codex
+  my ai --session 2026-06-11-work-ab12 codex
+  my ai --repo sample-service codex
+  my ai --print codex
 
 Options:
   --home DIR        override home directory
@@ -414,7 +414,7 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			return opts, "", nil, true, nil
 		case arg == "--":
 			if i+1 >= len(args) {
-				return opts, "", nil, false, fmt.Errorf("usage: our ai [harness]")
+				return opts, "", nil, false, fmt.Errorf("usage: my ai [harness]")
 			}
 			return opts, args[i+1], args[i+2:], false, nil
 		case arg == "--setup":
@@ -454,7 +454,7 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 		case strings.HasPrefix(arg, "--profile="):
 			opts.profileID = strings.TrimPrefix(arg, "--profile=")
 		case isFlagArg(arg):
-			return opts, "", nil, false, fmt.Errorf("unknown our ai flag %q; put harness flags after the harness name", arg)
+			return opts, "", nil, false, fmt.Errorf("unknown my ai flag %q; put harness flags after the harness name", arg)
 		default:
 			return opts, arg, args[i+1:], false, nil
 		}
@@ -483,7 +483,7 @@ func setLaunchValue(opts *launchCommandOpts, name, value string) {
 	}
 }
 
-func resolveOurRoot(home, manifestName, explicit string) (string, error) {
+func resolveMyRoot(home, manifestName, explicit string) (string, error) {
 	if manifestName != "" {
 		doc, err := loadSingleRegisteredDoc(home, manifestName)
 		if err != nil {

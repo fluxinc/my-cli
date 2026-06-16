@@ -1,6 +1,6 @@
-# our
+# my
 
-`our` is a small, dependency-free CLI that bootstraps an AI agent's working
+`my` is a small, dependency-free CLI that bootstraps an AI agent's working
 environment from a single organization manifest. One command turns a fresh
 machine into one where installed AI harnesses — Claude Code, Codex, OpenCode,
 Antigravity — share the same company context, manifest-defined launch profiles,
@@ -8,58 +8,58 @@ and local tooling.
 
 It is built for a world where **agents are the primary operators**. Humans own
 intent — goals, products, decisions — and express it as content in a Git repo.
-`our` is the deterministic, machine-friendly bridge that gets that content and
+`my` is the deterministic, machine-friendly bridge that gets that content and
 those capabilities onto every agent surface, the same way, every time.
 
-Documentation: https://fluxinc.github.io/our-ai/
+Documentation: https://my-cli.com/
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/fluxinc/our-ai/master/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/fluxinc/my-cli/master/install.sh | sh
 
-our init acme --name "Acme"
-our onboard
-our onboard --agent --harness codex
-our ai codex
+my init acme --name "Acme"
+my onboard
+my onboard --agent --harness codex
+my ai codex
 ```
 
-That's the whole first run. `our onboard` is the human walkthrough; it explains
-the model and offers to run `our setup --interactive`. `our onboard --agent`
+That's the whole first run. `my onboard` is the human walkthrough; it explains
+the model and offers to run `my setup --interactive`. `my onboard --agent`
 launches a harness with the bundled onboarding guidance so an agent can
-interview, teach inline, and drive AUTHOR/JOIN setup through validated `our`
-commands. `our setup` remains the scriptable machine configurator. `our ai
+interview, teach inline, and drive AUTHOR/JOIN setup through validated `my`
+commands. `my setup` remains the scriptable machine configurator. `my ai
 codex` resolves the umbrella, verifies the generated guidance, and starts Codex
 in the base umbrella. Agents that need isolated content work opt in with
-`our ai --new-session codex` or resume a known session with
-`our ai --session <id> codex`.
-`our init` creates two local repos — a private manifest repo (the control
+`my ai --new-session codex` or resume a known session with
+`my ai --session <id> codex`.
+`my init` creates two local repos — a private manifest repo (the control
 plane: manifest, product/repo catalog, skills) and a content repo at
 `~/acme/workspace` (the actual workspace, including customer records) —
 registers them, and works offline. When ready to
-share, `our publish` creates the private remotes, points the manifest at the
+share, `my publish` creates the private remotes, points the manifest at the
 published content repo, and pushes both; teammates join with a single
-`our manifests add acme <manifest-url>`.
-Run `our update` to update an install from the latest GitHub release; re-running
+`my manifests add acme <manifest-url>`.
+Run `my update` to update an install from the latest GitHub release; re-running
 `install.sh` still works as a fallback. Developers can still install from source
-with `go install github.com/fluxinc/our-ai/cmd/our@latest`. The installer also
-installs Our AI's bundled `our` skill into existing harnesses
+with `go install github.com/fluxinc/my-cli/cmd/my@latest`. The installer also
+installs My AI's bundled `my` skill into existing harnesses
 so agents know how to use the CLI itself.
 
 ## The Model
 
-`our` has eight concepts. Everything in the CLI is one of these:
+`my` has eight concepts. Everything in the CLI is one of these:
 
 | Concept | What it is |
 |---|---|
 | **Manifest** | An organization's configuration, stored in its own private Git repo — the control plane. Declares skills, mounts, data bindings, catalog, services, roles, and tool hints. The single source of truth; it is not the workspace, and day-to-day work never touches it. |
-| **Skill** | A capability exposed to harnesses. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer); `our ai` composes them into the launch root for harnesses with a project-local skill seam. The CLI also ships one public, organization-neutral *self-skill* named `our`, embedded in the binary, that teaches harnesses how to use `our` itself. |
-| **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.our/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Gnit control workspace so multi-repo commits and pushes have one substrate. |
+| **Skill** | A capability exposed to harnesses. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer); `my ai` composes them into the launch root for harnesses with a project-local skill seam. The CLI also ships one public, organization-neutral *self-skill* named `my`, embedded in the binary, that teaches harnesses how to use `my` itself. |
+| **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.my-cli/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Gnit control workspace so multi-repo commits and pushes have one substrate. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, customers, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
-| **Session** | An isolated unit of work under `work/<id>`: a git worktree per content mount on a fresh branch, plus session-local scratch. Create one with `our work start` or `our ai --new-session`; inspect it with `our work status` or `our work list`; work leaves only through `our work finish --land\|--publish\|--discard`. |
+| **Session** | An isolated unit of work under `work/<id>`: a git worktree per content mount on a fresh branch, plus session-local scratch. Create one with `my work start` or `my ai --new-session`; inspect it with `my work status` or `my work list`; work leaves only through `my work finish --land\|--publish\|--discard`. |
 | **Catalog** | JSON inventories for products (business entities, which may link repos) and repos (the organization's repositories). Users opt specific repos into their umbrella on demand. Customer identities are mounted workspace records, not manifest catalog rows. |
 | **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared and role-specific fragments. `CLAUDE.md` points to the same file. |
-| **Tool** | An external executable the org depends on. `our` reports presence and install hints — it never silently installs tools. |
+| **Tool** | An external executable the org depends on. `my` reports presence and install hints — it never silently installs tools. |
 
-Skills arrive from two places, split by a public/private line. The `our`
+Skills arrive from two places, split by a public/private line. The `my`
 self-skill is **public** and travels **inside the CLI binary** — it is
 organization-neutral, carries no company content, and the binary keeps it
 current on its own. **Organization skills** are **private** to a manifest repo
@@ -69,15 +69,15 @@ baked into the public CLI.
 
 ## Commands
 
-Run `our --help` for the authoritative surface. The essentials:
+Run `my --help` for the authoritative surface. The essentials:
 
 ### Onboarding
 
 ```sh
-our onboard                    # human walkthrough; offers interactive setup
-our onboard --agent --harness codex
+my onboard                    # human walkthrough; offers interactive setup
+my onboard --agent --harness codex
                                # model-driven onboarding; omit --harness to choose interactively
-our setup [harness...] | --all # create umbrella, write guidance/MCP config, install self-skill, sync mounts
+my setup [harness...] | --all # create umbrella, write guidance/MCP config, install self-skill, sync mounts
                                     # [--manifest NAME] [--umbrella DIR] [--role ROLE] [--copy] [--link] [--print]
                                     # [--interactive] [--no-refresh] [--no-update-check]
 ```
@@ -85,25 +85,25 @@ our setup [harness...] | --all # create umbrella, write guidance/MCP config, ins
 `setup` is the normal machine path: idempotent, non-interactive, safe to
 re-run. Use `setup --interactive` when you want prompts for manifest and role
 selection. Use `onboard --agent` when you want a harness to run the adaptive
-AUTHOR/JOIN onboarding flow; publish still requires `our publish --print` and
+AUTHOR/JOIN onboarding flow; publish still requires `my publish --print` and
 explicit human approval.
 
 ### Startup
 
 ```sh
-our root [--repo ID] [--no-refresh] [--no-update-check]
+my root [--repo ID] [--no-refresh] [--no-update-check]
                                              # print the umbrella or repo path
-our ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--no-refresh] [--no-update-check] [harness]
+my ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--no-refresh] [--no-update-check] [harness]
                                              # verify guidance, then start a harness
-our ai codex --model gpt-5              # pass harness flags after the harness name
-our ai --new-session codex
-our ai --session 2026-06-11-work-ab12 codex
-our ai --repo sample-service codex
-our ai --print codex                    # print cd <umbrella> && codex
+my ai codex --model gpt-5              # pass harness flags after the harness name
+my ai --new-session codex
+my ai --session 2026-06-11-work-ab12 codex
+my ai --repo sample-service codex
+my ai --print codex                    # print cd <umbrella> && codex
 ```
 
 `ai` refuses to start against missing or stale generated guidance. Pass
-`--setup` to reconcile first, or run `our setup` directly. By default it
+`--setup` to reconcile first, or run `my setup` directly. By default it
 launches from the base umbrella, or from the current active work session when
 run inside `work/<id>`. Use `--new-session` to create a fresh isolated session,
 `--session` to resume a known active session, and `--no-session` to ignore a
@@ -111,42 +111,42 @@ current session for base inspection/admin/debug.
 `root`, `ai`, and `setup` also run a best-effort, TTL-gated refresh of
 clean manifest/content checkouts so startup sees current context without
 touching dirty, diverged, repo, or remote-unknown checkouts. Use
-`--no-refresh` for one command, `OUR_NO_AUTO_REFRESH=1` globally, or
-`OUR_REFRESH_TTL=30m` to tune the default six-hour refresh window.
+`--no-refresh` for one command, `MYCLI_NO_AUTO_REFRESH=1` globally, or
+`MYCLI_REFRESH_TTL=30m` to tune the default six-hour refresh window.
 
 Startup commands also print stderr `notice` lines for dirty, ahead, behind, or
 diverged checkouts, each with the remediation command, keeping stdout clean.
-They additionally check, at most once per day, whether a newer Our AI
-release exists. Notices are stderr-only so `cd "$(our root)"` stays path-pure.
-Use `--no-update-check` for one command, `OUR_NO_UPDATE_CHECK=1` globally, or
-`OUR_UPDATE_CHECK_TTL=12h` to tune the check window.
+They additionally check, at most once per day, whether a newer My AI
+release exists. Notices are stderr-only so `cd "$(my root)"` stays path-pure.
+Use `--no-update-check` for one command, `MYCLI_NO_UPDATE_CHECK=1` globally, or
+`MYCLI_UPDATE_CHECK_TTL=12h` to tune the check window.
 
-### Updating Our AI
+### Updating My AI
 
 ```sh
-our update --check                  # compare this binary with the latest release
-our update                          # download, verify, and replace this binary
-our update --version 0.5.0          # install a specific release
+my update --check                  # compare this binary with the latest release
+my update                          # download, verify, and replace this binary
+my update --version 0.5.0          # install a specific release
 ```
 
-`our update` verifies the release tarball against `checksums.txt` before
+`my update` verifies the release tarball against `checksums.txt` before
 replacing the binary. It refuses package-managed or non-writable installs and
-prints the matching follow-up, such as `brew upgrade our`,
-`go install github.com/fluxinc/our-ai/cmd/our@latest`, or re-running
+prints the matching follow-up, such as `brew upgrade my`,
+`go install github.com/fluxinc/my-cli/cmd/my@latest`, or re-running
 `install.sh`.
 
 ### Manifests
 
 ```sh
-our init <org-id> [--name NAME] [--path DIR] # create manifest + content repos locally
-our publish [--manifest NAME] [--print]      # create private remotes, rewrite mount URLs, push
-our manifests add <name> <git-url>          # register an org manifest
-our manifests sync <name...> | --all        # refresh checkout and derived artifacts
-our manifests list                          # list registered manifests
-our manifests validate <name|path>          # schema + reference checks
+my init <org-id> [--name NAME] [--path DIR] # create manifest + content repos locally
+my publish [--manifest NAME] [--print]      # create private remotes, rewrite mount URLs, push
+my manifests add <name> <git-url>          # register an org manifest
+my manifests sync <name...> | --all        # refresh checkout and derived artifacts
+my manifests list                          # list registered manifests
+my manifests validate <name|path>          # schema + reference checks
 ```
 
-When a non-print manifest sync pulls or clones exactly one manifest, `our`
+When a non-print manifest sync pulls or clones exactly one manifest, `my`
 reconciles derived workspace artifacts for an existing matching umbrella:
 generated guidance, umbrella MCP config, and launch-scoped skill reconciliation
 notices. Pass
@@ -156,14 +156,14 @@ umbrella is not the current one.
 ### Services and roles
 
 ```sh
-our services list [--json]
-our services get <id> [--json]
-our roles list [--json]
-our roles get <id> [--json]
-our admin services add|edit|remove ...
-our admin roles add|edit|remove ...
-our setup --role operator
-our compile --role operator [--manifest NAME] [--home DIR]
+my services list [--json]
+my services get <id> [--json]
+my roles list [--json]
+my roles get <id> [--json]
+my admin services add|edit|remove ...
+my admin roles add|edit|remove ...
+my setup --role operator
+my compile --role operator [--manifest NAME] [--home DIR]
 ```
 
 Manifest `data_bindings` map stable data nouns (`customers`, `meetings`,
@@ -171,10 +171,10 @@ Manifest `data_bindings` map stable data nouns (`customers`, `meetings`,
 Manifest `services` describe remote organization surfaces such as HTTP APIs and
 MCP servers. Manifest `roles` are local loadouts: they select services and
 optional role-specific guidance without granting authority or pruning mounts.
-`our setup --role <id>` stores the local role selection in `.our/state.json`,
+`my setup --role <id>` stores the local role selection in `.my-cli/state.json`,
 appends that role's guidance fragments to `AGENTS.md`, and materializes
 umbrella-root `.mcp.json` for locally described MCP services visible to the
-role. `our compile --role <id>` is the read-only Mode B handoff: it prints a
+role. `my compile --role <id>` is the read-only Mode B handoff: it prints a
 deterministic manifest-to-Clawdapus launch projection as JSON, without
 launching containers or resolving credentials. A role is required when the
 manifest declares roles; manifests with no roles compile unscoped.
@@ -182,9 +182,9 @@ manifest declares roles; manifests with no roles compile unscoped.
 ### Contract rules
 
 ```sh
-our contract list [--json]
-our admin contract add "RULE TEXT" --manifest-dir <checkout>
-our admin contract remove <index|"RULE TEXT"> --manifest-dir <checkout>
+my contract list [--json]
+my admin contract add "RULE TEXT" --manifest-dir <checkout>
+my admin contract remove <index|"RULE TEXT"> --manifest-dir <checkout>
 ```
 
 Manifest `contract` entries are short, binding organization rules rendered
@@ -194,53 +194,53 @@ review-commit-push flow against a maintainer manifest checkout.
 ### Skills
 
 ```sh
-our skills self status [--json]            # installed/absent status for the bundled our skill
-our skills self install [harness...] | --all
-our skills list [--json]                   # manifest/source skills available to install
-our skills show <id|slug> [--json]         # one skill's metadata and source path
-our skills status [--skill ID_OR_SLUG]     # installed/absent status across harnesses
-our skills install [harness...] | --all    # explicit user-global materialization
-our skills uninstall <harness...> | --all  # remove materialized skills
-our skills sync [harness...] | --all       # install/update and prune stale Our AI-managed skills
-our skills purge <harness...> | --all      # remove Our AI-managed materializations
+my skills self status [--json]            # installed/absent status for the bundled my skill
+my skills self install [harness...] | --all
+my skills list [--json]                   # manifest/source skills available to install
+my skills show <id|slug> [--json]         # one skill's metadata and source path
+my skills status [--skill ID_OR_SLUG]     # installed/absent status across harnesses
+my skills install [harness...] | --all    # explicit user-global materialization
+my skills uninstall <harness...> | --all  # remove materialized skills
+my skills sync [harness...] | --all       # install/update and prune stale My AI-managed skills
+my skills purge <harness...> | --all      # remove My AI-managed materializations
 ```
 
-`our skills self ...` manages the bundled, public-safe `our` CLI skill. It is
-installed by `install.sh`, refreshed during `our setup`, ensured for the
-selected filesystem harness before `our ai` execs it, and quietly kept current
+`my skills self ...` manages the bundled, public-safe `my` CLI skill. It is
+installed by `install.sh`, refreshed during `my setup`, ensured for the
+selected filesystem harness before `my ai` execs it, and quietly kept current
 for already-installed file-based harness copies when a newer binary runs.
 
 Use `--skill ID_OR_SLUG` on manifest skill `install`, `uninstall`, `sync`,
 `purge`, or `status` to target a single declared skill. These commands are
 explicit manual user-global materialization surfaces; managed launches get
-organization skills from `our ai` in the launch root when the harness supports
+organization skills from `my ai` in the launch root when the harness supports
 that. OpenCode is currently compatibility-global: present or explicit OpenCode
-setup/launch keeps org skills in `~/.config/opencode/skills`, and `our ai
+setup/launch keeps org skills in `~/.config/opencode/skills`, and `my ai
 opencode --skills/--profile` is rejected until OpenCode has a proven
 project-local seam. Manual manifest skills install as symlinks by default
-(`--copy` to vendor a copy). `our` records provenance and refuses to clobber a
-directory it did not place. `skills sync` prunes stale Our AI-managed manual
-manifest skills by default, but does not remove the bundled `our` self-skill;
+(`--copy` to vendor a copy). `my` records provenance and refuses to clobber a
+directory it did not place. `skills sync` prunes stale My AI-managed manual
+manifest skills by default, but does not remove the bundled `my` self-skill;
 pass `--no-prune` to only install/update. Skill commands only refresh harness
-skill directories; run `our setup` when manifest guidance or the generated
+skill directories; run `my setup` when manifest guidance or the generated
 umbrella `AGENTS.md` should change without a manifest sync.
 
 Manifest authoring is explicit admin work:
 
 ```sh
-our admin skills add <skill-dir> --id org:name --manifest-dir <checkout>
-our admin skills remove <id|slug> --manifest-dir <checkout> [--prune-orphans]
-our admin tools add <id> --manifest-dir <checkout> --mode required|optional --purpose "..."
-our admin tools edit <id> --manifest-dir <checkout> [--purpose "..."]
-our admin tools remove <id> --manifest-dir <checkout>
-our admin services add <id> --manifest-dir <checkout> --kind http|mcp --purpose "..." --auth-ref REF
-our admin services edit <id> --manifest-dir <checkout> [--purpose "..."]
-our admin services remove <id> --manifest-dir <checkout> [--prune-roles]
-our admin roles add <id> --manifest-dir <checkout> --purpose "..."
-our admin roles edit <id> --manifest-dir <checkout> [--purpose "..."]
-our admin roles remove <id> --manifest-dir <checkout>
-our admin contract add "RULE TEXT" --manifest-dir <checkout>
-our admin contract remove <index|"RULE TEXT"> --manifest-dir <checkout>
+my admin skills add <skill-dir> --id org:name --manifest-dir <checkout>
+my admin skills remove <id|slug> --manifest-dir <checkout> [--prune-orphans]
+my admin tools add <id> --manifest-dir <checkout> --mode required|optional --purpose "..."
+my admin tools edit <id> --manifest-dir <checkout> [--purpose "..."]
+my admin tools remove <id> --manifest-dir <checkout>
+my admin services add <id> --manifest-dir <checkout> --kind http|mcp --purpose "..." --auth-ref REF
+my admin services edit <id> --manifest-dir <checkout> [--purpose "..."]
+my admin services remove <id> --manifest-dir <checkout> [--prune-roles]
+my admin roles add <id> --manifest-dir <checkout> --purpose "..."
+my admin roles edit <id> --manifest-dir <checkout> [--purpose "..."]
+my admin roles remove <id> --manifest-dir <checkout>
+my admin contract add "RULE TEXT" --manifest-dir <checkout>
+my admin contract remove <index|"RULE TEXT"> --manifest-dir <checkout>
 ```
 
 Admin commands write a maintainer checkout, not the synced cache. They
@@ -252,18 +252,18 @@ allowed namespaces; `--prune-orphans` removes those too. Tool removal refuses
 manifest skills that still reference the tool. After a write they print the
 relevant `git status` and `git diff` follow-up commands.
 
-`our admin` is the home for shared/workspace configuration. Mutating or
+`my admin` is the home for shared/workspace configuration. Mutating or
 configuration commands are reachable there too, with the top-level forms
 retained as quiet compatibility aliases:
 
 ```sh
-our admin setup ...                 # alias of our setup
-our admin manifests add|sync|validate  # alias of our manifests ...
-our admin mounts add|remove|sync       # alias of our mounts ...
-our admin meetings add                # alias of our meetings add
-our admin support add                 # alias of our support add
-our admin tools add|edit|remove       # edit manifest tools[]
-our admin contract add|remove         # edit manifest contract[]
+my admin setup ...                 # alias of my setup
+my admin manifests add|sync|validate  # alias of my manifests ...
+my admin mounts add|remove|sync       # alias of my mounts ...
+my admin meetings add                # alias of my meetings add
+my admin support add                 # alias of my support add
+my admin tools add|edit|remove       # edit manifest tools[]
+my admin contract add|remove         # edit manifest contract[]
 ```
 
 Admin aliases are intentionally limited to those mutating/configuration
@@ -273,38 +273,38 @@ under their top-level commands.
 ### Umbrella mounts
 
 ```sh
-our mounts list                             # manifest content mounts
-our mounts add <kind:id|id>                 # opt an optional content mount in
-our mounts sync <mount...> | --all          # clone or fast-forward mounts
-our mounts remove <mount...> [--force]
+my mounts list                             # manifest content mounts
+my mounts add <kind:id|id>                 # opt an optional content mount in
+my mounts sync <mount...> | --all          # clone or fast-forward mounts
+my mounts remove <mount...> [--force]
 ```
 
-Repo clones are managed with `our repos add <id>` and land under `repos/<id>`
+Repo clones are managed with `my repos add <id>` and land under `repos/<id>`
 in the umbrella; legacy `products/` checkouts migrate automatically at
-`our setup`.
+`my setup`.
 
 ### Sync
 
 ```sh
-our sync --print                           # plan inbound refresh and outbound publish
-our sync [--backend auto|gnit|builtin]         # auto prefers Gnit once the umbrella is initialized
-our sync --publish auto|never|direct|pr    # explicit override; direct is CLI-only
-our sync --scope all|local|content|manifest|repos  # limit to one repo class; repos = catalog repo clones
-our sync --no-derived                      # skip derived guidance/MCP/skill reconcile after manifest changes
+my sync --print                           # plan inbound refresh and outbound publish
+my sync [--backend auto|gnit|builtin]         # auto prefers Gnit once the umbrella is initialized
+my sync --publish auto|never|direct|pr    # explicit override; direct is CLI-only
+my sync --scope all|local|content|manifest|repos  # limit to one repo class; repos = catalog repo clones
+my sync --no-derived                      # skip derived guidance/MCP/skill reconcile after manifest changes
 ```
 
-`our sync` is the routine reconciliation command. Our AI classifies changes,
+`my sync` is the routine reconciliation command. My AI classifies changes,
 handles private/public and content/admin policy, and blocks duplicate checkouts
 of the same remote until they are collapsed to one canonical checkout. Gnit is
 the intended backend for real multi-repo Change creation, ordered push, and
-resume; Pins are reserved for intentional recorded workspace states. The Our AI
+resume; Pins are reserved for intentional recorded workspace states. The My AI
 backend is a guarded bootstrap fallback when a workspace has not been
 initialized as a Gnit control workspace. `--publish direct` can publish existing
 local commits directly, but dirty non-content/admin files are still held back
 instead of being quietly committed. A manifest can set top-level
 `sync.publish_policy` to `auto`, `never`, or `pr` as the default when
 `--publish` is omitted; an explicit CLI flag always wins. Non-print syncs write
-`.our/last-sync.json` so `our doctor` can show the last sync/publish audit.
+`.my-cli/last-sync.json` so `my doctor` can show the last sync/publish audit.
 When sync pulls or publishes a manifest checkout, it reconciles generated
 guidance, umbrella MCP config, and launch-scoped skill reconciliation notices
 unless `--no-derived` is passed.
@@ -312,17 +312,17 @@ unless `--no-derived` is passed.
 ### Catalog and customer records
 
 ```sh
-our products list [--json]         # the org's product inventory
-our customers list [--json]        # mounted customer identity records
+my products list [--json]         # the org's product inventory
+my customers list [--json]        # mounted customer identity records
 ```
 
 ### Meeting notes
 
 ```sh
-our meetings list   [--since DATE] [--customer ID] [--partner ID] [--product ID] [--json]
-our meetings search <text> [--customer ID] [--partner ID] [--product ID] [--json]
-our meetings get    <id|path> [--json]
-our meetings add    <slug> [--date DATE] [--title TEXT] [--customer ID]
+my meetings list   [--since DATE] [--customer ID] [--partner ID] [--product ID] [--json]
+my meetings search <text> [--customer ID] [--partner ID] [--product ID] [--json]
+my meetings get    <id|path> [--json]
+my meetings add    <slug> [--date DATE] [--title TEXT] [--customer ID]
                      [--attendees NAME] [--partner ID] [--source-id ID]
 ```
 
@@ -334,10 +334,10 @@ is present and falls back to built-in token-AND markdown search.
 ### Support records
 
 ```sh
-our support list   [--since DATE] [--customer ID] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
-our support search <text> [--customer ID] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
-our support get    <id|path> [--json]
-our support add    <slug> [--date DATE] [--title TEXT] [--customer ID]
+my support list   [--since DATE] [--customer ID] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
+my support search <text> [--customer ID] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
+my support get    <id|path> [--json]
+my support add    <slug> [--date DATE] [--title TEXT] [--customer ID]
                     [--product ID] [--area TEXT] [--tag TEXT]
                     [--status open|workaround|resolved] [--feature-candidate]
                     [--print] [--json]
@@ -351,16 +351,16 @@ built-in token-AND markdown search.
 ### Fleet registry
 
 ```sh
-our fleet list   [--status TEXT] [--customer ID] [--partner ID] [--identifier ID]
+my fleet list   [--status TEXT] [--customer ID] [--partner ID] [--identifier ID]
                   [--branch NAME] [--where KEY=VALUE] [--json]
-our fleet search <text> [same filters] [--json]
-our fleet get    <id|identifier|path> [--json]
-our fleet add    <id> [--customer ID] [--partner ID] [--status TEXT]
+my fleet search <text> [same filters] [--json]
+my fleet get    <id|identifier|path> [--json]
+my fleet add    <id> [--customer ID] [--partner ID] [--status TEXT]
                   [--device TEXT] [--serial TEXT] [--identifier ID]
                   [--config-repo NAME] [--config-branch NAME]
                   [--deployed-site TEXT] [--ship-to TEXT] [--contact TEXT]
                   [--install-date DATE] [--print] [--json]
-our fleet set    <id|identifier> KEY=VALUE... [--json]
+my fleet set    <id|identifier> KEY=VALUE... [--json]
 ```
 
 A registry record per deployed instance under `fleet/<id>.md`, keyed by a
@@ -368,21 +368,21 @@ stable id (hostname or node name) and updated in place. `get` resolves any
 entry in the record's `identifiers` list — a sales order, functional location,
 or serial — and lists support records sharing an identifier. `set` updates
 scalar frontmatter fields while preserving everything else, and suggests an
-`our sync --message` command so workflow transitions stay readable in git
+`my sync --message` command so workflow transitions stay readable in git
 history. The status vocabulary is organization-defined.
 
 ### Diagnostics
 
 ```sh
-our tools list                             # declared tools across selected manifests
-our tools info <name>                      # install hints for a declared tool
-our doctor [--no-fetch] [--fix]            # git freshness, sessions, services, derived drift, last sync, manifests, tools
+my tools list                             # declared tools across selected manifests
+my tools info <name>                      # install hints for a declared tool
+my doctor [--no-fetch] [--fix]            # git freshness, sessions, services, derived drift, last sync, manifests, tools
 ```
 
 Data-returning commands expose `--json` where shown. Structured errors use a
 machine-readable `{error, message, remediation}` with a concrete next command,
 so an agent that hits a wall can recover without a human.
-`our doctor` fetches refs before reporting behind/ahead counts by default; use
+`my doctor` fetches refs before reporting behind/ahead counts by default; use
 `--no-fetch` for an offline view labeled as of the last fetch. It also reports
 service materialization health, active work sessions, missing session
 worktrees, and archived session counts. `--fix` only fast-forwards clean stale
@@ -404,16 +404,16 @@ Code receives a launch-root `.claude/skills` mirror, Codex and Antigravity read
 launch-root `.agents/skills`, and OpenCode stays on its global path as a
 compatibility exception.
 
-Missing harnesses are skipped silently — `our` configures what is present and
+Missing harnesses are skipped silently — `my` configures what is present and
 never fails because a harness is absent.
 
-## The Toolchain Around `our`
+## The Toolchain Around `my`
 
-`our` is the organization layer of a broader agentic toolchain. Each piece is
+`my` is the organization layer of a broader agentic toolchain. Each piece is
 its own project with one job, and they compose without depending on each
 other's internals:
 
-- **`our` (this repo)** — org tooling, primarily for agents: the manifest
+- **`my` (this repo)** — org tooling, primarily for agents: the manifest
   defines the organization; umbrellas and workspaces materialize it so humans
   and AI operators work from the same context with the same commands.
 - **[gnit](https://github.com/mostlydev/gnit)** — git-native multi-repo
@@ -422,7 +422,7 @@ other's internals:
 - **[clawdapus](https://github.com/mostlydev/clawdapus)** — materialization:
   governed agent containers ("claws") compiled from declarative pod files.
   The compile target for turning manifest roles into contained fleet agents,
-  with the `our` CLI inside as a governed work surface.
+  with the `my` CLI inside as a governed work surface.
 - **cllama** (part of clawdapus) — containment: the governance proxy that
   holds real provider credentials and mediates every model and tool call.
   Agents get scoped bearer tokens, never keys.
@@ -443,7 +443,7 @@ through any harness's internal machinery.
 **This repository is the generic mechanism and is public-safe. It must never
 contain organization content.**
 
-- **`our` (this repo, public)** — the CLI: onboarding, manifest, skill,
+- **`my` (this repo, public)** — the CLI: onboarding, manifest, skill,
   mount, catalog, and meeting mechanics. Generic. No customer data, no
   proprietary skills, no internal strategy.
 - **`<org>-manifest` (private, control plane)** — the org's definition layer:
@@ -460,30 +460,30 @@ rationale.
 
 ## Roadmap
 
-`our` is pre-alpha and evolving quickly. The phases, with detailed plans
+`my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
 - **Shipped — control/data-plane split (v0.13.x).** A private manifest repo
   (the control plane) separate from workspace content repos (the data plane);
-  `our publish` creates the private remotes; auto-publishing is gated on
-  record adoption (`our record adopt`, Git intent-to-add). Plans:
+  `my publish` creates the private remotes; auto-publishing is gated on
+  record adoption (`my record adopt`, Git intent-to-add). Plans:
   [single-checkout workspace](docs/plans/2026-06-10-single-checkout-workspace.md),
   [execution plane](docs/plans/2026-06-10-execution-plane.md) (safety patch).
-- **Shipped — work sessions, Mode A (v0.14.0–v0.17.0).** `our work
+- **Shipped — work sessions, Mode A (v0.14.0–v0.17.0).** `my work
   start|status|list|resume|finish`: visible `work/<id>` git worktrees per
-  session, a session registry consulted by `our sync` and `our doctor`,
+  session, a session registry consulted by `my sync` and `my doctor`,
   session-aware content commands, and opt-in launches via
-  `our ai --new-session`/`--session` (base umbrella remains the default).
+  `my ai --new-session`/`--session` (base umbrella remains the default).
   Plan: [execution plane](docs/plans/2026-06-10-execution-plane.md), Mode A.
 - **Shipped — products/repos split (v0.15.0).** Catalog products are pure
   business entities (no `git_url`) that may link implementing repos;
-  organization repositories live in `catalog/repos.json` with an `our repos`
+  organization repositories live in `catalog/repos.json` with an `my repos`
   noun and `--repo` launch flags, cloned under `repos/<id>`. Plan:
   [products/repos split](docs/plans/2026-06-11-products-repos-split.md).
 - **Shipped — roles and services, Mode A (v0.18.0).** Manifest `roles` and
   `services` sections describing the organization's remote surfaces (APIs,
-  MCP servers, gated brokers), `our services`/`our roles` inspection verbs,
-  `our setup --role`, umbrella-root `.mcp.json` materialized from checked-in
+  MCP servers, gated brokers), `my services`/`my roles` inspection verbs,
+  `my setup --role`, umbrella-root `.mcp.json` materialized from checked-in
   or inline connection data — references only, never secrets or network
   fetches — and doctor service-health checks. Plans:
   [execution plane](docs/plans/2026-06-10-execution-plane.md),
@@ -495,17 +495,17 @@ indexed in [docs/plans/](docs/plans/README.md):
   [CLI package refactor](docs/plans/2026-06-12-cli-package-refactor.md).
 - **Shipped — contract rules and verbs (v0.20.0-v0.21.0).** A built-in Fleet
   Work Contract in generated guidance and the bundled self-skill (start fleet
-  work from `our fleet get`, record it in support records, carry identifiers),
-  a support-record next-step hint in `our fleet get` output, a manifest
+  work from `my fleet get`, record it in support records, carry identifiers),
+  a support-record next-step hint in `my fleet get` output, a manifest
   `contract` list of short, binding org rules rendered as an
   `## Organization Contract` section in `AGENTS.md`, and
-  `our contract list` plus `our admin contract add|remove` for the standard
+  `my contract list` plus `my admin contract add|remove` for the standard
   inspect/review-commit-push workflow. Plan:
   [contract rules](docs/plans/2026-06-12-contract-rules.md).
 - **Shipped — customer records move to the data plane (v0.22.0).**
-  `our customers list` now reads mounted `customers/*.md` records, customer
+  `my customers list` now reads mounted `customers/*.md` records, customer
   alias resolution still feeds meetings/support/fleet filters, and
-  `our admin customers add|edit` plus manifest `catalog/customers.json`
+  `my admin customers add|edit` plus manifest `catalog/customers.json`
   loading/validation are removed.
   Plan: [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 1.
 - **Shipped — data bindings over surfaces (v0.23.0).** Manifest `data_bindings`
@@ -521,34 +521,34 @@ indexed in [docs/plans/](docs/plans/README.md):
   Plan:
   [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 3.
 - **Shipped — contained runner launch projection (v0.25.0).** Org-side
-  launch-artifact projection (`our compile`): manifest + role + skills +
+  launch-artifact projection (`my compile`): manifest + role + skills +
   mounts compile into a deterministic Clawdapus-facing JSON artifact for
   governed fleet agents, with baseline and manifest contract blocks preserved
   as enforce-level inputs. The Clawdapus pod/context emitter and descriptor
   fetch/cache remain later phases.
   Plans: [compile launch projection](docs/plans/2026-06-14-compile-launch-plan.md),
   [execution plane](docs/plans/2026-06-10-execution-plane.md).
-- **Shipped (v0.26.0) — human onboarding walkthrough.** `our onboard` is a
-  minimal human tour; `our setup` stays the deterministic machine configurator,
-  with explicit `our setup --interactive` for prompting. Tour completion is
+- **Shipped (v0.26.0) — human onboarding walkthrough.** `my onboard` is a
+  minimal human tour; `my setup` stays the deterministic machine configurator,
+  with explicit `my setup --interactive` for prompting. Tour completion is
   stored umbrella-local; no new top-level verbs such as `configuration`,
   `configure`, or `tour`. Plan:
   [onboarding walkthrough](docs/plans/2026-06-14-onboarding-walkthrough.md).
-- **Shipped (v0.27.0) — launch-scoped skill composition.** `our ai` composes
+- **Shipped (v0.27.0) — launch-scoped skill composition.** `my ai` composes
   manifest profile/skill selectors into disposable `.agents/skills` state under
   the launch root, with harness mirrors where a launch-root seam exists.
   Automatic setup/sync/doctor paths stop installing organization skills globally
   for launch-root-capable harnesses; OpenCode remains compatibility-global until
-  a project-local skill seam is proven; the global `our` self-skill remains
+  a project-local skill seam is proven; the global `my` self-skill remains
   during migration. Gemini harness support was removed entirely in favor of
   Antigravity (`agy`). Plans:
   [launch-scoped skill composition](docs/plans/2026-06-14-launch-scoped-skill-composition.md),
   [ADR 0001](docs/decisions/0001-launch-scoped-skill-composition.md).
-- **Active — model-driven onboarding.** `our onboard --agent [--harness NAME]`
-  launches a harness with the bundled `our` self-skill's Agent-Operated
+- **Active — model-driven onboarding.** `my onboard --agent [--harness NAME]`
+  launches a harness with the bundled `my` self-skill's Agent-Operated
   Onboarding guidance. The launcher chooses AUTHOR vs JOIN from manifest state,
-  uses direct harness exec for zero-manifest bootstrap, reuses `our ai --setup`
-  when a manifest exists, and keeps publish behind `our publish --print` plus
+  uses direct harness exec for zero-manifest bootstrap, reuses `my ai --setup`
+  when a manifest exists, and keeps publish behind `my publish --print` plus
   explicit human approval. Role/service authoring is command-driven; extra
   mount and repo catalog declaration authoring remains explicit human/admin
   follow-up in this slice. Plan:

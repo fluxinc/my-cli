@@ -1,5 +1,5 @@
 {
-  "name": "our-ai-site",
+  "name": "my-cli-site",
   "private": true,
   "scripts": {
     "dev": "vitepress dev",

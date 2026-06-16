@@ -1,10 +1,10 @@
-# What is Our AI?
+# What is My AI?
 
-Our AI is a small Go CLI, `our`, that bootstraps AI agent workspaces from an
+My AI is a small Go CLI, `my`, that bootstraps AI agent workspaces from an
 organization manifest.
 
 It creates a local umbrella workspace, writes generated root guidance, syncs
-content mounts, reports missing tools, and lets `our ai` compose declared
+content mounts, reports missing tools, and lets `my ai` compose declared
 organization skills into each launch root. The result is a repeatable operating
 envelope for agents on a fresh machine.
 
@@ -15,15 +15,15 @@ but each surface has its own skill location, project context rules, and local
 setup habits. Without one source of truth, agents see different knowledge and
 different capabilities.
 
-`our` makes the setup deterministic:
+`my` makes the setup deterministic:
 
 ```sh
-our setup
+my setup
 ```
 
 The command converges local state. Re-run it when the manifest changes.
 
-## What our owns
+## What `my` Owns
 
 - Manifest registration and sync.
 - Launch-scoped organization skill materialization.
@@ -32,14 +32,14 @@ The command converges local state. Re-run it when the manifest changes.
 - Git-backed content mounts.
 - Product catalog inspection and mounted customer-record inspection.
 - Customer, meeting-note, support-record, and fleet-registry operations.
-- Opt-in isolated work sessions (`our work`, `our ai --new-session`), with
+- Opt-in isolated work sessions (`my work`, `my ai --new-session`), with
   session-aware content commands inside a session.
 - Tool diagnostics and install hints.
 - Best-effort TTL-gated auto-refresh of clean manifest/content checkouts at
-  startup (tunable via `--no-refresh`, `OUR_NO_AUTO_REFRESH`, `OUR_REFRESH_TTL`),
+  startup (tunable via `--no-refresh`, `MYCLI_NO_AUTO_REFRESH`, `MYCLI_REFRESH_TTL`),
   with stderr freshness notices for anything it cannot converge.
 
-## What our does not own
+## What `my` Does Not Own
 
 - Private organization knowledge in this public repo.
 - Silent installation of external tools.

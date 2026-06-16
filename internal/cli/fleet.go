@@ -5,9 +5,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/fleet"
-	"github.com/fluxinc/our-ai/internal/record"
-	"github.com/fluxinc/our-ai/internal/support"
+	"github.com/fluxinc/my-cli/internal/fleet"
+	"github.com/fluxinc/my-cli/internal/record"
+	"github.com/fluxinc/my-cli/internal/support"
 )
 
 func (a app) runFleet(args []string) error {
@@ -35,11 +35,11 @@ func (a app) runFleet(args []string) error {
 
 func (a app) printFleetUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our fleet list [--manifest NAME] [--workspace ID] [--status TEXT] [--customer ID] [--partner ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
-  our fleet search <text> [--manifest NAME] [--workspace ID] [--status TEXT] [--customer ID] [--partner ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
-  our fleet get <id|identifier|path> [--manifest NAME] [--workspace ID] [--json]
-  our fleet add <id> [--manifest NAME] [--workspace ID] [--customer ID] [--partner ID] [--status TEXT] [--device TEXT] [--serial TEXT] [--identifier ID] [--config-repo NAME] [--config-branch NAME] [--deployed-site TEXT] [--ship-to TEXT] [--contact TEXT] [--install-date DATE] [--print] [--json]
-  our fleet set <id|identifier> KEY=VALUE... [--manifest NAME] [--workspace ID] [--json]
+  my fleet list [--manifest NAME] [--workspace ID] [--status TEXT] [--customer ID] [--partner ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
+  my fleet search <text> [--manifest NAME] [--workspace ID] [--status TEXT] [--customer ID] [--partner ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
+  my fleet get <id|identifier|path> [--manifest NAME] [--workspace ID] [--json]
+  my fleet add <id> [--manifest NAME] [--workspace ID] [--customer ID] [--partner ID] [--status TEXT] [--device TEXT] [--serial TEXT] [--identifier ID] [--config-repo NAME] [--config-branch NAME] [--deployed-site TEXT] [--ship-to TEXT] [--contact TEXT] [--install-date DATE] [--print] [--json]
+  my fleet set <id|identifier> KEY=VALUE... [--manifest NAME] [--workspace ID] [--json]
 
 Fleet commands use local markdown files under workspace fleet/ directories:
 one registry record per deployed instance, keyed by a stable id (use the
@@ -48,12 +48,12 @@ order, functional location, or serial from the record's identifiers list —
 and reports related support records that share an identifier. set updates
 scalar frontmatter fields in place (for example status=live) and preserves
 every other line; state history is the record's git history, so publish each
-meaningful transition with our sync --message. status vocabulary is
+meaningful transition with my sync --message. status vocabulary is
 organization-defined. --where filters on any top-level frontmatter field.`)
 }
 
 func (a app) runFleetList(args []string) error {
-	opts, rest, err := parseFleetReadOpts("our fleet list", a.stderr, args)
+	opts, rest, err := parseFleetReadOpts("my fleet list", a.stderr, args)
 	if err != nil {
 		return err
 	}
@@ -77,12 +77,12 @@ func (a app) runFleetList(args []string) error {
 }
 
 func (a app) runFleetSearch(args []string) error {
-	opts, rest, err := parseFleetReadOpts("our fleet search", a.stderr, args)
+	opts, rest, err := parseFleetReadOpts("my fleet search", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our fleet search <text>")
+		return fmt.Errorf("usage: my fleet search <text>")
 	}
 	filter, err := opts.filter()
 	if err != nil {
@@ -102,14 +102,14 @@ func (a app) runFleetSearch(args []string) error {
 
 func (a app) runFleetGet(args []string) error {
 	var opts meetingCommonOpts
-	fs := newFlagSet("our fleet get", a.stderr)
+	fs := newFlagSet("my fleet get", a.stderr)
 	bindMeetingCommonFlags(fs, &opts)
 	rest, err := parseInterspersed(fs, args, meetingValueFlags())
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our fleet get <id|identifier|path>")
+		return fmt.Errorf("usage: my fleet get <id|identifier|path>")
 	}
 	roots, err := fleetRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
 	if err != nil {
@@ -153,7 +153,7 @@ func fleetSupportNextStep(rec fleet.Record, related []support.Record) string {
 }
 
 func fleetSupportAddCommand(rec fleet.Record) string {
-	parts := []string{"our", "support", "add", "<slug>"}
+	parts := []string{"my", "support", "add", "<slug>"}
 	if rec.Customer != "" {
 		parts = append(parts, "--customer", rec.Customer)
 	}
@@ -178,7 +178,7 @@ func fleetSupportAddCommand(rec fleet.Record) string {
 
 func (a app) runFleetAdd(args []string) error {
 	var opts fleetAddOpts
-	fs := newFlagSet("our fleet add", a.stderr)
+	fs := newFlagSet("my fleet add", a.stderr)
 	bindMeetingCommonFlags(fs, &opts.meetingCommonOpts)
 	fs.StringVar(&opts.customer, "customer", "", "canonical customer ID")
 	fs.StringVar(&opts.partner, "partner", "", "resale or service partner ID")
@@ -215,7 +215,7 @@ func (a app) runFleetAdd(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our fleet add <id>")
+		return fmt.Errorf("usage: my fleet add <id>")
 	}
 	roots, err := fleetRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
 	if err != nil {
@@ -264,14 +264,14 @@ func (a app) runFleetAdd(args []string) error {
 
 func (a app) runFleetSet(args []string) error {
 	var opts meetingCommonOpts
-	fs := newFlagSet("our fleet set", a.stderr)
+	fs := newFlagSet("my fleet set", a.stderr)
 	bindMeetingCommonFlags(fs, &opts)
 	rest, err := parseInterspersed(fs, args, meetingValueFlags())
 	if err != nil {
 		return err
 	}
 	if len(rest) < 2 {
-		return fmt.Errorf("usage: our fleet set <id|identifier> KEY=VALUE...")
+		return fmt.Errorf("usage: my fleet set <id|identifier> KEY=VALUE...")
 	}
 	updates := map[string]string{}
 	for _, pair := range rest[1:] {
@@ -296,7 +296,7 @@ func (a app) runFleetSet(args []string) error {
 		for _, change := range changes {
 			parts = append(parts, change.Key+"="+change.New)
 		}
-		syncCommand = fmt.Sprintf("our sync --message %s", shellQuote(fmt.Sprintf("Update fleet %s: %s", rec.ID, strings.Join(parts, ", "))))
+		syncCommand = fmt.Sprintf("my sync --message %s", shellQuote(fmt.Sprintf("Update fleet %s: %s", rec.ID, strings.Join(parts, ", "))))
 	}
 	if opts.jsonOut {
 		return printJSON(a.stdout, struct {

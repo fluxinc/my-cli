@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 // Target describes the launch root class.
@@ -32,7 +32,7 @@ const (
 	SelectorProfile  SelectorKind = "profile"
 )
 
-// Selector is the parsed `our ai` skill selector.
+// Selector is the parsed `my ai` skill selector.
 type Selector struct {
 	Kind      SelectorKind
 	SkillRefs []string

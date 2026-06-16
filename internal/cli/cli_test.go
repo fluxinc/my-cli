@@ -11,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/guidance"
-	"github.com/fluxinc/our-ai/internal/manifest"
-	"github.com/fluxinc/our-ai/internal/selfupdate"
-	"github.com/fluxinc/our-ai/internal/syncer"
-	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/guidance"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/selfupdate"
+	"github.com/fluxinc/my-cli/internal/syncer"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 func initCommitAuthor(t *testing.T, repo string) string {
@@ -64,26 +64,26 @@ func initResultHasNext(result initResult, want initNextCommand) bool {
 func TestUnimplementedAndUnknownCommands(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "products"}); err == nil || !strings.Contains(err.Error(), "missing products") {
+	if err := a.run([]string{"my", "products"}); err == nil || !strings.Contains(err.Error(), "missing products") {
 		t.Fatalf("catalog err = %v", err)
 	}
-	if err := a.run([]string{"our", "tools", "wat"}); err == nil || !strings.Contains(err.Error(), "unknown tools") {
+	if err := a.run([]string{"my", "tools", "wat"}); err == nil || !strings.Contains(err.Error(), "unknown tools") {
 		t.Fatalf("unknown tools err = %v", err)
 	}
-	if err := a.run([]string{"our", "workspaces", "wat"}); err == nil || !strings.Contains(err.Error(), "unknown workspace") {
+	if err := a.run([]string{"my", "workspaces", "wat"}); err == nil || !strings.Contains(err.Error(), "unknown workspace") {
 		t.Fatalf("unknown workspace err = %v", err)
 	}
-	if err := a.run([]string{"our", "skills", "wat"}); err == nil || !strings.Contains(err.Error(), "unknown skills") {
+	if err := a.run([]string{"my", "skills", "wat"}); err == nil || !strings.Contains(err.Error(), "unknown skills") {
 		t.Fatalf("unknown skills err = %v", err)
 	}
-	if err := a.run([]string{"our", "wat"}); err == nil || !strings.Contains(err.Error(), "unknown command") {
+	if err := a.run([]string{"my", "wat"}); err == nil || !strings.Contains(err.Error(), "unknown command") {
 		t.Fatalf("unknown command err = %v", err)
 	}
 }
 
 func TestCatalogListHumanFormatting(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -108,14 +108,14 @@ func TestCatalogListHumanFormatting(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	stdout.Reset()
-	if err := a.run([]string{"our", "products", "list", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "products", "list", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -143,7 +143,7 @@ func TestChangedManifestForDerivedUsesManifestRole(t *testing.T) {
 
 func TestToolsInfoAndDoctorCommands(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	if err := os.MkdirAll(manifestCache, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestToolsInfoAndDoctorCommands(t *testing.T) {
     {
       "id": "handbook",
       "git_url": "https://github.com/acme/acme-handbook.git",
-      "local_path": "~/.our/workspaces/handbook"
+      "local_path": "~/.my-cli/workspaces/handbook"
     }
   ],
   "tools": [
@@ -178,7 +178,7 @@ func TestToolsInfoAndDoctorCommands(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -186,7 +186,7 @@ func TestToolsInfoAndDoctorCommands(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "tools", "list", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "tools", "list", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "acme\tqmd\toptional\tsearch ranking helper") {
@@ -194,7 +194,7 @@ func TestToolsInfoAndDoctorCommands(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "tools", "info", "qmd", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "tools", "info", "qmd", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "npm install -g @tobilu/qmd") {
@@ -202,7 +202,7 @@ func TestToolsInfoAndDoctorCommands(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -216,13 +216,13 @@ func TestToolsInfoAndDoctorCommands(t *testing.T) {
 func TestTopLevelHelp(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "--help"}); err != nil {
+	if err := a.run([]string{"my", "--help"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), "our setup") ||
-		!strings.Contains(stdout.String(), "our skills install") ||
-		!strings.Contains(stdout.String(), "our admin manifests add|sync|validate") ||
-		!strings.Contains(stdout.String(), "our version") {
+	if !strings.Contains(stdout.String(), "my setup") ||
+		!strings.Contains(stdout.String(), "my skills install") ||
+		!strings.Contains(stdout.String(), "my admin manifests add|sync|validate") ||
+		!strings.Contains(stdout.String(), "my version") {
 		t.Fatalf("help output = %q", stdout.String())
 	}
 }
@@ -291,11 +291,11 @@ func writeCLITestFile(t *testing.T, path, body string) {
 func writeCLIManagedSkill(t *testing.T, dir, canonicalID string) {
 	t.Helper()
 	writeCLITestFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: "+filepath.Base(dir)+"\n---\n")
-	writeCLITestFile(t, filepath.Join(dir, ".our-managed.json"), `{
-  "installer": "our",
+	writeCLITestFile(t, filepath.Join(dir, ".my-cli-managed.json"), `{
+  "installer": "my",
   "version": "test",
   "mode": "copy",
-  "source": "/tmp/our-test-source",
+  "source": "/tmp/my-test-source",
   "canonical_id": "`+canonicalID+`"
 }`)
 }
@@ -311,7 +311,7 @@ func writeAdminManifest(t *testing.T, dir, extra string) {
 func setupCLISkillsManifestFixture(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -336,7 +336,7 @@ description: Acme calendar
 func registerCLIManifest(t *testing.T, a app, home string) {
 	t.Helper()
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -362,7 +362,7 @@ func ensureCLIGuidance(t *testing.T, home, umbrellaRoot string) {
 func setupCLILaunchFixture(t *testing.T) (string, string) {
 	t.Helper()
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -371,7 +371,7 @@ func setupCLILaunchFixture(t *testing.T) (string, string) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -383,7 +383,7 @@ func setupCLILaunchFixture(t *testing.T) (string, string) {
 func setupCLIRecordWorkspace(t *testing.T) (string, string) {
 	t.Helper()
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	umbrellaRoot := filepath.Join(home, "acme")
 	workspaceRoot := filepath.Join(umbrellaRoot, "handbook")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
@@ -417,7 +417,7 @@ func setupCLIRecordWorkspace(t *testing.T) (string, string) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -439,7 +439,7 @@ func setupCLITrackedManifest(t *testing.T) (string, string, string, string) {
 func setupCLITrackedManifestBody(t *testing.T, body string) (string, string, string, string, string) {
 	t.Helper()
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), body)
 	initCLIGitRepo(t, manifestCache)
 	remote := filepath.Join(home, "manifest.git")
@@ -452,7 +452,7 @@ func setupCLITrackedManifestBody(t *testing.T, body string) (string, string, str
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		remote,
 		"--home", home,
 	}); err != nil {
@@ -465,10 +465,10 @@ func initCLIGitRepo(t *testing.T, dir string) {
 	t.Helper()
 	runCLIGit(t, dir, "init", "-q")
 	runCLIGit(t, dir, "config", "user.name", "Example Test")
-	runCLIGit(t, dir, "config", "user.email", "our-test@example.com")
+	runCLIGit(t, dir, "config", "user.email", "my-test@example.com")
 	runCLIGit(t, dir, "config", "commit.gpgsign", "false")
 	runCLIGit(t, dir, "add", ".")
-	runCLIGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=our-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed repository")
+	runCLIGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=my-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed repository")
 }
 
 func setupCLIRemoteRepo(t *testing.T, root, name string, files map[string]string) (string, string, string) {
@@ -493,14 +493,14 @@ func setupCLIRemoteRepo(t *testing.T, root, name string, files map[string]string
 func commitAndPushCLIGit(t *testing.T, dir, message string) {
 	t.Helper()
 	runCLIGit(t, dir, "add", ".")
-	runCLIGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=our-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", message)
+	runCLIGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=my-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", message)
 	runCLIGit(t, dir, "push", "-q", "origin", "HEAD:master")
 }
 
 func commitCLIGit(t *testing.T, dir, message string) {
 	t.Helper()
 	runCLIGit(t, dir, "add", ".")
-	runCLIGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=our-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", message)
+	runCLIGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=my-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", message)
 }
 
 func runCLIGit(t *testing.T, dir string, args ...string) {
@@ -524,7 +524,7 @@ func gitCLIOutput(t *testing.T, dir string, args ...string) string {
 
 func writeServicesRolesManifest(t *testing.T, home string) {
 	t.Helper()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -577,7 +577,7 @@ Test skill.
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -587,7 +587,7 @@ Test skill.
 
 func writeRoleSetupManifest(t *testing.T, home string) string {
 	t.Helper()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -634,7 +634,7 @@ func writeRoleSetupManifest(t *testing.T, home string) string {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {

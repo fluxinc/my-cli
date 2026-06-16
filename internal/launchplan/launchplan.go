@@ -1,5 +1,5 @@
-// Package launchplan projects an Our AI manifest into the deterministic
-// Clawdapus-facing launch artifact used by `our compile`.
+// Package launchplan projects a My AI manifest into the deterministic
+// Clawdapus-facing launch artifact used by `my compile`.
 package launchplan
 
 import (
@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 const (
@@ -20,11 +20,11 @@ const (
 )
 
 var baselineFleetWorkContract = []string{
-	"Before substantive work on a deployed instance, run `our fleet get <id|identifier>` so you start from the registry record and see related support history.",
-	"Continue an existing relevant support record when one is listed, or create a new dated anonymized record with `our support add` for a distinct incident or work session.",
+	"Before substantive work on a deployed instance, run `my fleet get <id|identifier>` so you start from the registry record and see related support history.",
+	"Continue an existing relevant support record when one is listed, or create a new dated anonymized record with `my support add` for a distinct incident or work session.",
 	"Put the fleet record id and every useful fleet identifier on the support record with repeated `--identifier` flags, plus customer, product, and area frontmatter when known.",
-	"Treat support records as the incident/work log. Fleet records hold registry state; use `our fleet set` only for meaningful state transitions.",
-	"Publish the resulting content with `our sync`.",
+	"Treat support records as the incident/work log. Fleet records hold registry state; use `my fleet set` only for meaningful state transitions.",
+	"Publish the resulting content with `my sync`.",
 }
 
 // Options controls launch projection compilation.
@@ -32,7 +32,7 @@ type Options struct {
 	Role string
 }
 
-// Projection is the deterministic JSON artifact printed by `our compile`.
+// Projection is the deterministic JSON artifact printed by `my compile`.
 type Projection struct {
 	CompileVersion int                    `json:"compile_version"`
 	Target         string                 `json:"target"`
@@ -187,7 +187,7 @@ func Marshal(projection Projection) ([]byte, error) {
 func selectRole(doc manifest.Document, roleID string) (manifest.Role, bool, error) {
 	if roleID == "" {
 		if len(doc.Roles) != 0 {
-			return manifest.Role{}, false, fmt.Errorf("role is required when manifest declares roles; run our roles list")
+			return manifest.Role{}, false, fmt.Errorf("role is required when manifest declares roles; run my roles list")
 		}
 		return manifest.Role{}, false, nil
 	}
@@ -196,7 +196,7 @@ func selectRole(doc manifest.Document, roleID string) (manifest.Role, bool, erro
 			return role, true, nil
 		}
 	}
-	return manifest.Role{}, false, fmt.Errorf("role %q not found; run our roles list", roleID)
+	return manifest.Role{}, false, fmt.Errorf("role %q not found; run my roles list", roleID)
 }
 
 func projectContract(rules []string) []ContractBlock {

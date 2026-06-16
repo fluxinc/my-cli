@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/customers"
+	"github.com/fluxinc/my-cli/internal/customers"
 )
 
 func (a app) resolveCustomerForWrite(home, manifestName, umbrellaRoot, value string) string {
@@ -56,14 +56,14 @@ func (a app) runCustomers(args []string) error {
 
 func (a app) printCustomersUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our customers list [--manifest NAME] [--workspace ID] [--home DIR] [--umbrella DIR] [--json]
+  my customers list [--manifest NAME] [--workspace ID] [--home DIR] [--umbrella DIR] [--json]
 
 Customer commands use local markdown files under workspace customers/ directories.`)
 }
 
 func (a app) runCustomersList(args []string) error {
 	var opts meetingCommonOpts
-	fs := newFlagSet("our customers list", a.stderr)
+	fs := newFlagSet("my customers list", a.stderr)
 	bindMeetingCommonFlags(fs, &opts)
 	rest, err := parseInterspersed(fs, args, meetingValueFlags())
 	if err != nil {

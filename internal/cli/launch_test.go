@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fluxinc/our-ai/internal/bundle"
-	"github.com/fluxinc/our-ai/internal/selfupdate"
-	"github.com/fluxinc/our-ai/internal/umbrella"
-	"github.com/fluxinc/our-ai/internal/worksession"
+	"github.com/fluxinc/my-cli/internal/bundle"
+	"github.com/fluxinc/my-cli/internal/selfupdate"
+	"github.com/fluxinc/my-cli/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/worksession"
 )
 
 func TestRootCommandPrintsUmbrellaAndProductPaths(t *testing.T) {
@@ -23,7 +23,7 @@ func TestRootCommandPrintsUmbrellaAndProductPaths(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "root", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "root", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	umbrellaRoot := filepath.Join(home, "acme")
@@ -32,7 +32,7 @@ func TestRootCommandPrintsUmbrellaAndProductPaths(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "root", "--manifest", "acme", "--home", home, "--repo", "sample-service"}); err != nil {
+	if err := a.run([]string{"my", "root", "--manifest", "acme", "--home", home, "--repo", "sample-service"}); err != nil {
 		t.Fatal(err)
 	}
 	wantRepo := filepath.Join(umbrellaRoot, "repos", "sample-service")
@@ -63,7 +63,7 @@ func TestRootAutoRefreshFastForwardsCleanStaleMountAndKeepsStdoutPure(t *testing
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	if got := stdout.String(); got != umbrellaRoot+"\n" {
@@ -105,7 +105,7 @@ func TestRootAutoRefreshSkipsRecentlyRefreshedMount(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(mountPath, "remote.md")); !os.IsNotExist(err) {
@@ -138,15 +138,15 @@ func TestRootAutoRefreshOptOutsSkipRefresh(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	t.Setenv("OUR_NO_AUTO_REFRESH", "1")
-	if err := a.run([]string{"our", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	t.Setenv("MYCLI_NO_AUTO_REFRESH", "1")
+	if err := a.run([]string{"my", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(mountPath, "remote.md")); !os.IsNotExist(err) {
-		t.Fatalf("mount refreshed despite OUR_NO_AUTO_REFRESH: %v", err)
+		t.Fatalf("mount refreshed despite MYCLI_NO_AUTO_REFRESH: %v", err)
 	}
-	t.Setenv("OUR_NO_AUTO_REFRESH", "")
-	if err := a.run([]string{"our", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-refresh"}); err != nil {
+	t.Setenv("MYCLI_NO_AUTO_REFRESH", "")
+	if err := a.run([]string{"my", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-refresh"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(mountPath, "remote.md")); !os.IsNotExist(err) {
@@ -205,7 +205,7 @@ func TestRootAutoRefreshSkipsDirtyDivergedAndProductRepos(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{
@@ -242,7 +242,7 @@ func TestRootAutoRefreshNoticesHeldDirtyMountOnStderr(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "root", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	if got := stdout.String(); got != umbrellaRoot+"\n" {
@@ -252,7 +252,7 @@ func TestRootAutoRefreshNoticesHeldDirtyMountOnStderr(t *testing.T) {
 	if !strings.Contains(errOut, "notice\tacme:content:handbook\t") {
 		t.Fatalf("root stderr = %q, want held-repo notice", errOut)
 	}
-	if !strings.Contains(errOut, "our sync") {
+	if !strings.Contains(errOut, "my sync") {
 		t.Fatalf("root stderr = %q, want remediation command", errOut)
 	}
 }
@@ -262,7 +262,7 @@ func TestLaunchPrintsResolvedCommandWithoutCheckingGuidance(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	err := a.run([]string{
-		"our", "ai",
+		"my", "ai",
 		"--manifest", "acme",
 		"--home", home,
 		"--repo", "sample-service",
@@ -284,7 +284,7 @@ func TestLaunchPrintDefaultsToBaseUmbrella(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "ai",
+		"my", "ai",
 		"--manifest", "acme",
 		"--home", home,
 		"--print",
@@ -311,7 +311,7 @@ func TestLaunchPrintCreatesNewSessionWhenRequested(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "ai",
+		"my", "ai",
 		"--manifest", "acme",
 		"--home", home,
 		"--new-session",
@@ -347,12 +347,12 @@ func TestLaunchRefusesMissingGuidance(t *testing.T) {
 			return "", nil
 		},
 	}
-	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "codex"})
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "codex"})
 	if !errors.Is(err, errAlreadyPrinted) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}
 	if !strings.Contains(stderr.String(), "workspace guidance missing") ||
-		!strings.Contains(stderr.String(), "run our setup") {
+		!strings.Contains(stderr.String(), "run my setup") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
@@ -378,7 +378,7 @@ func TestLaunchOnboardThenExecsWithArgs(t *testing.T) {
 			return nil
 		},
 	}
-	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--setup", "--no-session", "codex", "--model", "gpt-5", "--full-auto"})
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--setup", "--no-session", "codex", "--model", "gpt-5", "--full-auto"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,10 +400,10 @@ func TestLaunchInstallsAbsentSelfSkillBeforeExec(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "setup", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "setup", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.RemoveAll(filepath.Join(home, ".codex", "skills", "our")); err != nil {
+	if err := os.RemoveAll(filepath.Join(home, ".codex", "skills", "my")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -415,7 +415,7 @@ func TestLaunchInstallsAbsentSelfSkillBeforeExec(t *testing.T) {
 			if name != "codex" {
 				t.Fatalf("lookPath name = %q, want codex", name)
 			}
-			if _, err := os.Lstat(filepath.Join(home, ".codex", "skills", "our")); err != nil {
+			if _, err := os.Lstat(filepath.Join(home, ".codex", "skills", "my")); err != nil {
 				t.Fatalf("self-skill was not installed before lookupPath: %v", err)
 			}
 			return "/test/bin/codex", nil
@@ -428,7 +428,7 @@ func TestLaunchInstallsAbsentSelfSkillBeforeExec(t *testing.T) {
 	}
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--no-session", "codex"}); err != nil {
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--no-session", "codex"}); err != nil {
 		t.Fatal(err)
 	}
 	if gotPath != "/test/bin/codex" || gotDir != umbrellaRoot {
@@ -443,7 +443,7 @@ func TestLaunchMissingHarnessPrintsFallbackAndFails(t *testing.T) {
 	home, umbrellaRoot := setupCLILaunchFixture(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "setup", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "setup", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -459,7 +459,7 @@ func TestLaunchMissingHarnessPrintsFallbackAndFails(t *testing.T) {
 			return "", exec.ErrNotFound
 		},
 	}
-	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--no-session", "codex", "--model", "gpt-5"})
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--no-session", "codex", "--model", "gpt-5"})
 	if !errors.Is(err, errAlreadyPrinted) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}
@@ -485,7 +485,7 @@ func TestLaunchMissingHarnessDefaultDoesNotCreateSession(t *testing.T) {
 			return "", exec.ErrNotFound
 		},
 	}
-	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check", "codex"})
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check", "codex"})
 	if !errors.Is(err, errAlreadyPrinted) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}
@@ -519,7 +519,7 @@ func TestLaunchMissingHarnessNewSessionDoesNotCreateSession(t *testing.T) {
 			return "", exec.ErrNotFound
 		},
 	}
-	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--new-session", "--no-refresh", "--no-update-check", "codex"})
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--new-session", "--no-refresh", "--no-update-check", "codex"})
 	if !errors.Is(err, errAlreadyPrinted) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}
@@ -559,7 +559,7 @@ func TestLaunchDefaultsToBaseUmbrella(t *testing.T) {
 			return nil
 		},
 	}
-	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check", "codex", "--model", "gpt-5"}); err != nil {
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check", "codex", "--model", "gpt-5"}); err != nil {
 		t.Fatal(err)
 	}
 	sessions, err := worksession.List(umbrellaRoot)
@@ -597,7 +597,7 @@ func TestLaunchCreatesNewSessionWhenRequested(t *testing.T) {
 			return nil
 		},
 	}
-	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--new-session", "--no-refresh", "--no-update-check", "codex", "--model", "gpt-5"}); err != nil {
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--new-session", "--no-refresh", "--no-update-check", "codex", "--model", "gpt-5"}); err != nil {
 		t.Fatal(err)
 	}
 	sessions, err := worksession.List(umbrellaRoot)
@@ -618,7 +618,7 @@ func TestLaunchResumesExplicitSession(t *testing.T) {
 	ensureCLIGuidance(t, home, umbrellaRoot)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--slug", "resume", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--slug", "resume", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v", err)
 	}
 	var session worksession.Session
@@ -639,7 +639,7 @@ func TestLaunchResumesExplicitSession(t *testing.T) {
 			return nil
 		},
 	}
-	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--session", session.ID, "--no-refresh", "--no-update-check", "codex"}); err != nil {
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--session", session.ID, "--no-refresh", "--no-update-check", "codex"}); err != nil {
 		t.Fatal(err)
 	}
 	sessions, err := worksession.List(umbrellaRoot)
@@ -657,7 +657,7 @@ func TestLaunchFromInsideSessionUsesCurrentSession(t *testing.T) {
 	ensureCLIGuidance(t, home, umbrellaRoot)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--slug", "current", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--slug", "current", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v", err)
 	}
 	var session worksession.Session
@@ -680,7 +680,7 @@ func TestLaunchFromInsideSessionUsesCurrentSession(t *testing.T) {
 			return nil
 		},
 	}
-	if err := a.run([]string{"our", "ai", "--home", home, "--no-refresh", "--no-update-check", "codex"}); err != nil {
+	if err := a.run([]string{"my", "ai", "--home", home, "--no-refresh", "--no-update-check", "codex"}); err != nil {
 		t.Fatal(err)
 	}
 	if gotDir != session.Path {
@@ -694,7 +694,7 @@ func TestLaunchNewSessionInsideSessionCreatesFreshSession(t *testing.T) {
 	ensureCLIGuidance(t, home, umbrellaRoot)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--slug", "current", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--slug", "current", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v", err)
 	}
 	var session worksession.Session
@@ -717,7 +717,7 @@ func TestLaunchNewSessionInsideSessionCreatesFreshSession(t *testing.T) {
 			return nil
 		},
 	}
-	if err := a.run([]string{"our", "ai", "--home", home, "--new-session", "--no-refresh", "--no-update-check", "codex"}); err != nil {
+	if err := a.run([]string{"my", "ai", "--home", home, "--new-session", "--no-refresh", "--no-update-check", "codex"}); err != nil {
 		t.Fatal(err)
 	}
 	sessions, err := worksession.List(umbrellaRoot)
@@ -745,7 +745,7 @@ func TestLaunchRepoDefaultsToBaseCheckout(t *testing.T) {
 	home, _ := setupCLILaunchFixture(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--repo", "sample-service", "--print", "codex"})
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--repo", "sample-service", "--print", "codex"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -759,7 +759,7 @@ func TestLaunchRepoRefusesSessionFlags(t *testing.T) {
 	home, _ := setupCLILaunchFixture(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--new-session", "--repo", "sample-service", "--print", "codex"})
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--new-session", "--repo", "sample-service", "--print", "codex"})
 	if !errors.Is(err, errAlreadyPrinted) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}
@@ -787,7 +787,7 @@ func TestLaunchMaterializesOrgSkillsIntoLaunchRootAndMirror(t *testing.T) {
 			return nil
 		},
 	}
-	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "claude-code"}); err != nil {
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "claude-code"}); err != nil {
 		t.Fatal(err)
 	}
 	if gotDir != umbrellaRoot {
@@ -799,14 +799,14 @@ func TestLaunchMaterializesOrgSkillsIntoLaunchRootAndMirror(t *testing.T) {
 	} {
 		assertLaunchSkill(t, filepath.Join(base, "acme-handbook"), "acme:handbook")
 		assertLaunchSkill(t, filepath.Join(base, "acme-calendar"), "acme:calendar")
-		if _, err := os.Stat(filepath.Join(base, "our")); !os.IsNotExist(err) {
-			t.Fatalf("self-skill was materialized into launch root at %s: %v", filepath.Join(base, "our"), err)
+		if _, err := os.Stat(filepath.Join(base, "my")); !os.IsNotExist(err) {
+			t.Fatalf("self-skill was materialized into launch root at %s: %v", filepath.Join(base, "my"), err)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "acme-handbook")); !os.IsNotExist(err) {
 		t.Fatalf("org skill was installed globally: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "our", "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "my", "SKILL.md")); err != nil {
 		t.Fatalf("global self-skill missing: %v", err)
 	}
 }
@@ -822,7 +822,7 @@ func TestLaunchCodexUsesAgentsSkillsWithoutMirror(t *testing.T) {
 		},
 		execHarness: func(path string, args []string, dir string) error { return nil },
 	}
-	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "codex"}); err != nil {
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "codex"}); err != nil {
 		t.Fatal(err)
 	}
 	base := filepath.Join(umbrellaRoot, ".agents", "skills")
@@ -831,7 +831,7 @@ func TestLaunchCodexUsesAgentsSkillsWithoutMirror(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(umbrellaRoot, ".codex", "skills", "acme-handbook")); !os.IsNotExist(err) {
 		t.Fatalf("codex mirror should not be written because codex reads .agents/skills: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".codex", "skills", "our", "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(home, ".codex", "skills", "my", "SKILL.md")); err != nil {
 		t.Fatalf("global self-skill missing: %v", err)
 	}
 }
@@ -847,13 +847,13 @@ func TestLaunchOpenCodeUsesCompatibilityGlobalSkills(t *testing.T) {
 		},
 		execHarness: func(path string, args []string, dir string) error { return nil },
 	}
-	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "opencode"}); err != nil {
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "opencode"}); err != nil {
 		t.Fatal(err)
 	}
 	globalSkillsDir := filepath.Join(home, ".config", "opencode", "skills")
 	assertIndexedGlobalSkill(t, globalSkillsDir, "acme-handbook", "acme:handbook", compatibilityGlobalSkillScope)
 	assertIndexedGlobalSkill(t, globalSkillsDir, "acme-calendar", "acme:calendar", compatibilityGlobalSkillScope)
-	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", "skills", "our", "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", "skills", "my", "SKILL.md")); err != nil {
 		t.Fatalf("global self-skill missing: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(umbrellaRoot, ".agents", "skills", "acme-handbook")); !os.IsNotExist(err) {
@@ -878,7 +878,7 @@ func TestLaunchOpenCodeRejectsSkillSelectors(t *testing.T) {
 			return nil
 		},
 	}
-	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "--profile", "support", "opencode"})
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "--profile", "support", "opencode"})
 	if err == nil || !strings.Contains(err.Error(), "does not support launch-scoped skill profiles") {
 		t.Fatalf("err = %v, want launch-scoped profile support error", err)
 	}
@@ -898,7 +898,7 @@ func TestLaunchProfileSelectorAndSkillsNone(t *testing.T) {
 		},
 		execHarness: func(path string, args []string, dir string) error { return nil },
 	}
-	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "--profile", "support", "codex"}); err != nil {
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "--profile", "support", "codex"}); err != nil {
 		t.Fatal(err)
 	}
 	base := filepath.Join(umbrellaRoot, ".agents", "skills")
@@ -907,7 +907,7 @@ func TestLaunchProfileSelectorAndSkillsNone(t *testing.T) {
 		t.Fatalf("unselected skill exists after profile launch: %v", err)
 	}
 
-	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "--skills", "none", "codex"}); err != nil {
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "--skills", "none", "codex"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(base, "acme-calendar")); !os.IsNotExist(err) {
@@ -919,7 +919,7 @@ func TestLaunchPrintWithSelectorsDoesNotMaterializeOrValidateProfile(t *testing.
 	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--print", "--profile", "missing", "codex"}); err != nil {
+	if err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--print", "--profile", "missing", "codex"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "cd "+umbrellaRoot+" && codex") {
@@ -930,7 +930,7 @@ func TestLaunchPrintWithSelectorsDoesNotMaterializeOrValidateProfile(t *testing.
 	}
 }
 
-func TestLaunchRefusesNonOurSkillCollisionWithoutPartialMaterialization(t *testing.T) {
+func TestLaunchRefusesNonMySkillCollisionWithoutPartialMaterialization(t *testing.T) {
 	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
 	writeCLITestFile(t, filepath.Join(umbrellaRoot, ".agents", "skills", "acme-handbook", "SKILL.md"), "---\nname: acme-handbook\n---\nmanual\n")
 	var stdout, stderr bytes.Buffer
@@ -945,8 +945,8 @@ func TestLaunchRefusesNonOurSkillCollisionWithoutPartialMaterialization(t *testi
 			return nil
 		},
 	}
-	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "codex"})
-	if err == nil || !strings.Contains(err.Error(), "collides with non-Our entry") {
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "codex"})
+	if err == nil || !strings.Contains(err.Error(), "collides with non-My AI entry") {
 		t.Fatalf("err = %v, want collision error", err)
 	}
 	if _, err := os.Stat(filepath.Join(umbrellaRoot, ".agents", "skills", "acme-calendar")); !os.IsNotExist(err) {
@@ -958,7 +958,7 @@ func TestLaunchProductFlagRemoved(t *testing.T) {
 	home, _ := setupCLILaunchFixture(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	err := a.run([]string{"our", "ai", "--manifest", "acme", "--home", home, "--product", "sample-product", "--print", "codex"})
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--product", "sample-product", "--print", "codex"})
 	if !errors.Is(err, errAlreadyPrinted) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}
@@ -971,7 +971,7 @@ func TestLaunchProductFlagRemoved(t *testing.T) {
 func setupCLILaunchProfileFixture(t *testing.T) (string, string) {
 	t.Helper()
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	umbrellaRoot := filepath.Join(home, "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
@@ -989,7 +989,7 @@ func setupCLILaunchProfileFixture(t *testing.T) (string, string) {
 	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-calendar", "SKILL.md"), "---\nname: acme-calendar\n---\n")
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "manifests", "add", "acme", "https://github.com/acme/acme-ai-manifest.git", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "manifests", "add", "acme", "https://github.com/acme/acme-ai-manifest.git", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
@@ -1016,7 +1016,7 @@ func assertLaunchSkill(t *testing.T, dir, canonicalID string) {
 	if err := json.Unmarshal(data, &marker); err != nil {
 		t.Fatalf("marker JSON: %v\n%s", err, data)
 	}
-	if marker.Installer != "our" || marker.CanonicalID != canonicalID || marker.Scope != "launch" {
+	if marker.Installer != "my" || marker.CanonicalID != canonicalID || marker.Scope != "launch" {
 		t.Fatalf("marker = %+v, want canonical_id=%q scope=launch", marker, canonicalID)
 	}
 }
@@ -1042,7 +1042,7 @@ func assertIndexedGlobalSkill(t *testing.T, skillsDir, skillName, canonicalID, s
 		t.Fatalf("index JSON: %v\n%s", err, data)
 	}
 	item, ok := index.Skills[skillName]
-	if index.Installer != "our" || index.Mode != "index" || !ok || item.CanonicalID != canonicalID || item.Scope != scope {
+	if index.Installer != "my" || index.Mode != "index" || !ok || item.CanonicalID != canonicalID || item.Scope != scope {
 		t.Fatalf("index = %+v, want %s canonical_id=%q scope=%s", index, skillName, canonicalID, scope)
 	}
 }
@@ -1050,7 +1050,7 @@ func assertIndexedGlobalSkill(t *testing.T, skillsDir, skillName, canonicalID, s
 func TestVersionCommand(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "version"}); err != nil {
+	if err := a.run([]string{"my", "version"}); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(stdout.String()) != "0.1.0" {
@@ -1058,7 +1058,7 @@ func TestVersionCommand(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "--version"}); err != nil {
+	if err := a.run([]string{"my", "--version"}); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(stdout.String()) != "0.1.0" {
@@ -1075,7 +1075,7 @@ func TestUpdateCheckJSON(t *testing.T) {
 		updateCurrentVersion: "0.1.0",
 		updateSource:         server.source(),
 	}
-	if err := a.run([]string{"our", "update", "--check", "--json"}); err != nil {
+	if err := a.run([]string{"my", "update", "--check", "--json"}); err != nil {
 		t.Fatal(err)
 	}
 	var result selfupdate.Result
@@ -1105,14 +1105,14 @@ func TestRootUpdateNoticeKeepsStdoutPure(t *testing.T) {
 		updateSource:         server.source(),
 		updateNow:            func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) },
 	}
-	if err := a.run([]string{"our", "root", "--home", home, "--umbrella", root}); err != nil {
+	if err := a.run([]string{"my", "root", "--home", home, "--umbrella", root}); err != nil {
 		t.Fatal(err)
 	}
 	if got := stdout.String(); got != root+"\n" {
 		t.Fatalf("root stdout = %q, want only root path", got)
 	}
-	if got := stderr.String(); !strings.Contains(got, "a newer our (v0.2.0) is available") ||
-		!strings.Contains(got, "our update") {
+	if got := stderr.String(); !strings.Contains(got, "a newer my (v0.2.0) is available") ||
+		!strings.Contains(got, "my update") {
 		t.Fatalf("stderr = %q, want update notice", got)
 	}
 }
@@ -1128,7 +1128,7 @@ func TestRootUpdateNoticeOptOutSkipsNetwork(t *testing.T) {
 		updateCurrentVersion: "0.1.0",
 		updateSource:         server.source(),
 	}
-	if err := a.run([]string{"our", "root", "--home", home, "--umbrella", root, "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "root", "--home", home, "--umbrella", root, "--no-update-check"}); err != nil {
 		t.Fatal(err)
 	}
 	if stdout.String() != root+"\n" {
@@ -1154,7 +1154,7 @@ func TestRootUpdateNoticeBestEffortOnNetworkError(t *testing.T) {
 			return nil, errors.New("offline")
 		})}},
 	}
-	if err := a.run([]string{"our", "root", "--home", home, "--umbrella", root}); err != nil {
+	if err := a.run([]string{"my", "root", "--home", home, "--umbrella", root}); err != nil {
 		t.Fatal(err)
 	}
 	if stdout.String() != root+"\n" {

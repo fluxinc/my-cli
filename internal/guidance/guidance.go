@@ -1,4 +1,4 @@
-// Package guidance writes generated AGENTS.md files into our umbrellas.
+// Package guidance writes generated AGENTS.md files into my umbrellas.
 package guidance
 
 import (
@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 //go:embed baseline/AGENTS.md
@@ -20,7 +20,7 @@ var baselineFS embed.FS
 const (
 	agentsFile = "AGENTS.md"
 	claudeFile = "CLAUDE.md"
-	marker     = "<!-- our:generated workspace-guidance v1 -->"
+	marker     = "<!-- my:generated workspace-guidance v1 -->"
 )
 
 // Options controls workspace guidance generation.
@@ -112,7 +112,7 @@ func CheckWithOptions(root, manifestRoot string, doc manifest.Document, opts Opt
 	agents, err := os.ReadFile(agentsPath)
 	if os.IsNotExist(err) {
 		res.Status = "missing"
-		res.Message = "run our setup"
+		res.Message = "run my setup"
 		return res, nil
 	}
 	if err != nil {
@@ -120,18 +120,18 @@ func CheckWithOptions(root, manifestRoot string, doc manifest.Document, opts Opt
 	}
 	if !isManaged(agents) {
 		res.Status = "unmanaged"
-		res.Message = "run our setup --force"
+		res.Message = "run my setup --force"
 		return res, nil
 	}
 	if !bytes.Equal(agents, expected) {
 		res.Status = "stale"
-		res.Message = "run our setup"
+		res.Message = "run my setup"
 		return res, nil
 	}
 
 	if !claudeAliasOK(claudePath, expected) {
 		res.Status = "alias-broken"
-		res.Message = "run our setup"
+		res.Message = "run my setup"
 		return res, nil
 	}
 
@@ -233,7 +233,7 @@ func blockedByExistingFiles(agentsPath, claudePath string, force bool) (bool, st
 	}
 	if data, err := os.ReadFile(agentsPath); err == nil {
 		if !isManaged(data) {
-			return true, fmt.Sprintf("%s exists and is not Our AI-managed; re-run with --force to replace it", agentsPath), nil
+			return true, fmt.Sprintf("%s exists and is not My AI-managed; re-run with --force to replace it", agentsPath), nil
 		}
 	} else if !os.IsNotExist(err) {
 		return false, "", err

@@ -1,4 +1,4 @@
-// Package cli implements the our command-line surface.
+// Package cli implements the my command-line surface.
 package cli
 
 import (
@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fluxinc/our-ai/internal/bundle"
-	"github.com/fluxinc/our-ai/internal/manifest"
-	"github.com/fluxinc/our-ai/internal/selfskill"
-	"github.com/fluxinc/our-ai/internal/selfupdate"
+	"github.com/fluxinc/my-cli/internal/bundle"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/selfskill"
+	"github.com/fluxinc/my-cli/internal/selfupdate"
 )
 
 // Run executes the CLI and returns a process exit code.
@@ -37,7 +37,7 @@ func Run(args []string) int {
 		if errors.As(err, &exitErr) {
 			return exitErr.code
 		}
-		fmt.Fprintf(a.stderr, "our: %v\n", err)
+		fmt.Fprintf(a.stderr, "my: %v\n", err)
 		return 1
 	}
 	return 0
@@ -53,7 +53,7 @@ type app struct {
 	updateNow            func() time.Time
 	updateCurrentVersion string
 	updateTargetPath     string
-	// publishRunner overrides external gh invocations during our publish.
+	// publishRunner overrides external gh invocations during my publish.
 	publishRunner manifest.Runner
 }
 
@@ -65,7 +65,7 @@ func (a app) runStartupMaintenance(args []string) {
 }
 
 func shouldAutoSyncSelfSkill(args []string) bool {
-	if os.Getenv("OUR_DISABLE_SELF_SKILL_SYNC") != "" {
+	if os.Getenv("MYCLI_DISABLE_SELF_SKILL_SYNC") != "" {
 		return false
 	}
 	if strings.HasSuffix(filepath.Base(os.Args[0]), ".test") {
@@ -180,80 +180,80 @@ func (a app) run(args []string) error {
 }
 
 func (a app) printUsage() {
-	fmt.Fprintln(a.stdout, `our installs and manages manifest-backed AI workspace tooling.
+	fmt.Fprintln(a.stdout, `my installs and manages manifest-backed AI workspace tooling.
 
 Usage:
-  our setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-  our onboard [--agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-  our root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-  our ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
-  our update [--check] [--version X.Y.Z] [--json] [--yes]
-  our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
-  our publish [--manifest NAME] [--home DIR] [--print] [--json]
-  our compile --role ROLE [--manifest NAME] [--home DIR]
-  our sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
-  our skills self install|uninstall|status ...
-  our skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
-  our skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
-  our skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
-  our skills purge <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
-  our skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
-  our skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
-  our skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
-  our admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
-  our admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
-  our admin setup ...                      (alias of our setup)
-  our admin manifests add|sync|validate ...   (alias of our manifests ...)
-  our admin mounts add|remove|sync ...        (alias of our mounts ...)
-  our admin meetings add ...                 (alias of our meetings add)
-  our admin support add ...                  (alias of our support add)
-  our admin tools add|edit|remove ...        (edit manifest tool hints)
-  our admin roles add|edit|remove ...        (edit manifest role loadouts)
-  our admin services add|edit|remove ...     (edit manifest service surfaces)
-  our admin contract add|remove ...          (edit manifest contract rules)
-  our manifests add <name> <git-url>
-  our manifests list
-  our manifests sync <name...> | --all [--umbrella DIR] [--no-derived] [--print]
-  our manifests validate <name|path>
-  our mounts list [--manifest NAME]
-  our mounts add <kind:id|id> [--manifest NAME]
-  our mounts sync <mount...> | --all [--manifest NAME] [--print]
-  our mounts remove <mount...> [--print] [--force]
-  our workspaces list [--manifest NAME]
-  our workspaces sync <workspace...> | --all [--manifest NAME] [--print]
-  our tools list
-  our tools info <name>
-  our meetings list
-  our meetings search <text>
-  our meetings get <id|path>
-  our meetings add <slug>
-  our support list
-  our support search <text>
-  our support get <id|path>
-  our support add <slug>
-  our fleet list
-  our fleet search <text>
-  our fleet get <id|identifier|path>
-  our fleet add <id>
-  our fleet set <id> KEY=VALUE...
-  our record adopt <path>
-  our work start [--slug SLUG] [--json]
-  our work status [--all] [--json]
-  our work list [--all] [--json]
-  our work resume [session-id] [--json]
-  our work finish [session-id] --land|--publish|--discard [--message TEXT] [--json]
-  our customers list
-  our products list
-  our repos list [--json]
-  our repos add <id>
-  our repos remove <id> [--force]
-  our services list [--manifest NAME] [--json]
-  our services get <id> [--manifest NAME] [--json]
-  our roles list [--manifest NAME] [--json]
-  our roles get <id> [--manifest NAME] [--json]
-  our contract list [--manifest NAME] [--json]
-  our doctor [--no-fetch] [--fix] [--json]
-  our version`)
+  my setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  my onboard [--agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  my root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  my ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+  my update [--check] [--version X.Y.Z] [--json] [--yes]
+  my init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
+  my publish [--manifest NAME] [--home DIR] [--print] [--json]
+  my compile --role ROLE [--manifest NAME] [--home DIR]
+  my sync [--backend auto|gnit|builtin] [--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--no-derived] [--print] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
+  my skills self install|uninstall|status ...
+  my skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+  my skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
+  my skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+  my skills purge <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
+  my skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  my skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  my skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  my admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
+  my admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
+  my admin setup ...                      (alias of my setup)
+  my admin manifests add|sync|validate ...   (alias of my manifests ...)
+  my admin mounts add|remove|sync ...        (alias of my mounts ...)
+  my admin meetings add ...                 (alias of my meetings add)
+  my admin support add ...                  (alias of my support add)
+  my admin tools add|edit|remove ...        (edit manifest tool hints)
+  my admin roles add|edit|remove ...        (edit manifest role loadouts)
+  my admin services add|edit|remove ...     (edit manifest service surfaces)
+  my admin contract add|remove ...          (edit manifest contract rules)
+  my manifests add <name> <git-url>
+  my manifests list
+  my manifests sync <name...> | --all [--umbrella DIR] [--no-derived] [--print]
+  my manifests validate <name|path>
+  my mounts list [--manifest NAME]
+  my mounts add <kind:id|id> [--manifest NAME]
+  my mounts sync <mount...> | --all [--manifest NAME] [--print]
+  my mounts remove <mount...> [--print] [--force]
+  my workspaces list [--manifest NAME]
+  my workspaces sync <workspace...> | --all [--manifest NAME] [--print]
+  my tools list
+  my tools info <name>
+  my meetings list
+  my meetings search <text>
+  my meetings get <id|path>
+  my meetings add <slug>
+  my support list
+  my support search <text>
+  my support get <id|path>
+  my support add <slug>
+  my fleet list
+  my fleet search <text>
+  my fleet get <id|identifier|path>
+  my fleet add <id>
+  my fleet set <id> KEY=VALUE...
+  my record adopt <path>
+  my work start [--slug SLUG] [--json]
+  my work status [--all] [--json]
+  my work list [--all] [--json]
+  my work resume [session-id] [--json]
+  my work finish [session-id] --land|--publish|--discard [--message TEXT] [--json]
+  my customers list
+  my products list
+  my repos list [--json]
+  my repos add <id>
+  my repos remove <id> [--force]
+  my services list [--manifest NAME] [--json]
+  my services get <id> [--manifest NAME] [--json]
+  my roles list [--manifest NAME] [--json]
+  my roles get <id> [--manifest NAME] [--json]
+  my contract list [--manifest NAME] [--json]
+  my doctor [--no-fetch] [--fix] [--json]
+  my version`)
 }
 
 func (a app) runVersion(args []string) error {
@@ -269,7 +269,7 @@ func (a app) runUpdate(args []string) error {
 	var jsonOut bool
 	var yes bool
 	var targetVersion string
-	fs := newFlagSet("our update", a.stderr)
+	fs := newFlagSet("my update", a.stderr)
 	fs.BoolVar(&checkOnly, "check", false, "check for an update without installing it")
 	fs.StringVar(&targetVersion, "version", "", "install a specific release version")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
@@ -287,7 +287,7 @@ func (a app) runUpdate(args []string) error {
 	}
 	_ = yes
 	result, err := selfupdate.Update(context.Background(), selfupdate.Options{
-		CurrentVersion: a.currentOurVersion(),
+		CurrentVersion: a.currentMyVersion(),
 		TargetVersion:  targetVersion,
 		CheckOnly:      checkOnly,
 		TargetPath:     a.updateTargetPath,
@@ -304,13 +304,13 @@ func (a app) runUpdate(args []string) error {
 }
 
 func (a app) printUpdateUsage() {
-	fmt.Fprintln(a.stderr, `Usage of our update:
-  our update [--check] [--version X.Y.Z] [--json] [--yes]
+	fmt.Fprintln(a.stderr, `Usage of my update:
+  my update [--check] [--version X.Y.Z] [--json] [--yes]
 
 Options:`)
 }
 
-func (a app) currentOurVersion() string {
+func (a app) currentMyVersion() string {
 	if a.updateCurrentVersion != "" {
 		return a.updateCurrentVersion
 	}
@@ -318,11 +318,11 @@ func (a app) currentOurVersion() string {
 }
 
 func (a app) maybeUpdateNotice(home string, noUpdateCheck bool) {
-	if noUpdateCheck || os.Getenv("OUR_NO_UPDATE_CHECK") != "" {
+	if noUpdateCheck || os.Getenv("MYCLI_NO_UPDATE_CHECK") != "" {
 		return
 	}
 	notice, err := selfupdate.CheckNotice(context.Background(), selfupdate.NoticeOptions{
-		CurrentVersion: a.currentOurVersion(),
+		CurrentVersion: a.currentMyVersion(),
 		Home:           home,
 		Source:         a.updateSource,
 		TTL:            selfupdate.UpdateCheckTTLFromEnv(),
@@ -331,5 +331,5 @@ func (a app) maybeUpdateNotice(home string, noUpdateCheck bool) {
 	if err != nil || !notice.UpdateAvailable {
 		return
 	}
-	fmt.Fprintf(a.stderr, "a newer our (v%s) is available; run `our update`\n", notice.LatestVersion)
+	fmt.Fprintf(a.stderr, "a newer my (v%s) is available; run `my update`\n", notice.LatestVersion)
 }

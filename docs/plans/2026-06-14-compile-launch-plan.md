@@ -10,7 +10,7 @@ userbase: back-compat is not a constraint.
 
 ### Review history
 
-- **Draft (Claude):** generic runner-neutral JSON IR, `our compile`, drop both
+- **Draft (Claude):** generic runner-neutral JSON IR, `my compile`, drop both
   deprecated aliases, O1–O5 open.
 - **Review #1 (Codex), not signed off:** narrow the IR to a Clawdapus-targeted
   projection (no second-runner overpromise / third DSL); fix stale "drop both
@@ -48,25 +48,25 @@ Clawdapus emitter** (phase 2). It is:
   exactly one consumer; a second emitter is YAGNI until real demand exists, and
   an over-general IR risks becoming a third DSL).
 
-It is `our`'s own semantic projection, shaped to compile cleanly into Clawdapus.
+It is `my`'s own semantic projection, shaped to compile cleanly into Clawdapus.
 Phase 2 is the Clawdapus pod-file/context emitter that consumes this projection.
 
 ## Converged decision (Claude + Codex, 2026-06-14, post review #1)
 
-1. **Artifact** — `our compile` emits a deterministic **manifest→Clawdapus
+1. **Artifact** — `my compile` emits a deterministic **manifest→Clawdapus
    launch projection** (JSON): a role-scoped projection of the manifest into a
    flat "what to materialize" document with provenance preserved.
 2. **Determinism is a hard requirement** — sorted keys, no timestamps, no
    randomness, stable slice ordering. Acceptance is a golden test that compiles
    `examples/acme-workspace` and diffs the output **byte-for-byte**. Same
    discipline enforced on domain-notes ordering in v0.24.0.
-3. **Command noun** — new top-level `our compile` (read-only emitter).
+3. **Command noun** — new top-level `my compile` (read-only emitter).
 4. **Drop only the `launch` alias** — no userbase, so this slice removes the
-   deprecated `our launch`→`our ai` dispatch alias (`internal/cli/cli.go:137`)
-   and its `warnDeprecated("our launch", …)` call site. The `warnDeprecated`
+   deprecated `my launch`→`my ai` dispatch alias (`internal/cli/cli.go:137`)
+   and its `warnDeprecated("my launch", …)` call site. The `warnDeprecated`
    helper itself is **not** necessarily deleted here: `onboard` still calls it,
    so the helper survives this slice unless the onboarding plan has already
-   landed. `runLaunch`/`launch.go` stay as the `our ai` impl. **`onboard` is
+   landed. `runLaunch`/`launch.go` stay as the `my ai` impl. **`onboard` is
    NOT dropped** — it is reclaimed as a new human-facing onboarding walkthrough
    handled in a **separate plan** (`2026-06-14-onboarding-walkthrough.md`),
    which owns removing the `onboard`→`setup` deprecation, the
@@ -79,10 +79,10 @@ Phase 2 is the Clawdapus pod-file/context emitter that consumes this projection.
    connector/credential materialization, no describe-endpoint fetching. Access
    control stays in the backend.
 
-## The artifact: `our compile`
+## The artifact: `my compile`
 
 ```
-our compile --role <id> [--manifest <name>]
+my compile --role <id> [--manifest <name>]
 ```
 
 - **Read-only.** Resolves the manifest, projects it, prints the launch
@@ -128,7 +128,7 @@ our compile --role <id> [--manifest <name>]
       "auth_ref": "op://vault/comms/token", "connection": { "type": "stdio", "command": "…" } }
   ],
   "skills": [
-    { "id": "our", "install_slug": "our", "path": "…", "source": { "type": "…", "tool": "…" },
+    { "id": "my", "install_slug": "my", "path": "…", "source": { "type": "…", "tool": "…" },
       "capabilities": ["…"], "requires": ["workspace:handbook"] }
   ],
   "tools": [
@@ -158,7 +158,7 @@ manifest↔Clawdapus mapping the execution-plane plan already drew:
 - **O2 — IR vs native-first.** **Resolved:** neither extreme — a deterministic
   manifest→Clawdapus *projection*. Drop the runner-neutral / second-runner
   framing; fields map directly to the phase-2 Clawdapus emitter. The projection
-  stays `our`-semantic (not raw `x-claw`) so the manifest remains the source of
+  stays `my`-semantic (not raw `x-claw`) so the manifest remains the source of
   truth.
 - **O3 — schema surface.** **Resolved:** preserve `Mount.Kind` (no
   `kind: git`); skills carry `requires`/`source`/`capabilities` (materializable,
@@ -221,7 +221,7 @@ Compilation emits **topology and non-secret references only**:
 ## Scope
 
 **In (phase 1):**
-- `our compile` read-only emitter + the launch-projection output type.
+- `my compile` read-only emitter + the launch-projection output type.
 - Role scoping (required when roles exist) + role-closure validation.
 - Contract/guidance provenance (`source` + `mode`).
 - Deterministic JSON + golden ACME fixture test.
@@ -239,7 +239,7 @@ Compilation emits **topology and non-secret references only**:
 
 ## Acceptance criteria
 
-1. `our compile --role <r>` prints deterministic launch-projection JSON for
+1. `my compile --role <r>` prints deterministic launch-projection JSON for
    `examples/acme-workspace`; byte-for-byte golden fixture.
 2. `--role` required when roles are declared; unknown role errors; no-roles
    manifest compiles unscoped.
@@ -251,8 +251,8 @@ Compilation emits **topology and non-secret references only**:
    preserve `Mount.Kind`; skills carry materialization fields.
 6. No secret/describe resolution occurs (output contains reference strings
    verbatim).
-7. `our launch` dispatch alias + its `warnDeprecated` call site gone;
-   `our ai`/`our setup` unaffected (existing tests green); the `warnDeprecated`
+7. `my launch` dispatch alias + its `warnDeprecated` call site gone;
+   `my ai`/`my setup` unaffected (existing tests green); the `warnDeprecated`
    helper may remain while `onboard` still calls it; no `onboard` changes in
    this slice.
 8. Plan sign-off happened before implementation; implementation review by both

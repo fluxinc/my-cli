@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 func writeContractManifest(t *testing.T, home string) {
 	t.Helper()
-	cache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	cache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	if err := os.MkdirAll(cache, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func writeContractManifest(t *testing.T, home string) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -44,7 +44,7 @@ func TestContractList(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "contract", "list", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "contract", "list", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
@@ -57,7 +57,7 @@ func TestContractList(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "contract", "list", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "contract", "list", "--manifest", "acme", "--home", home, "--json"}); err != nil {
 		t.Fatal(err)
 	}
 	var entries []struct {
@@ -84,7 +84,7 @@ func TestAdminContractAddAndRemove(t *testing.T) {
 		var stdout, stderr bytes.Buffer
 		a := app{stdout: &stdout, stderr: &stderr}
 		if err := a.run([]string{
-			"our", "admin", "contract", "add", rule1,
+			"my", "admin", "contract", "add", rule1,
 			"--manifest-dir", manifestDir,
 			"--json",
 		}); err != nil {
@@ -100,7 +100,7 @@ func TestAdminContractAddAndRemove(t *testing.T) {
 
 		stdout.Reset()
 		if err := a.run([]string{
-			"our", "admin", "contract", "add", rule2,
+			"my", "admin", "contract", "add", rule2,
 			"--manifest-dir", manifestDir,
 		}); err != nil {
 			t.Fatal(err)
@@ -114,7 +114,7 @@ func TestAdminContractAddAndRemove(t *testing.T) {
 		}
 
 		err = a.run([]string{
-			"our", "admin", "contract", "add", rule1,
+			"my", "admin", "contract", "add", rule1,
 			"--manifest-dir", manifestDir,
 		})
 		if err == nil || !strings.Contains(err.Error(), "already") {
@@ -122,7 +122,7 @@ func TestAdminContractAddAndRemove(t *testing.T) {
 		}
 
 		err = a.run([]string{
-			"our", "admin", "contract", "add", "   ",
+			"my", "admin", "contract", "add", "   ",
 			"--manifest-dir", manifestDir,
 		})
 		if err == nil {
@@ -140,7 +140,7 @@ func TestAdminContractAddAndRemove(t *testing.T) {
 		var stdout, stderr bytes.Buffer
 		a := app{stdout: &stdout, stderr: &stderr}
 		if err := a.run([]string{
-			"our", "admin", "contract", "remove", "1",
+			"my", "admin", "contract", "remove", "1",
 			"--manifest-dir", manifestDir,
 			"--json",
 		}); err != nil {
@@ -156,7 +156,7 @@ func TestAdminContractAddAndRemove(t *testing.T) {
 
 		stdout.Reset()
 		if err := a.run([]string{
-			"our", "admin", "contract", "remove", rule2,
+			"my", "admin", "contract", "remove", rule2,
 			"--manifest-dir", manifestDir,
 		}); err != nil {
 			t.Fatal(err)
@@ -170,7 +170,7 @@ func TestAdminContractAddAndRemove(t *testing.T) {
 		}
 
 		err = a.run([]string{
-			"our", "admin", "contract", "remove", "no such rule",
+			"my", "admin", "contract", "remove", "no such rule",
 			"--manifest-dir", manifestDir,
 		})
 		if err == nil {

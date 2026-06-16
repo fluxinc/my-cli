@@ -1,41 +1,41 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
-  base: '/our-ai/',
+  base: '/',
   lang: 'en-US',
-  title: 'Our AI',
+  title: 'My AI',
   description: 'One manifest gives every AI harness the same skills, guidance, and context.',
   lastUpdated: true,
   head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/our-ai/favicon.svg?v=2' }],
-    ['link', { rel: 'manifest', href: '/our-ai/site.webmanifest' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg?v=2' }],
+    ['link', { rel: 'manifest', href: '/site.webmanifest' }],
     ['meta', { name: 'theme-color', content: '#0f766e' }],
     ['meta', { property: 'og:type', content: 'website' }],
-    ['meta', { property: 'og:site_name', content: 'Our AI' }],
-    ['meta', { property: 'og:title', content: 'Our AI - One manifest for every AI harness' }],
+    ['meta', { property: 'og:site_name', content: 'My AI' }],
+    ['meta', { property: 'og:title', content: 'My AI - One manifest for every AI harness' }],
     ['meta', { property: 'og:description', content: 'Install skills, generated guidance, mounts, and local context for every AI harness from one organization manifest.' }],
-    ['meta', { property: 'og:url', content: 'https://fluxinc.github.io/our-ai/' }],
-    ['meta', { property: 'og:image', content: 'https://fluxinc.github.io/our-ai/our-ai-glyph.svg?v=2' }],
+    ['meta', { property: 'og:url', content: 'https://my-cli.com/' }],
+    ['meta', { property: 'og:image', content: 'https://my-cli.com/my-cli-glyph.svg?v=2' }],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
-    ['meta', { name: 'twitter:title', content: 'Our AI - One manifest for every AI harness' }],
+    ['meta', { name: 'twitter:title', content: 'My AI - One manifest for every AI harness' }],
     ['meta', { name: 'twitter:description', content: 'One command gives every installed AI harness the same skills, context, and local tooling.' }],
-    ['meta', { name: 'twitter:image', content: 'https://fluxinc.github.io/our-ai/our-ai-glyph.svg?v=2' }],
+    ['meta', { name: 'twitter:image', content: 'https://my-cli.com/my-cli-glyph.svg?v=2' }],
   ],
   themeConfig: {
     logo: {
-      light: '/our-ai-wordmark.svg',
-      dark: '/our-ai-wordmark-dark.svg',
-      alt: 'Our AI',
+      light: '/my-cli-wordmark.svg',
+      dark: '/my-cli-wordmark-dark.svg',
+      alt: 'My AI',
     },
     siteTitle: false,
     nav: [
-      { text: 'Guide', link: '/guide/what-is-our-ai' },
+      { text: 'Guide', link: '/guide/what-is-my-cli' },
       { text: 'CLI', link: '/guide/cli-reference' },
       {
         text: 'v0.28.0',
         items: [
           { text: 'Changelog', link: '/changelog' },
-          { text: 'GitHub', link: 'https://github.com/fluxinc/our-ai' },
+          { text: 'GitHub', link: 'https://github.com/fluxinc/my-cli' },
         ],
       },
     ],
@@ -43,7 +43,7 @@ export default defineConfig({
       {
         text: 'Start',
         items: [
-          { text: 'What is Our AI?', link: '/guide/what-is-our-ai' },
+          { text: 'What is My AI?', link: '/guide/what-is-my-cli' },
           { text: 'Quickstart', link: '/guide/quickstart' },
           { text: 'Onboarding', link: '/guide/onboarding' },
           { text: 'The Model', link: '/guide/the-model' },
@@ -81,7 +81,7 @@ export default defineConfig({
       },
     ],
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/fluxinc/our-ai' },
+      { icon: 'github', link: 'https://github.com/fluxinc/my-cli' },
     ],
     footer: {
       message: 'Released under the MIT License.',

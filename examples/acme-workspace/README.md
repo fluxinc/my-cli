@@ -11,12 +11,12 @@ It demonstrates the same shape a private organization workspace would use:
 
 The handbook mount points at a separate content repository URL. For local
 experiments, replace that URL with the absolute path to `content/`, the same
-shape `our init` creates before `our publish` rewrites the mount to a hosted
+shape `my init` creates before `my publish` rewrites the mount to a hosted
 private repository.
 
 Useful checks:
 
 ```sh
-our manifests validate examples/acme-workspace/manifest
-our skills list --source examples/acme-workspace/manifest/skills
+my manifests validate examples/acme-workspace/manifest
+my skills list --source examples/acme-workspace/manifest/skills
 ```

@@ -9,18 +9,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/fleet"
-	"github.com/fluxinc/our-ai/internal/meetings"
-	"github.com/fluxinc/our-ai/internal/support"
-	"github.com/fluxinc/our-ai/internal/umbrella"
-	"github.com/fluxinc/our-ai/internal/worksession"
+	"github.com/fluxinc/my-cli/internal/fleet"
+	"github.com/fluxinc/my-cli/internal/meetings"
+	"github.com/fluxinc/my-cli/internal/support"
+	"github.com/fluxinc/my-cli/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/worksession"
 )
 
 func TestMeetingJSONErrorWithoutUmbrella(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	err := a.run([]string{"our", "meetings", "search", "SampleCo", "--home", home, "--json"})
+	err := a.run([]string{"my", "meetings", "search", "SampleCo", "--home", home, "--json"})
 	if !errors.Is(err, errAlreadyPrinted) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}
@@ -35,7 +35,7 @@ func TestMeetingsAddMarksCreatedRecordIntentToAdd(t *testing.T) {
 	a := app{stdout: &stdout, stderr: &stderr}
 
 	if err := a.run([]string{
-		"our", "meetings", "add", "sampleco-followup",
+		"my", "meetings", "add", "sampleco-followup",
 		"--manifest", "acme",
 		"--workspace", "handbook",
 		"--home", home,
@@ -55,7 +55,7 @@ func TestMeetingsAddFromSessionWritesSessionMount(t *testing.T) {
 	umbrellaRoot := filepath.Dir(workspaceRoot)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "work", "start", "--slug", "meeting", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "work", "start", "--slug", "meeting", "--home", home, "--json"}); err != nil {
 		t.Fatalf("work start: %v\nstderr: %s", err, stderr.String())
 	}
 	var session worksession.Session
@@ -67,7 +67,7 @@ func TestMeetingsAddFromSessionWritesSessionMount(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	if err := a.run([]string{
-		"our", "meetings", "add", "session-note",
+		"my", "meetings", "add", "session-note",
 		"--home", home,
 		"--date", "2026-06-11",
 	}); err != nil {
@@ -106,7 +106,7 @@ func TestRecordAdoptMarksContentFileIntentToAdd(t *testing.T) {
 	a := app{stdout: &stdout, stderr: &stderr}
 
 	if err := a.run([]string{
-		"our", "record", "adopt", path,
+		"my", "record", "adopt", path,
 		"--manifest", "acme",
 		"--workspace", "handbook",
 		"--home", home,
@@ -129,15 +129,15 @@ func TestMeetingsAddWorksInLocalOnlyWorkspace(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "init", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "init", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.run([]string{"our", "setup", "--home", home, "claude"}); err != nil {
+	if err := a.run([]string{"my", "setup", "--home", home, "claude"}); err != nil {
 		t.Fatalf("setup: %v\nstderr: %s", err, stderr.String())
 	}
 	stdout.Reset()
 	if err := a.run([]string{
-		"our", "meetings", "add", "kickoff",
+		"my", "meetings", "add", "kickoff",
 		"--home", home,
 		"--date", "2026-06-12",
 	}); err != nil {
@@ -151,8 +151,8 @@ func TestMeetingsAddWorksInLocalOnlyWorkspace(t *testing.T) {
 
 func TestMeetingsCommands(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
-	workspaceRoot := filepath.Join(home, ".our", "workspaces", "handbook")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
+	workspaceRoot := filepath.Join(home, ".my-cli", "workspaces", "handbook")
 	if err := os.MkdirAll(filepath.Join(manifestCache), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestMeetingsCommands(t *testing.T) {
     {
       "id": "handbook",
       "git_url": "https://github.com/acme/acme-handbook.git",
-      "local_path": "~/.our/workspaces/handbook"
+      "local_path": "~/.my-cli/workspaces/handbook"
     }
   ]
 }`), 0o644); err != nil {
@@ -192,7 +192,7 @@ Promised onboarding review and data cleanup.
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -200,7 +200,7 @@ Promised onboarding review and data cleanup.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "meetings", "list", "--manifest", "acme", "--home", home, "--customer", "sampleco"}); err != nil {
+	if err := a.run([]string{"my", "meetings", "list", "--manifest", "acme", "--home", home, "--customer", "sampleco"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "2026-03-12-sampleco-implementation") {
@@ -211,7 +211,7 @@ Promised onboarding review and data cleanup.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "meetings", "search", "data cleanup", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "meetings", "search", "data cleanup", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "Promised onboarding review") {
@@ -219,7 +219,7 @@ Promised onboarding review and data cleanup.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "meetings", "get", "2026-03-12-sampleco-implementation", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "meetings", "get", "2026-03-12-sampleco-implementation", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "data cleanup") {
@@ -227,7 +227,7 @@ Promised onboarding review and data cleanup.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "meetings", "add", "sampleco-followup", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--date", "2026-05-13", "--customer", "sampleco", "--attendees", "Alex Example", "--partner", "integratorco", "--source-id", "spark-123", "--print"}); err != nil {
+	if err := a.run([]string{"my", "meetings", "add", "sampleco-followup", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--date", "2026-05-13", "--customer", "sampleco", "--attendees", "Alex Example", "--partner", "integratorco", "--source-id", "spark-123", "--print"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "2026-05-13-sampleco-followup") || !strings.Contains(stdout.String(), "## Promises") || !strings.Contains(stdout.String(), `source_id: spark-123`) {
@@ -235,7 +235,7 @@ Promised onboarding review and data cleanup.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "meetings", "add", "2026-05-28-sampleco-followup", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--attendees", "Heather (PMH, mammo tech)", "--partner", "Siemens, Healthineers", "--print"}); err != nil {
+	if err := a.run([]string{"my", "meetings", "add", "2026-05-28-sampleco-followup", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--attendees", "Heather (PMH, mammo tech)", "--partner", "Siemens, Healthineers", "--print"}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -253,7 +253,7 @@ Promised onboarding review and data cleanup.
 
 func TestMeetingsUseConfiguredUmbrella(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -307,28 +307,28 @@ partners:
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	stdout.Reset()
-	if err := a.run([]string{"our", "customers", "list", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "customers", "list", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "sampleco.example.com") || !strings.Contains(stdout.String(), "sampleco") {
 		t.Fatalf("customers list stdout = %q", stdout.String())
 	}
 	stdout.Reset()
-	if err := a.run([]string{"our", "meetings", "list", "--home", home, "--customer", "sampleco"}); err != nil {
+	if err := a.run([]string{"my", "meetings", "list", "--home", home, "--customer", "sampleco"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "2026-03-12-sampleco-implementation") {
 		t.Fatalf("meetings list stdout = %q", stdout.String())
 	}
 	stdout.Reset()
-	if err := a.run([]string{"our", "meetings", "search", "sampleco cleanup", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "meetings", "search", "sampleco cleanup", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "2026-03-12-sampleco-implementation") {
@@ -338,7 +338,7 @@ partners:
 
 func TestMeetingsUseDataBindingMount(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -395,14 +395,14 @@ This record should be visible.
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	stdout.Reset()
-	if err := a.run([]string{"our", "meetings", "list", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "meetings", "list", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -416,7 +416,7 @@ This record should be visible.
 
 func TestServiceDataBindingReportsNotImplemented(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -460,13 +460,13 @@ func TestServiceDataBindingReportsNotImplemented(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	err := a.run([]string{"our", "support", "list", "--home", home})
+	err := a.run([]string{"my", "support", "list", "--home", home})
 	if err == nil || !strings.Contains(err.Error(), "service-backed data domains are not implemented yet") {
 		t.Fatalf("support list error = %v", err)
 	}
@@ -515,8 +515,8 @@ Data cleanup.
 
 func TestSupportCommands(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
-	workspaceRoot := filepath.Join(home, ".our", "workspaces", "handbook")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
+	workspaceRoot := filepath.Join(home, ".my-cli", "workspaces", "handbook")
 	if err := os.MkdirAll(filepath.Join(manifestCache), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -533,7 +533,7 @@ func TestSupportCommands(t *testing.T) {
     {
       "id": "handbook",
       "git_url": "https://github.com/acme/acme-handbook.git",
-      "local_path": "~/.our/workspaces/handbook"
+      "local_path": "~/.my-cli/workspaces/handbook"
     }
   ]
 }`)
@@ -560,7 +560,7 @@ The delivery failed with a clear timeout.
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -568,7 +568,7 @@ The delivery failed with a clear timeout.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "support", "list", "--manifest", "acme", "--home", home, "--customer", "sampleco", "--identifier", "ws-12", "--claimed-by", "alex", "--area", "routing", "--tag", "timeout", "--feature-candidate"}); err != nil {
+	if err := a.run([]string{"my", "support", "list", "--manifest", "acme", "--home", home, "--customer", "sampleco", "--identifier", "ws-12", "--claimed-by", "alex", "--area", "routing", "--tag", "timeout", "--feature-candidate"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "2026-06-10-routing-timeout") ||
@@ -581,7 +581,7 @@ The delivery failed with a clear timeout.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "support", "search", "clear timeout", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "support", "search", "clear timeout", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "clear timeout") {
@@ -589,7 +589,7 @@ The delivery failed with a clear timeout.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "support", "get", "2026-06-10-routing-timeout", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "support", "get", "2026-06-10-routing-timeout", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "feature_candidate: true") {
@@ -597,7 +597,7 @@ The delivery failed with a clear timeout.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "support", "add", "sampleco-timeout", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--date", "2026-06-11", "--customer", "sampleco", "--identifier", "ws-12", "--identifier", "fl-400-123401", "--claimed-by", "alex", "--observed-by", "bo", "--product", "sample-product", "--area", "routing", "--tag", "timeout", "--feature-candidate", "--print"}); err != nil {
+	if err := a.run([]string{"my", "support", "add", "sampleco-timeout", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--date", "2026-06-11", "--customer", "sampleco", "--identifier", "ws-12", "--identifier", "fl-400-123401", "--claimed-by", "alex", "--observed-by", "bo", "--product", "sample-product", "--area", "routing", "--tag", "timeout", "--feature-candidate", "--print"}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -651,8 +651,8 @@ Timeout delivery.
 
 func TestFleetCommands(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
-	workspaceRoot := filepath.Join(home, ".our", "workspaces", "handbook")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
+	workspaceRoot := filepath.Join(home, ".my-cli", "workspaces", "handbook")
 	if err := os.MkdirAll(manifestCache, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -663,7 +663,7 @@ func TestFleetCommands(t *testing.T) {
     {
       "id": "handbook",
       "git_url": "https://github.com/acme/acme-handbook.git",
-      "local_path": "~/.our/workspaces/handbook"
+      "local_path": "~/.my-cli/workspaces/handbook"
     }
   ]
 }`)
@@ -717,7 +717,7 @@ The delivery failed with a clear timeout.
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -725,7 +725,7 @@ The delivery failed with a clear timeout.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "fleet", "list", "--manifest", "acme", "--home", home, "--status", "live", "--customer", "sampleco.example.com", "--partner", "integratorco", "--identifier", "SO 100045", "--branch", "partner/site-1", "--where", "assigned=alex"}); err != nil {
+	if err := a.run([]string{"my", "fleet", "list", "--manifest", "acme", "--home", home, "--status", "live", "--customer", "sampleco.example.com", "--partner", "integratorco", "--identifier", "SO 100045", "--branch", "partner/site-1", "--where", "assigned=alex"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "acme-box-1") ||
@@ -737,7 +737,7 @@ The delivery failed with a clear timeout.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "fleet", "list", "--manifest", "acme", "--home", home, "--where", "assigned=bo"}); err != nil {
+	if err := a.run([]string{"my", "fleet", "list", "--manifest", "acme", "--home", home, "--where", "assigned=bo"}); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(stdout.String()) != "" {
@@ -745,7 +745,7 @@ The delivery failed with a clear timeout.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "fleet", "get", "SO 100045", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "fleet", "get", "SO 100045", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "Routing hub for the sample site.") {
@@ -758,7 +758,7 @@ The delivery failed with a clear timeout.
 	for _, want := range []string{
 		"# Support record next step",
 		"Continue a relevant support record above",
-		"our support add '<slug>' --customer sampleco.example.com --identifier acme-box-1 --identifier 'SO 100045' --identifier 'FL 400-123401'",
+		"my support add '<slug>' --customer sampleco.example.com --identifier acme-box-1 --identifier 'SO 100045' --identifier 'FL 400-123401'",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("fleet get stdout = %q, missing %q", stdout.String(), want)
@@ -766,12 +766,12 @@ The delivery failed with a clear timeout.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "fleet", "get", "acme-box-3", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "fleet", "get", "acme-box-3", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
 		"No related support records were found",
-		"our support add '<slug>' --customer sampleco.example.com --identifier acme-box-3 --identifier 'SO 300001'",
+		"my support add '<slug>' --customer sampleco.example.com --identifier acme-box-3 --identifier 'SO 300001'",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("fleet get without related support stdout = %q, missing %q", stdout.String(), want)
@@ -779,7 +779,7 @@ The delivery failed with a clear timeout.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "fleet", "search", "routing hub", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "fleet", "search", "routing hub", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "acme-box-1") {
@@ -787,7 +787,7 @@ The delivery failed with a clear timeout.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "fleet", "add", "ACME-BOX-2", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--customer", "sampleco.example.com", "--device", "Sample Scanner Y", "--identifier", "SO 200031", "--config-branch", "partner/site-2", "--ship-to", "Centerville", "--print"}); err != nil {
+	if err := a.run([]string{"my", "fleet", "add", "ACME-BOX-2", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--customer", "sampleco.example.com", "--device", "Sample Scanner Y", "--identifier", "SO 200031", "--config-branch", "partner/site-2", "--ship-to", "Centerville", "--print"}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -798,11 +798,11 @@ The delivery failed with a clear timeout.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "fleet", "set", "acme-box-1", "status=mourn", "deployed_site=Lakeside", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "fleet", "set", "acme-box-1", "status=mourn", "deployed_site=Lakeside", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out = stdout.String()
-	for _, want := range []string{"updated ", `status: "live" -> "mourn"`, "our sync --message", "Update fleet acme-box-1:"} {
+	for _, want := range []string{"updated ", `status: "live" -> "mourn"`, "my sync --message", "Update fleet acme-box-1:"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("fleet set stdout = %q, missing %q", out, want)
 		}
@@ -817,7 +817,7 @@ The delivery failed with a clear timeout.
 
 	stderr.Reset()
 	stdout.Reset()
-	if err := a.run([]string{"our", "support", "add", "another-timeout", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--identifier", "FL 400-123401", "--identifier", "zz-unknown", "--print"}); err != nil {
+	if err := a.run([]string{"my", "support", "add", "another-timeout", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--identifier", "FL 400-123401", "--identifier", "zz-unknown", "--print"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stderr.String(), `"zz-unknown" is not in the fleet registry`) {
@@ -868,8 +868,8 @@ Timeout delivery.
 
 func TestCustomersListAndMeetingCustomerAlias(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
-	workspaceRoot := filepath.Join(home, ".our", "workspaces", "handbook")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
+	workspaceRoot := filepath.Join(home, ".my-cli", "workspaces", "handbook")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -877,7 +877,7 @@ func TestCustomersListAndMeetingCustomerAlias(t *testing.T) {
     {
       "id": "handbook",
       "git_url": "https://github.com/acme/acme-handbook.git",
-      "local_path": "~/.our/workspaces/handbook"
+      "local_path": "~/.my-cli/workspaces/handbook"
     }
   ]
 }`)
@@ -908,7 +908,7 @@ Alias filter match.
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -916,7 +916,7 @@ Alias filter match.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "customers", "list", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "customers", "list", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "sampleco.example.com") || !strings.Contains(stdout.String(), "sampleco,sc") {
@@ -924,7 +924,7 @@ Alias filter match.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "meetings", "list", "--manifest", "acme", "--home", home, "--customer", "sc"}); err != nil {
+	if err := a.run([]string{"my", "meetings", "list", "--manifest", "acme", "--home", home, "--customer", "sc"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "2026-03-12-sampleco-implementation") {
@@ -932,7 +932,7 @@ Alias filter match.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "meetings", "add", "sampleco-followup", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--date", "2026-05-13", "--customer", "sc", "--print"}); err != nil {
+	if err := a.run([]string{"my", "meetings", "add", "sampleco-followup", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--date", "2026-05-13", "--customer", "sc", "--print"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "customer: sampleco.example.com") {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 func TestInitCreatesManifestRepoAndRegisters(t *testing.T) {
@@ -19,7 +19,7 @@ func TestInitCreatesManifestRepoAndRegisters(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "init", "acme",
+		"my", "init", "acme",
 		"--name", "Acme Example",
 		"--path", content,
 		"--home", home,
@@ -54,10 +54,10 @@ func TestInitCreatesManifestRepoAndRegisters(t *testing.T) {
 		t.Fatalf("sync result = %#v, want local-only (no origin until published)", result.Sync)
 	}
 	for _, want := range []initNextCommand{
-		{Action: "setup", Command: "our setup"},
-		{Action: "launch", Command: "our ai claude"},
-		{Action: "launch", Command: "our ai codex"},
-		{Action: "publish", Command: "our publish"},
+		{Action: "setup", Command: "my setup"},
+		{Action: "launch", Command: "my ai claude"},
+		{Action: "launch", Command: "my ai codex"},
+		{Action: "publish", Command: "my publish"},
 	} {
 		if !initResultHasNext(result, want) {
 			t.Fatalf("next commands = %#v, missing %#v", result.NextCommands, want)
@@ -126,7 +126,7 @@ func TestInitDefaultsContentRepoToUmbrellaMountPath(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "init", "acme", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "init", "acme", "--home", home, "--json"}); err != nil {
 		t.Fatal(err)
 	}
 	var result initResult
@@ -159,7 +159,7 @@ func TestInitRefusesNonEmptyPath(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	err := a.run([]string{"our", "init", "acme", "--path", repo, "--home", home})
+	err := a.run([]string{"my", "init", "acme", "--path", repo, "--home", home})
 	if err == nil || !strings.Contains(err.Error(), "is not empty") {
 		t.Fatalf("err = %v, want non-empty path error", err)
 	}
@@ -177,14 +177,14 @@ func TestInitNextCommandsUseManifestWhenRegistryHasSeveralManifests(t *testing.T
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "init", "acme", "--path", repo, "--home", home}); err != nil {
+	if err := a.run([]string{"my", "init", "acme", "--path", repo, "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
 	for _, want := range []string{
-		"next\tsetup\tour setup --manifest acme\n",
-		"next\tlaunch\tour ai --manifest acme claude\n",
-		"next\tlaunch\tour ai --manifest acme codex\n",
+		"next\tsetup\tmy setup --manifest acme\n",
+		"next\tlaunch\tmy ai --manifest acme claude\n",
+		"next\tlaunch\tmy ai --manifest acme codex\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("stdout = %q, missing %q", out, want)
@@ -204,7 +204,7 @@ func TestInitCommitUsesConfiguredGitIdentity(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "init", "acme", "--path", repo, "--home", home}); err != nil {
+	if err := a.run([]string{"my", "init", "acme", "--path", repo, "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	author := initCommitAuthor(t, repo)
@@ -231,11 +231,11 @@ func TestInitCommitFallsBackWithoutGitIdentity(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "init", "acme", "--path", repo, "--home", home}); err != nil {
+	if err := a.run([]string{"my", "init", "acme", "--path", repo, "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	author := initCommitAuthor(t, repo)
-	if author != "Our AI <our-ai@example.invalid>" {
+	if author != "My AI <my-cli@example.invalid>" {
 		t.Fatalf("author = %q, want fallback identity", author)
 	}
 }
@@ -245,7 +245,7 @@ func TestInitScaffoldREADMETeachesTeammateFirstRun(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "init", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "init", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	manifestRepo, err := manifest.DefaultCachePath(home, "acme")
@@ -258,10 +258,10 @@ func TestInitScaffoldREADMETeachesTeammateFirstRun(t *testing.T) {
 	}
 	readme := string(data)
 	for _, want := range []string{
-		"our manifests add acme",
-		"our manifests sync acme",
-		"our setup",
-		"our publish",
+		"my manifests add acme",
+		"my manifests sync acme",
+		"my setup",
+		"my publish",
 	} {
 		if !strings.Contains(readme, want) {
 			t.Fatalf("manifest README missing %q:\n%s", want, readme)
@@ -276,7 +276,7 @@ func TestPublishCreatesRemotesRewritesMountsAndRegistry(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "init", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "init", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	remotes := t.TempDir()
@@ -284,7 +284,7 @@ func TestPublishCreatesRemotesRewritesMountsAndRegistry(t *testing.T) {
 	a.publishRunner = fakeGH(t, remotes, &calls)
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "publish", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "publish", "--home", home}); err != nil {
 		t.Fatalf("publish: %v\nstderr: %s\nstdout: %s", err, stderr.String(), stdout.String())
 	}
 	if len(calls) != 2 {
@@ -328,13 +328,13 @@ func TestPublishCreatesRemotesRewritesMountsAndRegistry(t *testing.T) {
 	if ref.GitURL != filepath.Join(remotes, "acme-manifest.git") {
 		t.Fatalf("registry GitURL = %q, want published manifest remote", ref.GitURL)
 	}
-	if !strings.Contains(stdout.String(), "our manifests add acme") {
+	if !strings.Contains(stdout.String(), "my manifests add acme") {
 		t.Fatalf("stdout = %q, want teammate instructions", stdout.String())
 	}
 
 	// Idempotent: a second publish pushes but never recreates remotes.
 	calls = nil
-	if err := a.run([]string{"our", "publish", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "publish", "--home", home}); err != nil {
 		t.Fatalf("second publish: %v", err)
 	}
 	if len(calls) != 0 {
@@ -346,14 +346,14 @@ func TestPublishPrintPlansWithoutChanges(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "init", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "init", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	var calls []string
 	a.publishRunner = fakeGH(t, t.TempDir(), &calls)
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "publish", "--home", home, "--print"}); err != nil {
+	if err := a.run([]string{"my", "publish", "--home", home, "--print"}); err != nil {
 		t.Fatalf("publish --print: %v", err)
 	}
 	if len(calls) != 0 {

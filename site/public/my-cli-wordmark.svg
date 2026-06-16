@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 281 92" role="img" aria-label="My AI">
+  <defs>
+    <linearGradient id="ow-g" x1="6" y1="20" x2="160" y2="74" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="url(#ow-g)">
+      <path d="M40 67.5V23.5L64 52 88 23.5V67.5"/>
+      <path d="M104 39.5 120 61"/>
+      <path d="M138 39.5 108 82"/>
+    </g>
+    <g stroke="#1e293b">
+      <path d="M168 67.5 188 23.5 208 67.5"/>
+      <path d="M174.4 53.5h27.2"/>
+      <path d="M231 23.5h15M238.5 23.5v44M231 67.5h15"/>
+    </g>
+  </g>
+</svg>

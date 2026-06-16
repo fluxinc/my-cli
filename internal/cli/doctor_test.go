@@ -8,25 +8,25 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 func TestDoctorReportsGuidanceDrift(t *testing.T) {
 	home, umbrellaRoot := setupCLILaunchFixture(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "setup", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "setup", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
-	writeCLITestFile(t, filepath.Join(umbrellaRoot, "AGENTS.md"), "<!-- our:generated workspace-guidance v1 -->\n\nstale\n")
+	writeCLITestFile(t, filepath.Join(umbrellaRoot, "AGENTS.md"), "<!-- my:generated workspace-guidance v1 -->\n\nstale\n")
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "doctor", "--umbrella", umbrellaRoot, "--home", home}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--umbrella", umbrellaRoot, "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "umbrella\tguidance\tstale") ||
-		!strings.Contains(stdout.String(), "run our setup") {
+		!strings.Contains(stdout.String(), "run my setup") {
 		t.Fatalf("doctor stdout = %q", stdout.String())
 	}
 }
@@ -36,7 +36,7 @@ func TestDoctorReportsFreshnessNoFetch(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 
-	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home, "--no-fetch"}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--manifest", "acme", "--home", home, "--no-fetch"}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -50,17 +50,17 @@ func TestDoctorReportsLocalMountURLRequiresPublish(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "init", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "init", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home, "--no-fetch"}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--manifest", "acme", "--home", home, "--no-fetch"}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
-	for _, want := range []string{"manifest\tacme:mount:workspace\tlocal-only", "mount git_url is local-only", "run our publish --manifest acme"} {
+	for _, want := range []string{"manifest\tacme:mount:workspace\tlocal-only", "mount git_url is local-only", "run my publish --manifest acme"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("doctor stdout = %q, missing %q", out, want)
 		}
@@ -76,7 +76,7 @@ func TestDoctorReportsRemoteFreshnessUnknown(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 
-	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -93,7 +93,7 @@ func TestDoctorSkipsSkillDriftForMissingHarnessDirs(t *testing.T) {
 	registerCLIManifest(t, a, home)
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -114,7 +114,7 @@ func TestDoctorDoesNotReportAbsentGlobalOrgSkillAsDrift(t *testing.T) {
 	registerCLIManifest(t, a, home)
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -135,7 +135,7 @@ func TestDoctorReportsLegacyGlobalOrgSkill(t *testing.T) {
 	registerCLIManifest(t, a, home)
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -156,7 +156,7 @@ func TestDoctorFixPreservesManualGlobalOrgSkill(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "skills", "install", "claude-code", "--manifest", "acme", "--home", home, "--skill", "acme:handbook"}); err != nil {
+	if err := a.run([]string{"my", "skills", "install", "claude-code", "--manifest", "acme", "--home", home, "--skill", "acme:handbook"}); err != nil {
 		t.Fatal(err)
 	}
 	target := filepath.Join(home, ".claude", "skills", "acme-handbook")
@@ -166,7 +166,7 @@ func TestDoctorFixPreservesManualGlobalOrgSkill(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "doctor", "--fix", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--fix", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Lstat(target); err != nil {
@@ -187,7 +187,7 @@ func TestDoctorFixPreservesOpenCodeCompatibilityGlobalOrgSkill(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "doctor", "--fix", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--fix", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Lstat(target); err != nil {
@@ -206,12 +206,12 @@ func TestDoctorReportsAbsentSelfSkillForPresentHarness(t *testing.T) {
 	registerCLIManifest(t, a, home)
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "derived\tselfskill:claude-code\tabsent") ||
-		!strings.Contains(out, "our skills self install") {
+		!strings.Contains(out, "my skills self install") {
 		t.Fatalf("doctor stdout = %q, want absent self-skill report", out)
 	}
 }
@@ -223,7 +223,7 @@ func TestDoctorSkipsSelfSkillForMissingHarnessDirs(t *testing.T) {
 	registerCLIManifest(t, a, home)
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -241,14 +241,14 @@ func TestDoctorFixReinstallsAbsentSelfSkill(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 
-	if err := a.run([]string{"our", "doctor", "--fix", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--fix", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "fix\tselfskill:claude-code\tfixed") {
 		t.Fatalf("doctor stdout = %q, want self-skill fix", out)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "our", "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "my", "SKILL.md")); err != nil {
 		t.Fatalf("self-skill not reinstalled: %v", err)
 	}
 }
@@ -275,14 +275,14 @@ func TestDoctorWithoutFixReportsWouldFixPlan(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "would fast-forward") {
 		t.Fatalf("doctor stdout = %q, want would-fast-forward plan", out)
 	}
-	if !strings.Contains(out, "our doctor --fix") {
+	if !strings.Contains(out, "my doctor --fix") {
 		t.Fatalf("doctor stdout = %q, want doctor --fix hint", out)
 	}
 	if _, err := os.Stat(filepath.Join(mountPath, "meetings", "2026-06-09-remote.md")); !os.IsNotExist(err) {
@@ -312,7 +312,7 @@ func TestDoctorFixFastForwardsCleanStaleMount(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "doctor", "--fix", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--fix", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -355,7 +355,7 @@ func TestDoctorFixSkipsDirtyAndUnknownMounts(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "doctor", "--fix", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--fix", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -400,7 +400,7 @@ func TestDoctorFixSkipsStaleProduct(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "doctor", "--fix", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--fix", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -423,13 +423,13 @@ func TestDoctorFixReconcilesDerivedArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeCLIManagedSkill(t, filepath.Join(home, ".claude", "skills", "acme-handbook"), "acme:handbook")
-	writeCLITestFile(t, filepath.Join(umbrellaRoot, "AGENTS.md"), "<!-- our:generated workspace-guidance v1 -->\n\nstale\n")
+	writeCLITestFile(t, filepath.Join(umbrellaRoot, "AGENTS.md"), "<!-- my:generated workspace-guidance v1 -->\n\nstale\n")
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	registerCLIManifest(t, a, home)
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "doctor", "--fix", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--fix", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -452,7 +452,7 @@ func TestDoctorIncludesVersionItem(t *testing.T) {
 		updateCurrentVersion: "0.1.0",
 		updateSource:         server.source(),
 	}
-	if err := a.run([]string{"our", "doctor", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--home", home, "--json"}); err != nil {
 		t.Fatal(err)
 	}
 	var report doctorReport
@@ -460,7 +460,7 @@ func TestDoctorIncludesVersionItem(t *testing.T) {
 		t.Fatalf("parse doctor JSON: %v\n%s", err, stdout.String())
 	}
 	if len(report.Version) != 1 || report.Version[0].Status != "stale" ||
-		!strings.Contains(report.Version[0].Message, "run our update") {
+		!strings.Contains(report.Version[0].Message, "run my update") {
 		t.Fatalf("version report = %#v", report.Version)
 	}
 }
@@ -494,7 +494,7 @@ func TestDoctorReportsLegacyFluxState(t *testing.T) {
 		updateCurrentVersion: "0.1.0",
 		updateSource:         server.source(),
 	}
-	if err := a.run([]string{"our", "doctor", "--home", home, "--umbrella", root, "--json"}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--home", home, "--umbrella", root, "--json"}); err != nil {
 		t.Fatal(err)
 	}
 	var report doctorReport
@@ -514,7 +514,7 @@ func TestDoctorReportsLegacyFluxState(t *testing.T) {
 
 func TestDoctorReportsServiceHealth(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -523,14 +523,14 @@ func TestDoctorReportsServiceHealth(t *testing.T) {
       "id": "ok-search",
       "kind": "mcp",
       "purpose": "Search",
-      "auth_ref": "env://OUR_TEST_SET_TOKEN",
+      "auth_ref": "env://MYCLI_TEST_SET_TOKEN",
       "connection": { "type": "stdio", "command": "acme-docs-mcp" }
     },
     {
       "id": "unset-search",
       "kind": "mcp",
       "purpose": "Search with missing env",
-      "auth_ref": "env://OUR_TEST_UNSET_TOKEN",
+      "auth_ref": "env://MYCLI_TEST_UNSET_TOKEN",
       "connection": { "type": "stdio", "command": "acme-docs-mcp" }
     },
     {
@@ -549,12 +549,12 @@ func TestDoctorReportsServiceHealth(t *testing.T) {
     }
   ]
 }`)
-	t.Setenv("OUR_TEST_SET_TOKEN", "set")
+	t.Setenv("MYCLI_TEST_SET_TOKEN", "set")
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -562,7 +562,7 @@ func TestDoctorReportsServiceHealth(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home, "--no-fetch"}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--manifest", "acme", "--home", home, "--no-fetch"}); err != nil {
 		t.Fatalf("doctor: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	out := stdout.String()
@@ -576,7 +576,7 @@ func TestDoctorReportsServiceHealth(t *testing.T) {
 			t.Fatalf("doctor stdout missing %q:\n%s", want, out)
 		}
 	}
-	if !strings.Contains(out, "OUR_TEST_UNSET_TOKEN") {
+	if !strings.Contains(out, "MYCLI_TEST_UNSET_TOKEN") {
 		t.Fatalf("doctor should name the missing env var:\n%s", out)
 	}
 	if !strings.Contains(out, "services/missing.server.json") {

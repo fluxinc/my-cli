@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/bundle"
-	"github.com/fluxinc/our-ai/internal/harness"
-	"github.com/fluxinc/our-ai/internal/launchprofile"
-	"github.com/fluxinc/our-ai/internal/skills"
-	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/bundle"
+	"github.com/fluxinc/my-cli/internal/harness"
+	"github.com/fluxinc/my-cli/internal/launchprofile"
+	"github.com/fluxinc/my-cli/internal/skills"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 func launchSelectorFromOpts(opts launchCommandOpts) (launchprofile.Selector, error) {
@@ -203,7 +203,7 @@ func preflightLaunchSkillCollisions(dir string, selected map[string]skills.Skill
 			return err
 		}
 		if !launchSkillManaged(target, info) {
-			return fmt.Errorf("launch skill %q collides with non-Our entry at %s", name, target)
+			return fmt.Errorf("launch skill %q collides with non-My AI entry at %s", name, target)
 		}
 	}
 	return nil
@@ -249,7 +249,7 @@ func launchSkillManaged(target string, info fs.FileInfo) bool {
 	if err := json.Unmarshal(data, &marker); err != nil {
 		return false
 	}
-	return marker.Installer == "our" || marker.Installer == "our-ai"
+	return marker.Installer == "my" || marker.Installer == "my-cli"
 }
 
 func removeLaunchSkill(target string, info fs.FileInfo) error {
@@ -261,7 +261,7 @@ func removeLaunchSkill(target string, info fs.FileInfo) error {
 
 func writeLaunchManagedMarker(dir string, skill skills.Skill) error {
 	marker := bundle.Marker{
-		Installer:   "our",
+		Installer:   "my",
 		Version:     bundle.Version(),
 		Mode:        "copy",
 		Source:      skill.SourceRoot,

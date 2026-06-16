@@ -2,19 +2,19 @@
 layout: home
 
 hero:
-  name: Our AI
+  name: My AI
   text: Your team's AI, set up once
   tagline: One organization manifest gives every AI harness generated guidance, mounts, launch profiles, and local operating context — on any machine, with one command.
   image:
-    src: /our-ai-glyph.svg
-    alt: Our AI mark
+    src: /my-cli-glyph.svg
+    alt: My AI mark
   actions:
     - theme: brand
       text: Install
       link: /guide/quickstart
     - theme: alt
       text: View on GitHub
-      link: https://github.com/fluxinc/our-ai
+      link: https://github.com/fluxinc/my-cli
 
 features:
   - icon: "01"
@@ -40,32 +40,32 @@ features:
 ## Install
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/fluxinc/our-ai/master/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/fluxinc/my-cli/master/install.sh | sh
 ```
 
-Run `our update` to update to the latest release; re-running the installer also
+Run `my update` to update to the latest release; re-running the installer also
 works.
 
 ## First Run
 
 ```sh
-our init acme --name "Acme"
-our onboard
-our ai codex
+my init acme --name "Acme"
+my onboard
+my ai codex
 ```
 
-`our onboard` gives the human walkthrough and offers interactive setup.
-`our ai codex` performs the same root resolution and guidance freshness check
-before starting a harness. `our init` creates a private manifest repo (the
+`my onboard` gives the human walkthrough and offers interactive setup.
+`my ai codex` performs the same root resolution and guidance freshness check
+before starting a harness. `my init` creates a private manifest repo (the
 control plane) plus a content repo at `~/acme/workspace` (the actual
-workspace), all local and working offline; `our publish` later creates the
+workspace), all local and working offline; `my publish` later creates the
 private remotes and pushes both.
 
 ## The Operating Shape
 
 ```
 ~/acme/
-├── .our/          # workspace identity and local state
+├── .my-cli/          # workspace identity and local state
 ├── workspace/      # manifest-declared content mount (its own repo)
 ├── repos/          # opted-in catalog repositories
 ├── personal/       # local-only scratch
@@ -80,13 +80,13 @@ day-to-day work never edits the manifest itself.
 
 ## Part of a Toolchain
 
-`our` is the organization layer of a broader agentic stack: org context and
+`my` is the organization layer of a broader agentic stack: org context and
 knowledge for every agent and human, from one manifest. It composes with
 [gnit](https://github.com/mostlydev/gnit) (git-native multi-repo workspaces,
 the umbrella's publish substrate) and
 [clawdapus](https://github.com/mostlydev/clawdapus) (governed agent
 containers whose cognition is mediated by the cllama proxy) — manifest roles
-compile into contained fleet agents that carry the `our` CLI as a governed
+compile into contained fleet agents that carry the `my` CLI as a governed
 work surface. Gated organization services (credential brokers,
 human-reviewed communications) are declared in the manifest and consumed the
 same way by human and AI operators.

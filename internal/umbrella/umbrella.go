@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 const (
-	DirName       = ".our"
+	DirName       = ".my-cli"
 	WorkspaceFile = "workspace.json"
 	StateFile     = "state.json"
 	SchemaVersion = 1
@@ -78,7 +78,7 @@ func ResolveRoot(home, cwd, explicit string, doc manifest.Document) (string, err
 	return filepath.Join(homeDir, doc.Organization.ID), nil
 }
 
-// FindRoot walks up from start looking for .our/workspace.json.
+// FindRoot walks up from start looking for .my-cli/workspace.json.
 func FindRoot(start string) (string, bool) {
 	if start == "" {
 		start = "."

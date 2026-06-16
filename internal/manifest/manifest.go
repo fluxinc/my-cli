@@ -1,4 +1,4 @@
-// Package manifest manages organization manifests used by the our CLI.
+// Package manifest manages organization manifests used by the `my` CLI.
 package manifest
 
 import (
@@ -13,12 +13,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/ghauth"
+	"github.com/fluxinc/my-cli/internal/ghauth"
 )
 
 const (
 	registryVersion = 1
-	appDir          = "our"
+	appDir          = "my-cli"
 	manifestFile    = "manifest.json"
 )
 
@@ -200,7 +200,7 @@ type ServiceConnection struct {
 	Headers map[string]string `json:"headers,omitempty"`
 }
 
-// Role describes a named local/agent loadout. It selects what our materializes
+// Role describes a named local/agent loadout. It selects what the CLI materializes
 // for the harness; it is not an authorization boundary.
 type Role struct {
 	ID            string   `json:"id"`
@@ -327,7 +327,7 @@ func SetLocalPath(home, name, localPath string) (Ref, error) {
 			return reg.Manifests[i], SaveRegistry(home, reg)
 		}
 	}
-	return Ref{}, fmt.Errorf("manifest %q is not registered; run our manifests add %s <git-url>", name, name)
+	return Ref{}, fmt.Errorf("manifest %q is not registered; run my manifests add %s <git-url>", name, name)
 }
 
 // NormalizeRemote canonicalizes a git remote URL for equality checks. It
@@ -822,7 +822,7 @@ func ValidDataType(value string) bool {
 }
 
 // ParseSurfaceRef splits a data binding surface reference. It accepts only the
-// two surface primitives our knows how to materialize: mounts and services.
+// two surface primitives my knows how to materialize: mounts and services.
 func ParseSurfaceRef(value string) (kind, id string, ok bool) {
 	if strings.TrimSpace(value) != value {
 		return "", "", false
@@ -1254,7 +1254,7 @@ func validateTool(t Tool, result *ValidationResult) {
 }
 
 // validMountKind accepts content mount kinds only. Code repositories are not
-// mounts: declare them in catalog/repos.json and clone with our repos add.
+// mounts: declare them in catalog/repos.json and clone with my repos add.
 func validMountKind(kind string) bool {
 	switch kind {
 	case "handbook", "customers", "meetings", "support", "fleet", "policy", "docs":

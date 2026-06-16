@@ -189,9 +189,9 @@ func (a app) maybeJSONError(jsonOut bool, err error) error {
 		payload.Error = structured.code
 		payload.Message = structured.message
 		payload.Remediation = structured.remediation
-	} else if strings.Contains(err.Error(), "no our umbrella found") {
+	} else if strings.Contains(err.Error(), "no my umbrella found") {
 		payload.Error = "no_umbrella"
-		payload.Remediation = "run our setup or pass --umbrella <path>"
+		payload.Remediation = "run my setup or pass --umbrella <path>"
 	}
 	if printErr := printJSON(a.stdout, payload); printErr != nil {
 		return printErr

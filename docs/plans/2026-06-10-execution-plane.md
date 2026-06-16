@@ -5,8 +5,8 @@ co-shaped by Codex), 2026-06-10. Pre-alpha: rethinking is cheap and
 encouraged. Builds on the control/data-plane split shipped in v0.13.0.
 
 Update 2026-06-11 (v0.17.0): Mode A sessions shipped, but the launch default
-changed after dogfood. `our ai` now launches from the base umbrella by default;
-sessions are opt-in with `our ai --new-session` or `our ai --session <id>`.
+changed after dogfood. `my ai` now launches from the base umbrella by default;
+sessions are opt-in with `my ai --new-session` or `my ai --session <id>`.
 When a command runs from inside an active session, content verbs resolve to the
 session mount worktree so records do not leak into the base checkout.
 
@@ -15,7 +15,7 @@ session mount worktree so records do not leak into the base checkout.
 Agents working inside the umbrella write files: drafts, scripts, notes,
 half-finished records. Three failure modes follow:
 
-1. **Litter publishing.** `our sync` auto-publishes any dirty file under a
+1. **Litter publishing.** `my sync` auto-publishes any dirty file under a
    mount's content paths. One session's half-draft can be published by
    whichever session runs sync next.
 2. **Cross-pollution.** Concurrent agents share one writable mount checkout
@@ -32,7 +32,7 @@ Hard constraints from the operator:
 - Workspace content repos must never collect agent litter.
 - The design must fit the broader architecture: organization manifests
   ultimately compile into contained, governed agent containers, where the
-  `our` CLI itself is exposed as a governed tool.
+  `my` CLI itself is exposed as a governed tool.
 
 ## Architecture: three planes, two modes of operation
 
@@ -47,13 +47,13 @@ execution plane  Mode A: sessions          interactive humans + harnesses
                  Mode B: contained runners governed fleet agents
 ```
 
-The unifying thesis: **`our` is operator-controlled self-materialization of
+The unifying thesis: **`my` is operator-controlled self-materialization of
 what the manifest describes.** Mode A materializes a working context on the
 operator's machine; Mode B compiles the same manifest into container launch
 artifacts and materializes the context inside a contained runner. Same
-definitions, two materializers. `our` owns manifest semantics, umbrella and
+definitions, two materializers. `my` owns manifest semantics, umbrella and
 session UX, and safe publish; container tooling owns materialization and
-containment; the governance proxy owns mediated model/tool access. `our`
+containment; the governance proxy owns mediated model/tool access. `my`
 does not become a runtime.
 
 ### Mode A: sessions (interactive)
@@ -67,32 +67,32 @@ happens in **sessions** — visible, ordinary directories:
   workspace/                  content repo @ master (read-mostly by policy)
   work/
     2026-06-10-codex-a1b2/    one session
-      workspace/              git worktree @ our/work/2026-06-10-codex-a1b2
+      workspace/              git worktree @ my/work/2026-06-10-codex-a1b2
       scratch/                session-local scratch (never committed)
       AGENTS.md               generated, session-aware guidance
       SESSION.md              what this session is for, who started it
   personal/                   durable user scratch (unchanged)
-.our/sessions/<id>.json       session registry metadata (not the work itself)
+.my-cli/sessions/<id>.json       session registry metadata (not the work itself)
 ```
 
-- `our work start [--slug s]` creates a session: a git **worktree** of each
-  writable mount on a fresh `our/work/<id>` branch, plus scratch, plus
+- `my work start [--slug s]` creates a session: a git **worktree** of each
+  writable mount on a fresh `my/work/<id>` branch, plus scratch, plus
   generated session guidance. Cheap (worktrees share the object store),
   plain (a human can `cd` in, run git, take over), isolated (branches are
   per-session; the base checkout never sees uncommitted session state).
-- `our ai --new-session` creates a fresh session; `our ai --session <id>`
-  resumes one. Plain `our ai` launches from the base umbrella, except when the
+- `my ai --new-session` creates a fresh session; `my ai --session <id>`
+  resumes one. Plain `my ai` launches from the base umbrella, except when the
   current directory is already inside an active session, where it keeps using
   that session. `--no-session` ignores a current session for admin/debug.
-- `our work status` lists sessions: branch, dirty paths, age, harness.
-- `our work finish --land | --publish | --discard` is the only way work
+- `my work status` lists sessions: branch, dirty paths, age, harness.
+- `my work finish --land | --publish | --discard` is the only way work
   leaves a session: land merges to the base branch locally; publish lands
   and syncs; discard removes worktrees and branch. Records pass validation
   and provenance adoption on the way out.
-- The **session registry is first-class**: `our sync` reads
-  `.our/sessions/*.json` and holds base-mount auto-publish when any active
+- The **session registry is first-class**: `my sync` reads
+  `.my-cli/sessions/*.json` and holds base-mount auto-publish when any active
   session on the same mount remote is dirty or unlanded — naming the
-  session id, path, mount, dirty files, and the `our work finish|discard|
+  session id, path, mount, dirty files, and the `my work finish|discard|
   status` remediation. This must not rely on accidental duplicate-remote
   detection. Clean, closed sessions are GC candidates by age.
 - Humans use the same verbs, or take over an agent's session by cd-ing into
@@ -103,7 +103,7 @@ happens in **sessions** — visible, ordinary directories:
 Substrate alignment: gnit (the umbrella's intended multi-repo substrate) has
 this exact workflow designed as `gnit worktree add <path> --pin` — isolated
 workspaces from a pin, members on fresh per-workspace branches, per-agent
-attempts without branch explosion. `our work` ships first on plain git
+attempts without branch explosion. `my work` ships first on plain git
 worktrees with the same shape and delegates to gnit when the umbrella is a
 gnit control workspace; gnit is the substrate, not a prerequisite.
 
@@ -127,20 +127,20 @@ mapping is close to 1:1:
 | catalog products            | repo mounts                                |
 | services (role-selected / data-bound) | remote surfaces + mediated tool wiring     |
 
-`our compile --role R` emits the org-side launch projection — contract blocks,
+`my compile --role R` emits the org-side launch projection — contract blocks,
 role-scoped mounts, tool selections, data bindings, and service declarations.
 The later Clawdapus emitter consumes that projection and writes the native pod
 and context artifacts that container tooling (for example, `claw up`) consumes.
 Inside the container the agent gets a role-scoped umbrella pulled into its home,
-the `our` CLI installed, and **only the operational verb set** reachable through
-the mediated tool plane; `our admin *` and `our sync` remain operator-only —
+the `my` CLI installed, and **only the operational verb set** reachable through
+the mediated tool plane; `my admin *` and `my sync` remain operator-only —
 the privilege split the CLI already enforces. Cross-pollution is impossible by
 construction: every container has its own filesystem.
 
 Mode B builds on manifest extensions that are useful standalone:
 
 - `roles`: named local loadouts — guidance fragments, mount scoping, tool,
-  skill, and service selections. Roles select what `our` materializes; they
+  skill, and service selections. Roles select what `my` materializes; they
   do not grant authority.
 - `data_bindings`: stable operational data nouns mapped to `mount:<id>` or
   `service:<id>`, so local harnesses and contained agents use the same
@@ -150,7 +150,7 @@ Mode B builds on manifest extensions that are useful standalone:
   kind (`http`, `mcp`, …), purpose, base URL or discovery, `describe_ref`
   (a self-description endpoint or a checked-in description file;
   descriptions are **references by default**, with fetched snapshots cached
-  as derived local state under `.our`, never silently promoted to manifest
+  as derived local state under `.my-cli`, never silently promoted to manifest
   truth), and `auth_ref` (a credential reference, never a secret). An MCP
   server is simply a service of kind `mcp`. Skills may declare `service:<id>`
   dependencies alongside `workspace:` and `tool:`.
@@ -163,7 +163,7 @@ committed to the manifest) and a **communications platform** (operators draft
 freely; every send passes human review through an approval-gated,
 idempotent pipeline).
 
-Surfacing is mode-aware and conservative. In Mode A, `our setup`
+Surfacing is mode-aware and conservative. In Mode A, `my setup`
 materializes harness MCP config and guidance opt-in, only for services
 visible to the current role/operator, never fetching describe endpoints by
 default, with doctor warnings for unresolved auth references. In Mode B,
@@ -172,11 +172,11 @@ schemas; refresh belongs to the runtime/governance plane.
 
 ### Immediate safety patch (independent of mode work)
 
-`our sync` stops auto-publishing arbitrary dirty content files:
+`my sync` stops auto-publishing arbitrary dirty content files:
 
 - **Untracked** files under content paths publish only when the Git index
-  already records adoption: `our meetings/support/fleet add` runs
-  `git add -N` after creating the record, `our record adopt <path>` does the
+  already records adoption: `my meetings/support/fleet add` runs
+  `git add -N` after creating the record, `my record adopt <path>` does the
   same for a manually created file, and an explicit human `git add <path>`
   also counts. Plain `??` paths are held and **named** in the sync report
   with the adopt remediation. Schema validity is deliberately not enough — an
@@ -215,13 +215,13 @@ is. The plan adopts accordingly.
   Container-native services may point at a `claw.describe` descriptor.
   `kind: a2a` (agent cards) is reserved. Backstage catalog-info was
   evaluated and rejected — inventory without connection material.
-- **Mode A materialization is the ecosystem-standard move.** `our setup`
+- **Mode A materialization is the ecosystem-standard move.** `my setup`
   emits each harness's native config dialect (`.mcp.json` with `${VAR}`
   placeholders, `.vscode/mcp.json` with inputs, etc.), never secret values —
   exactly what org MCP registries (e.g. GitHub Copilot's) already do.
 - **The adoption verb copies Jujutsu and speaks Git.** jj hit this exact
-  litter problem (it auto-snapshots like our sync auto-publishes) and solved
-  it with `snapshot.auto-track = "none()"` plus `jj file track`. `our record adopt`
+  litter problem (it auto-snapshots like `my sync` auto-publishes) and solved
+  it with `snapshot.auto-track = "none()"` plus `jj file track`. `my record adopt`
   is the same polarity, implemented with Git's own intent-to-add bit:
   `git add -N` records local adoption without staging file content. Sync
   reports plain `??` files (named, with remediation) instead of hiding them.
@@ -230,10 +230,10 @@ is. The plan adopts accordingly.
   adoption, which preserves human symmetry.
 - **Session conventions imitate the field, without harness coupling.**
   Worktree-per-session is now mainstream harness UX, which validates the
-  model — but `our work` deliberately does NOT integrate with any harness's
+  model — but `my work` deliberately does NOT integrate with any harness's
   internal worktree mechanisms (hooks, flags, lifecycle APIs): that locks
   the design to each harness and creates a permanent compatibility
-  treadmill. Sessions are owned by `our` on plain git; `our ai` launches
+  treadmill. Sessions are owned by `my` on plain git; `my ai` launches
   any harness with its working directory inside the session, which is the
   only integration surface every harness already supports. The cleanup
   conventions the ecosystem converged on (auto-remove clean, prompt on
@@ -274,12 +274,12 @@ multi-repo substrate remains in-house (gnit) by design.
 
 jj's history suggests auto-publishing untracked files is the unusual
 feature, not the gate. v0.13.1 adopts **"never auto-publish plain `??`
-content; adopt or finish to publish"**. Records created by `our ... add` are
+content; adopt or finish to publish"**. Records created by `my ... add` are
 adopted at creation via `git add -N`; everything else waits for
-`our record adopt`, explicit `git add`, or future `our work finish`. Same UX
+`my record adopt`, explicit `git add`, or future `my work finish`. Same UX
 for the happy path, no separate provenance ledger.
 
-## Boundary with container tooling ("our speaks claw")
+## Boundary with container tooling ("`my` speaks claw")
 
 The manifest↔pod mapping table raised a real concern: vocabulary overlap
 and drift between the org manifest and container tooling DSLs (Clawfile /
@@ -287,8 +287,8 @@ pod-file `x-claw` blocks). Resolution: **the manifest stays semantic; claw
 is a compile target, not a vocabulary source.**
 
 - The manifest's sections describe organization truth (roles, mounts,
-  skills, tools, services, guidance) in `our`'s own minimal schema.
-- A later Mode B emitter consumes `our compile` output and emits the container
+  skills, tools, services, guidance) in `my`'s own minimal schema.
+- A later Mode B emitter consumes `my compile` output and emits the container
   tooling's native formats — pod-file fragments and contract documents — the
   same way Mode A emits each harness's native MCP config dialect. Speaking the
   consumer's dialect at the boundary avoids both a parallel DSL and schema
@@ -309,7 +309,7 @@ is a compile target, not a vocabulary source.**
   depends on Git index state.
 - When it wins: as v0.13.1, while the execution plane is built.
 
-### O2 — Patch + sessions, opt-in (`our work start`, `our ai --new-session`, `our ai --session`)
+### O2 — Patch + sessions, opt-in (`my work start`, `my ai --new-session`, `my ai --session`)
 
 - Pro: structural isolation exists; daily single-command flow unchanged.
 - Con: agents must choose the session path for isolated work; partial
@@ -317,13 +317,13 @@ is a compile target, not a vocabulary source.**
 - When it wins: this became the post-dogfood direction because humans mostly
   want base launch, while bots can carry explicit session flags.
 
-### O3 — Patch + sessions, default-on for `our ai` (superseded)
+### O3 — Patch + sessions, default-on for `my ai` (superseded)
 
 - Pro: the ergonomic path is the safe path — the only design that changes
   default agent behavior; concurrent/successive runs can't interact; base
   stays pristine; human-symmetric (humans get and can take over the same
   sessions); `--no-session` keeps the escape hatch.
-- Con: adds a finish step to the flow (mitigations: `our work finish
+- Con: adds a finish step to the flow (mitigations: `my work finish
   --publish` doubles as the session's sync; prompt on harness exit); more
   lifecycle to document and GC.
 - When it wins: originally recommended for agent-only launch ergonomics, but
@@ -335,7 +335,7 @@ is a compile target, not a vocabulary source.**
   session baselines and attempt review.
 - Con: blocks v0.14 on a feature in another project; umbrellas aren't gnit
   control workspaces yet.
-- Resolution adopted: ship `our work` on plain git worktrees shaped for gnit
+- Resolution adopted: ship `my work` on plain git worktrees shaped for gnit
   delegation; switch the backend when the umbrella is gnit-controlled.
 
 ### O5 — Read-only base mounts
@@ -360,17 +360,17 @@ is a compile target, not a vocabulary source.**
 The combined path:
 
 1. **v0.13.1** — Git intent-to-add gated publishing for untracked content
-   files, plus `our record adopt`.
-2. **v0.14-v0.17** — `our work` sessions (visible `work/<id>`, plain git
+   files, plus `my record adopt`.
+2. **v0.14-v0.17** — `my work` sessions (visible `work/<id>`, plain git
    worktrees, first-class registry, sync session-awareness), revised in v0.17.0 so
-   `our ai` defaults to base launch while sessions are explicit with
+   `my ai` defaults to base launch while sessions are explicit with
    `--new-session`/`--session` and current-session cwd is honored.
 3. **v0.18.0** — manifest `roles` + `services` (MCP servers fold in as
-   `kind: mcp`), `our services`/`our roles` inspection, `our setup --role`,
+   `kind: mcp`), `my services`/`my roles` inspection, `my setup --role`,
    umbrella-root `.mcp.json` from local connection data, doctor service
    checks (see `docs/plans/2026-06-12-v018-scope.md`).
 4. **Next** — org-side launch-artifact projection for contained runners
-   (`our compile`): manifest + role + skills + mounts compile into a
+   (`my compile`): manifest + role + skills + mounts compile into a
    deterministic Clawdapus-facing launch artifact; the manifest `contract`
    list (v0.20.0) maps to the artifact's enforce-level contract block rather
    than a parallel dialect. Descriptor fetch/cache remains a later derived-state

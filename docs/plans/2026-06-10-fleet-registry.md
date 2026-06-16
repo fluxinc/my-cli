@@ -11,7 +11,7 @@ does not replace a fulfillment tracker's workflow). Claude countered with a
 registry-first design. The convergence is: build one `fleet` registry entity
 for v1, but make the mutation tooling strong enough that it behaves like a
 workflow surface rather than a markdown archive. The public tracking issue is
-fluxinc/our-ai#15 (a generic registry proposal filed in parallel; its open
+fluxinc/my-cli#15 (a generic registry proposal filed in parallel; its open
 questions — noun naming, mount kind vs manifest-declared kind, status
 taxonomy — are answered below and in the implementation).
 
@@ -19,7 +19,7 @@ taxonomy — are answered below and in the implementation).
 
 Give organizations that deploy product instances at customer sites a durable,
 Git-backed registry of those instances — the join table between support
-incidents (`our support --identifier`), per-site configuration branches, the
+incidents (`my support --identifier`), per-site configuration branches, the
 customer catalog, and commercial/fulfillment facts — and make it good enough
 to replace a hosted task tracker as the fulfillment system of record.
 
@@ -51,7 +51,7 @@ system we just decided to leave.
 - **Events are git history.** A registry record mutated in place gets its
   event log for free: every status transition is a commit. Storing event
   files would duplicate `git log` with worse tooling. If a queryable view is
-  wanted later, `our fleet log <id>` can surface the record's git history —
+  wanted later, `my fleet log <id>` can surface the record's git history —
   a read verb, not a storage format.
 - **Due dates, assignment, queues** are frontmatter keys filtered generically
   (see `--where` below), not schema. Payment *facts* live in the
@@ -61,36 +61,36 @@ system we just decided to leave.
 ### 2. CLI verbs — the slice that beats the tracker
 
 ```sh
-our fleet list   [--status S] [--customer C] [--partner P] [--identifier I]
+my fleet list   [--status S] [--customer C] [--partner P] [--identifier I]
                  [--branch B] [--where key=value]... [--json]
-our fleet search <text> [same filters] [--json]
-our fleet get    <id|identifier> [--json]
-our fleet add    <id> [field flags] [--print] [--json]
-our fleet set    <id> key=value... [--json]
+my fleet search <text> [same filters] [--json]
+my fleet get    <id|identifier> [--json]
+my fleet add    <id> [field flags] [--print] [--json]
+my fleet set    <id> key=value... [--json]
 ```
 
-- The killer verb is `our fleet get <any-identifier>`: hostname, sales
+- The killer verb is `my fleet get <any-identifier>`: hostname, sales
   order, functional location, or serial in — full identity out (customer,
   partner, config branch, status, contacts), **plus related support records**
   by identifier intersection. That is the join that previously took an
   expedition across naming conventions and tracker custom fields, answered
   offline in milliseconds.
-- `our fleet set` is the workflow verb: atomic field updates
-  (`our fleet set acme-box-1 status=live`) that rewrite frontmatter while
+- `my fleet set` is the workflow verb: atomic field updates
+  (`my fleet set acme-box-1 status=live`) that rewrite frontmatter while
   **preserving unknown keys and the body**. This replaces dragging a card
   across a board. It is operational, not admin — registry records are mount
   content in the same trust domain as meetings and support notes.
 - Because event provenance is git history, `set` must make that history
   legible: it should report the exact field changes and print a suggested
   follow-up such as
-  `our sync --message "Update fleet acme-box-1: status=live"`. Guidance
+  `my sync --message "Update fleet acme-box-1: status=live"`. Guidance
   should prefer one logical transition per sync when the operator wants an
-  auditable workflow history. Generic `Sync Our AI content` commits are
+  auditable workflow history. Generic `Sync My AI content` commits are
   acceptable for bulk cleanup, not for meaningful status transitions.
 - `--where key=value` gives typed-flag ergonomics for the org-specific long
   tail (assignment, due dates, anything) without baking org schema into the
   public CLI. Typed flags cover only the join/filter core.
-- Status board equivalent: `our fleet list --status build`. At registry
+- Status board equivalent: `my fleet list --status build`. At registry
   volumes (tens to low hundreds of records), a filtered list beats a board.
 
 ### 3. Sync, concurrency, publish
@@ -105,7 +105,7 @@ our fleet set    <id> key=value... [--json]
   `publish_policy` remains the documented future lever.
 - Mutate-in-place raises conflict odds relative to append-only journals, but
   at a few transitions per month the existing pull-then-push sync flow is
-  enough. Document "run `our sync` before and after `our fleet set`" in
+  enough. Document "run `my sync` before and after `my fleet set`" in
   guidance; build nothing.
 - Notifications on status change: acknowledged real gap vs a hosted tracker;
   explicitly deferred (a watch routine later, not a CLI concern now).
@@ -137,9 +137,9 @@ our fleet set    <id> key=value... [--json]
 Unchanged and sharpened: support records carry incident narrative plus
 `identifiers` — never registry facts (status, branch, commercial,
 remote-access). The join is computed at read time by identifier
-intersection, in both directions (`our fleet get` shows related support
-records; a future `our support get` enrichment can show the instance).
-`our support add --identifier` gains a soft resolution check against the
+intersection, in both directions (`my fleet get` shows related support
+records; a future `my support get` enrichment can show the instance).
+`my support add --identifier` gains a soft resolution check against the
 registry when a fleet mount is present: unknown identifier → warning, not
 failure (the registry may legitimately lag reality).
 
@@ -155,7 +155,7 @@ tracker, which invites rebuilding one. Records live flat at `fleet/<id>.md`
 
 ## Registry vs Journal
 
-The structural insight under all of the above: `our` now has two record
+The structural insight under all of the above: `my` now has two record
 lifecycles.
 
 | | journal (meetings, support) | registry (fleet) |
@@ -179,7 +179,7 @@ preserved passthrough.
 ```markdown
 ---
 id: acme-box-1                    # stable key; convention: hostname/node name
-customer: sampleco.example.com    # canonical `our customers` ID
+customer: sampleco.example.com    # canonical `my customers` ID
 partner: samplepartner            # optional resale/service partner
 status: live                      # org-defined vocabulary; free-form in v1
 device: "Sample Scanner X"
@@ -228,7 +228,7 @@ triplicated scan/frontmatter/filter/search/scaffold code. This branch should:
 2. Re-express `meetings` and `support` as thin definitions over it (no
    behavior change; existing tests prove it).
 3. Add `fleet` as the first registry-mode definition, including the
-   frontmatter-preserving rewrite needed by `our fleet set`.
+   frontmatter-preserving rewrite needed by `my fleet set`.
 
 The frontmatter rewrite (preserve unknown keys, comments aside, body intact)
 is the only genuinely new machinery and deserves the most test attention.
@@ -249,13 +249,13 @@ All four convergence questions were accepted by Codex (see the Codex
 Convergence Response above) and are implemented:
 
 1. One registry entity; `orders/`/`events/` deferred with documented triggers.
-2. `our fleet set` reports exact field changes and suggests
-   `our sync --message "Update fleet <id>: status=live"` (the flag already
-   exists on `our sync`), so transitions stay readable git history.
+2. `my fleet set` reports exact field changes and suggests
+   `my sync --message "Update fleet <id>: status=live"` (the flag already
+   exists on `my sync`), so transitions stay readable git history.
 3. `internal/record` was extracted first; `meetings` and `support` are thin
    noun definitions over it with no behavior change, and `fleet` is the first
    registry-mode noun. The frontmatter-preserving rewrite lives in the engine
    as `record.SetScalars` with focused tests.
-4. `our fleet get <id|identifier>` is the join surface and lists related
-   support records; `our support add --identifier` warns (never blocks) on
+4. `my fleet get <id|identifier>` is the join surface and lists related
+   support records; `my support add --identifier` warns (never blocks) on
    identifiers unknown to a populated registry.

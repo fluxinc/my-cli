@@ -15,9 +15,9 @@ repeat issues and generate evidence-backed feature requests.
 ## Decision
 
 Support knowledge belongs in private mounted markdown content, not in the
-public CLI repository. The public `our` repo should define the generic
+public CLI repository. The public `my` repo should define the generic
 mechanism: a `support` mount kind, a stable markdown record convention, and a
-thin `our support list/search/get/add` command set that mirrors the meetings
+thin `my support list/search/get/add` command set that mirrors the meetings
 surface.
 
 The first useful on-disk home is either:
@@ -97,10 +97,10 @@ so the command remains functional without optional tools.
 The command surface is:
 
 ```sh
-our support list   [--since DATE] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
-our support search <text> [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
-our support get    <id|path> [--json]
-our support add    <slug> [--date DATE] [--title TEXT] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--observed-by MEMBER] [--approved-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--status open|workaround|resolved] [--feature-candidate] [--print] [--json]
+my support list   [--since DATE] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
+my support search <text> [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
+my support get    <id|path> [--json]
+my support add    <slug> [--date DATE] [--title TEXT] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--observed-by MEMBER] [--approved-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--status open|workaround|resolved] [--feature-candidate] [--print] [--json]
 ```
 
 Feature-request generation should not become a separate workflow command yet.
@@ -127,7 +127,7 @@ Organization guidance should tell agents:
   problem, `observed_by` for others involved. Leave `approved_by` empty unless
   the operator explicitly approves the record — it is the human sign-off
   field.
-- Use `our support add` to create `support/YYYY-MM-DD-<slug>.md` in the mounted
+- Use `my support add` to create `support/YYYY-MM-DD-<slug>.md` in the mounted
   private content repo.
 - Run the normal workspace sync flow after recording content.
 
@@ -142,7 +142,7 @@ and `resolved`.
 2. Document the convention in public architecture and manifest docs.
 3. Add a small support package first; extract a shared markdown-record helper
    after the meetings and support semantics settle.
-4. Add `our support list/search/get/add` with qmd-first search and built-in
+4. Add `my support list/search/get/add` with qmd-first search and built-in
    fallback.
 5. Add neutral Acme fixture support records and CLI tests.
 6. Add org-private guidance that requires anonymized support capture.
@@ -155,7 +155,7 @@ Codex accepted Claude's review with these outcomes:
   kind.
 - `support/` is part of the default handbook content paths, with changelog
   disclosure.
-- `our support list/search/get/add` is implemented in this branch with qmd-first
+- `my support list/search/get/add` is implemented in this branch with qmd-first
   search and built-in fallback.
 - Customer attribution is optional canonical-ID frontmatter; support bodies stay
   anonymized and excerpt-safe.
@@ -181,7 +181,7 @@ the draft; see below.
 
 **`support` in handbook default content paths — AGREE, with disclosure.** This
 is a behavior change for existing handbook mounts that declare no
-`include_paths`: a dirty `support/` directory that `our sync` previously held
+`include_paths`: a dirty `support/` directory that `my sync` previously held
 ("not content-only") now direct-pushes under publish `auto`. Same trust domain
 as meetings, so acceptable — but it needs a CHANGELOG entry, and the draft
 touches neither `CHANGELOG.md` nor `site/changelog.md` (no `## Unreleased`
@@ -198,7 +198,7 @@ product IDs over customer names (soft) while the fixture SKILL.md says
 ### Implement the verbs in this branch — YES
 
 The draft ships fixture policy telling agents to hand-write
-`support/YYYY-MM-DD-<slug>.md` "until `our support add` exists". Shipping
+`support/YYYY-MM-DD-<slug>.md` "until `my support add` exists". Shipping
 guidance that references a nonexistent command is drift by construction, and
 the operator explicitly floated new verbs. The meetings package is ~90%
 reusable for this (scan, frontmatter, token-AND search, scaffold, qmd-first
@@ -206,7 +206,7 @@ contract). Recommended slice: extract a small shared markdown-record helper,
 keep `meetings` and `support` as thin wrappers over it, add support root
 resolution that accepts kinds `handbook|support`, and scaffold the
 Problem/Context/Diagnosis/Solution/Validation/Feature Signal template from
-`our support add`.
+`my support add`.
 
 ### Anonymization: split frontmatter from body
 
@@ -221,7 +221,7 @@ The current text conflates two different protections:
   March" requires per-customer recurrence.
 
 Proposal: allow an optional `customer: <canonical-id>` frontmatter field
-(consistent with meetings, validated against `our customers list`), and keep
+(consistent with meetings, validated against `my customers list`), and keep
 the **body** excerpt-safe — generic symptoms, product IDs, area names, no
 identifying details. Frontmatter carries attribution; the body is what may
 later be quoted into public issues or feature requests. This resolves the

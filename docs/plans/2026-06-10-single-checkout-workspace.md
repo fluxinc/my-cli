@@ -7,7 +7,7 @@ single-visible-checkout draft in this file's history.
 
 A self-hosted organization repository served two roles at once — manifest
 source and content mount — and the CLI kept a checkout per role (plus the
-`our init` scaffold: up to three clones of one remote). The duplicate-remote
+`my init` scaffold: up to three clones of one remote). The duplicate-remote
 guard then blocked content publishing whenever an admin edit sat uncommitted
 in the hidden manifest checkout, as a normal state.
 
@@ -28,7 +28,7 @@ Two repositories with a structural boundary:
 
 - **Manifest repo (control plane, private path):** `manifest.json`,
   `catalog/`, `skills/`, `agent-guidance/`. Its only checkout is the registry
-  path under `<data>/our/manifests/<name>`. Users never browse it; `our
+  path under `<data>/my-cli/manifests/<name>`. Users never browse it; `my
   admin` commands target it. Hosting permissions can restrict pushes to
   admins.
 - **Content repo(s) (data plane, visible):** mounted as real directories in
@@ -37,11 +37,11 @@ Two repositories with a structural boundary:
   push.
 
 ```
-~/.local/share/our/manifests/acme/   private manifest repo (own remote)
+~/.local/share/my-cli/manifests/acme/   private manifest repo (own remote)
   manifest.json  catalog/  skills/  agent-guidance/
 
 ~/acme/                              umbrella
-  .our/  AGENTS.md
+  .my-cli/  AGENTS.md
   handbook/                          content repo (own remote)
     meetings/ support/ fleet/ decisions/ projects/ policy/ people/
   repos/                             product clones
@@ -53,18 +53,18 @@ auto-publish private content; the manifest repo holds admin changes for
 explicit publication. No path-scoped publish, no merged workspace role for
 the default layout.
 
-### `our init` (offline, two local repos)
+### `my init` (offline, two local repos)
 
-`our init acme` creates both repos locally and registers the manifest:
+`my init acme` creates both repos locally and registers the manifest:
 
 - manifest repo at the registry default path; the handbook mount's `git_url`
   is the **local path** of the content repo until published;
 - content repo at `<umbrella>/handbook` (`--path` overrides), containing the
   content directories and a README with joining instructions;
-- `our setup` / `our ai` work immediately; everything reports `local-only`
+- `my setup` / `my ai` work immediately; everything reports `local-only`
   until published.
 
-### `our publish` (first-class ramp step)
+### `my publish` (first-class ramp step)
 
 Replaces the printed raw `gh` commands. Idempotently:
 
@@ -74,10 +74,10 @@ Replaces the printed raw `gh` commands. Idempotently:
    URLs and commits;
 3. creates/pushes the manifest remote (`<org>-manifest`);
 4. updates the registry GitURL to the manifest's hosted URL and prints the
-   teammate instructions (`our manifests add acme <manifest-url>`).
+   teammate instructions (`my manifests add acme <manifest-url>`).
 
 Guard: a manifest whose mounts reference local paths is **local-only**;
-sync/doctor refuse to treat it as publishable and point at `our publish`.
+sync/doctor refuse to treat it as publishable and point at `my publish`.
 
 ### Retired: conflated self-mount repos
 
@@ -113,7 +113,7 @@ checkouts, derived reconciliation for workspace-role results, and the Gemini
 
 ### Reverted/discarded
 
-`our init` scaffolding at `<umbrella>/workspace`, the `ensureCanonicalWorkspace`
+`my init` scaffolding at `<umbrella>/workspace`, the `ensureCanonicalWorkspace`
 migration to a visible workspace checkout, and the path-scoped workspace
 publish (syncer scratch) — except its origin-less local-only handling and
 (optionally, Codex's call) overlap-aware inbound fast-forward for behind+dirty
@@ -121,7 +121,7 @@ checkouts.
 
 ## Slices
 
-1. Claude: design doc, init two-repo rework, `our publish`, local-URL guard
+1. Claude: design doc, init two-repo rework, `my publish`, local-URL guard
    in doctor, test updates.
 2. Codex: syncer scratch cleanup (keep local-only; decide on overlap-aware
    inbound pull), sync/doctor messaging, adversarial role-play of

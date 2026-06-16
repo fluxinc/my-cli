@@ -1,5 +1,5 @@
 // Package worksession manages isolated work sessions: per-session git
-// worktrees of umbrella content mounts plus a JSON registry under .our.
+// worktrees of umbrella content mounts plus a JSON registry under .my-cli.
 package worksession
 
 import (
@@ -18,14 +18,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 const (
 	SchemaVersion = 1
 	WorkDirName   = "work"
 	RegistryDir   = "sessions"
-	BranchPrefix  = "our/work/"
+	BranchPrefix  = "my/work/"
 
 	StatusActive    = "active"
 	StatusFinished  = "finished"
@@ -277,7 +277,7 @@ func writeSessionDoc(session Session) error {
 	}
 	b.WriteString("\nWork in the mount worktrees above; use scratch/ for unversioned\n")
 	b.WriteString("session-local files. Work leaves a session only through\n")
-	b.WriteString("`our work finish --land | --publish | --discard`.\n")
+	b.WriteString("`my work finish --land | --publish | --discard`.\n")
 	return os.WriteFile(filepath.Join(session.Path, "SESSION.md"), []byte(b.String()), 0o644)
 }
 
@@ -286,14 +286,14 @@ func writeSessionDoc(session Session) error {
 func writeSessionGuidance(session Session) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Work Session %s\n\n", session.ID)
-	b.WriteString("This directory is an isolated Our AI work session; SESSION.md says what\nit is for. Keep all work inside this session:\n\n")
+	b.WriteString("This directory is an isolated My AI work session; SESSION.md says what\nit is for. Keep all work inside this session:\n\n")
 	b.WriteString("- Edit content only in the session's mount worktrees:\n")
 	for _, m := range session.Mounts {
 		fmt.Fprintf(&b, "  - %s/ — git worktree on branch %s, isolated from the base umbrella\n", m.ID, m.Branch)
 	}
 	b.WriteString("- Use scratch/ for unversioned session-local files; never commit them.\n")
-	b.WriteString("- Commit changes inside the worktrees as you go; `our work status` shows\n  dirty and unlanded state.\n")
-	b.WriteString("- Work leaves the session only through\n  `our work finish --land | --publish | --discard`.\n")
+	b.WriteString("- Commit changes inside the worktrees as you go; `my work status` shows\n  dirty and unlanded state.\n")
+	b.WriteString("- Work leaves the session only through\n  `my work finish --land | --publish | --discard`.\n")
 	content := []byte(b.String())
 	agentsPath := filepath.Join(session.Path, "AGENTS.md")
 	if err := os.WriteFile(agentsPath, content, 0o644); err != nil {
@@ -313,7 +313,7 @@ func shortHead(head string) string {
 	return head
 }
 
-// Save writes one session registry record under <root>/.our/sessions/.
+// Save writes one session registry record under <root>/.my-cli/sessions/.
 func Save(root string, session Session) error {
 	if session.ID == "" {
 		return errors.New("worksession: session id is required")

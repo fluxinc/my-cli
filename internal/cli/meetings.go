@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/meetings"
+	"github.com/fluxinc/my-cli/internal/meetings"
 )
 
 func (a app) runMeetings(args []string) error {
@@ -32,16 +32,16 @@ func (a app) runMeetings(args []string) error {
 
 func (a app) printMeetingsUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our meetings list [--manifest NAME] [--workspace ID] [--since DATE] [--customer ID] [--partner ID] [--product ID] [--json]
-  our meetings search <text> [--manifest NAME] [--workspace ID] [--customer ID] [--partner ID] [--product ID] [--json]
-  our meetings get <id|path> [--manifest NAME] [--workspace ID] [--json]
-  our meetings add <slug> [--manifest NAME] [--workspace ID] [--date DATE] [--title TEXT] [--customer ID] [--attendees NAME] [--partner ID] [--product ID] [--source-id ID] [--print] [--json]
+  my meetings list [--manifest NAME] [--workspace ID] [--since DATE] [--customer ID] [--partner ID] [--product ID] [--json]
+  my meetings search <text> [--manifest NAME] [--workspace ID] [--customer ID] [--partner ID] [--product ID] [--json]
+  my meetings get <id|path> [--manifest NAME] [--workspace ID] [--json]
+  my meetings add <slug> [--manifest NAME] [--workspace ID] [--date DATE] [--title TEXT] [--customer ID] [--attendees NAME] [--partner ID] [--product ID] [--source-id ID] [--print] [--json]
 
 Meeting commands use local markdown files under workspace meetings/ directories.`)
 }
 
 func (a app) runMeetingsList(args []string) error {
-	opts, rest, err := parseMeetingReadOpts("our meetings list", a.stderr, args)
+	opts, rest, err := parseMeetingReadOpts("my meetings list", a.stderr, args)
 	if err != nil {
 		return err
 	}
@@ -61,12 +61,12 @@ func (a app) runMeetingsList(args []string) error {
 }
 
 func (a app) runMeetingsSearch(args []string) error {
-	opts, rest, err := parseMeetingReadOpts("our meetings search", a.stderr, args)
+	opts, rest, err := parseMeetingReadOpts("my meetings search", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our meetings search <text>")
+		return fmt.Errorf("usage: my meetings search <text>")
 	}
 	roots, err := meetingRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
 	if err != nil {
@@ -82,14 +82,14 @@ func (a app) runMeetingsSearch(args []string) error {
 
 func (a app) runMeetingsGet(args []string) error {
 	var opts meetingCommonOpts
-	fs := newFlagSet("our meetings get", a.stderr)
+	fs := newFlagSet("my meetings get", a.stderr)
 	bindMeetingCommonFlags(fs, &opts)
 	rest, err := parseInterspersed(fs, args, meetingValueFlags())
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our meetings get <id|path>")
+		return fmt.Errorf("usage: my meetings get <id|path>")
 	}
 	roots, err := meetingRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
 	if err != nil {
@@ -111,7 +111,7 @@ func (a app) runMeetingsGet(args []string) error {
 
 func (a app) runMeetingsAdd(args []string) error {
 	var opts meetingAddOpts
-	fs := newFlagSet("our meetings add", a.stderr)
+	fs := newFlagSet("my meetings add", a.stderr)
 	bindMeetingCommonFlags(fs, &opts.meetingCommonOpts)
 	fs.StringVar(&opts.date, "date", "", "meeting date, YYYY-MM-DD")
 	fs.StringVar(&opts.title, "title", "", "meeting title")
@@ -140,7 +140,7 @@ func (a app) runMeetingsAdd(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our meetings add <slug>")
+		return fmt.Errorf("usage: my meetings add <slug>")
 	}
 	roots, err := meetingRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
 	if err != nil {

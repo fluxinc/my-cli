@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
-	"github.com/fluxinc/our-ai/internal/skills"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/skills"
 )
 
 func (a app) runAdmin(args []string) error {
@@ -49,24 +49,24 @@ func (a app) runAdmin(args []string) error {
 
 func (a app) printAdminUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
-  our admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
-  our admin setup ...                      (alias of our setup)
-  our admin manifests add|sync|validate ...   (alias of our manifests ...)
-  our admin mounts add|remove|sync ...        (alias of our mounts ...)
-  our admin meetings add ...                 (alias of our meetings add)
-  our admin support add ...                  (alias of our support add)
-  our admin contract add "RULE TEXT" --manifest-dir DIR [--force] [--json]
-  our admin contract remove <index|"RULE TEXT"> --manifest-dir DIR [--force] [--json]
-  our admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
-  our admin tools edit <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--clear-install-commands] [--docs-url URL|--clear-docs-url] [--skill-install-command CMD] [--skill-install-arg ARG] [--clear-skill-install] [--force] [--json]
-  our admin tools remove <id> --manifest-dir DIR [--force] [--json]
-  our admin roles add <id> --manifest-dir DIR --purpose TEXT [--guidance PATH] [--mount ID] [--skill namespace:name] [--tool ID] [--service ID] [--force] [--json]
-  our admin roles edit <id> --manifest-dir DIR [--purpose TEXT] [--guidance PATH|--clear-guidance] [--mount ID|--clear-mounts] [--skill namespace:name|--clear-skills] [--tool ID|--clear-tools] [--service ID|--clear-services] [--force] [--json]
-  our admin roles remove <id> --manifest-dir DIR [--force] [--json]
-  our admin services add <id> --manifest-dir DIR --kind http|mcp --purpose TEXT --auth-ref REF [--describe-ref REF] [--connection-type TYPE] [--connection-command CMD|--connection-url URL] [--connection-arg ARG] [--connection-env KEY=REF] [--connection-header KEY=VALUE] [--force] [--json]
-  our admin services edit <id> --manifest-dir DIR [--kind http|mcp] [--purpose TEXT] [--auth-ref REF] [--describe-ref REF|--clear-describe-ref] [--connection-type TYPE] [--connection-command CMD|--connection-url URL] [--connection-arg ARG] [--connection-env KEY=REF] [--connection-header KEY=VALUE] [--clear-connection] [--force] [--json]
-  our admin services remove <id> --manifest-dir DIR [--prune-roles] [--force] [--json]
+  my admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
+  my admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
+  my admin setup ...                      (alias of my setup)
+  my admin manifests add|sync|validate ...   (alias of my manifests ...)
+  my admin mounts add|remove|sync ...        (alias of my mounts ...)
+  my admin meetings add ...                 (alias of my meetings add)
+  my admin support add ...                  (alias of my support add)
+  my admin contract add "RULE TEXT" --manifest-dir DIR [--force] [--json]
+  my admin contract remove <index|"RULE TEXT"> --manifest-dir DIR [--force] [--json]
+  my admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
+  my admin tools edit <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--clear-install-commands] [--docs-url URL|--clear-docs-url] [--skill-install-command CMD] [--skill-install-arg ARG] [--clear-skill-install] [--force] [--json]
+  my admin tools remove <id> --manifest-dir DIR [--force] [--json]
+  my admin roles add <id> --manifest-dir DIR --purpose TEXT [--guidance PATH] [--mount ID] [--skill namespace:name] [--tool ID] [--service ID] [--force] [--json]
+  my admin roles edit <id> --manifest-dir DIR [--purpose TEXT] [--guidance PATH|--clear-guidance] [--mount ID|--clear-mounts] [--skill namespace:name|--clear-skills] [--tool ID|--clear-tools] [--service ID|--clear-services] [--force] [--json]
+  my admin roles remove <id> --manifest-dir DIR [--force] [--json]
+  my admin services add <id> --manifest-dir DIR --kind http|mcp --purpose TEXT --auth-ref REF [--describe-ref REF] [--connection-type TYPE] [--connection-command CMD|--connection-url URL] [--connection-arg ARG] [--connection-env KEY=REF] [--connection-header KEY=VALUE] [--force] [--json]
+  my admin services edit <id> --manifest-dir DIR [--kind http|mcp] [--purpose TEXT] [--auth-ref REF] [--describe-ref REF|--clear-describe-ref] [--connection-type TYPE] [--connection-command CMD|--connection-url URL] [--connection-arg ARG] [--connection-env KEY=REF] [--connection-header KEY=VALUE] [--clear-connection] [--force] [--json]
+  my admin services remove <id> --manifest-dir DIR [--prune-roles] [--force] [--json]
 
 admin groups shared/workspace configuration. The top-level command forms remain
 as compatibility aliases. Admin aliases are limited to mutating/configuration
@@ -76,7 +76,7 @@ top-level commands.`)
 }
 
 func adminOperationalReadError(group, subcommand string) error {
-	return fmt.Errorf("our admin %s %s is operational; use our %s %s", group, subcommand, group, subcommand)
+	return fmt.Errorf("my admin %s %s is operational; use my %s %s", group, subcommand, group, subcommand)
 }
 
 func (a app) runAdminManifest(args []string) error {
@@ -244,12 +244,12 @@ func (f *optionalStringFlag) Set(value string) error {
 }
 
 func (a app) runAdminToolsAdd(args []string) error {
-	opts, rest, err := parseAdminToolOpts("our admin tools add", a.stderr, args)
+	opts, rest, err := parseAdminToolOpts("my admin tools add", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 || opts.manifestDir == "" || !opts.mode.set || !opts.purpose.set {
-		return fmt.Errorf("usage: our admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT")
+		return fmt.Errorf("usage: my admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT")
 	}
 	result, err := a.adminToolsAdd(rest[0], opts)
 	if err != nil {
@@ -259,12 +259,12 @@ func (a app) runAdminToolsAdd(args []string) error {
 }
 
 func (a app) runAdminToolsEdit(args []string) error {
-	opts, rest, err := parseAdminToolOpts("our admin tools edit", a.stderr, args)
+	opts, rest, err := parseAdminToolOpts("my admin tools edit", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 || opts.manifestDir == "" {
-		return fmt.Errorf("usage: our admin tools edit <id> --manifest-dir DIR")
+		return fmt.Errorf("usage: my admin tools edit <id> --manifest-dir DIR")
 	}
 	result, err := a.adminToolsEdit(rest[0], opts)
 	if err != nil {
@@ -277,7 +277,7 @@ func (a app) runAdminToolsRemove(args []string) error {
 	var manifestDir string
 	var force bool
 	var jsonOut bool
-	fs := newFlagSet("our admin tools remove", a.stderr)
+	fs := newFlagSet("my admin tools remove", a.stderr)
 	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
 	fs.BoolVar(&force, "force", false, "allow dirty checkout")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON result")
@@ -286,7 +286,7 @@ func (a app) runAdminToolsRemove(args []string) error {
 		return err
 	}
 	if len(rest) != 1 || manifestDir == "" {
-		return fmt.Errorf("usage: our admin tools remove <id> --manifest-dir DIR")
+		return fmt.Errorf("usage: my admin tools remove <id> --manifest-dir DIR")
 	}
 	result, err := a.adminToolsRemove(rest[0], manifestDir, force)
 	if err != nil {
@@ -524,7 +524,7 @@ func (a app) runAdminSkillsAdd(args []string) error {
 	var removeOriginal bool
 	var force bool
 	var jsonOut bool
-	fs := newFlagSet("our admin skills add", a.stderr)
+	fs := newFlagSet("my admin skills add", a.stderr)
 	fs.StringVar(&id, "id", "", "canonical skill id namespace:name")
 	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
 	fs.StringVar(&installSlug, "install-slug", "", "portable harness install slug")
@@ -541,7 +541,7 @@ func (a app) runAdminSkillsAdd(args []string) error {
 		return err
 	}
 	if len(rest) != 1 || id == "" || manifestDir == "" {
-		return fmt.Errorf("usage: our admin skills add <skill-dir> --id namespace:name --manifest-dir DIR")
+		return fmt.Errorf("usage: my admin skills add <skill-dir> --id namespace:name --manifest-dir DIR")
 	}
 	if keepOriginal && removeOriginal {
 		return fmt.Errorf("--keep-original and --remove-original are mutually exclusive")
@@ -678,7 +678,7 @@ func (a app) runAdminSkillsRemove(args []string) error {
 	var pruneOrphans bool
 	var force bool
 	var jsonOut bool
-	fs := newFlagSet("our admin skills remove", a.stderr)
+	fs := newFlagSet("my admin skills remove", a.stderr)
 	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
 	fs.BoolVar(&deleteSource, "delete-source", false, "delete the static manifest source directory")
 	fs.BoolVar(&pruneRelated, "prune-related", false, "remove product catalog related_skills references")
@@ -690,7 +690,7 @@ func (a app) runAdminSkillsRemove(args []string) error {
 		return err
 	}
 	if len(rest) != 1 || manifestDir == "" {
-		return fmt.Errorf("usage: our admin skills remove <id|slug> --manifest-dir DIR")
+		return fmt.Errorf("usage: my admin skills remove <id|slug> --manifest-dir DIR")
 	}
 	result, err := a.adminSkillsRemove(rest[0], manifestDir, deleteSource, pruneRelated, pruneOrphans, force)
 	if err != nil {

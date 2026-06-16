@@ -2,25 +2,25 @@
 
 ## Project Structure & Module Organization
 
-This repository builds the public `our` CLI. The executable entrypoint is
-`cmd/our/main.go`; implementation lives in `internal/<package>/` with tests
+This repository builds the public `my` CLI. The executable entrypoint is
+`cmd/my/main.go`; implementation lives in `internal/<package>/` with tests
 co-located as `*_test.go`. Bundled agent guidance and the public self-skill live
-in `internal/guidance/baseline/` and `skills/our/`. Public fixture data is under
+in `internal/guidance/baseline/` and `skills/my/`. Public fixture data is under
 `examples/acme-workspace/`. Long-form design notes and plans are in `docs/`.
 The documentation site is a VitePress project in `site/`, with static assets in
 `site/public/`.
 
 ## Build, Test, and Development Commands
 
-- `go run ./cmd/our --help`: run the local CLI without installing it.
-- `go build ./cmd/our`: build the CLI binary for the current platform.
+- `go run ./cmd/my --help`: run the local CLI without installing it.
+- `go build ./cmd/my`: build the CLI binary for the current platform.
 - `go test ./...`: run the full Go test suite.
 - `go vet ./...`: run Go static checks.
 - `git diff --check`: catch whitespace errors before commit.
 - `cd site && npm ci`: install the docs-site dependencies from the lockfile.
 - `cd site && npm run dev`: serve the docs site locally.
 - `cd site && npm run build`: produce the static docs build.
-- Install a dev binary: `go build -ldflags "-X github.com/fluxinc/our-ai/internal/version.Version=<X.Y.Z>" -o ~/.local/bin/our ./cmd/our` (unstamped builds report `dev`; `our update` can hit anonymous GitHub rate limits).
+- Install a dev binary: `go build -ldflags "-X github.com/fluxinc/my-cli/internal/version.Version=<X.Y.Z>" -o ~/.local/bin/my ./cmd/my` (unstamped builds report `dev`; `my update` can hit anonymous GitHub rate limits).
 
 ## Coding Style & Naming Conventions
 
@@ -43,7 +43,7 @@ local bare repos — never against real GitHub.
 
 ## Commit & Pull Request Guidelines
 
-History uses short, imperative commit subjects such as `Add bundled our
+History uses short, imperative commit subjects such as `Add bundled my
 self-skill and installation` or release subjects like `Release v0.4.0: ...`.
 Keep commits scoped, include tests or verification in the PR description, and
 link issues or plans when applicable. Add screenshots only for visible site/UI
@@ -56,7 +56,7 @@ Cut `vX.Y.Z` in one commit: stamp `## Unreleased` → `## X.Y.Z - YYYY-MM-DD` in
 `site/.vitepress/config.mts`, commit `Release vX.Y.Z: ...`, `git tag vX.Y.Z`,
 then push `master` **and** the tag. Pushing a `v*` tag runs `release.yml`
 (goreleaser → platform tarballs + GitHub release); pushing `master` under
-`site/**` runs `deploy-site.yml` (GitHub Pages at https://fluxinc.github.io/our-ai/).
+`site/**` runs `deploy-site.yml` (GitHub Pages at https://my-cli.com/).
 The binary version comes from the git tag via goreleaser ldflags
 (`internal/version.Version`); the `VERSION` file is vestigial — do not bump it.
 This repo is plain Git, not a Gnit workspace — `gnit`/`.gnit` do not apply here.

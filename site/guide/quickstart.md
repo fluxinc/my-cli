@@ -3,7 +3,7 @@
 Install the latest release:
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/fluxinc/our-ai/master/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/fluxinc/my-cli/master/install.sh | sh
 ```
 
 If the install directory is not on your path, add it:
@@ -15,14 +15,14 @@ export PATH="$HOME/.local/bin:$PATH"
 Verify the binary:
 
 ```sh
-our version
-our doctor
+my version
+my doctor
 ```
 
-`our doctor` reports manifest validity, generated guidance/MCP drift, legacy
+`my doctor` reports manifest validity, generated guidance/MCP drift, legacy
 global org-skill drift,
 service materialization health, local Git freshness, and the last
-`.our/last-sync.json` audit when an umbrella is present. Add `--no-fetch` for
+`.my-cli/last-sync.json` audit when an umbrella is present. Add `--no-fetch` for
 an offline freshness check, or `--fix` to fast-forward clean stale
 manifest/content checkouts and reconcile derived guidance, MCP config, and
 legacy global org-skill cleanup.
@@ -30,14 +30,14 @@ legacy global org-skill cleanup.
 ## Create an organization
 
 ```sh
-our init acme --name "Acme"
+my init acme --name "Acme"
 ```
 
-`our init` creates two local repositories and registers the organization:
+`my init` creates two local repositories and registers the organization:
 
 - a **private manifest repo** — the control plane (manifest, catalog, skills,
   agent guidance), kept at the registry path out of the workspace; admins
-  change it through `our admin` commands;
+  change it through `my admin` commands;
 - a **content repo** at `~/acme/workspace` — the actual workspace content:
   meetings, support records, fleet records, decisions, policy, people.
 
@@ -45,7 +45,7 @@ Everything works offline immediately and reports `local-only` until you
 publish. When you're ready to share:
 
 ```sh
-our publish
+my publish
 ```
 
 One command creates the two private GitHub repos (`acme-manifest` and
@@ -57,73 +57,73 @@ admins while the whole team pushes content.
 If your team already has a manifest repo, register that instead:
 
 ```sh
-our manifests add acme <git-url>
-our manifests sync acme
+my manifests add acme <git-url>
+my manifests sync acme
 ```
 
 Private GitHub manifests use your normal Git credentials. For HTTPS private
 repos, make sure `gh auth login` (or your usual Git credentials) works before
-running `our manifests sync` against a private repo.
+running `my manifests sync` against a private repo.
 
 ## Onboard the workspace
 
 ```sh
-our onboard
-our setup
-# our setup --manifest acme    # only needed when several manifests are registered
-# our setup --role operator    # optional: select role-specific guidance/services
-# our setup --interactive      # prompt for manifest/role choices
+my onboard
+my setup
+# my setup --manifest acme    # only needed when several manifests are registered
+# my setup --role operator    # optional: select role-specific guidance/services
+# my setup --interactive      # prompt for manifest/role choices
 ```
 
-`our onboard` is the human walkthrough. It explains the model and offers to run
-`our setup --interactive`; if no manifest is registered yet, it prints the
-`our manifests add <name> <git-url>` next step and leaves the tour unmarked.
-Plain `our setup` stays deterministic and scriptable. With one registered
+`my onboard` is the human walkthrough. It explains the model and offers to run
+`my setup --interactive`; if no manifest is registered yet, it prints the
+`my manifests add <name> <git-url>` next step and leaves the tour unmarked.
+Plain `my setup` stays deterministic and scriptable. With one registered
 manifest, every command defaults to it. Setup is safe to re-run: it validates
 the manifest, installs the bundled self-skill, creates the umbrella, writes
 generated guidance, and syncs default content. Organization skills are composed
-by `our ai` into the launch root. Opted-in catalog repo clones live under
+by `my ai` into the launch root. Opted-in catalog repo clones live under
 `repos/<id>` in the umbrella.
 
 ## Start an agent
 
 ```sh
-our ai codex
+my ai codex
 ```
 
-That's it: `our ai` verifies generated guidance and launches the harness from
-the base umbrella. For isolated content work, use `our ai --new-session codex`
-or create one with `our work start`; when the work is done,
-`our work finish --land | --publish | --discard` is how it leaves the session.
+That's it: `my ai` verifies generated guidance and launches the harness from
+the base umbrella. For isolated content work, use `my ai --new-session codex`
+or create one with `my work start`; when the work is done,
+`my work finish --land | --publish | --discard` is how it leaves the session.
 Pass `--session <id>` to resume an active session, `--no-session` to ignore a
 current session for base inspection or admin, `--print` to see the command
 without executing it, or `--setup` to reconcile the umbrella first. Use
-`our work status` or `our work list` to inspect active sessions; `our doctor`
+`my work status` or `my work list` to inspect active sessions; `my doctor`
 also reports session health.
 
-At startup, `our root`, `our ai`, and `our setup` print stderr-only `notice`
+At startup, `my root`, `my ai`, and `my setup` print stderr-only `notice`
 lines for checkouts auto-refresh cannot converge (dirty, ahead, behind, or
 diverged), each naming the repository and the command to run, such as
-`our sync` or `our doctor`. Stdout stays clean, so `cd "$(our root)"` is safe.
+`my sync` or `my doctor`. Stdout stays clean, so `cd "$(my root)"` is safe.
 
-## Update our
+## Update my
 
 Use the self-update command:
 
 ```sh
-our update --check
-our update
+my update --check
+my update
 ```
 
-`our update` downloads the latest GitHub release, verifies the checksum, and
+`my update` downloads the latest GitHub release, verifies the checksum, and
 replaces the local binary. It refuses package-managed or non-writable installs
 and prints the right follow-up command.
 
 Re-running the installer still works as a fallback:
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/fluxinc/our-ai/master/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/fluxinc/my-cli/master/install.sh | sh
 ```
 
-The installer also refreshes the bundled `our` self-skill in existing harnesses
+The installer also refreshes the bundled `my` self-skill in existing harnesses
 so agents keep current CLI guidance.

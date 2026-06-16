@@ -9,10 +9,10 @@ private fluxinc manifest migration.
 The catalog's **product** concept is conflated with **git repo checkouts**:
 
 - `catalog/products.json` entries carry a `git_url`, and opting in
-  (`our mounts add product:<id>`) clones that URL under `repos/<id>`.
+  (`my mounts add product:<id>`) clones that URL under `repos/<id>`.
 - Umbrella state tracks `selected_products`; sync gives those checkouts the
   `product` role; the sync scope `repos` is internally aliased to `products`.
-- `our root --product` and `our ai --no-session --product` treat a product id
+- `my root --product` and `my ai --no-session --product` treat a product id
   as a directory.
 
 The operator's objection: **repos aren't all products, and not all products
@@ -29,7 +29,7 @@ Two concepts, two inventories:
 - **Product (catalog, business plane).** `catalog/products.json` keeps
   id, name, description, purpose, related_skills. **`git_url` is removed.**
   A product may declare `repos: ["repo-id", ...]` linking to the repos that
-  implement it (zero or many). Records (`our support/meetings ... --product`)
+  implement it (zero or many). Records (`my support/meetings ... --product`)
   keep referencing products; nothing changes there.
 - **Repo (catalog, code plane).** New `catalog/repos.json`: an inventory of
   the organization's repositories — per entry: `id`, `git_url`,
@@ -49,21 +49,21 @@ removed from the valid kinds (pre-alpha; no compatibility shims).
 ### CLI surface
 
 ```
-our repos list [--json]            # inventory + which are cloned locally
-our repos add <id>                 # opt in: clone under repos/<id>
-our repos remove <id>              # drop the local clone selection
-our root --repo <id>               # print repos/<id>
-our ai --repo <id>                 # launch from a repo checkout
-our sync --scope repos             # real scope (internal 'products' alias dies)
-our products list                  # pure catalog: business entities + linked repos
+my repos list [--json]            # inventory + which are cloned locally
+my repos add <id>                 # opt in: clone under repos/<id>
+my repos remove <id>              # drop the local clone selection
+my root --repo <id>               # print repos/<id>
+my ai --repo <id>                 # launch from a repo checkout
+my sync --scope repos             # real scope (internal 'products' alias dies)
+my products list                  # pure catalog: business entities + linked repos
 ```
 
-Removed: `our mounts add/remove product:<id>`, `--product` on `root`/`ai`
+Removed: `my mounts add/remove product:<id>`, `--product` on `root`/`ai`
 (records keep `--product`). Sync entry role `product` becomes `repo`.
 
 ### State and migration
 
-- `selected_products` in `.our/state.json` becomes `selected_repos`;
+- `selected_products` in `.my-cli/state.json` becomes `selected_repos`;
   `LoadState` migrates the key silently. Mount-status entries with kind
   `product` migrate to `repo` the same way.
 - Clones already live under `repos/<id>`; no filesystem moves. The legacy
@@ -79,7 +79,7 @@ Removed: `our mounts add/remove product:<id>`, `--product` on `root`/`ai`
    `git_url` gains `repos[]`, validation errors with remediation, example
    fixtures.
 2. **B — umbrella + plumbing:** `selected_repos` state with migration,
-   `RepoPath` (rename of `ProductPath`), `our repos` noun, sync role/scope
+   `RepoPath` (rename of `ProductPath`), `my repos` noun, sync role/scope
    rename, removal of `mounts add product:`.
 3. **C — surfaces:** `--repo` on `root`/`ai`, guidance baseline, bundled
    skill, site docs, README, examples.
@@ -88,14 +88,14 @@ Removed: `our mounts add/remove product:<id>`, `--product` on `root`/`ai`
 
 ## Resolved questions
 
-- `our repos add <id>` clones immediately and is idempotent: an existing
+- `my repos add <id>` clones immediately and is idempotent: an existing
   clone of the same remote is adopted and selected; a mismatched remote or a
   non-git directory holds with explicit remediation.
 - `repos.json` supports a minimal `default: true` bool (no mode enum) for
   setup-time cloning.
-- `our root`/`our ai --product` get one release of a precise structured
+- `my root`/`my ai --product` get one release of a precise structured
   error pointing at `--repo`; no silent alias. Records keep `--product`.
 - Release sequencing: the fluxinc private manifest must be migrated before
   installing a released binary that hard-rejects product `git_url`.
-- Future: sessions may include repo worktrees (`our ai --repo` inside a
+- Future: sessions may include repo worktrees (`my ai --repo` inside a
   session) — out of scope here, tracked by the execution-plane plan.

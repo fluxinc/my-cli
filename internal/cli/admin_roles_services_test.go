@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 func TestAdminRolesAddEditRemove(t *testing.T) {
@@ -15,7 +15,7 @@ func TestAdminRolesAddEditRemove(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "admin", "roles", "add", "operator",
+		"my", "admin", "roles", "add", "operator",
 		"--manifest-dir", manifestDir,
 		"--purpose", "Default operator",
 		"--guidance", "guidance/operator.md",
@@ -44,7 +44,7 @@ func TestAdminRolesAddEditRemove(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	if err := a.run([]string{
-		"our", "admin", "roles", "edit", "operator",
+		"my", "admin", "roles", "edit", "operator",
 		"--manifest-dir", manifestDir,
 		"--purpose", "Updated operator",
 		"--clear-skills",
@@ -66,7 +66,7 @@ func TestAdminRolesAddEditRemove(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	if err := a.run([]string{
-		"our", "admin", "roles", "remove", "operator",
+		"my", "admin", "roles", "remove", "operator",
 		"--manifest-dir", manifestDir,
 	}); err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestAdminRolesRejectsUnknownSelections(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	err := a.run([]string{
-		"our", "admin", "roles", "add", "operator",
+		"my", "admin", "roles", "add", "operator",
 		"--manifest-dir", manifestDir,
 		"--purpose", "Default operator",
 		"--mount", "missing-mount",
@@ -104,7 +104,7 @@ func TestAdminServicesAddEditAndRejectsLiteralConnectionSecrets(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "admin", "services", "add", "docs-search",
+		"my", "admin", "services", "add", "docs-search",
 		"--manifest-dir", manifestDir,
 		"--kind", "mcp",
 		"--purpose", "Search docs",
@@ -132,7 +132,7 @@ func TestAdminServicesAddEditAndRejectsLiteralConnectionSecrets(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	if err := a.run([]string{
-		"our", "admin", "services", "edit", "docs-search",
+		"my", "admin", "services", "edit", "docs-search",
 		"--manifest-dir", manifestDir,
 		"--purpose", "Search all docs",
 		"--connection-env", "DOCS_TOKEN=${DOCS_TOKEN_V2}",
@@ -148,7 +148,7 @@ func TestAdminServicesAddEditAndRejectsLiteralConnectionSecrets(t *testing.T) {
 	}
 
 	err = a.run([]string{
-		"our", "admin", "services", "add", "bad-service",
+		"my", "admin", "services", "add", "bad-service",
 		"--manifest-dir", manifestDir,
 		"--kind", "mcp",
 		"--purpose", "Bad",
@@ -161,7 +161,7 @@ func TestAdminServicesAddEditAndRejectsLiteralConnectionSecrets(t *testing.T) {
 	}
 
 	err = a.run([]string{
-		"our", "admin", "services", "add", "bad-env-ref",
+		"my", "admin", "services", "add", "bad-env-ref",
 		"--manifest-dir", manifestDir,
 		"--kind", "mcp",
 		"--purpose", "Bad env ref",
@@ -174,7 +174,7 @@ func TestAdminServicesAddEditAndRejectsLiteralConnectionSecrets(t *testing.T) {
 	}
 
 	err = a.run([]string{
-		"our", "admin", "services", "add", "bad-header",
+		"my", "admin", "services", "add", "bad-header",
 		"--manifest-dir", manifestDir,
 		"--kind", "mcp",
 		"--purpose", "Bad header",
@@ -201,7 +201,7 @@ func TestAdminServicesRemovePrunesRoles(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	err := a.run([]string{
-		"our", "admin", "services", "remove", "docs-search",
+		"my", "admin", "services", "remove", "docs-search",
 		"--manifest-dir", manifestDir,
 	})
 	if err == nil || !strings.Contains(err.Error(), "--prune-roles") {
@@ -209,7 +209,7 @@ func TestAdminServicesRemovePrunesRoles(t *testing.T) {
 	}
 
 	if err := a.run([]string{
-		"our", "admin", "services", "remove", "docs-search",
+		"my", "admin", "services", "remove", "docs-search",
 		"--manifest-dir", manifestDir,
 		"--prune-roles",
 	}); err != nil {

@@ -3,16 +3,16 @@ package harness
 import "testing"
 
 func TestConfigDirAndSkillTargetPath(t *testing.T) {
-	home := "/tmp/our-home"
+	home := "/tmp/my-home"
 	tests := []struct {
 		harness Harness
 		config  string
 		target  string
 	}{
-		{ClaudeCode, "/tmp/our-home/.claude", "/tmp/our-home/.claude/skills/demo"},
-		{Codex, "/tmp/our-home/.codex", "/tmp/our-home/.codex/skills/demo"},
-		{OpenCode, "/tmp/our-home/.config/opencode", "/tmp/our-home/.config/opencode/skills/demo"},
-		{Antigravity, "/tmp/our-home/.agents", "/tmp/our-home/.agents/skills/demo"},
+		{ClaudeCode, "/tmp/my-home/.claude", "/tmp/my-home/.claude/skills/demo"},
+		{Codex, "/tmp/my-home/.codex", "/tmp/my-home/.codex/skills/demo"},
+		{OpenCode, "/tmp/my-home/.config/opencode", "/tmp/my-home/.config/opencode/skills/demo"},
+		{Antigravity, "/tmp/my-home/.agents", "/tmp/my-home/.agents/skills/demo"},
 	}
 
 	for _, tt := range tests {

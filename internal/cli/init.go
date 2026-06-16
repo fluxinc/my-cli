@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
-	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 type initOptions struct {
@@ -39,12 +39,12 @@ type initNextCommand struct {
 
 func (a app) runInit(args []string) error {
 	var opts initOptions
-	fs := newFlagSet("our init", a.stderr)
+	fs := newFlagSet("my init", a.stderr)
 	fs.StringVar(&opts.orgName, "name", "", "organization display name")
 	fs.StringVar(&opts.repoPath, "path", "", "content repository path")
 	fs.StringVar(&opts.umbrellaPath, "umbrella", "", "recommended umbrella path")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
-	fs.BoolVar(&opts.setup, "setup", false, "run our setup after creating and syncing the manifest")
+	fs.BoolVar(&opts.setup, "setup", false, "run my setup after creating and syncing the manifest")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	fs.Usage = func() {
 		a.printInitUsage()
@@ -60,7 +60,7 @@ func (a app) runInit(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our init <org-id>")
+		return fmt.Errorf("usage: my init <org-id>")
 	}
 	if opts.setup && opts.jsonOut {
 		return fmt.Errorf("--setup and --json are not supported together")
@@ -88,17 +88,17 @@ func (a app) runInit(args []string) error {
 }
 
 func (a app) printInitUsage() {
-	fmt.Fprintln(a.stderr, `Usage of our init:
-  our init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
+	fmt.Fprintln(a.stderr, `Usage of my init:
+  my init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
 
 Creates two local repositories and registers the organization: a private
 manifest repository (the control plane: manifest, catalog, skills) and a
 content repository mounted in the umbrella (the workspace handbook). Both are
-local-only until our publish creates their remotes.
+local-only until my publish creates their remotes.
 
 Examples:
-  our init acme --name "Acme"
-  our init acme --path ~/acme/handbook
+  my init acme --name "Acme"
+  my init acme --path ~/acme/handbook
 
 Options:`)
 }
@@ -185,12 +185,12 @@ func (a app) createInitScaffold(opts initOptions) (initResult, error) {
 	return result, nil
 }
 
-// initMountID names the content mount our init declares: the org workspace,
+// initMountID names the content mount my init declares: the org workspace,
 // "the actual content" — distinct from the private manifest (control plane).
 // The content repo lives at the umbrella mount path for this id and is
 // published as <org>-workspace.
 
-// initMountID names the content mount our init declares: the org workspace,
+// initMountID names the content mount my init declares: the org workspace,
 // "the actual content" — distinct from the private manifest (control plane).
 // The content repo lives at the umbrella mount path for this id and is
 // published as <org>-workspace.
@@ -228,7 +228,7 @@ func initManifestDocument(orgID, orgName, umbrellaPath, contentGitURL string) ma
 			{
 				ID:   initMountID,
 				Kind: "handbook",
-				// Local until our publish rewrites it to the hosted remote.
+				// Local until my publish rewrites it to the hosted remote.
 				GitURL: contentGitURL,
 				Mode:   "default",
 			},
@@ -281,9 +281,9 @@ func writeInitContentScaffold(root, orgID, orgName string) error {
 	files := map[string]string{
 		"README.md":                             initContentREADME(orgName),
 		filepath.Join("customers", "README.md"): initSectionREADME("Customers", "Keep customer identity records as one markdown file per customer."),
-		filepath.Join("meetings", "README.md"):  initSectionREADME("Meetings", "Record meeting notes with our meetings add, then publish with our sync."),
-		filepath.Join("support", "README.md"):   initSectionREADME("Support", "Record anonymized problem-to-solution notes with our support add."),
-		filepath.Join("fleet", "README.md"):     initSectionREADME("Fleet", "Track deployed instances or devices with our fleet add and our fleet set."),
+		filepath.Join("meetings", "README.md"):  initSectionREADME("Meetings", "Record meeting notes with my meetings add, then publish with my sync."),
+		filepath.Join("support", "README.md"):   initSectionREADME("Support", "Record anonymized problem-to-solution notes with my support add."),
+		filepath.Join("fleet", "README.md"):     initSectionREADME("Fleet", "Track deployed instances or devices with my fleet add and my fleet set."),
 		filepath.Join("decisions", "README.md"): initSectionREADME("Decisions", "Keep durable decisions and their context here."),
 		filepath.Join("projects", "README.md"):  initSectionREADME("Projects", "Keep project notes that agents should be able to read."),
 		filepath.Join("policy", "README.md"):    initSectionREADME("Policy", "Keep operating policies and rules of engagement here."),
@@ -305,7 +305,7 @@ func writeInitFile(path, content string) error {
 }
 
 func initManifestREADME(orgID, orgName string) string {
-	return fmt.Sprintf(`# %s Our AI Manifest
+	return fmt.Sprintf(`# %s My AI Manifest
 
 This private repository is the %s organization manifest: the control plane
 that defines mounts, skills, the product/repo catalog, and agent guidance. Day-to-day
@@ -317,15 +317,15 @@ here. Restrict write access to workspace administrators.
 Register this repository, sync it, and onboard:
 
 `+"```sh"+`
-our manifests add %s <git-url-of-this-repository>
-our manifests sync %s
-our setup
-our ai codex
+my manifests add %s <git-url-of-this-repository>
+my manifests sync %s
+my setup
+my ai codex
 `+"```"+`
 
 ## Publish
 
-Run `+"`our publish`"+` from any directory to create the private remotes for
+Run `+"`my publish`"+` from any directory to create the private remotes for
 this manifest and its content repositories, rewrite local mount URLs, and
 push everything. Do not push this repository while mounts still reference
 local paths.
@@ -337,8 +337,8 @@ func initContentREADME(orgName string) string {
 
 Workspace content for %s: customer identity records, meetings, support
 records, fleet records, decisions, projects, policy, and people notes. Record
-entries with the our CLI (our meetings add, our support add, our fleet add)
-and publish with our sync.
+entries with my commands (my meetings add, my support add, my fleet add)
+and publish with my sync.
 `, orgName, orgName)
 }
 
@@ -359,10 +359,10 @@ description: Use the %s handbook for customer records, meetings, support records
 
 # %s Handbook
 
-Use this skill when work depends on %s-specific context from the Our AI
+Use this skill when work depends on %s-specific context from the My AI
 workspace. Start with the generated root guidance, then inspect the relevant
-handbook directories or use the `+"`our meetings`"+`, `+"`our support`"+`, and
-`+"`our fleet`"+` commands.
+handbook directories or use the `+"`my meetings`"+`, `+"`my support`"+`, and
+`+"`my fleet`"+` commands.
 `, orgID, orgName, orgName, orgName)
 }
 
@@ -377,11 +377,11 @@ func gitInitCommit(root string) error {
 	if err := runGit(root, "add", "."); err != nil {
 		return err
 	}
-	if err := runGit(root, "commit", "--quiet", "-m", "Initial Our AI workspace"); err == nil {
+	if err := runGit(root, "commit", "--quiet", "-m", "Initial My AI workspace"); err == nil {
 		return nil
 	}
 	// No usable git identity configured; commit with a neutral fallback.
-	return runGit(root, "-c", "user.name=Our AI", "-c", "user.email=our-ai@example.invalid", "commit", "--quiet", "-m", "Initial Our AI workspace")
+	return runGit(root, "-c", "user.name=My AI", "-c", "user.email=my-cli@example.invalid", "commit", "--quiet", "-m", "Initial My AI workspace")
 }
 
 func runGit(root string, args ...string) error {
@@ -456,14 +456,14 @@ func (a app) runPublish(args []string) error {
 	var manifestName string
 	var printOnly bool
 	var jsonOut bool
-	fs := newFlagSet("our publish", a.stderr)
+	fs := newFlagSet("my publish", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "publish one registered manifest")
 	fs.BoolVar(&printOnly, "print", false, "print the planned actions without creating or pushing anything")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
 	fs.Usage = func() {
-		fmt.Fprintln(a.stderr, `Usage of our publish:
-  our publish [--manifest NAME] [--home DIR] [--print] [--json]
+		fmt.Fprintln(a.stderr, `Usage of my publish:
+  my publish [--manifest NAME] [--home DIR] [--print] [--json]
 
 Publishes the organization: creates private remotes for content repositories
 and the manifest repository when they have none, rewrites local mount URLs to
@@ -555,7 +555,7 @@ func (a app) publishOrg(home string, doc registeredDoc, printOnly bool) (publish
 		}
 		// Commit only the URL rewrite so unrelated admin edits stay local.
 		if err := runGit(doc.ref.LocalPath, "commit", "--quiet", "-m", "Point mounts at published repositories", "--", "manifest.json"); err != nil {
-			if identityErr := runGit(doc.ref.LocalPath, "-c", "user.name=Our AI", "-c", "user.email=our-ai@example.invalid", "commit", "--quiet", "-m", "Point mounts at published repositories", "--", "manifest.json"); identityErr != nil {
+			if identityErr := runGit(doc.ref.LocalPath, "-c", "user.name=My AI", "-c", "user.email=my-cli@example.invalid", "commit", "--quiet", "-m", "Point mounts at published repositories", "--", "manifest.json"); identityErr != nil {
 				return result, identityErr
 			}
 		}
@@ -575,7 +575,7 @@ func (a app) publishOrg(home string, doc registeredDoc, printOnly bool) (publish
 				return result, err
 			}
 		}
-		result.TeammateCommand = "our manifests add " + doc.ref.Name + " " + manifestURL
+		result.TeammateCommand = "my manifests add " + doc.ref.Name + " " + manifestURL
 	}
 	return result, nil
 }
@@ -642,10 +642,10 @@ func initNextCommands(home, orgID string) []initNextCommand {
 		manifestFlag = " --manifest " + shellQuote(orgID)
 	}
 	return []initNextCommand{
-		{Action: "setup", Command: "our setup" + manifestFlag},
-		{Action: "launch", Command: "our ai" + manifestFlag + " claude"},
-		{Action: "launch", Command: "our ai" + manifestFlag + " codex"},
-		{Action: "publish", Command: "our publish" + manifestFlag},
+		{Action: "setup", Command: "my setup" + manifestFlag},
+		{Action: "launch", Command: "my ai" + manifestFlag + " claude"},
+		{Action: "launch", Command: "my ai" + manifestFlag + " codex"},
+		{Action: "publish", Command: "my publish" + manifestFlag},
 	}
 }
 

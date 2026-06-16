@@ -1,6 +1,6 @@
 # Built binaries
-/our
-/our-cli
+/my
+/my-cli
 /dist/
 
 # Go

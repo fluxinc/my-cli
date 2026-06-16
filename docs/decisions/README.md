@@ -16,4 +16,4 @@ conflict; the successor is named).
 
 | ADR | Status | Notes |
 |---|---|---|
-| [0001-launch-scoped-skill-composition](0001-launch-scoped-skill-composition.md) | accepted | `our ai` composes a per-launch skill **profile** as disposable derived state in the launch root; no user-level org installs for launch-root-capable harnesses; `.agents/skills` is the cross-harness center with per-harness mirrors only where a launch-root seam is proven. Skill scope != context scope. Implementation plan: [2026-06-14-launch-scoped-skill-composition](../plans/2026-06-14-launch-scoped-skill-composition.md). |
+| [0001-launch-scoped-skill-composition](0001-launch-scoped-skill-composition.md) | accepted | `my ai` composes a per-launch skill **profile** as disposable derived state in the launch root; no user-level org installs for launch-root-capable harnesses; `.agents/skills` is the cross-harness center with per-harness mirrors only where a launch-root seam is proven. Skill scope != context scope. Implementation plan: [2026-06-14-launch-scoped-skill-composition](../plans/2026-06-14-launch-scoped-skill-composition.md). |

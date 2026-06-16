@@ -8,23 +8,23 @@ RBAC-oriented draft.
 ## Problem
 
 Customers live in the manifest (`catalog/customers.json`, admin-writable via
-`our admin customers`). That conflates **operational data** (the customers we
+`my admin customers`). That conflates **operational data** (the customers we
 work with) with **control-plane configuration** (what the org loads and
 calls), and forces an admin bottleneck on ordinary business records. The
-deeper smell: `our` has only two write audiences (admin manifest repo vs org
+deeper smell: `my` has only two write audiences (admin manifest repo vs org
 workspace repo), so "who can change a customer" is welded to "which repo
 holds the file."
 
 An earlier draft tried to fix this by adding Principals/Grants — an authority
-layer inside `our`. That direction is out of scope by design: **`our` is a
+layer inside `my`. That direction is out of scope by design: **`my` is a
 light manifest/loader CLI, not an authorization gateway.** Modeling rights in
-`our` creates a second
+`my` creates a second
 rights system that can disagree with the real one (GitHub, a CRM, clawdapus).
 Split-brain authority is worse than none.
 
-## What `our` is (the altitude)
+## What `my` is (the altitude)
 
-`our` loads skills, loads MCPs, mounts files, installs company-wide CLI
+`my` loads skills, loads MCPs, mounts files, installs company-wide CLI
 dependencies, and describes things to call — for both local harnesses and the
 claw pods it compiles. It declares **what to mount and call**, never **who
 may**. Access control belongs to the backend:
@@ -33,15 +33,15 @@ may**. Access control belongs to the backend:
   permissions; `gnit` only **composes** the per-domain repos into the
   umbrella (ordered publish/pins), it is not an access-control layer.
 - API/MCP-backed domain → the service's own token/scope/RBAC enforces.
-- `our` may carry a credential **reference** (`op://`, `env://`, `auth_ref`)
-  — a description of how to authenticate a call, never an `our`-modeled right.
-  `our` does not carry "grants": the vestigial `Service.Grant` field is
+- `my` may carry a credential **reference** (`op://`, `env://`, `auth_ref`)
+  — a description of how to authenticate a call, never an `my`-modeled right.
+  `my` does not carry "grants": the vestigial `Service.Grant` field is
   removed in this model (if a backend like clawdapus needs opaque passthrough,
   it is named `descriptor_options` and is explicitly not authority).
 
 Granularity is a backend concern. The small-business answer: split the data
 plane into per-domain repos so the Git host's per-repo permissions supply the
-granularity, composed without submodules by `gnit`. `our` mounts what the
+granularity, composed without submodules by `gnit`. `my` mounts what the
 running identity can already reach; the backend rejects the rest.
 
 ## The model: three layers
@@ -51,19 +51,19 @@ running identity can already reach; the backend rejects the rest.
 Every business has the same nouns. They stay first-class commands and do not
 change when the backend changes. Two families, treated differently:
 
-- **Operational record domains** — `our customers`, `our meetings`,
-  `our support`, `our fleet` (deployments). These hold records that live in a
+- **Operational record domains** — `my customers`, `my meetings`,
+  `my support`, `my fleet` (deployments). These hold records that live in a
   backend and are the targets of the binding work below.
-- **Catalog inventory** — `our products`, `our repos`. These keep their
+- **Catalog inventory** — `my products`, `my repos`. These keep their
   existing catalog metadata + local-clone-selection semantics; they gain a
   binding only if a real need appears, not by default.
 
-`our customers list` works identically whether customers are markdown files in
+`my customers list` works identically whether customers are markdown files in
 a git mount or rows behind a CRM API.
 
 ### 2. Surfaces and data bindings — the pluggable backend
 
-Keep the two primitives `our` already has, unchanged:
+Keep the two primitives `my` already has, unchanged:
 
 - **mounts** — git-backed content (gnit-composable). Maps to clawdapus
   `host://` / `volume://`.
@@ -89,7 +89,7 @@ The manifest holds only the binding plus the reach details already present on
 mounts/services (URL + `include_paths`, or endpoint + `describe_ref` +
 `auth_ref`). The binding value is an object rather than a bare string so future
 non-authority metadata can be added without a shape migration. Records and
-rights live in the backend, not in `our`.
+rights live in the backend, not in `my`.
 
 ### 3. Surface bundles — what a backend contributes
 
@@ -104,10 +104,10 @@ carry **guidance fragments** for its domain. Those norms render into
 (e.g. `## Domain Notes: customers`), **separate** from the top-level org
 `contract`.
 
-The top-level manifest `contract` list and `our contract list|add|remove` stay
+The top-level manifest `contract` list and `my contract list|add|remove` stay
 authoritative and untouched — domain notes render as their own attributed
 section, never merged silently into the binding org contract, so
-`our contract list` never misrepresents what it owns. This keeps the model close
+`my contract list` never misrepresents what it owns. This keeps the model close
 to clawdapus without adding redundant `skills`/`mcps`/`tools` arrays to mounts or
 services before the compile/materialization path needs them.
 
@@ -117,29 +117,29 @@ services before the compile/materialization path needs them.
 GuidancePaths`. Reframe it as a **loadout/profile**: which surfaces are active
 for a given harness or claw — nothing more. A role is *what is loaded*, never
 *what is permitted*; the Git host / the API still gate real access.
-`our setup --role` keeps working; only the framing tightens.
+`my setup --role` keeps working; only the framing tightens.
 
 ## Materialization is recursive (one model, both directions)
 
-`our` is used **by** the claws it compiles, so the surface model drives both
+`my` is used **by** the claws it compiles, so the surface model drives both
 directions from one source:
 
-- **Local harness** (`our setup` / `our ai`): active surfaces → mounts checked
+- **Local harness** (`my setup` / `my ai`): active surfaces → mounts checked
   out + `.mcp.json` from surface MCPs + tools installed + `AGENTS.md`
   (baseline + skills + org contract + per-surface domain notes).
-- **Claw pod** (`our compile`, the Mode B slice in
+- **Claw pod** (`my compile`, the Mode B slice in
   [execution plane](2026-06-10-execution-plane.md)): active surfaces → pod
   `host://` / `service://` + descriptors + skills + contract → a per-agent
   context dir mirroring clawdapus `/claw/context/<id>/`.
 
-In-pod, `our customers` reads the same materialized bindings.
-`our compile` and clawdapus's context materialization are the same act
+In-pod, `my customers` reads the same materialized bindings.
+`my compile` and clawdapus's context materialization are the same act
 from two angles.
 
 ## The original worry, reconciled without RBAC
 
 "Employees can delete customers/meetings" splits into two controls, neither of
-which is authority inside `our`:
+which is authority inside `my`:
 
 - **Hard:** make `customers` its own git repo with restricted write at the Git
   host. Backend-enforced; coarse but real today. `gnit` composes that repo
@@ -155,11 +155,11 @@ a `service` and the CRM's RBAC takes over — zero change to commands or model.
 ## Implementation slices (conservative; near-term is mostly subtraction)
 
 **Slice 1 — Customers leave the manifest (subtractive, ships first).**
-- Remove `Customer` from the manifest catalog; delete `our admin customers
+- Remove `Customer` from the manifest catalog; delete `my admin customers
   add|edit`; drop `catalog/customers.json` as a canonical store and
   `LoadCustomers` from manifest refs.
-- `our customers` sources records from a mount (`customers/*.md`), identical
-  to `our meetings`. The Git host's per-repo perms supply granularity; `gnit`
+- `my customers` sources records from a mount (`customers/*.md`), identical
+  to `my meetings`. The Git host's per-repo perms supply granularity; `gnit`
   composes.
 - The private fluxinc manifest moves its customer rows into a `customers`
   workspace domain in the same step (private repo, not here).
@@ -174,28 +174,28 @@ a `service` and the CRM's RBAC takes over — zero change to commands or model.
   clawdapus mapping (mount ↔ host/volume, service ↔ service+descriptor).
 - Remove the vestigial `Service.Grant` field. If a backend passthrough is ever
   needed, it must be named `descriptor_options` and explicitly non-authority.
-  `our` carries no grants.
+  `my` carries no grants.
 
 **Slice 3 — Bound-surface domain guidance fragments.**
 - A data binding may carry `guidance` fragments for the surface that backs that
   domain. Render those fragments into labeled, source-attributed `AGENTS.md`
-  sections; leave the top-level org `contract` and `our contract` verbs
+  sections; leave the top-level org `contract` and `my contract` verbs
   untouched.
 
 **Slice 4 — Service-backed domains (future; YAGNI until a backend exists).**
 - A binding may target a `service` whose descriptor (CLI / MCP / HTTP, with a
-  stable declared shape) `our` invokes; the backend enforces and implements.
+  stable declared shape) `my` invokes; the backend enforces and implements.
   No provider-framework abstraction. Build when a real API exists — flux-store
   today exposes only a narrow HMAC activation endpoint, so order/customer
   access needs a purpose-built broker, not an admin session.
 
 **Slice 5 — Compile (the recursion; tracked under Mode B).**
-- `our compile` consumes active surfaces → claw pod + context dir.
+- `my compile` consumes active surfaces → claw pod + context dir.
   Detailed in the execution-plane plan.
 
 ## Non-goals
 
-- No principals, grants, capabilities, or any authority/RBAC model in `our`;
+- No principals, grants, capabilities, or any authority/RBAC model in `my`;
   no `grant` field carrying authority.
 - No record storage in the manifest; it holds bindings + descriptors, not
   data.

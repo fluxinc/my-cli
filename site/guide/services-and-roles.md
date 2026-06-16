@@ -6,12 +6,12 @@ inspected with read-only verbs, and materialized locally as `.mcp.json` —
 never the other way around.
 
 ```sh
-our services list [--manifest NAME] [--json]
-our services get <id> [--manifest NAME] [--json]
-our roles list [--manifest NAME] [--json]
-our roles get <id> [--manifest NAME] [--json]
-our setup --role <id>
-our compile --role <id> [--manifest NAME] [--home DIR]
+my services list [--manifest NAME] [--json]
+my services get <id> [--manifest NAME] [--json]
+my roles list [--manifest NAME] [--json]
+my roles get <id> [--manifest NAME] [--json]
+my setup --role <id>
+my compile --role <id> [--manifest NAME] [--home DIR]
 ```
 
 ## Services
@@ -51,24 +51,24 @@ and optional guidance fragments. Roles do not grant authority; the backing Git
 host or service enforces access. Select one locally:
 
 ```sh
-our setup --role operator
+my setup --role operator
 ```
 
-The choice persists in `.our/state.json` and affects two derived outputs:
+The choice persists in `.my-cli/state.json` and affects two derived outputs:
 role guidance fragments are appended to generated `AGENTS.md`, and the
 umbrella-root `.mcp.json` is scoped to MCP services visible to that role.
 Role selection never prunes mounts or hides commands.
 
 A role's `skills` also drive the base-umbrella launch-scoped loadout. With no
-`--skills`/`--profile` selector, `our ai` uses the selected role's skills for a
+`--skills`/`--profile` selector, `my ai` uses the selected role's skills for a
 base umbrella launch; session launches may also include skills whose workspace
 requirements are satisfied, and repo launches intentionally receive no org
 skills yet. A `profile` (from the manifest's `profiles` list) is a separate
-named skill loadout selected with `our ai --profile <id>`; profiles select
+named skill loadout selected with `my ai --profile <id>`; profiles select
 skills only and do not contribute guidance. See
 [Skills](/guide/skills#launch-scoped-skill-selection).
 
-`our compile --role <id>` uses the same role vocabulary for contained runners:
+`my compile --role <id>` uses the same role vocabulary for contained runners:
 it prints a deterministic manifest-to-Clawdapus launch projection JSON artifact
 and writes nothing. It does not launch containers, call services, resolve
 credentials, or fetch `describe_ref` targets. A manifest with roles requires
@@ -76,21 +76,21 @@ credentials, or fetch `describe_ref` targets. A manifest with roles requires
 
 ## MCP materialization
 
-`our setup` and the derived reconcile write an umbrella-root `.mcp.json` for
+`my setup` and the derived reconcile write an umbrella-root `.mcp.json` for
 MCP services that have *local* connection data — an inline `connection` or a
 checked-in descriptor. Nothing is fetched from the network, and env
 references stay references (`${VAR}` is resolved by the harness at runtime,
 not baked in). A service whose only description is a remote URL is valid but
-not materializable offline; `our doctor` calls that out.
+not materializable offline; `my doctor` calls that out.
 
-`our` keeps a sidecar copy of what it last generated, so it can tell its own
+`my` keeps a sidecar copy of what it last generated, so it can tell its own
 `.mcp.json` from a hand-written one — it refuses to overwrite a file it did
 not produce unless forced.
 
 ## Doctor checks
 
-`our doctor` checks every declared service: missing connection data is an
+`my doctor` checks every declared service: missing connection data is an
 error; an unset `env://` variable, an `op://` reference without the `op` CLI,
 or a URL-only description each get a warning naming the service and the fix.
-Skills can declare `requires: ["service:<id>"]`; `our skills show` surfaces
+Skills can declare `requires: ["service:<id>"]`; `my skills show` surfaces
 those requirements.

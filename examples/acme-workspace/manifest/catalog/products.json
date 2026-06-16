@@ -2,7 +2,7 @@
   {
     "id": "sample-product",
     "name": "Sample Product",
-    "description": "Example product used by public our fixtures.",
+    "description": "Example product used by public my fixtures.",
     "purpose": "Synthetic product source for exercising opt-in repo clones.",
     "repos": [
       "sample-service"

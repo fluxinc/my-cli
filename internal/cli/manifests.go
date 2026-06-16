@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 type registeredDoc struct {
@@ -23,7 +23,7 @@ func loadRegisteredDocs(home, manifestName string) ([]registeredDoc, error) {
 	for _, ref := range refs {
 		doc, _, err := manifest.LoadDocument(ref.LocalPath)
 		if err != nil {
-			return nil, fmt.Errorf("manifest %q is not synced; run our manifests sync %s: %w", ref.Name, ref.Name, err)
+			return nil, fmt.Errorf("manifest %q is not synced; run my manifests sync %s: %w", ref.Name, ref.Name, err)
 		}
 		result := manifest.ValidateFile(ref.LocalPath)
 		if len(result.Errors) != 0 {
@@ -40,10 +40,10 @@ func loadSingleRegisteredDoc(home, manifestName string) (registeredDoc, error) {
 		return registeredDoc{}, err
 	}
 	if len(docs) == 0 {
-		return registeredDoc{}, fmt.Errorf("our requires a registered manifest")
+		return registeredDoc{}, fmt.Errorf("my requires a registered manifest")
 	}
 	if len(docs) != 1 {
-		return registeredDoc{}, fmt.Errorf("our requires exactly one manifest; pass --manifest")
+		return registeredDoc{}, fmt.Errorf("my requires exactly one manifest; pass --manifest")
 	}
 	return docs[0], nil
 }
@@ -90,16 +90,16 @@ func (a app) runManifest(args []string) error {
 
 func (a app) printManifestUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our manifests add <name> <git-url> [--home DIR] [--json]
-  our manifests list [--home DIR] [--json]
-  our manifests sync <name...> | --all [--home DIR] [--umbrella DIR] [--no-derived] [--print] [--json]
-  our manifests validate <name|path> [--home DIR] [--json]`)
+  my manifests add <name> <git-url> [--home DIR] [--json]
+  my manifests list [--home DIR] [--json]
+  my manifests sync <name...> | --all [--home DIR] [--umbrella DIR] [--no-derived] [--print] [--json]
+  my manifests validate <name|path> [--home DIR] [--json]`)
 }
 
 func (a app) runManifestAdd(args []string) error {
 	var home string
 	var jsonOut bool
-	fs := newFlagSet("our manifests add", a.stderr)
+	fs := newFlagSet("my manifests add", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
 	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
@@ -107,7 +107,7 @@ func (a app) runManifestAdd(args []string) error {
 		return err
 	}
 	if len(rest) != 2 {
-		return fmt.Errorf("usage: our manifests add <name> <git-url>")
+		return fmt.Errorf("usage: my manifests add <name> <git-url>")
 	}
 	ref, err := manifest.Add(home, rest[0], rest[1])
 	if err != nil {
@@ -123,7 +123,7 @@ func (a app) runManifestAdd(args []string) error {
 func (a app) runManifestList(args []string) error {
 	var home string
 	var jsonOut bool
-	fs := newFlagSet("our manifests list", a.stderr)
+	fs := newFlagSet("my manifests list", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
 	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
@@ -153,7 +153,7 @@ func (a app) runManifestSync(args []string) error {
 	var noDerived bool
 	var printOnly bool
 	var jsonOut bool
-	fs := newFlagSet("our manifests sync", a.stderr)
+	fs := newFlagSet("my manifests sync", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root for derived reconciliation")
 	fs.BoolVar(&all, "all", false, "sync every registered manifest")
@@ -311,11 +311,11 @@ func manifestSyncUmbrellaMismatchMessage(err error) (string, bool) {
 	if !errors.As(err, &mismatch) {
 		return "", false
 	}
-	return fmt.Sprintf("umbrella %s uses manifest %q, not %q; pass --umbrella for the %s umbrella or run our setup --manifest %s", mismatch.Root, mismatch.Have, mismatch.Want, mismatch.Want, mismatch.Want), true
+	return fmt.Sprintf("umbrella %s uses manifest %q, not %q; pass --umbrella for the %s umbrella or run my setup --manifest %s", mismatch.Root, mismatch.Have, mismatch.Want, mismatch.Want, mismatch.Want), true
 }
 
 func manifestSyncSetupRemediation(reason, manifestName, root string) string {
-	args := []string{"our", "setup", "--manifest", manifestName}
+	args := []string{"my", "setup", "--manifest", manifestName}
 	if root != "" {
 		args = append(args, "--umbrella", root)
 	}
@@ -341,7 +341,7 @@ func changedManifestSyncResults(results []manifest.SyncResult) []string {
 func (a app) runManifestValidate(args []string) error {
 	var home string
 	var jsonOut bool
-	fs := newFlagSet("our manifests validate", a.stderr)
+	fs := newFlagSet("my manifests validate", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
 	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
@@ -349,7 +349,7 @@ func (a app) runManifestValidate(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our manifests validate <name|path>")
+		return fmt.Errorf("usage: my manifests validate <name|path>")
 	}
 	path := rest[0]
 	if ref, ok, err := manifest.Find(home, rest[0]); err != nil {

@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 type adminRoleResult struct {
@@ -63,12 +63,12 @@ func (a app) runAdminRoles(args []string) error {
 }
 
 func (a app) runAdminRolesAdd(args []string) error {
-	opts, rest, err := parseAdminRoleOpts("our admin roles add", a.stderr, args)
+	opts, rest, err := parseAdminRoleOpts("my admin roles add", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 || opts.manifestDir == "" || !opts.purpose.set {
-		return fmt.Errorf("usage: our admin roles add <id> --manifest-dir DIR --purpose TEXT")
+		return fmt.Errorf("usage: my admin roles add <id> --manifest-dir DIR --purpose TEXT")
 	}
 	result, err := a.adminRolesAdd(rest[0], opts)
 	if err != nil {
@@ -78,12 +78,12 @@ func (a app) runAdminRolesAdd(args []string) error {
 }
 
 func (a app) runAdminRolesEdit(args []string) error {
-	opts, rest, err := parseAdminRoleOpts("our admin roles edit", a.stderr, args)
+	opts, rest, err := parseAdminRoleOpts("my admin roles edit", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 || opts.manifestDir == "" {
-		return fmt.Errorf("usage: our admin roles edit <id> --manifest-dir DIR")
+		return fmt.Errorf("usage: my admin roles edit <id> --manifest-dir DIR")
 	}
 	result, err := a.adminRolesEdit(rest[0], opts)
 	if err != nil {
@@ -96,7 +96,7 @@ func (a app) runAdminRolesRemove(args []string) error {
 	var manifestDir string
 	var force bool
 	var jsonOut bool
-	fs := newFlagSet("our admin roles remove", a.stderr)
+	fs := newFlagSet("my admin roles remove", a.stderr)
 	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
 	fs.BoolVar(&force, "force", false, "allow dirty checkout")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON result")
@@ -105,7 +105,7 @@ func (a app) runAdminRolesRemove(args []string) error {
 		return err
 	}
 	if len(rest) != 1 || manifestDir == "" {
-		return fmt.Errorf("usage: our admin roles remove <id> --manifest-dir DIR")
+		return fmt.Errorf("usage: my admin roles remove <id> --manifest-dir DIR")
 	}
 	result, err := a.adminRolesRemove(rest[0], manifestDir, force)
 	if err != nil {
@@ -392,12 +392,12 @@ func (a app) runAdminServices(args []string) error {
 }
 
 func (a app) runAdminServicesAdd(args []string) error {
-	opts, rest, err := parseAdminServiceOpts("our admin services add", a.stderr, args)
+	opts, rest, err := parseAdminServiceOpts("my admin services add", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 || opts.manifestDir == "" || !opts.kind.set || !opts.purpose.set || !opts.authRef.set {
-		return fmt.Errorf("usage: our admin services add <id> --manifest-dir DIR --kind http|mcp --purpose TEXT --auth-ref REF")
+		return fmt.Errorf("usage: my admin services add <id> --manifest-dir DIR --kind http|mcp --purpose TEXT --auth-ref REF")
 	}
 	result, err := a.adminServicesAdd(rest[0], opts)
 	if err != nil {
@@ -407,12 +407,12 @@ func (a app) runAdminServicesAdd(args []string) error {
 }
 
 func (a app) runAdminServicesEdit(args []string) error {
-	opts, rest, err := parseAdminServiceOpts("our admin services edit", a.stderr, args)
+	opts, rest, err := parseAdminServiceOpts("my admin services edit", a.stderr, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 || opts.manifestDir == "" {
-		return fmt.Errorf("usage: our admin services edit <id> --manifest-dir DIR")
+		return fmt.Errorf("usage: my admin services edit <id> --manifest-dir DIR")
 	}
 	result, err := a.adminServicesEdit(rest[0], opts)
 	if err != nil {
@@ -426,7 +426,7 @@ func (a app) runAdminServicesRemove(args []string) error {
 	var pruneRoles bool
 	var force bool
 	var jsonOut bool
-	fs := newFlagSet("our admin services remove", a.stderr)
+	fs := newFlagSet("my admin services remove", a.stderr)
 	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
 	fs.BoolVar(&pruneRoles, "prune-roles", false, "remove this service from role selections")
 	fs.BoolVar(&force, "force", false, "allow dirty checkout")
@@ -436,7 +436,7 @@ func (a app) runAdminServicesRemove(args []string) error {
 		return err
 	}
 	if len(rest) != 1 || manifestDir == "" {
-		return fmt.Errorf("usage: our admin services remove <id> --manifest-dir DIR")
+		return fmt.Errorf("usage: my admin services remove <id> --manifest-dir DIR")
 	}
 	result, err := a.adminServicesRemove(rest[0], manifestDir, pruneRoles, force)
 	if err != nil {

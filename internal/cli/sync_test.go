@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/manifest"
-	"github.com/fluxinc/our-ai/internal/umbrella"
-	"github.com/fluxinc/our-ai/internal/workspace"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/workspace"
 )
 
 func TestSyncContentPathsIncludesSupport(t *testing.T) {
@@ -54,7 +54,7 @@ func TestSyncHoldsManifestWithLocalMountURL(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "init", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "init", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	manifestRepo, err := manifest.DefaultCachePath(home, "acme")
@@ -72,7 +72,7 @@ func TestSyncHoldsManifestWithLocalMountURL(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	if err := a.run([]string{
-		"our", "sync",
+		"my", "sync",
 		"--backend", "builtin",
 		"--publish", "direct",
 		"--scope", "manifest",
@@ -82,7 +82,7 @@ func TestSyncHoldsManifestWithLocalMountURL(t *testing.T) {
 		t.Fatalf("sync: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
 	out := stdout.String()
-	for _, want := range []string{"manifest\theld back", "local mount URL", "run our publish --manifest acme"} {
+	for _, want := range []string{"manifest\theld back", "local mount URL", "run my publish --manifest acme"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("sync stdout = %q, missing %q", out, want)
 		}
@@ -95,7 +95,7 @@ func TestSyncHoldsManifestWithLocalMountURL(t *testing.T) {
 
 func TestSyncExplicitGnitBackendReportsMissingWorkspace(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
@@ -113,14 +113,14 @@ func TestSyncExplicitGnitBackendReportsMissingWorkspace(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	stdout.Reset()
-	if err := a.run([]string{"our", "sync", "--backend", "gnit", "--manifest", "acme", "--home", home, "--print", "--json"}); err != nil {
+	if err := a.run([]string{"my", "sync", "--backend", "gnit", "--manifest", "acme", "--home", home, "--print", "--json"}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -151,7 +151,7 @@ func TestSyncEmitsSeparateManifestAndContentEntries(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "sync", "--print", "--json",
+		"my", "sync", "--print", "--json",
 		"--backend", "builtin",
 		"--manifest", "acme",
 		"--home", home,
@@ -181,7 +181,7 @@ func TestSyncPersistsLastSyncAuditAndDoctorReportsIt(t *testing.T) {
 	a := app{stdout: &stdout, stderr: &stderr}
 
 	if err := a.run([]string{
-		"our", "sync",
+		"my", "sync",
 		"--backend", "builtin",
 		"--publish", "never",
 		"--manifest", "acme",
@@ -190,7 +190,7 @@ func TestSyncPersistsLastSyncAuditAndDoctorReportsIt(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	auditPath := filepath.Join(umbrellaRoot, ".our", "last-sync.json")
+	auditPath := filepath.Join(umbrellaRoot, ".my-cli", "last-sync.json")
 	data, err := os.ReadFile(auditPath)
 	if err != nil {
 		t.Fatal(err)
@@ -205,7 +205,7 @@ func TestSyncPersistsLastSyncAuditAndDoctorReportsIt(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "doctor", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -249,7 +249,7 @@ description: Acme handbook
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "sync",
+		"my", "sync",
 		"--backend", "builtin",
 		"--publish", "never",
 		"--scope", "manifest",
@@ -301,7 +301,7 @@ description: Acme handbook
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "sync",
+		"my", "sync",
 		"--backend", "builtin",
 		"--publish", "never",
 		"--scope", "manifest",
@@ -351,7 +351,7 @@ description: Acme handbook
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "sync",
+		"my", "sync",
 		"--backend", "builtin",
 		"--publish", "never",
 		"--scope", "content",
@@ -378,12 +378,12 @@ func TestSyncScopeReposAcceptedAndProductsRejected(t *testing.T) {
 }`)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "sync", "--backend", "builtin", "--scope", "repos", "--print", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "sync", "--backend", "builtin", "--scope", "repos", "--print", "--manifest", "acme", "--home", home, "--json"}); err != nil {
 		t.Fatalf("sync --scope repos failed: %v", err)
 	}
 	stdout.Reset()
 	stderr.Reset()
-	err := a.run([]string{"our", "sync", "--backend", "builtin", "--scope", "products", "--print", "--manifest", "acme", "--home", home, "--json"})
+	err := a.run([]string{"my", "sync", "--backend", "builtin", "--scope", "products", "--print", "--manifest", "acme", "--home", home, "--json"})
 	if err == nil || !strings.Contains(err.Error(), "--scope must be one of") {
 		t.Fatalf("err = %v, want products scope rejected", err)
 	}
@@ -398,7 +398,7 @@ func TestSyncUsesManifestPublishPolicyAndCLIOverride(t *testing.T) {
 }`)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "sync", "--backend", "builtin", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "sync", "--backend", "builtin", "--manifest", "acme", "--home", home, "--json"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), `"publish": "never"`) {
@@ -406,7 +406,7 @@ func TestSyncUsesManifestPublishPolicyAndCLIOverride(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "sync", "--backend", "builtin", "--publish", "direct", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "sync", "--backend", "builtin", "--publish", "direct", "--manifest", "acme", "--home", home, "--json"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), `"publish": "direct"`) {
@@ -423,7 +423,7 @@ func TestSyncUsesManifestPRPublishPolicy(t *testing.T) {
 }`)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "sync", "--backend", "builtin", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "sync", "--backend", "builtin", "--manifest", "acme", "--home", home, "--json"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), `"publish": "pr"`) {

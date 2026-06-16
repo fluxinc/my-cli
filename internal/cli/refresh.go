@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fluxinc/our-ai/internal/syncer"
-	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/syncer"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 const autoRefreshFile = "auto-refresh.json"
@@ -37,7 +37,7 @@ func existingUmbrellaRoot(home, manifestName, explicit string) (string, bool, er
 	if root, ok := umbrella.FindRoot("."); ok {
 		return existingUmbrellaRootStatus(root, manifestName)
 	}
-	root, err := resolveOurRoot(home, manifestName, "")
+	root, err := resolveMyRoot(home, manifestName, "")
 	if err != nil {
 		return "", false, nil
 	}
@@ -55,7 +55,7 @@ func (e umbrellaManifestMismatchError) Error() string {
 }
 
 func existingUmbrellaRootStatus(root, manifestName string) (string, bool, error) {
-	if !hasOurDir(root) {
+	if !hasMyDir(root) {
 		return root, false, nil
 	}
 	if manifestName == "" {
@@ -75,13 +75,13 @@ func existingUmbrellaRootStatus(root, manifestName string) (string, bool, error)
 	return root, true, nil
 }
 
-func hasOurDir(root string) bool {
+func hasMyDir(root string) bool {
 	info, err := os.Stat(filepath.Join(root, umbrella.DirName))
 	return err == nil && info.IsDir()
 }
 
 func (a app) maybeAutoRefresh(home, manifestName, umbrellaRoot, root string, noRefresh bool) {
-	if noRefresh || os.Getenv("OUR_NO_AUTO_REFRESH") != "" || root == "" || !hasOurDir(root) {
+	if noRefresh || os.Getenv("MYCLI_NO_AUTO_REFRESH") != "" || root == "" || !hasMyDir(root) {
 		return
 	}
 	ttl := autoRefreshTTL()
@@ -138,21 +138,21 @@ func freshnessNotice(result syncer.Result) (string, bool) {
 	dirty := len(result.Dirty)
 	switch {
 	case result.Ahead > 0 && result.Behind > 0:
-		return fmt.Sprintf("diverged from remote (ahead %d, behind %d); run `our doctor` and reconcile manually", result.Ahead, result.Behind), true
+		return fmt.Sprintf("diverged from remote (ahead %d, behind %d); run `my doctor` and reconcile manually", result.Ahead, result.Behind), true
 	case dirty > 0 && result.Behind > 0:
-		return fmt.Sprintf("behind remote by %d with %d uncommitted file(s); commit or stash, then run `our sync`", result.Behind, dirty), true
+		return fmt.Sprintf("behind remote by %d with %d uncommitted file(s); commit or stash, then run `my sync`", result.Behind, dirty), true
 	case dirty > 0:
-		return fmt.Sprintf("%d uncommitted file(s); run `our sync` to review and publish", dirty), true
+		return fmt.Sprintf("%d uncommitted file(s); run `my sync` to review and publish", dirty), true
 	case result.Ahead > 0:
-		return fmt.Sprintf("ahead of remote by %d unpublished commit(s); run `our sync` to publish", result.Ahead), true
+		return fmt.Sprintf("ahead of remote by %d unpublished commit(s); run `my sync` to publish", result.Ahead), true
 	case result.Behind > 0:
-		return fmt.Sprintf("behind remote by %d; run `our sync`", result.Behind), true
+		return fmt.Sprintf("behind remote by %d; run `my sync`", result.Behind), true
 	}
 	return "", false
 }
 
 func autoRefreshTTL() time.Duration {
-	value := strings.TrimSpace(os.Getenv("OUR_REFRESH_TTL"))
+	value := strings.TrimSpace(os.Getenv("MYCLI_REFRESH_TTL"))
 	if value == "" {
 		return defaultRefreshTTL
 	}

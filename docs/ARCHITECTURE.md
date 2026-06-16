@@ -1,6 +1,6 @@
-# our — Architecture & Design
+# my — Architecture & Design
 
-This document explains *why* `our` is shaped the way it is. The README covers
+This document explains *why* `my` is shaped the way it is. The README covers
 usage; this covers the model and the decisions behind it. It is intentionally
 generic — no organization is described here.
 
@@ -38,7 +38,7 @@ CLI deliberately does not grow human-workflow verbs; it grows content kinds.
 out locally on `manifests add` + `manifests sync`. The single source of truth
 for what skills exist, what mounts exist, what products are in the catalog,
 what services and roles exist, what tools the org expects, and the default
-`our sync` publish policy.
+`my sync` publish policy.
 Validated by a schema (`manifests validate`). The manifest is the **control
 plane**: it is not the workspace — the workspace is a mount of things the
 manifest defines — and it lives outside the umbrella so day-to-day work never
@@ -47,31 +47,31 @@ whole organization pushes workspace content.
 
 **Skill** — a capability exposed to harnesses. Two kinds:
 
-- *Static*: a directory inside the manifest repo. Composed by `our ai` into
+- *Static*: a directory inside the manifest repo. Composed by `my ai` into
   launch-root `.agents/skills` for harnesses with a project-local skill seam,
   with per-harness mirrors where needed. OpenCode currently remains
   compatibility-global because no launch-root seam has been proven.
-- *Tool-provided*: declared with a source tool; `our` invokes that tool's own
+- *Tool-provided*: declared with a source tool; `my` invokes that tool's own
   skill installer to materialize the skill, then includes the result in the
   launch profile. This keeps tool-owned skills authoritative to the tool, not
   vendored copies.
 
-Our AI also ships one public, organization-neutral self-skill named `our`. It
-teaches harnesses how to use the CLI and is managed by `our skills self ...`,
+My AI also ships one public, organization-neutral self-skill named `my`. It
+teaches harnesses how to use the CLI and is managed by `my skills self ...`,
 not by organization manifests.
 Keeping it in the binary, not in a manifest, is deliberate: the public CLI
 carries no organization-specific content, so every org's particulars stay in the
 manifests they control.
 
 **Umbrella** — a per-user operating envelope (default `~/<org>`). It contains
-Our AI state, generated guidance, version-controlled mounts, opted-in catalog
+My AI state, generated guidance, version-controlled mounts, opted-in catalog
 repositories, work sessions, and local-only scratch. When initialized as a
 Gnit control workspace, the umbrella's root records workspace metadata and
 pins, while the member repositories remain ordinary Git checkouts.
 
 ```
 ~/<org>/
-├── .our/
+├── .my-cli/
 │   ├── workspace.json   identity: schema version, org, manifest ref, created_at
 │   └── state.json       dynamic: selected repos/role, per-mount sync status
 ├── .gnit/                optional Gnit control metadata for multi-repo sync
@@ -86,8 +86,8 @@ pins, while the member repositories remain ordinary Git checkouts.
 ```
 
 `personal/` and `repos/` always exist after `setup`. Entity commands
-(`our meetings ...`) resolve against the umbrella by walking up from the
-working directory to find `.our/workspace.json`; when the working directory
+(`my meetings ...`) resolve against the umbrella by walking up from the
+working directory to find `.my-cli/workspace.json`; when the working directory
 is inside an active session under `work/<id>`, they resolve one level
 further, to that session's mount worktrees instead of the base mounts. If the
 caller is outside the umbrella, meeting commands use the single configured
@@ -101,24 +101,24 @@ they are skipped with a warning, not a failure (RBAC by Git permissions, not by
 the CLI).
 
 **Session** — an isolated unit of work under `work/<id>` in the umbrella: a
-git worktree of each writable content mount on a fresh `our/work/<id>`
+git worktree of each writable content mount on a fresh `my/work/<id>`
 branch, plus session-local scratch, a `SESSION.md` summary, and generated
-session guidance, recorded in a registry under `.our/sessions/`. Sessions are
-opt-in: `our work start` or `our ai --new-session` creates one, `our ai
---session <id>` resumes one, and plain `our ai` launches from the base
+session guidance, recorded in a registry under `.my-cli/sessions/`. Sessions are
+opt-in: `my work start` or `my ai --new-session` creates one, `my ai
+--session <id>` resumes one, and plain `my ai` launches from the base
 umbrella. Commands are session-aware by working directory — run inside an
 active session, content commands write to that session's mount worktrees and
-plain `our ai` stays in the session; a directory under `work/` that matches
+plain `my ai` stays in the session; a directory under `work/` that matches
 no active session is an error, never a silent fallback to base. Work leaves a
-session only through `our work finish --land | --publish | --discard`, and
-`our sync` holds outbound publish of a mount while an active session on it is
+session only through `my work finish --land | --publish | --discard`, and
+`my sync` holds outbound publish of a mount while an active session on it is
 dirty or unlanded.
 
 Sessions exist because writes are the risky operation: a half-edited tracked
 file or stray draft in the base checkout would otherwise ride the next
-`our sync` publish. Two mechanisms compose. Adoption-gated publishing means
-`our sync` only auto-publishes content files that were explicitly adopted —
-records created by the CLI are adopted via Git intent-to-add, and `our record
+`my sync` publish. Two mechanisms compose. Adoption-gated publishing means
+`my sync` only auto-publishes content files that were explicitly adopted —
+records created by the CLI are adopted via Git intent-to-add, and `my record
 adopt` (or a plain `git add`) adopts the rest. Sessions add structural
 isolation on top for work that should not touch the base checkout at all,
 while staying plain Git: a human can `cd` into a session and take over with
@@ -130,7 +130,7 @@ Products are business entities: a name, description, purpose, optional links
 to the repos that implement them (`repos: ["<repo-id>"]`), and any related
 manifest skill IDs. Repos (`catalog/repos.json`) are the organization's
 repositories — each records its `git_url` and an optional `default` flag. A
-user opts a repo in with `our repos add <id>`, which clones it under
+user opts a repo in with `my repos add <id>`, which clones it under
 `repos/<id>` and records it in umbrella state. This keeps the default
 umbrella small and lets each operator pull only what they work on.
 `related_skills` are references to skills declared by the manifest; cloning a
@@ -139,23 +139,23 @@ identity records live in mounted workspace content under `customers/*.md`, so
 the same backend permissions that protect meetings/support/fleet protect
 ordinary customer data.
 
-**Guidance** — generated root instructions for agents. `our setup` writes
+**Guidance** — generated root instructions for agents. `my setup` writes
 `AGENTS.md` from the embedded public baseline plus manifest-declared guidance
 fragments plus any selected-role fragments, and points `CLAUDE.md` at the same
-content where the platform allows it. `our ai` checks guidance freshness before
+content where the platform allows it. `my ai` checks guidance freshness before
 starting a harness.
 
 Manifest **services** and **roles** remain manifest vocabulary rather than new
 top-level concepts. Services describe remote organization surfaces such as HTTP
 APIs and MCP servers. Data bindings map stable data nouns to declared mount or
 service surfaces. Roles select services and optional guidance fragments as
-local loadouts; `our setup --role <id>` stores the local role selection and
+local loadouts; `my setup --role <id>` stores the local role selection and
 materializes umbrella-root `.mcp.json` for locally described MCP services
 visible to that role. Roles do not grant authority or prune mounts.
 
 **Tool** — an external executable the org depends on. The manifest declares
-purpose and install hints. `our doctor`, `our tools list`, and `our tools
-info` report presence and what to run. `our` never silently installs a tool —
+purpose and install hints. `my doctor`, `my tools list`, and `my tools
+info` report presence and what to run. `my` never silently installs a tool —
 hints, not actions. Meeting search is allowed to use `qmd` when present because
 it is an operator tool declared by the manifest, but the built-in markdown scan
 remains the fallback and keeps the CLI functional without optional tools.
@@ -165,25 +165,25 @@ remains the fallback and keeps the CLI functional without optional tools.
 The mechanism is generic and public; the content is proprietary and private.
 These are **three repositories**:
 
-1. **`our` (public)** — this CLI. Generic, no org data, tests use neutral
+1. **`my` (public)** — this CLI. Generic, no org data, tests use neutral
    placeholders.
 2. **`<org>-manifest` (private, control plane)** — `manifest.json`,
    proprietary skills, product/repo catalog JSON, tool declarations, agent
    guidance fragments. Lives at the registry path, outside the umbrella; changed
-   through `our admin` commands; hosting permissions can restrict pushes to
+   through `my admin` commands; hosting permissions can restrict pushes to
    admins.
 3. **`<org>-workspace` (private, data plane)** — the operating content:
    customers, meetings, support, fleet, decisions, projects, policy, people.
    Mounted visibly in the umbrella; pushed by the whole organization.
 
-`our init` creates both private repos locally and `our publish` takes them
+`my init` creates both private repos locally and `my publish` takes them
 online; teammates register only the manifest URL, and the manifest defines
 which content repos mount where. Keeping the planes in separate repositories
 is what lets write access differ (admins vs everyone) and guarantees an agent
 grepping the umbrella can never read — or dirty — the manifest.
 
 **Mount scoping** narrows content mounts. A mount may declare
-`include_paths`; `our` then clones with `git clone --sparse` and applies
+`include_paths`; `my` then clones with `git clone --sparse` and applies
 `git sparse-checkout set --no-cone <paths>`, so only the listed directories
 appear in the umbrella. The same scoping mechanism is the forward path for
 finer access control: narrow what a given umbrella materializes without
@@ -195,20 +195,20 @@ outside its own tree.
 
 ## 5. Onboarding flow
 
-`our setup --manifest <name>`:
+`my setup --manifest <name>`:
 
 1. Resolve the registered manifest; ensure the local cache exists and, when the
    TTL allows it, best-effort fast-forward clean stale manifest/content
    checkouts.
 2. Validate the manifest (schema + cross-references).
-3. Install or refresh the bundled `our` self-skill for every present
+3. Install or refresh the bundled `my` self-skill for every present
    filesystem harness. Declared organization skills are not installed globally
-   by setup; `our ai` composes them into the selected launch root when a
+   by setup; `my ai` composes them into the selected launch root when a
    launch-root-capable harness is launched. OpenCode is the compatibility
    exception and keeps org skills in its user config dir when present or
-   explicitly selected. Provenance is recorded; a directory `our` did not place
+   explicitly selected. Provenance is recorded; a directory `my` did not place
    is never overwritten.
-4. Create/repair the umbrella: `.our/workspace.json`, `.our/state.json`,
+4. Create/repair the umbrella: `.my-cli/workspace.json`, `.my-cli/state.json`,
    `personal/`, `repos/`.
 5. Generate root `AGENTS.md` from the embedded public baseline plus
    `agent_guidance.paths` declared by the manifest, and make `CLAUDE.md` point
@@ -219,22 +219,22 @@ outside its own tree.
 Every step is convergent: re-running `setup` reconciles rather than
 duplicates.
 
-Startup commands (`our root`, `our ai`, and `our setup`) use the same
+Startup commands (`my root`, `my ai`, and `my setup`) use the same
 best-effort refresh path. The guard is deliberately narrow: fast-forward only,
 clean manifest/content checkouts only, TTL-gated, and never catalog repos,
 dirty checkouts, diverged branches, or remote-unknown repos. Operators can use
-`--no-refresh`, `OUR_NO_AUTO_REFRESH=1`, or `OUR_REFRESH_TTL` when they need
+`--no-refresh`, `MYCLI_NO_AUTO_REFRESH=1`, or `MYCLI_REFRESH_TTL` when they need
 fully offline or deterministic reads.
 
 The same startup commands also perform a user-level, TTL-gated release check
-using `~/.local/share/our/update-check.json`. The notice is stderr-only so
+using `~/.local/share/my-cli/update-check.json`. The notice is stderr-only so
 stdout remains machine-safe. Operators can use `--no-update-check`,
-`OUR_NO_UPDATE_CHECK=1`, or `OUR_UPDATE_CHECK_TTL` when release checks should
+`MYCLI_NO_UPDATE_CHECK=1`, or `MYCLI_UPDATE_CHECK_TTL` when release checks should
 be suppressed or tuned separately from workspace refreshes.
 
 ## 6. Authentication contract
 
-Private manifests and mounts live in private Git repos. `our` does not invent
+Private manifests and mounts live in private Git repos. `my` does not invent
 a credential mechanism: for GitHub HTTPS URLs it checks `gh auth status` before
 a real fetch and, if unauthenticated, fails with the exact remediation
 (`gh auth login`). SSH URLs fall through to the user's normal Git/SSH auth.
@@ -247,7 +247,7 @@ Non-trivial failures return a structured value (and JSON under `--json`):
 ```json
 { "error": "unknown_product",
   "message": "no catalog product \"x\" in manifest \"acme\"",
-  "remediation": "our products list --manifest acme" }
+  "remediation": "my products list --manifest acme" }
 ```
 
 `remediation` is always a real command that exists in the CLI. The design rule:
@@ -288,10 +288,10 @@ capture into a separate workflow system.
 The fleet registry is the first *registry-shaped* content kind: where meetings
 and support are dated, append-only journals, fleet keeps one record per
 deployed instance under `fleet/<id>.md`, keyed by a stable id and updated in
-place with `our fleet set` (which preserves untouched frontmatter and body).
+place with `my fleet set` (which preserves untouched frontmatter and body).
 State history is the record's git history rather than event files, so each
-meaningful transition should publish with a descriptive `our sync --message`.
+meaningful transition should publish with a descriptive `my sync --message`.
 The `identifiers` frontmatter list is the join currency with support records:
-`our fleet get` resolves any identifier and surfaces related incidents, and
-`our support add --identifier` warns when an identifier is unknown to the
+`my fleet get` resolves any identifier and surfaces related incidents, and
+`my support add --identifier` warns when an identifier is unknown to the
 registry. Both nouns share the `internal/record` engine.

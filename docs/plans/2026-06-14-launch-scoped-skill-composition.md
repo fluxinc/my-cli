@@ -10,7 +10,7 @@ Pre-1.0, no userbase: back-compat is not a constraint.
 
 ## Goal
 
-`our ai` computes the effective skill set for a launch and materializes exactly
+`my ai` computes the effective skill set for a launch and materializes exactly
 that set as disposable derived state in the launch root, instead of installing a
 flat global org skill set under each harness's user config dir.
 
@@ -42,7 +42,7 @@ flat global org skill set under each harness's user config dir.
 - Manifest schema today: `Skill{ID, InstallSlug, Path, Source{Type,Tool},
   Capabilities, Requires}`, `Role{Skills []string, Mounts, Tools, Services}`,
   `Product{Repos []string, RelatedSkills []string}`. Marker file
-  `.our-managed.json` + provenance/stale-cleanup already exist in
+  `.my-cli-managed.json` + provenance/stale-cleanup already exist in
   `internal/skills/skills.go`.
 
 ## Codex adversarial review #1 (not signed off)
@@ -53,7 +53,7 @@ the current code will keep doing the old thing unless we deliberately unwind it.
 Required revisions before sign-off:
 
 1. **`--print` is a first-class contract, not an implementation detail.**
-   `our ai --print` currently returns before guidance checks, self-skill repair,
+   `my ai --print` currently returns before guidance checks, self-skill repair,
    harness lookup, or any derived materialization. With `--new-session` it still
    creates the session, which is already a surprising but tested behavior.
    The plan must specify whether profile selectors are ignored, syntax-only
@@ -64,20 +64,20 @@ Required revisions before sign-off:
    give it an explicit later surface instead of overloading `--print`.
 2. **Global org-skill reconciliation has four callers, not one.** D8 mentions
    `setup`, but `reconcileDerived` currently installs/syncs all manifest skills
-   into every harness and is called from `our setup`, `our sync`,
-   `our manifests sync`, and `our doctor --fix`. A launch-scoped model is not
+   into every harness and is called from `my setup`, `my sync`,
+   `my manifests sync`, and `my doctor --fix`. A launch-scoped model is not
    true until all of those paths stop creating user-global org skills. The plan
    must name `reconcileDerived` as the migration seam and decide what its
    replacement report prints. Leaving this implicit creates split-brain state:
-   `our ai` writes launch-root skills while sync/doctor keep resurrecting global
+   `my ai` writes launch-root skills while sync/doctor keep resurrecting global
    skills.
 3. **The non-managed `.agents/skills` policy is internally contradictory.** D3
-   says mixed trees are preserved, then says a tree with no Our-owned entries is
+   says mixed trees are preserved, then says a tree with no My AI-owned entries is
    refused as a non-managed whole. A repo with committed `.agents/skills` and no
-   prior Our entries is exactly the case we should handle safely. Codex
+   prior My AI-owned entries is exactly the case we should handle safely. Codex
    recommendation: never claim ownership of the directory as a whole. Own only
    exact slugs recorded in an index and/or per-entry marker; if a selected slug
-   already exists and is not Our-managed, fail for that slug only. Non-conflicting
+   already exists and is not My AI-managed, fail for that slug only. Non-conflicting
    hand-authored skills can coexist.
 4. **`Skill.Exposure` may be more policy than we need.** The three-state
    `always|targeted|manual` field is plausible, but it also creates a new
@@ -109,10 +109,10 @@ Required revisions before sign-off:
    trying to retire.
 8. **Clawdapus alignment should distinguish read-only launch inputs from
    agent-authored portable skills.** Clawdapus has compile-time `SKILL` mounts
-   and a separate writable portable-skills surface. Our generated launch profile
+   and a separate writable portable-skills surface. My generated launch profile
    is derived input, not the agent's self-authored skill store. The plan should
    say generated profile directories are regenerated and disposable, while
-   self-authored skills remain outside Our's owned slug set.
+   self-authored skills remain outside My's owned slug set.
 
 Answers to Claude's explicit questions:
 
@@ -137,7 +137,7 @@ Answers to Claude's explicit questions:
 I verified the two load-bearing code claims and both hold: `reconcileDerived`
 (`internal/cli/setup.go:32`) is called from `setup`, `sync` (`sync.go:132`),
 `manifests sync` (`manifests.go:288`), and `doctor --fix` (`doctor.go:587`); and
-`our ai --print` returns at `launch.go:132`, before `ensureLaunchSelfSkill`
+`my ai --print` returns at `launch.go:132`, before `ensureLaunchSelfSkill`
 (line 167). So review points 1, 2, 3 are correct and adopted as written; 6, 7, 8
 are adopted on merit. Resolution per point:
 
@@ -147,10 +147,10 @@ are adopted on merit. Resolution per point:
    surface.
 2. **Accepted.** D8 now names `reconcileDerived` as the single migration seam and
    covers all four callers; defines the replacement report.
-3. **Accepted.** D3 rewritten to per-slug ownership only — Our never adopts or
+3. **Accepted.** D3 rewritten to per-slug ownership only — My never adopts or
    refuses the directory as a whole. A selected slug that collides with a
-   non-Our entry fails for that slug alone; hand-authored skills coexist.
-4. **Converged, my framing.** `Skill.Exposure` is deferred (not in v1), but I am
+   non-My AI entry fails for that slug alone; hand-authored skills coexist.
+4. **Converged My AI framing.** `Skill.Exposure` is deferred (not in v1), but I am
    *not* leaving the no-selector default vague. Default model uses only existing
    selectors: umbrella base with no role → **all declared org skills** (the
    ADR's "broad organization default", and strictly narrower than today's
@@ -169,9 +169,9 @@ are adopted on merit. Resolution per point:
 7. **Accepted.** Slices reordered: the harness capability registry + Antigravity
    land **with** materialization (Slice 1), before the migration slice, so
    Antigravity never rides the deprecated global-install path.
-8. **Accepted.** D3 adds the Clawdapus distinction: Our owns only its generated
+8. **Accepted.** D3 adds the Clawdapus distinction: My owns only its generated
    slugs as disposable read-only launch input; agent-authored/portable skills
-   (e.g. Clawdapus's writable portable-skills surface) are never in Our's owned
+   (e.g. Clawdapus's writable portable-skills surface) are never in My's owned
    set and never wiped.
 
 Q1 (mirror matrix) → D1 adopts explicit launch-root capability plus a
@@ -187,15 +187,15 @@ copy-default, `Skill.Exposure`, and `--print` issues. Two blockers remain:
    says `reconcileDerived` is "the single seam", but `runSetup` also installs org
    skills directly via `collectSkillInstallResults` (`internal/cli/setup.go`
    around the setup implementation, after mount/repo sync). Changing only
-   `reconcileDerived` will leave plain `our setup` resurrecting user-global org
+   `reconcileDerived` will leave plain `my setup` resurrecting user-global org
    skills. The plan needs to name both seams or factor setup through one new
-   derived-skill helper. Acceptance should explicitly cover `our setup`, `our
-   setup --print`, `our sync`, `our manifests sync`, and `our doctor --fix`.
+   derived-skill helper. Acceptance should explicitly cover `my setup`, `my
+   setup --print`, `my sync`, `my manifests sync`, and `my doctor --fix`.
 2. **Self-skill placement is ambiguous and can duplicate.** The composition
-   algorithm says the floor is `{self-skill}` and `our ai` materializes the
+   algorithm says the floor is `{self-skill}` and `my ai` materializes the
    profile into launch-root `.agents/skills`, while D8 says the self-skill keeps
    its current global ensure path during migration. For any harness that reads
-   both global and project skills, that can expose two `our` skills. The plan
+   both global and project skills, that can expose two `my` skills. The plan
    must choose one v1 behavior:
    - keep the self-skill global-only during migration and materialize only org
      skills in launch roots; or
@@ -224,16 +224,16 @@ Both blockers verified in code and adopted:
    `reconcileDerived`. D8 rewritten: the migration gates the org-skill install
    *primitive* through one helper so **both** seams (`runSetup` direct; the three
    callers via `reconcileDerived`) stop writing user-global org skills. Acceptance
-   now enumerates `our setup`, `our setup --print`, `our sync`, `our manifests
-   sync`, `our doctor --fix`.
+   now enumerates `my setup`, `my setup --print`, `my sync`, `my manifests
+   sync`, `my doctor --fix`.
 2. **Accepted — one self-skill location (option a).** v1 keeps the self-skill on
    its existing global ensure path and materializes **only org skills** into
-   launch roots, so no harness ever sees two `our` skills. The composition floor
+   launch roots, so no harness ever sees two `my` skills. The composition floor
    is now `{}` (self-skill is not a launch-root profile entry). This is the ADR's
    Mechanism-#1 migration carve-out; self-skill-into-launch-roots is the target
    state, deferred to a later slice once the global ensure can retire per-harness.
    I chose (a) over (b) deliberately: the self-skill is the bootstrap skill that
-   must exist in every context, including non-`our ai` entry and unmigrated
+   must exist in every context, including non-`my ai` entry and unmigrated
    harnesses — global is the stronger guarantee for it specifically.
 
 **Evidence correction accepted.** D1 and D9 no longer claim any harness is
@@ -248,7 +248,7 @@ authority, with role launches narrowing to `Role.Skills`.
 
 ### D1 — Managed directory in the launch root: `.agents/skills/`
 
-`our ai` materializes a single managed `.agents/skills/` in the resolved launch
+`my ai` materializes a single managed `.agents/skills/` in the resolved launch
 root for harnesses with a proven launch-root skill seam. `.agents/skills` is the
 cross-harness center; per-harness mirrors are generated **only** for
 launch-root-capable harnesses that do not read `.agents/skills`.
@@ -256,7 +256,7 @@ launch-root-capable harnesses that do not read `.agents/skills`.
 Add to `internal/harness`:
 
 - `ReadsAgentsSkills() bool` — capability flag per harness.
-- `SupportsLaunchRootSkills() bool` — whether `our ai` can expose org skills as
+- `SupportsLaunchRootSkills() bool` — whether `my ai` can expose org skills as
   per-launch derived state for this harness today.
 - `MirrorSkillDir(launchRoot string) string` — e.g. ClaudeCode →
   `<root>/.claude/skills`; empty when `ReadsAgentsSkills()` is true or the
@@ -271,18 +271,18 @@ and configured `skills.paths` did not produce discoverable project skills. v1
 therefore does **not** generate an unread OpenCode launch-root mirror. OpenCode
 remains a compatibility-global harness: present/explicit OpenCode setups and
 launches keep org skills in `~/.config/opencode/skills` with provenance
-`scope=compat`, and `our ai opencode --skills/--profile` fails until a real
+`scope=compat`, and `my ai opencode --skills/--profile` fails until a real
 per-launch OpenCode seam is proven.
 
 ### D2 — Source model: copy by default, symlink later as an optimization
 
 v1 **copies** each owned entry into `.agents/skills/<install-slug>` (reusing the
-existing copy path + `.our-managed.json` marker + stale-copy refresh from
+existing copy path + `.my-cli-managed.json` marker + stale-copy refresh from
 `internal/skills`). Copy makes the launch root self-contained and inspectable,
 and survives sandboxed/containerized harnesses (and the future claw-pod) that
 cannot follow a symlink out of the working tree. Canonical sources for the copy:
 
-- Self-skill: the materialized bundle at `~/.local/share/our/skills/our`
+- Self-skill: the materialized bundle at `~/.local/share/my-cli/skills/my`
   (`selfskill.Materialize`).
 - Org skills: the **synced manifest checkout** path (`Skill.Path` under the
   manifest repo root) — the source already used by `DiscoverDeclared`.
@@ -296,27 +296,27 @@ tree. Absent that evidence, copy is used.
 
 ### D3 — Provenance: per-slug ownership, never directory adoption
 
-Ownership is **per-slug**, never directory-wide. Our never adopts or refuses
+Ownership is **per-slug**, never directory-wide. My never adopts or refuses
 `.agents/skills` as a whole — a repo that ships its own committed
-`.agents/skills` with no prior Our entries is the normal coexist case, not an
-error. An entry is Our-owned iff it carries `.our-managed.json` (installer
-`our`/`our-ai`); a copy is the v1 form (D2), so this marker is authoritative.
+`.agents/skills` with no prior My AI-owned entries is the normal coexist case, not an
+error. An entry is My AI-owned iff it carries `.my-cli-managed.json` (installer
+`my`/`my-cli`); a copy is the v1 form (D2), so this marker is authoritative.
 
-`our ai` wipes and regenerates **only** owned slugs. Non-owned entries
+`my ai` wipes and regenerates **only** owned slugs. Non-owned entries
 (hand-authored, repo-committed, or another tool's) are left untouched. If a
-selected slug collides with an existing **non-Our** entry, `our` fails **for
+selected slug collides with an existing **non-My AI** entry, `my` fails **for
 that slug only** with a precise structured error (move/rename it, or drop it from
 the selector) — never a silent clobber, and never a refusal of unrelated
 coexisting skills. An optional owned-slug index
-(`.agents/skills/.our-managed.json` listing owned slugs + compose version) exists
+(`.agents/skills/.my-cli-managed.json` listing owned slugs + compose version) exists
 **only** to make cleanup and `doctor` inspectable; it is not an ownership or
 adoption gate — per-entry markers remain the authority for every clobber
 decision.
 
-**Clawdapus / agent-authored boundary.** Our-generated profile entries are
+**Clawdapus / agent-authored boundary.** My-generated profile entries are
 disposable, regenerated read-only launch *input*. Agent-authored or portable
 skills (e.g. Clawdapus's writable portable-skills surface, or a harness's own
-self-authored skill store) are never in Our's owned slug set and are never
+self-authored skill store) are never in My's owned slug set and are never
 wiped, even when they live under the same `.agents/skills` tree.
 
 ### D4 — Schema additions (additive only)
@@ -343,17 +343,17 @@ Deferred / reused:
   direct `Repo.RelatedSkills []string`, added only when that slice lands. v1
   adds no unused field.
 
-### D5 — Selector syntax & precedence (on `our ai`)
+### D5 — Selector syntax & precedence (on `my ai`)
 
-Selector lives on `our`, never the harness:
+Selector lives on `my`, never the harness:
 
 ```
-our ai <harness>                         # target-driven default (see algorithm)
-our ai --repo <id> <harness>             # self-skill only in v1 (Slice 3 gate)
-our ai --skills all <harness>            # every declared org skill
-our ai --skills none <harness>           # self-skill only
-our ai --skills a,b,c <harness>          # explicit set (+ self-skill)
-our ai --profile <id> <harness>          # named loadout (+ self-skill)
+my ai <harness>                         # target-driven default (see algorithm)
+my ai --repo <id> <harness>             # self-skill only in v1 (Slice 3 gate)
+my ai --skills all <harness>            # every declared org skill
+my ai --skills none <harness>           # self-skill only
+my ai --skills a,b,c <harness>          # explicit set (+ self-skill)
+my ai --profile <id> <harness>          # named loadout (+ self-skill)
 ```
 
 Precedence: explicit `--skills`/`--profile` override target defaults.
@@ -394,28 +394,28 @@ The managed org-skill materialization helpers are `collectSkillInstallResults`
 and `collectSkillSyncResults`. They are reached by **two** managed seams:
 
 - `runSetup` calls `collectSkillInstallResults` **directly** at `setup.go:290`
-  (plain `our setup`), and
+  (plain `my setup`), and
 - `reconcileDerived` (`setup.go:32`) calls `collectSkillSyncResults`
-  (`setup.go:60`) for `our sync` (`sync.go:132`), `our manifests sync`
-  (`manifests.go:288`), and `our doctor --fix` (`doctor.go:587`).
+  (`setup.go:60`) for `my sync` (`sync.go:132`), `my manifests sync`
+  (`manifests.go:288`), and `my doctor --fix` (`doctor.go:587`).
 
-Gating only `reconcileDerived` would leave plain `our setup` resurrecting
+Gating only `reconcileDerived` would leave plain `my setup` resurrecting
 user-global org skills. v1 factors **both** seams through one derived-skill
 helper so managed setup/sync/doctor paths no longer write org skills to harness
 user config dirs for launch-root-capable harnesses. The replacement report
-states org skills are now launch-scoped (composed by `our ai` into the launch
+states org skills are now launch-scoped (composed by `my ai` into the launch
 root) and lists any user-global org skills found, so every caller prints a
-consistent migration line. `our doctor` detects leftover user-global
-Our-managed org skills for launch-root-capable harnesses and offers `--fix` to
+consistent migration line. `my doctor` detects leftover user-global
+My AI-managed org skills for launch-root-capable harnesses and offers `--fix` to
 remove them; no deletion without `--fix`. OpenCode is the v1 compatibility
 carve-out: because it lacks a proven launch-root reader, present/explicit
 OpenCode installs keep global org skills marked `scope=compat`, and doctor does
-not remove them as legacy drift. `our skills install|uninstall|sync|list` remain
+not remove them as legacy drift. `my skills install|uninstall|sync|list` remain
 manual/personal surfaces: they may still operate on a user's global skill dirs
 by explicit command, but they are no longer part of automatic org setup.
 
 **Self-skill placement (v1 = global-only, option a).** To avoid exposing two
-`our` skills on harnesses that read both global and project skills, v1 keeps the
+`my` skills on harnesses that read both global and project skills, v1 keeps the
 self-skill on its **existing global ensure path** (`ensureLaunchSelfSkill`,
 `runSetup`'s `selfskill.Install`) and materializes **only org skills** into
 launch roots. The self-skill therefore lives in exactly one place in v1. This is
@@ -424,12 +424,12 @@ broadly available during migration"); moving the self-skill into launch roots is
 the documented target state, deferred until the global ensure can retire
 per-harness (a later slice, after each harness's discovery is verified). The
 self-skill is the right thing to keep global: it is the bootstrap skill that must
-be present in every context, including non-`our ai` entry and unmigrated
+be present in every context, including non-`my ai` entry and unmigrated
 harnesses.
 
 ### D9 — Gemini removed entirely; Antigravity is the replacement
 
-**Revised per Wojtek's directive (2026-06-14): remove Gemini entirely — `our`
+**Revised per Wojtek's directive (2026-06-14): remove Gemini entirely — `my`
 does not support Gemini at all anymore.** Antigravity (`agy`, installed) is the
 replacement. Add `harness.Antigravity ("antigravity")`, command `agy`,
 `ReadsAgentsSkills()=true`, `SupportsLaunchRootSkills()=true` (no mirror; reads
@@ -453,13 +453,13 @@ So OpenCode cannot consume launch-scoped skills today. v1 adds
 `SupportsLaunchRootSkills() = ClaudeCode || Codex || Antigravity` (OpenCode
 false): OpenCode is **excluded** from launch-root materialization and from the
 D8 user-global *removal* — its org skills stay on the user-global path it
-actually reads (a compatibility carve-out, like the self-skill), `our ai
+actually reads (a compatibility carve-out, like the self-skill), `my ai
 --skills/--profile` is rejected for OpenCode, and `doctor --fix` does not strip
 OpenCode's compat globals. Reviewed and accepted by Claude.
 
 ### D10 — `--print` is a pure command preview
 
-`our ai --print` returns at `launch.go:132`, before any self-skill repair or
+`my ai --print` returns at `launch.go:132`, before any self-skill repair or
 materialization. v1 preserves that contract exactly: under `--print`, selector
 flags (`--skills`/`--profile`) are **syntax-parsed only** — no composition, no
 `.agents/skills` materialization, and no manifest-profile validation. `--print`
@@ -493,10 +493,10 @@ unchanged and out of scope here.)
 5. Return ordered, de-duplicated `Profile{Entries []ProfileEntry}`; each entry
    carries install slug and canonical source path (copy is the v1 form — D2).
 
-`our ai` then materializes `Profile` into `<root>/.agents/skills` (+ mirror),
+`my ai` then materializes `Profile` into `<root>/.agents/skills` (+ mirror),
 wiping and regenerating only previously-owned slugs, after `launchTargetDir` and
 before `runHarness` — and **not** under `--print` (D10). The composer is pure
-(takes an explicit ctx); the CLI seam does I/O. `our compile` may later embed the
+(takes an explicit ctx); the CLI seam does I/O. `my compile` may later embed the
 same `Profile` in its projection (reusing the closure model already there) — out
 of scope here but kept compatible.
 
@@ -509,7 +509,7 @@ of scope here but kept compatible.
   `harness.ReadsAgentsSkills`/`SupportsLaunchRootSkills`/`MirrorSkillDir`, add
   Antigravity, remove Gemini. Launch-root `.agents/skills` **copy** writer
   with per-slug
-  wipe/regenerate, `.our-managed.json` markers, per-slug collision refusal, and
+  wipe/regenerate, `.my-cli-managed.json` markers, per-slug collision refusal, and
   explicit launch-root capability checks + double-discovery guard. Wire into
   the `ensureLaunchSelfSkill` seam for umbrella + session roots (D7), skipped
   under `--print` (D10). Add `--skills`/`--profile` flags. Antigravity ships on
@@ -526,20 +526,20 @@ of scope here but kept compatible.
 
 ## Edge cases (each gets a test)
 
-1. Pre-existing non-Our `.agents/skills` (repo-committed, no Our entries) →
-   coexists untouched; Our adds only its own slugs (D3).
-2. `.agents/skills` mixed Our + non-Our → only Our-owned slugs regenerated.
-3. Selected slug collides with an existing non-Our entry → fail for that slug
+1. Pre-existing non-My AI `.agents/skills` (repo-committed, no My AI-owned entries) →
+   coexists untouched; My adds only its own slugs (D3).
+2. `.agents/skills` mixed My AI-owned + non-My AI → only My AI-owned slugs regenerated.
+3. Selected slug collides with an existing non-My AI entry → fail for that slug
    only, others untouched (D3).
 4. `--skills none` → no org skills materialized in the launch root; prior
-   Our-owned org slugs wiped; self-skill still ensured globally (D8).
+   My AI-owned org slugs wiped; self-skill still ensured globally (D8).
 5. `--skills` + `--profile` together → error.
 6. Unknown skill id in `--skills`/`--profile` → error listing valid ids.
 7. Composed skill requires an out-of-scope mount/service/tool → precise closure
    error, no escape hatch (D6).
-8. Copy materialization → entry written as copy with `.our-managed.json`;
+8. Copy materialization → entry written as copy with `.my-cli-managed.json`;
    re-launch refreshes a stale copy.
-9. Mirror harness (Claude Code) → both `.agents/skills` and `.claude/skills` Our
+9. Mirror harness (Claude Code) → both `.agents/skills` and `.claude/skills` My
    slugs present and consistent; non-mirror harness → no mirror; harness reading
    both dirs → only one written (no double-discovery — D1).
 9a. OpenCode default launch/setup/sync when OpenCode is present → global org
@@ -553,15 +553,15 @@ of scope here but kept compatible.
     written into the checkout.
 12. `--print` (with any selector) → writes no `.agents/skills`, no manifest
     validation (D10).
-13. Stale Our-owned slug whose source skill left the manifest → wiped on next
+13. Stale My AI-owned slug whose source skill left the manifest → wiped on next
     compose.
 14. Re-launch with identical selector → idempotent (no spurious rewrites/dirty).
 15. Agent-authored/portable skill under `.agents/skills` → never wiped (D3
     Clawdapus boundary).
-16. Self-skill never duplicated → launch-root `.agents/skills` contains no `our`
+16. Self-skill never duplicated → launch-root `.agents/skills` contains no `my`
     self-skill in v1; the self-skill exists only on the global ensure path (D8).
-17. `our setup` (and `--print`), `our sync`, `our manifests sync`,
-    `our doctor --fix` → none install user-global org skills after migration (D8).
+17. `my setup` (and `--print`), `my sync`, `my manifests sync`,
+    `my doctor --fix` → none install user-global org skills after migration (D8).
 
 ## Test plan
 
@@ -571,7 +571,7 @@ of scope here but kept compatible.
   `MirrorSkillDir`, Antigravity present, Gemini rejected as unknown).
 - `cli/launch`: copy materialization into a `t.TempDir()` launch root with a stub
   manifest checkout; assert per-slug wipe/regenerate, per-slug collision refusal,
-  coexisting non-Our skills untouched, mirror generation + double-discovery
+  coexisting non-My AI skills untouched, mirror generation + double-discovery
   guard, idempotent re-launch, `--repo` self-skill-only, and `--print` writes
   nothing.
 - `cli` doctor: leftover user-global org-skill detection + `--fix`; all four
@@ -581,7 +581,7 @@ of scope here but kept compatible.
 
 ## Acceptance criteria
 
-- `our ai` materializes a context-correct org-skill `.agents/skills` (+ needed
+- `my ai` materializes a context-correct org-skill `.agents/skills` (+ needed
   launch-root mirror) in the umbrella/session launch root for
   launch-root-capable harnesses; the self-skill stays global and is never
   duplicated into the launch root.
@@ -591,7 +591,7 @@ of scope here but kept compatible.
   skills because no project-local skill seam is proven.
 - Selectors (`--skills all|none|csv`, `--profile`) work with documented
   precedence and mutual exclusion.
-- Closure failures are precise and structured; non-Our entries are never
+- Closure failures are precise and structured; non-My AI entries are never
   clobbered (per-slug ownership); re-launch is idempotent; `--print` writes
   nothing.
 - Gemini removed, Antigravity (`agy`) functional, docs/site updated.
@@ -603,7 +603,7 @@ of scope here but kept compatible.
 - `Repo.RelatedSkills` + repo-targeted defaults (Slice 3, gated on cleanliness —
   D4/D7).
 - Symlink materialization (D2; copy is the v1 form).
-- Profile composition inside `our compile` output (kept compatible, not built).
+- Profile composition inside `my compile` output (kept compatible, not built).
 - `--skip-unsatisfiable` closure escape hatch (resolved no — D6).
 - Profile dry-run surface (out of `--print` — D10).
 - Any per-skill confidentiality/role-as-ACL semantics (ADR rejects).
@@ -612,10 +612,10 @@ of scope here but kept compatible.
 
 The second revision resolves the two substantive blockers: all managed
 setup/sync/doctor seams are now in scope, and the self-skill is global-only in
-v1 so a harness cannot discover duplicate `our` skills. I made one wording
+v1 so a harness cannot discover duplicate `my` skills. I made one wording
 correction in D8: `reconcileDerived` calls `collectSkillSyncResults` today, not
 `collectSkillInstallResults`. That distinction matters for implementation
-because the helper split should preserve explicit/manual `our skills
+because the helper split should preserve explicit/manual `my skills
 install|sync` behavior while removing only automatic user-global org-skill
 writes.
 
@@ -623,7 +623,7 @@ My independent concern for this round is the manual/managed boundary: the plan
 must not accidentally delete a user's explicitly installed personal skills while
 cleaning up automatic org installs. D8 now draws that boundary clearly enough for
 implementation: `setup`, `sync`, `manifests sync`, and `doctor --fix` migrate to
-launch-scoped org skills; `our skills ...` remains a manual/personal surface.
+launch-scoped org skills; `my skills ...` remains a manual/personal surface.
 
 Codex signs off on this plan for Slice 0 through Slice 2 implementation,
 pending Claude's convergence review.
@@ -646,7 +646,7 @@ settled. My earlier "remaining seam?" question is itself answered by D8 (the
 
 Review #3's remaining seam question is resolved by distinguishing managed from
 manual callers: `runSetup` and `reconcileDerived` are the automatic org-skill
-paths to migrate; `our skills install|sync` are explicit manual/personal
+paths to migrate; `my skills install|sync` are explicit manual/personal
 commands, and `selfskill` remains the global self-skill carve-out in v1.
 
 ## Claude convergence (signed off)
@@ -654,10 +654,10 @@ commands, and `selfskill` remains the global self-skill carve-out in v1.
 I verified Codex's review #3 correction against the code and accept it:
 `reconcileDerived` calls `collectSkillSyncResults` (`skills.go:415`), `runSetup`
 calls `collectSkillInstallResults` (`skills.go:289`), and both helpers also back
-the manual `our skills install|sync` commands — so the migration must remove only
+the manual `my skills install|sync` commands — so the migration must remove only
 the **automatic** call sites' user-global org writes (`runSetup`,
 `reconcileDerived`) while leaving the helpers' behavior intact for explicit
-`our skills ...` and never deleting a user's personally-installed skills. D8 now
+`my skills ...` and never deleting a user's personally-installed skills. D8 now
 states this exactly.
 
 No remaining disagreement. Both reviewers sign off on Slices 0–2 for

@@ -1,4 +1,4 @@
-// Package selfskill installs and refreshes Our AI's bundled CLI skill.
+// Package selfskill installs and refreshes My AI's bundled CLI skill.
 package selfskill
 
 import (
@@ -9,14 +9,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fluxinc/our-ai/internal/bundle"
-	"github.com/fluxinc/our-ai/internal/harness"
-	"github.com/fluxinc/our-ai/internal/skills"
+	"github.com/fluxinc/my-cli/internal/bundle"
+	"github.com/fluxinc/my-cli/internal/harness"
+	"github.com/fluxinc/my-cli/internal/skills"
 )
 
 const (
-	Name        = "our"
-	CanonicalID = "our:self"
+	Name        = "my"
+	CanonicalID = "my:self"
 )
 
 // Options controls bundled self-skill operations.
@@ -41,7 +41,7 @@ type Status struct {
 	Remedy      string          `json:"remedy,omitempty"`
 }
 
-// Materialize writes the embedded skills tree and returns the bundled Our AI
+// Materialize writes the embedded skills tree and returns the bundled My AI
 // skill as an installable skill source.
 func Materialize(home string) (skills.Skill, string, error) {
 	source, err := bundle.MaterializeEmbedded(home)
@@ -57,21 +57,21 @@ func Materialize(home string) (skills.Skill, string, error) {
 			InstallSlug: Name,
 			Path:        Name,
 			SourceRoot:  source.SkillsDir,
-			SourceLabel: "embedded Our AI skill bundle",
+			SourceLabel: "embedded My AI skill bundle",
 		},
 	})
 	if err != nil {
 		return skills.Skill{}, "", err
 	}
 	if len(found) != 1 {
-		return skills.Skill{}, "", fmt.Errorf("embedded Our AI self-skill not found")
+		return skills.Skill{}, "", fmt.Errorf("embedded My AI self-skill not found")
 	}
 	return found[0], source.SkillsDir, nil
 }
 
 func writeSelfSkillMarker(sourceRoot string) error {
 	marker := bundle.Marker{
-		Installer:   "our",
+		Installer:   "my",
 		Version:     bundle.Version(),
 		Mode:        "symlink",
 		Source:      sourceRoot,
@@ -131,7 +131,7 @@ func resolveSource(home string, dryRun bool) (skills.Skill, string, error) {
 		SourcePath:  filepath.Join(sourceRoot, Name),
 		SourceRoot:  sourceRoot,
 		CanonicalID: CanonicalID,
-		Description: "Our AI CLI self-skill",
+		Description: "My AI CLI self-skill",
 	}, sourceRoot, nil
 }
 
@@ -300,7 +300,7 @@ func samePath(a, b string) bool {
 }
 
 func installRemedy(h harness.Harness, home string) string {
-	parts := []string{"our", "skills", "self", "install", string(h)}
+	parts := []string{"my", "skills", "self", "install", string(h)}
 	if home != "" {
 		parts = append(parts, "--home", home)
 	}

@@ -1,11 +1,11 @@
 #!/bin/sh
-# our installer — curl -sSL https://raw.githubusercontent.com/fluxinc/our-ai/master/install.sh | sh
+# my installer — curl -sSL https://raw.githubusercontent.com/fluxinc/my-cli/master/install.sh | sh
 #
 # Re-run this script at any time to update to the latest release.
 set -eu
 
-REPO="fluxinc/our-ai"
-INSTALL_DIR="${OUR_INSTALL_DIR:-$HOME/.local/bin}"
+REPO="fluxinc/my-cli"
+INSTALL_DIR="${MYCLI_INSTALL_DIR:-$HOME/.local/bin}"
 
 info() { printf '  %s\n' "$@"; }
 err()  { printf 'Error: %s\n' "$@" >&2; exit 1; }
@@ -42,7 +42,7 @@ info "Latest release: ${TAG}"
 
 # --- Download tarball and checksums ---
 VERSION="${TAG#v}"
-TARBALL="our-ai_${VERSION}_${OS}_${ARCH}.tar.gz"
+TARBALL="my-cli_${VERSION}_${OS}_${ARCH}.tar.gz"
 BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
 
 TMPDIR="$(mktemp -d)"
@@ -78,19 +78,19 @@ info "Checksum verified."
 # --- Extract and install ---
 mkdir -p "$INSTALL_DIR"
 tar -xzf "${TMPDIR}/${TARBALL}" -C "$TMPDIR"
-mv "${TMPDIR}/our" "${INSTALL_DIR}/our"
-chmod +x "${INSTALL_DIR}/our"
+mv "${TMPDIR}/my" "${INSTALL_DIR}/my"
+chmod +x "${INSTALL_DIR}/my"
 
-info "Installed our to ${INSTALL_DIR}/our"
+info "Installed my to ${INSTALL_DIR}/my"
 
 # --- Install bundled self-skill ---
-info "Installing bundled Our AI skill into existing harnesses..."
-if SELF_SKILL_OUT="$("${INSTALL_DIR}/our" skills self install --all 2>&1)"; then
+info "Installing bundled My AI skill into existing harnesses..."
+if SELF_SKILL_OUT="$("${INSTALL_DIR}/my" skills self install --all 2>&1)"; then
   if [ -n "$SELF_SKILL_OUT" ]; then
     printf '%s\n' "$SELF_SKILL_OUT" | sed 's/^/  /'
   fi
 else
-  info "Bundled Our AI skill install skipped:"
+  info "Bundled My AI skill install skipped:"
   printf '%s\n' "$SELF_SKILL_OUT" | sed 's/^/  /'
 fi
 
@@ -106,4 +106,4 @@ case ":$PATH:" in
 esac
 
 echo ""
-info "Run 'our doctor' to verify your installation."
+info "Run 'my doctor' to verify your installation."

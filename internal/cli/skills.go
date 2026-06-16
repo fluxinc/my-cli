@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fluxinc/our-ai/internal/bundle"
-	"github.com/fluxinc/our-ai/internal/harness"
-	"github.com/fluxinc/our-ai/internal/manifest"
-	"github.com/fluxinc/our-ai/internal/selfskill"
-	"github.com/fluxinc/our-ai/internal/skills"
-	"github.com/fluxinc/our-ai/internal/workspace"
+	"github.com/fluxinc/my-cli/internal/bundle"
+	"github.com/fluxinc/my-cli/internal/harness"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/selfskill"
+	"github.com/fluxinc/my-cli/internal/skills"
+	"github.com/fluxinc/my-cli/internal/workspace"
 )
 
 func (a app) runSkills(args []string) error {
@@ -48,16 +48,16 @@ func (a app) runSkills(args []string) error {
 
 func (a app) printSkillsUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our skills self install [harness...] | --all [--print] [--copy] [--link] [--force] [--json] [--home DIR]
-  our skills self uninstall [harness...] | --all [--print] [--force] [--json] [--home DIR]
-  our skills self status [harness...] | --all [--json] [--home DIR]
-  our skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
-  our skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
-  our skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
-  our skills purge <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
-  our skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
-  our skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
-  our skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  my skills self install [harness...] | --all [--print] [--copy] [--link] [--force] [--json] [--home DIR]
+  my skills self uninstall [harness...] | --all [--print] [--force] [--json] [--home DIR]
+  my skills self status [harness...] | --all [--json] [--home DIR]
+  my skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+  my skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
+  my skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
+  my skills purge <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
+  my skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  my skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
+  my skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
 
 Harnesses:
   claude-code, codex, opencode, antigravity
@@ -66,9 +66,9 @@ With no harnesses, install targets all supported harnesses and silently skips
 missing ones. If synced manifests are registered, skills commands use them by
 default; --source forces a local skills directory.
 
-Manifest skill commands only refresh harness skill directories. Run our setup
+Manifest skill commands only refresh harness skill directories. Run my setup
 to regenerate workspace guidance such as AGENTS.md. Self-skill commands
-install Our AI's bundled CLI guidance into harness skill directories.`)
+install My AI's bundled CLI guidance into harness skill directories.`)
 }
 
 func (a app) runSkillsSelf(args []string) error {
@@ -92,22 +92,22 @@ func (a app) runSkillsSelf(args []string) error {
 
 func (a app) printSkillsSelfUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  our skills self install [harness...] | --all [--print] [--copy] [--link] [--force] [--json] [--home DIR]
-  our skills self uninstall [harness...] | --all [--print] [--force] [--json] [--home DIR]
-  our skills self status [harness...] | --all [--json] [--home DIR]
+  my skills self install [harness...] | --all [--print] [--copy] [--link] [--force] [--json] [--home DIR]
+  my skills self uninstall [harness...] | --all [--print] [--force] [--json] [--home DIR]
+  my skills self status [harness...] | --all [--json] [--home DIR]
 
-Installs Our AI's bundled CLI self-skill. This is separate from manifest-backed
+Installs My AI's bundled CLI self-skill. This is separate from manifest-backed
 organization skills.`)
 }
 
 func (a app) runSkillsSelfInstall(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("our skills self install", a.stderr)
+	fs := newFlagSet("my skills self install", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "install into every supported harness")
 	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
 	fs.BoolVar(&opts.copyMode, "copy", false, "copy skill directories instead of symlinking")
 	fs.BoolVar(&opts.linkMode, "link", false, "symlink skill directories")
-	fs.BoolVar(&opts.force, "force", false, "replace non-Our AI-managed targets")
+	fs.BoolVar(&opts.force, "force", false, "replace non-My AI-managed targets")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
@@ -139,10 +139,10 @@ func (a app) runSkillsSelfInstall(args []string) error {
 
 func (a app) runSkillsSelfUninstall(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("our skills self uninstall", a.stderr)
+	fs := newFlagSet("my skills self uninstall", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "uninstall from every supported harness")
 	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
-	fs.BoolVar(&opts.force, "force", false, "remove non-Our AI-managed targets")
+	fs.BoolVar(&opts.force, "force", false, "remove non-My AI-managed targets")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
@@ -170,7 +170,7 @@ func (a app) runSkillsSelfUninstall(args []string) error {
 
 func (a app) runSkillsSelfStatus(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("our skills self status", a.stderr)
+	fs := newFlagSet("my skills self status", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "inspect every supported harness")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
@@ -228,7 +228,7 @@ func selfSkillStatusFailed(rows []selfskill.Status) bool {
 }
 
 func (a app) runSkillsInstall(args []string) error {
-	return a.runSkillsInstallNamed("our skills install", args)
+	return a.runSkillsInstallNamed("my skills install", args)
 }
 
 func (a app) runSkillsInstallNamed(commandName string, args []string) error {
@@ -238,7 +238,7 @@ func (a app) runSkillsInstallNamed(commandName string, args []string) error {
 	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
 	fs.BoolVar(&opts.copyMode, "copy", false, "copy skill directories instead of symlinking")
 	fs.BoolVar(&opts.linkMode, "link", false, "symlink skill directories")
-	fs.BoolVar(&opts.force, "force", false, "replace non-Our AI-managed targets")
+	fs.BoolVar(&opts.force, "force", false, "replace non-My AI-managed targets")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
@@ -248,7 +248,7 @@ func (a app) runSkillsInstallNamed(commandName string, args []string) error {
 		fmt.Fprintf(a.stderr, `Usage of %s:
   %s [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
 
-Skills install only changes harness skill directories. Run our setup to
+Skills install only changes harness skill directories. Run my setup to
 regenerate workspace guidance such as AGENTS.md.
 
 Options:
@@ -327,10 +327,10 @@ func (a app) collectSkillInstallResultsWithScope(opts skillsCommandOpts, hs []ha
 
 func (a app) runSkillsUninstall(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("our skills uninstall", a.stderr)
+	fs := newFlagSet("my skills uninstall", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "uninstall from every supported harness")
 	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
-	fs.BoolVar(&opts.force, "force", false, "remove non-Our AI-managed targets")
+	fs.BoolVar(&opts.force, "force", false, "remove non-My AI-managed targets")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
@@ -379,14 +379,14 @@ func (a app) runSkillsUninstall(args []string) error {
 
 func (a app) runSkillsSync(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("our skills sync", a.stderr)
+	fs := newFlagSet("my skills sync", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "sync every supported harness")
 	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
 	fs.BoolVar(&opts.copyMode, "copy", false, "copy skill directories instead of symlinking")
 	fs.BoolVar(&opts.linkMode, "link", false, "symlink skill directories")
-	fs.BoolVar(&opts.force, "force", false, "replace non-Our AI-managed targets during install")
+	fs.BoolVar(&opts.force, "force", false, "replace non-My AI-managed targets during install")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
-	fs.BoolVar(&opts.noPrune, "no-prune", false, "skip removal of stale Our AI-managed skill materializations")
+	fs.BoolVar(&opts.noPrune, "no-prune", false, "skip removal of stale My AI-managed skill materializations")
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	fs.StringVar(&opts.manifestName, "manifest", "", "use skills declared by a synced manifest")
@@ -465,10 +465,10 @@ func (a app) collectSkillSyncResultsWithScope(opts skillsCommandOpts, hs []harne
 
 func (a app) runSkillsPurge(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("our skills purge", a.stderr)
+	fs := newFlagSet("my skills purge", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "purge from every supported harness")
 	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")
-	fs.BoolVar(&opts.force, "force", false, "remove explicitly selected non-Our AI-managed targets")
+	fs.BoolVar(&opts.force, "force", false, "remove explicitly selected non-My AI-managed targets")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON results")
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
@@ -535,7 +535,7 @@ func (a app) runSkillsList(args []string) error {
 	var manifestName string
 	var home string
 	var jsonOut bool
-	fs := newFlagSet("our skills list", a.stderr)
+	fs := newFlagSet("my skills list", a.stderr)
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
 	fs.StringVar(&source, "source", "", "skills source directory")
 	fs.StringVar(&manifestName, "manifest", "", "use skills declared by a synced manifest")
@@ -571,7 +571,7 @@ func (a app) runSkillsList(args []string) error {
 
 func (a app) runSkillsShow(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("our skills show", a.stderr)
+	fs := newFlagSet("my skills show", a.stderr)
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
@@ -585,7 +585,7 @@ func (a app) runSkillsShow(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: our skills show <id|slug>")
+		return fmt.Errorf("usage: my skills show <id|slug>")
 	}
 
 	bundled, _, _, err := a.discoverSkills(skillsCommandOpts{
@@ -646,7 +646,7 @@ type skillStatusRow struct {
 
 func (a app) runSkillsStatus(args []string) error {
 	var opts skillsCommandOpts
-	fs := newFlagSet("our skills status", a.stderr)
+	fs := newFlagSet("my skills status", a.stderr)
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	fs.StringVar(&opts.source, "source", "", "skills source directory")
 	fs.StringVar(&opts.home, "home", "", "override home directory")
@@ -740,7 +740,7 @@ func skillSyncRemedy(opts skillsCommandOpts, h harness.Harness, s skills.Skill) 
 	if ref == "" {
 		ref = s.Name
 	}
-	parts := []string{"our", "skills", "sync", string(h), "--skill", ref}
+	parts := []string{"my", "skills", "sync", string(h), "--skill", ref}
 	if opts.manifestName != "" {
 		parts = append(parts, "--manifest", opts.manifestName)
 	}
@@ -761,7 +761,7 @@ func skillInstallRemedy(opts skillsCommandOpts, h harness.Harness, s skills.Skil
 	if ref == "" {
 		ref = s.Name
 	}
-	parts := []string{"our", "skills", "install", string(h), "--skill", ref}
+	parts := []string{"my", "skills", "install", string(h), "--skill", ref}
 	if opts.manifestName != "" {
 		parts = append(parts, "--manifest", opts.manifestName)
 	}
@@ -939,9 +939,9 @@ func collectStaleSkillRemovalResults(opts skillsCommandOpts, hs []harness.Harnes
 
 func staleRemovalMessage(message string) string {
 	if message == "" {
-		return "stale Our AI-managed skill not declared by selected source"
+		return "stale My AI-managed skill not declared by selected source"
 	}
-	return "stale Our AI-managed skill not declared by selected source; " + message
+	return "stale My AI-managed skill not declared by selected source; " + message
 }
 
 func filesystemPurgeTargets(declared []skills.Skill, installed []skills.InstalledSkill, refs []string) ([]skillRemovalTarget, error) {

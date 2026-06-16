@@ -11,15 +11,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fluxinc/our-ai/internal/guidance"
-	"github.com/fluxinc/our-ai/internal/manifest"
-	"github.com/fluxinc/our-ai/internal/mcpconfig"
-	"github.com/fluxinc/our-ai/internal/umbrella"
+	"github.com/fluxinc/my-cli/internal/guidance"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/mcpconfig"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 func TestOnboardJSONAndDoctorUmbrella(t *testing.T) {
 	home := t.TempDir()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", "acme")
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	if err := os.MkdirAll(filepath.Join(manifestCache, "skills", "acme-handbook"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestOnboardJSONAndDoctorUmbrella(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", "acme",
+		"my", "manifests", "add", "acme",
 		"https://github.com/acme/acme-ai-manifest.git",
 		"--home", home,
 	}); err != nil {
@@ -52,7 +52,7 @@ func TestOnboardJSONAndDoctorUmbrella(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "setup", "claude-code", "--copy", "--json", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "setup", "claude-code", "--copy", "--json", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{`"umbrella"`, `"skills"`, "launch-scoped"} {
@@ -65,7 +65,7 @@ func TestOnboardJSONAndDoctorUmbrella(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "doctor", "--umbrella", filepath.Join(home, "acme"), "--home", home}); err != nil {
+	if err := a.run([]string{"my", "doctor", "--umbrella", filepath.Join(home, "acme"), "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "umbrella\tacme\tok") {
@@ -80,7 +80,7 @@ func TestSetupOpenCodeInstallsCompatibilityGlobalOrgSkills(t *testing.T) {
 	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "setup", "opencode", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "setup", "opencode", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatal(err)
 	}
 	globalSkillsDir := filepath.Join(home, ".config", "opencode", "skills")
@@ -108,7 +108,7 @@ func TestOnboardAutoRefreshesManifestBeforeGuidance(t *testing.T) {
 		writeCLITestFile(t, filepath.Join(writer, "guidance", "fresh.md"), "fresh guidance from manifest\n")
 		commitAndPushCLIGit(t, writer, "add guidance")
 
-		args := []string{"our", "setup", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}
+		args := []string{"my", "setup", "--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot}
 		if noRefresh {
 			args = append(args, "--no-refresh")
 		}
@@ -147,7 +147,7 @@ func TestServicesListAndGet(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "services", "list", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "services", "list", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"docs-search", "Search the handbook", "status-api", "mcp", "http"} {
@@ -157,7 +157,7 @@ func TestServicesListAndGet(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "services", "get", "docs-search", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "services", "get", "docs-search", "--manifest", "acme", "--home", home, "--json"}); err != nil {
 		t.Fatal(err)
 	}
 	var service struct {
@@ -176,7 +176,7 @@ func TestServicesListAndGet(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "services", "get", "nope", "--manifest", "acme", "--home", home}); err == nil {
+	if err := a.run([]string{"my", "services", "get", "nope", "--manifest", "acme", "--home", home}); err == nil {
 		t.Fatal("services get nope should fail")
 	} else if !strings.Contains(err.Error(), "nope") {
 		t.Fatalf("services get nope error = %v", err)
@@ -189,7 +189,7 @@ func TestRolesListAndGet(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "roles", "list", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "roles", "list", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"operator", "Default operator role", "docs-search"} {
@@ -199,7 +199,7 @@ func TestRolesListAndGet(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "roles", "get", "operator", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+	if err := a.run([]string{"my", "roles", "get", "operator", "--manifest", "acme", "--home", home, "--json"}); err != nil {
 		t.Fatal(err)
 	}
 	var role struct {
@@ -214,7 +214,7 @@ func TestRolesListAndGet(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"our", "roles", "get", "nope", "--manifest", "acme", "--home", home}); err == nil {
+	if err := a.run([]string{"my", "roles", "get", "nope", "--manifest", "acme", "--home", home}); err == nil {
 		t.Fatal("roles get nope should fail")
 	}
 }
@@ -226,7 +226,7 @@ func TestSetupRolePersistsStateAndFiltersGuidance(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "setup",
+		"my", "setup",
 		"--manifest", "acme",
 		"--home", home,
 		"--role", "operator",
@@ -259,7 +259,7 @@ func TestSetupRolePersistsStateAndFiltersGuidance(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	if err := a.run([]string{
-		"our", "doctor",
+		"my", "doctor",
 		"--manifest", "acme",
 		"--home", home,
 		"--umbrella", umbrellaRoot,
@@ -279,14 +279,14 @@ func TestSetupRoleRejectsUnknownRole(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	err := a.run([]string{
-		"our", "setup",
+		"my", "setup",
 		"--manifest", "acme",
 		"--home", home,
 		"--role", "missing",
 		"--no-refresh",
 		"--no-update-check",
 	})
-	if err == nil || !strings.Contains(err.Error(), `role "missing" not found; run our roles list`) {
+	if err == nil || !strings.Contains(err.Error(), `role "missing" not found; run my roles list`) {
 		t.Fatalf("setup --role missing err = %v", err)
 	}
 }
@@ -315,7 +315,7 @@ func TestVisibleServicesHonorsSelectedRole(t *testing.T) {
 	if len(filtered) != 1 || filtered[0].ID != "docs-search" {
 		t.Fatalf("visibleServices operator = %#v", filtered)
 	}
-	if _, err := visibleServices(doc, "missing"); err == nil || !strings.Contains(err.Error(), "our roles list") {
+	if _, err := visibleServices(doc, "missing"); err == nil || !strings.Contains(err.Error(), "my roles list") {
 		t.Fatalf("visibleServices missing err = %v", err)
 	}
 }
@@ -337,7 +337,7 @@ func TestSetupMaterializesMCPConfigForSelectedRole(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "setup",
+		"my", "setup",
 		"--manifest", "acme",
 		"--home", home,
 		"--role", "operator",
@@ -370,7 +370,7 @@ func TestSetupSkipsMCPConfigWhenRoleGrantsNoMCPServices(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "setup",
+		"my", "setup",
 		"--manifest", "acme",
 		"--home", home,
 		"--role", "auditor",
@@ -388,7 +388,7 @@ func TestSetupInteractiveRejectsMachineOutputModes(t *testing.T) {
 	for _, flag := range []string{"--json", "--print"} {
 		var stdout, stderr bytes.Buffer
 		a := app{stdout: &stdout, stderr: &stderr}
-		err := a.run([]string{"our", "setup", "--interactive", flag})
+		err := a.run([]string{"my", "setup", "--interactive", flag})
 		if err == nil || !strings.Contains(err.Error(), "--interactive and "+flag+" are mutually exclusive") {
 			t.Fatalf("setup --interactive %s err = %v", flag, err)
 		}
@@ -406,7 +406,7 @@ func TestSetupInteractiveSelectsManifestAndErrorsOnAmbiguousEOF(t *testing.T) {
 		stderr: &stderr,
 		stdin:  bufio.NewReader(strings.NewReader("2\n")),
 	}
-	if err := a.run([]string{"our", "setup", "--interactive", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "setup", "--interactive", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("setup --interactive: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	ws, err := umbrella.LoadWorkspace(filepath.Join(home, "beta"))
@@ -420,7 +420,7 @@ func TestSetupInteractiveSelectsManifestAndErrorsOnAmbiguousEOF(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	a = app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader(""))}
-	err = a.run([]string{"our", "setup", "--interactive", "--home", home})
+	err = a.run([]string{"my", "setup", "--interactive", "--home", home})
 	if err == nil || !strings.Contains(err.Error(), "pass --manifest") {
 		t.Fatalf("setup ambiguous EOF err = %v", err)
 	}
@@ -432,14 +432,14 @@ func TestSetupInteractiveRoleDefaultAndClear(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "setup", "--manifest", "acme", "--home", home, "--role", "operator", "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "setup", "--manifest", "acme", "--home", home, "--role", "operator", "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatal(err)
 	}
 
 	stdout.Reset()
 	stderr.Reset()
 	a = app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader(""))}
-	if err := a.run([]string{"our", "setup", "--interactive", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "setup", "--interactive", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("setup --interactive default: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	state, err := umbrella.LoadState(umbrellaRoot)
@@ -453,7 +453,7 @@ func TestSetupInteractiveRoleDefaultAndClear(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	a = app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader("none\n"))}
-	if err := a.run([]string{"our", "setup", "--interactive", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "setup", "--interactive", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("setup --interactive clear: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	state, err = umbrella.LoadState(umbrellaRoot)
@@ -471,7 +471,7 @@ func TestSetupInteractiveExplicitRoleSkipsRolePrompt(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader(""))}
-	if err := a.run([]string{"our", "setup", "--interactive", "--manifest", "acme", "--home", home, "--role", "auditor", "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "setup", "--interactive", "--manifest", "acme", "--home", home, "--role", "auditor", "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("setup --interactive --role: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	if strings.Contains(stdout.String(), "Role [") {
@@ -490,16 +490,16 @@ func TestOnboardZeroManifestPrintsGuidanceAndDoesNotMark(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "onboard", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "onboard", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
-	for _, want := range []string{"our manifests add <name> <git-url>", "onboard\tunmarked"} {
+	for _, want := range []string{"my manifests add <name> <git-url>", "onboard\tunmarked"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("onboard zero stdout missing %q:\n%s", want, out)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(home, ".our", "state.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(home, ".my-cli", "state.json")); !os.IsNotExist(err) {
 		t.Fatalf("zero-manifest onboard should not write state: %v", err)
 	}
 }
@@ -510,7 +510,7 @@ func TestOnboardUnconfiguredSkipLeavesTourUnmarked(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader("n\n"))}
-	if err := a.run([]string{"our", "onboard", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := umbrella.LoadState(umbrellaRoot); !os.IsNotExist(err) {
@@ -531,7 +531,7 @@ func TestOnboardFirstRunDelegatesSetupAndMarksTour(t *testing.T) {
 		stderr: &stderr,
 		stdin:  bufio.NewReader(strings.NewReader("y\noperator\n")),
 	}
-	if err := a.run([]string{"our", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("onboard first run: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	state, err := umbrella.LoadState(umbrellaRoot)
@@ -552,14 +552,14 @@ func TestOnboardConfiguredButNotTouredDeclinePreservesRoleAndLeavesTourUnmarked(
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "setup", "--manifest", "acme", "--home", home, "--role", "auditor", "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "setup", "--manifest", "acme", "--home", home, "--role", "auditor", "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatal(err)
 	}
 
 	stdout.Reset()
 	stderr.Reset()
 	a = app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader("n\n"))}
-	if err := a.run([]string{"our", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("onboard configured: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	state, err := umbrella.LoadState(umbrellaRoot)
@@ -595,7 +595,7 @@ func TestOnboardAlreadyCompleteIsPureReview(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader("n\n"))}
-	if err := a.run([]string{"our", "onboard", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -628,7 +628,7 @@ func TestOnboardOldTourVersionSoftNotifiesWithoutRetour(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader(""))}
-	if err := a.run([]string{"our", "onboard", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
@@ -647,23 +647,23 @@ func TestOnboardOldTourVersionSoftNotifiesWithoutRetour(t *testing.T) {
 func TestOnboardHelpAndNoVerbBloat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"our", "onboard", "--help"}); err != nil && !errors.Is(err, flag.ErrHelp) {
+	if err := a.run([]string{"my", "onboard", "--help"}); err != nil && !errors.Is(err, flag.ErrHelp) {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stderr.String(), "Usage of our onboard") {
+	if !strings.Contains(stderr.String(), "Usage of my onboard") {
 		t.Fatalf("onboard help stderr:\n%s", stderr.String())
 	}
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := a.run([]string{"our", "configuration"}); err == nil || !strings.Contains(err.Error(), "unknown command") {
+	if err := a.run([]string{"my", "configuration"}); err == nil || !strings.Contains(err.Error(), "unknown command") {
 		t.Fatalf("configuration err = %v", err)
 	}
 }
 
 func writeSimpleSetupManifest(t *testing.T, home, name, orgName string) {
 	t.Helper()
-	manifestCache := filepath.Join(home, ".local", "share", "our", "manifests", name)
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", name)
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
   "organization": { "id": "`+name+`", "name": "`+orgName+`" },
@@ -672,7 +672,7 @@ func writeSimpleSetupManifest(t *testing.T, home, name, orgName string) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{
-		"our", "manifests", "add", name,
+		"my", "manifests", "add", name,
 		"https://github.com/acme/" + name + "-manifest.git",
 		"--home", home,
 	}); err != nil {
