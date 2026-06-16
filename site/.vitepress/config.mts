@@ -22,12 +22,7 @@ export default defineConfig({
     ['meta', { name: 'twitter:image', content: 'https://my-cli.com/my-cli-glyph.svg?v=2' }],
   ],
   themeConfig: {
-    logo: {
-      light: '/my-cli-wordmark.svg',
-      dark: '/my-cli-wordmark-dark.svg',
-      alt: 'My AI',
-    },
-    siteTitle: false,
+    siteTitle: '> my ai',
     nav: [
       { text: 'Guide', link: '/guide/what-is-my-cli' },
       { text: 'CLI', link: '/guide/cli-reference' },

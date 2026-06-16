@@ -2,12 +2,9 @@
 layout: home
 
 hero:
-  name: My AI
+  name: "> my ai"
   text: Your team's AI, set up once
   tagline: One organization manifest gives every AI harness generated guidance, mounts, launch profiles, and local operating context — on any machine, with one command.
-  image:
-    src: /my-cli-glyph.svg
-    alt: My AI mark
   actions:
     - theme: brand
       text: Install
