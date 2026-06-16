@@ -464,11 +464,16 @@ func setupCLITrackedManifestBody(t *testing.T, body string) (string, string, str
 func initCLIGitRepo(t *testing.T, dir string) {
 	t.Helper()
 	runCLIGit(t, dir, "init", "-q")
+	configureCLIGitIdentity(t, dir)
+	runCLIGit(t, dir, "add", ".")
+	runCLIGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=my-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed repository")
+}
+
+func configureCLIGitIdentity(t *testing.T, dir string) {
+	t.Helper()
 	runCLIGit(t, dir, "config", "user.name", "Example Test")
 	runCLIGit(t, dir, "config", "user.email", "my-test@example.com")
 	runCLIGit(t, dir, "config", "commit.gpgsign", "false")
-	runCLIGit(t, dir, "add", ".")
-	runCLIGit(t, dir, "-c", "user.name=Example Test", "-c", "user.email=my-test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed repository")
 }
 
 func setupCLIRemoteRepo(t *testing.T, root, name string, files map[string]string) (string, string, string) {
@@ -487,6 +492,8 @@ func setupCLIRemoteRepo(t *testing.T, root, name string, files map[string]string
 	writer := filepath.Join(root, name+"-writer")
 	runCLIGit(t, root, "clone", "-q", remote, clone)
 	runCLIGit(t, root, "clone", "-q", remote, writer)
+	configureCLIGitIdentity(t, clone)
+	configureCLIGitIdentity(t, writer)
 	return remote, clone, writer
 }
 
