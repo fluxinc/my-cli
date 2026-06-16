@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.30.0 - 2026-06-16
+
+### Added
+
+- `my onboarding --no-agent` to force the deterministic walkthrough/status
+  review instead of launching a harness.
+
+### Changed
+
+- `my onboarding` is now the primary guided onboarding command. In an
+  interactive terminal it launches model-driven onboarding by default,
+  auto-detecting a logged-in or singly installed harness when possible;
+  `my onboard` remains as a compatibility alias.
+- Onboarding output now uses readable human prompts and next-step commands
+  instead of tabular status rows.
+
 ## 0.29.0 - 2026-06-16
 
 ### Added

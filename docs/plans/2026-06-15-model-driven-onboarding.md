@@ -3,8 +3,13 @@
 Status: **shipped (v0.29.0)**, 2026-06-16. Brainstormed between Claude
 and Codex over Talking Stick; scope decisions made by Wojtek. Revised once to
 answer Codex adversarial review #1 (all five points), then implemented as
-`my onboard --agent`, bundled Agent-Operated Onboarding guidance, and
-command-driven role/service authoring.
+`my onboarding`, bundled Agent-Operated Onboarding guidance, and command-driven
+role/service authoring.
+
+Post-ship dogfood correction: the primary command is now `my onboarding`, which
+launches a harness by default in an interactive terminal. `my onboard` remains a
+compatibility alias, and `my onboarding --no-agent` keeps the deterministic
+walkthrough/status review available for scripts and fixed-output checks.
 
 ## Problem
 

@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/fluxinc/my-cli/internal/harness"
 	"github.com/fluxinc/my-cli/internal/manifest"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 )
@@ -28,13 +30,13 @@ func TestOnboardUnconfiguredEOFDoesNotMutate(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader(""))}
-	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("onboard EOF: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	if _, err := umbrella.LoadState(umbrellaRoot); !os.IsNotExist(err) {
 		t.Fatalf("EOF onboard must not create state (no silent setup): %v", err)
 	}
-	if !strings.Contains(stdout.String(), "onboard\tunmarked") {
+	if !strings.Contains(stdout.String(), "Next step:") {
 		t.Fatalf("EOF onboard should print unmarked guidance:\n%s", stdout.String())
 	}
 }
@@ -47,7 +49,7 @@ func TestOnboardConfiguredEOFDoesNotMarkTour(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader(""))}
-	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("onboard configured EOF: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	assertTourUnmarkedRolePreserved(t, umbrellaRoot)
@@ -61,7 +63,7 @@ func TestOnboardConfiguredDeclineDoesNotMarkTour(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader("n\n"))}
-	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("onboard configured decline: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	assertTourUnmarkedRolePreserved(t, umbrellaRoot)
@@ -75,7 +77,7 @@ func TestOnboardConfirmRepromptsOnInvalidInput(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader("maybe\nn\n"))}
-	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("onboard invalid-then-decline should not error: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	if _, err := umbrella.LoadState(umbrellaRoot); !os.IsNotExist(err) {
@@ -149,6 +151,75 @@ func TestOnboardAgentZeroManifestExecsHarnessFromCurrentDir(t *testing.T) {
 	}
 }
 
+func TestOnboardingInteractiveDefaultExecsHarness(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchFixture(t)
+
+	var stdout, stderr bytes.Buffer
+	var gotPath, gotDir string
+	var gotArgs []string
+	a := app{
+		stdout:      &stdout,
+		stderr:      &stderr,
+		interactive: true,
+		lookPath: func(name string) (string, error) {
+			if name == "codex" {
+				return "/test/bin/codex", nil
+			}
+			return "", exec.ErrNotFound
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotPath = path
+			gotArgs = append([]string(nil), args...)
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"my", "onboarding", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+		t.Fatalf("interactive onboarding: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if gotPath != "/test/bin/codex" || gotDir != umbrellaRoot {
+		t.Fatalf("exec path=%q dir=%q, want codex in umbrella %q", gotPath, gotDir, umbrellaRoot)
+	}
+	if len(gotArgs) != 1 || !strings.Contains(gotArgs[0], "reply \"OK\"") ||
+		!strings.Contains(gotArgs[0], "Do not run any command until they respond") {
+		t.Fatalf("initial prompt args = %#v", gotArgs)
+	}
+	if !strings.Contains(stdout.String(), "Onboarding with codex (installed).") {
+		t.Fatalf("stdout missing harness cue:\n%s", stdout.String())
+	}
+}
+
+func TestOnboardingNoAgentUsesDeterministicWalkthrough(t *testing.T) {
+	home := t.TempDir()
+	umbrellaRoot := writeRoleSetupManifest(t, home)
+
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout:      &stdout,
+		stderr:      &stderr,
+		stdin:       bufio.NewReader(strings.NewReader("n\n")),
+		interactive: true,
+		lookPath: func(name string) (string, error) {
+			t.Fatalf("--no-agent should not inspect harness %q", name)
+			return "", exec.ErrNotFound
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			t.Fatalf("--no-agent should not exec harness %q", path)
+			return nil
+		},
+	}
+	if err := a.run([]string{"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+		t.Fatalf("onboarding --no-agent: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if _, err := umbrella.LoadState(umbrellaRoot); !os.IsNotExist(err) {
+		t.Fatalf("--no-agent decline should not create state: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "How it fits together:") ||
+		!strings.Contains(stdout.String(), "Next step:") {
+		t.Fatalf("stdout missing deterministic walkthrough:\n%s", stdout.String())
+	}
+}
+
 func TestOnboardAgentPromptsForHarnessWhenOmitted(t *testing.T) {
 	home := t.TempDir()
 	cwd := t.TempDir()
@@ -156,15 +227,14 @@ func TestOnboardAgentPromptsForHarnessWhenOmitted(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	var gotPath string
+	// All harnesses installed and none logged in => auto-detect is ambiguous, so
+	// onboard falls back to the interactive harness prompt; "2" selects codex.
 	a := app{
 		stdout: &stdout,
 		stderr: &stderr,
 		stdin:  bufio.NewReader(strings.NewReader("2\n")),
 		lookPath: func(name string) (string, error) {
-			if name != "codex" {
-				t.Fatalf("lookPath name = %q, want codex from prompt choice", name)
-			}
-			return "/test/bin/codex", nil
+			return "/test/bin/" + name, nil
 		},
 		execHarness: func(path string, args []string, dir string) error {
 			gotPath = path
@@ -180,6 +250,43 @@ func TestOnboardAgentPromptsForHarnessWhenOmitted(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Select a harness:") ||
 		!strings.Contains(stdout.String(), "Harness (--harness to skip this prompt):") {
 		t.Fatalf("stdout missing harness prompt:\n%s", stdout.String())
+	}
+}
+
+func TestAutoDetectHarnessPrefersSingleLoggedIn(t *testing.T) {
+	home := t.TempDir()
+	writeCLITestFile(t, filepath.Join(home, ".codex", "auth.json"), "{}\n")
+	a := app{lookPath: func(name string) (string, error) {
+		return "/test/bin/" + name, nil
+	}}
+	got, reason, ok := a.autoDetectHarness(home)
+	if !ok || got != harness.Codex || reason != "installed, logged in" {
+		t.Fatalf("autoDetectHarness = %q, %q, %v; want codex logged in", got, reason, ok)
+	}
+}
+
+func TestAutoDetectHarnessUsesSingleInstalled(t *testing.T) {
+	home := t.TempDir()
+	a := app{lookPath: func(name string) (string, error) {
+		if name == "codex" {
+			return "/test/bin/codex", nil
+		}
+		return "", exec.ErrNotFound
+	}}
+	got, reason, ok := a.autoDetectHarness(home)
+	if !ok || got != harness.Codex || reason != "installed" {
+		t.Fatalf("autoDetectHarness = %q, %q, %v; want single installed codex", got, reason, ok)
+	}
+}
+
+func TestAutoDetectHarnessReturnsFalseWhenAmbiguous(t *testing.T) {
+	home := t.TempDir()
+	a := app{lookPath: func(name string) (string, error) {
+		return "/test/bin/" + name, nil
+	}}
+	got, reason, ok := a.autoDetectHarness(home)
+	if ok || got != "" || reason != "" {
+		t.Fatalf("autoDetectHarness = %q, %q, %v; want ambiguous false", got, reason, ok)
 	}
 }
 

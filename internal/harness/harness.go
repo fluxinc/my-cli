@@ -70,6 +70,31 @@ func Parse(s string) (Harness, error) {
 	return "", fmt.Errorf("unknown harness %q (valid: claude-code, codex, opencode, antigravity)", s)
 }
 
+// LoginMarkers returns best-effort filesystem paths whose existence suggests
+// the harness already has credentials configured. Detection is heuristic and
+// path-only (the package stays pure); callers stat these and should treat a
+// match as a preference hint, never a guarantee that the harness can run.
+func (h Harness) LoginMarkers(home string) []string {
+	switch h {
+	case ClaudeCode:
+		return []string{filepath.Join(home, ".claude", ".credentials.json")}
+	case Codex:
+		return []string{filepath.Join(home, ".codex", "auth.json")}
+	case OpenCode:
+		return []string{
+			filepath.Join(home, ".local", "share", "opencode", "auth.json"),
+			filepath.Join(home, ".config", "opencode", "auth.json"),
+		}
+	case Antigravity:
+		return []string{
+			filepath.Join(home, ".gemini", "antigravity", "user_settings.pb"),
+			filepath.Join(home, ".gemini", "antigravity", "installation_id"),
+			filepath.Join(home, ".antigravity", "auth.json"),
+		}
+	}
+	return nil
+}
+
 // ConfigDir returns the harness's user config directory under home.
 func (h Harness) ConfigDir(home string) string {
 	switch h {

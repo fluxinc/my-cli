@@ -22,9 +22,10 @@ import (
 // Run executes the CLI and returns a process exit code.
 func Run(args []string) int {
 	a := app{
-		stdout: os.Stdout,
-		stderr: os.Stderr,
-		stdin:  bufio.NewReader(os.Stdin),
+		stdout:      os.Stdout,
+		stderr:      os.Stderr,
+		stdin:       bufio.NewReader(os.Stdin),
+		interactive: isTerminal(os.Stdin) && isTerminal(os.Stdout),
 	}
 	if err := a.run(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -43,10 +44,21 @@ func Run(args []string) int {
 	return 0
 }
 
+// isTerminal reports whether f is attached to a terminal.
+func isTerminal(f *os.File) bool {
+	if f == nil {
+		return false
+	}
+	return isTerminalFD(f.Fd())
+}
+
 type app struct {
-	stdout               io.Writer
-	stderr               io.Writer
-	stdin                io.Reader
+	stdout io.Writer
+	stderr io.Writer
+	stdin  io.Reader
+	// interactive reports whether stdin/stdout are a TTY. Zero value (false)
+	// keeps tests on the deterministic, non-launching path by default.
+	interactive          bool
 	lookPath             func(string) (string, error)
 	execHarness          func(path string, args []string, dir string) error
 	updateSource         selfupdate.Source
@@ -132,6 +144,8 @@ func (a app) run(args []string) error {
 		return a.runSkills(args[2:])
 	case "setup":
 		return a.runSetup(args[2:])
+	case "onboarding":
+		return a.runOnboard(args[2:])
 	case "onboard":
 		return a.runOnboard(args[2:])
 	case "root":
@@ -184,7 +198,7 @@ func (a app) printUsage() {
 
 Usage:
   my setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-  my onboard [--agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+  my onboarding [--agent|--no-agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   my root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   my ai [--new-session|--session ID|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
   my update [--check] [--version X.Y.Z] [--json] [--yes]

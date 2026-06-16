@@ -50,11 +50,12 @@ works.
 
 ```sh
 my init acme --name "Acme"
-my onboard
+my onboarding
 my ai codex
 ```
 
-`my onboard` gives the human walkthrough and offers interactive setup.
+`my onboarding` launches guided onboarding in a harness when run interactively.
+Use `my onboarding --no-agent` for the deterministic setup walkthrough.
 `my ai codex` performs the same root resolution and guidance freshness check
 before starting a harness. `my init` creates a private manifest repo (the
 control plane) plus a content repo at `~/acme/workspace` (the actual

@@ -110,8 +110,8 @@ my init <org-id> [--name NAME] [--path DIR] [--umbrella DIR]
                                     # create manifest + content repos locally and register them
 my publish [--manifest NAME] [--print]
                                     # create private remotes, rewrite local mount URLs, push both repos
-my onboard [--manifest NAME] [--home DIR] [--umbrella DIR] [--agent] [--harness NAME]
-                                    # human walkthrough; --agent launches model-driven onboarding
+my onboarding [--manifest NAME] [--home DIR] [--umbrella DIR] [--agent|--no-agent] [--harness NAME]
+                                    # launch guided onboarding; --no-agent prints the deterministic walkthrough
 my setup [--manifest NAME] [--role ROLE] [--interactive] [--no-refresh] [--no-update-check]
                                     # create umbrella, write guidance/MCP config, install self-skill, sync mounts
 my root [--repo ID] [--no-refresh] [--no-update-check]
@@ -125,11 +125,14 @@ my compile --role ROLE [--manifest NAME] [--home DIR]
 my doctor [--no-fetch] [--fix]   # git freshness, sessions, services, derived drift, last sync, manifests, tools
 ```
 
-Use `my onboard` when a human wants the guided tour. It is not a manifest
-authoring wizard: with no registered manifest it prints the `my manifests add
-<name> <git-url>` next step and writes no state. Once a manifest is available,
-it teaches the model and offers to run `my setup --interactive`; completed
-tour state is local to the umbrella under `.my-cli/state.json`.
+Use `my onboarding` when a human wants the guided tour. In an interactive
+terminal it launches a harness by default, introduces the operator to My AI,
+and configures the workspace through validated `my` commands. Use
+`my onboarding --no-agent` for the deterministic walkthrough: it writes no state
+until setup actually runs, and with no registered manifest it prints the
+`my manifests add <name> <git-url>` next step. Completed tour state is local to
+the umbrella under `.my-cli/state.json`. `my onboard` remains a compatibility
+alias.
 
 Use `my init` only when the user explicitly wants to create a new
 organization. It creates two local repos — a private manifest repo at the
@@ -325,10 +328,13 @@ them.
 
 ## Agent-Operated Onboarding
 
-When a harness is launched via `my onboard --agent`, you are the onboarding
-brain. Hold a real conversation, then build or join the organization **only
-through the validated `my` commands** below — never by hand-editing the
-manifest or any generated file.
+When a harness is launched via `my onboarding`, you are the onboarding
+assistant. Start by greeting the operator, introduce yourself in one or two
+sentences, and ask the operator to reply `OK` so you can confirm the harness is
+connected. Do not run any command until the operator replies. Then hold a real
+conversation and build or join the organization **only through the validated
+`my` commands** below - never by hand-editing the manifest or any generated
+file.
 
 **One adaptive flow.** Detect state first, then branch. Run
 `my manifests list --json`. With **no manifest registered**, take the
@@ -340,8 +346,8 @@ on an existing manifest — offer that when it fits.
 
 **Conversation discipline.** Ask one question at a time; prefer concrete choices
 over open prompts; match depth to the person (a solo founder and a 200-person
-company need different conversations). Teach inline — as you run each command,
-say in one line what it does and why ("Running `my sync --publish never` —
+company need different conversations). Teach inline: before each command, say
+in one short line what it does and why ("Running `my sync --publish never` -
 that pulls workspace updates without publishing"). Do not dump the whole plan up
 front.
 
@@ -383,7 +389,8 @@ Build the control plane incrementally, validating as you go:
 ### JOIN branch (manifest already registered)
 
 1. Summarize the org from what is registered (`my roles list`,
-   `my services list`, `my mounts list`).
+   `my services list`, `my mounts list`) and use that summary to orient the
+   operator before changing settings.
 2. Help the person pick a role when roles exist, then `my setup --role <id>`;
    otherwise run `my setup`.
 3. `my sync --publish never` to pull mounts without publishing; teach the

@@ -490,11 +490,11 @@ func TestOnboardZeroManifestPrintsGuidanceAndDoesNotMark(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
-	if err := a.run([]string{"my", "onboard", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "onboarding", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
-	for _, want := range []string{"my manifests add <name> <git-url>", "onboard\tunmarked"} {
+	for _, want := range []string{"my manifests add <name> <git-url>", "Next steps:"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("onboard zero stdout missing %q:\n%s", want, out)
 		}
@@ -510,13 +510,13 @@ func TestOnboardUnconfiguredSkipLeavesTourUnmarked(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader("n\n"))}
-	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := umbrella.LoadState(umbrellaRoot); !os.IsNotExist(err) {
 		t.Fatalf("declined unconfigured onboard should not create state: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "onboard\tunmarked") {
+	if !strings.Contains(stdout.String(), "Next step:") {
 		t.Fatalf("stdout missing unmarked:\n%s", stdout.String())
 	}
 }
@@ -531,7 +531,7 @@ func TestOnboardFirstRunDelegatesSetupAndMarksTour(t *testing.T) {
 		stderr: &stderr,
 		stdin:  bufio.NewReader(strings.NewReader("y\noperator\n")),
 	}
-	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("onboard first run: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	state, err := umbrella.LoadState(umbrellaRoot)
@@ -559,7 +559,7 @@ func TestOnboardConfiguredButNotTouredDeclinePreservesRoleAndLeavesTourUnmarked(
 	stdout.Reset()
 	stderr.Reset()
 	a = app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader("n\n"))}
-	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+	if err := a.run([]string{"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
 		t.Fatalf("onboard configured: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	state, err := umbrella.LoadState(umbrellaRoot)
@@ -572,7 +572,7 @@ func TestOnboardConfiguredButNotTouredDeclinePreservesRoleAndLeavesTourUnmarked(
 	if state.Tour != nil {
 		t.Fatalf("tour was marked unexpectedly: %#v", state.Tour)
 	}
-	if !strings.Contains(stdout.String(), "onboard\tunmarked") {
+	if !strings.Contains(stdout.String(), "Next step:") {
 		t.Fatalf("stdout missing unmarked:\n%s", stdout.String())
 	}
 }
@@ -595,11 +595,11 @@ func TestOnboardAlreadyCompleteIsPureReview(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader("n\n"))}
-	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "onboard\tcomplete") || strings.Contains(out, "Review setup interactively") {
+	if !strings.Contains(out, "Onboarding complete -") || strings.Contains(out, "Review setup interactively now?") {
 		t.Fatalf("already-complete onboard stdout:\n%s", out)
 	}
 	after, err := umbrella.LoadState(umbrellaRoot)
@@ -628,11 +628,11 @@ func TestOnboardOldTourVersionSoftNotifiesWithoutRetour(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, stdin: bufio.NewReader(strings.NewReader(""))}
-	if err := a.run([]string{"my", "onboard", "--manifest", "acme", "--home", home}); err != nil {
+	if err := a.run([]string{"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "onboard\tupdated") || strings.Contains(out, "Run setup interactively now?") {
+	if !strings.Contains(out, "A newer guided tour is available") || strings.Contains(out, "Run setup interactively now?") {
 		t.Fatalf("old-version onboard stdout:\n%s", out)
 	}
 	after, err := umbrella.LoadState(umbrellaRoot)
@@ -647,11 +647,21 @@ func TestOnboardOldTourVersionSoftNotifiesWithoutRetour(t *testing.T) {
 func TestOnboardHelpAndNoVerbBloat(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "onboarding", "--help"}); err != nil && !errors.Is(err, flag.ErrHelp) {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr.String(), "Usage of my onboarding") ||
+		!strings.Contains(stderr.String(), "my onboard remains available") {
+		t.Fatalf("onboarding help stderr:\n%s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
 	if err := a.run([]string{"my", "onboard", "--help"}); err != nil && !errors.Is(err, flag.ErrHelp) {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stderr.String(), "Usage of my onboard") {
-		t.Fatalf("onboard help stderr:\n%s", stderr.String())
+	if !strings.Contains(stderr.String(), "Usage of my onboarding") {
+		t.Fatalf("onboard alias help stderr:\n%s", stderr.String())
 	}
 
 	stdout.Reset()

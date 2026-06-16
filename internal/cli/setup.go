@@ -335,6 +335,7 @@ type onboardOptions struct {
 	manifestName  string
 	umbrellaRoot  string
 	agent         bool
+	noAgent       bool
 	harnessName   string
 	noRefresh     bool
 	noUpdateCheck bool
@@ -342,12 +343,13 @@ type onboardOptions struct {
 
 func (a app) runOnboard(args []string) error {
 	var opts onboardOptions
-	fs := newFlagSet("my onboard", a.stderr)
+	fs := newFlagSet("my onboarding", a.stderr)
 	fs.StringVar(&opts.home, "home", "", "override home directory")
 	fs.StringVar(&opts.manifestName, "manifest", "", "use a registered manifest")
 	fs.StringVar(&opts.umbrellaRoot, "umbrella", "", "override umbrella root")
-	fs.BoolVar(&opts.agent, "agent", false, "launch model-driven onboarding in a harness")
-	fs.StringVar(&opts.harnessName, "harness", "", "harness for --agent (claude-code, codex, opencode, antigravity)")
+	fs.BoolVar(&opts.agent, "agent", false, "force launching model-driven onboarding in a harness")
+	fs.BoolVar(&opts.noAgent, "no-agent", false, "run the deterministic walkthrough instead of launching a harness")
+	fs.StringVar(&opts.harnessName, "harness", "", "harness to launch (claude-code, codex, opencode, antigravity)")
 	fs.BoolVar(&opts.noRefresh, "no-refresh", false, "skip best-effort auto-refresh during setup")
 	fs.BoolVar(&opts.noUpdateCheck, "no-update-check", false, "skip best-effort update notice during setup")
 	fs.Usage = func() {
@@ -364,12 +366,16 @@ func (a app) runOnboard(args []string) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return fmt.Errorf("my onboard does not accept positional arguments")
+		return fmt.Errorf("my onboarding does not accept positional arguments")
 	}
-	if opts.harnessName != "" && !opts.agent {
-		return fmt.Errorf("--harness requires --agent")
+	if opts.noAgent && (opts.agent || opts.harnessName != "") {
+		return fmt.Errorf("--no-agent cannot be combined with --agent or --harness")
 	}
-	if opts.agent {
+	// Interactive onboarding launches the model-guided harness by default so the
+	// model can introduce itself and configure the workspace conversationally.
+	// --agent or --harness force it; --no-agent and non-interactive (scripts,
+	// pipes, CI) fall back to the deterministic walkthrough.
+	if opts.agent || opts.harnessName != "" || (!opts.noAgent && a.interactive) {
 		return a.runOnboardAgent(opts)
 	}
 	docs, ok, err := a.skillManifestDocs(opts.home, opts.manifestName)
@@ -391,7 +397,7 @@ func (a app) runOnboard(args []string) error {
 		opts.manifestName = docs[0].ref.Name
 	}
 	if len(docs) != 1 {
-		return fmt.Errorf("my onboard requires exactly one manifest; pass --manifest")
+		return fmt.Errorf("my onboarding requires exactly one manifest; pass --manifest")
 	}
 	doc := docs[0]
 	root, err := umbrella.ResolveRoot(opts.home, ".", opts.umbrellaRoot, doc.doc)
@@ -435,7 +441,7 @@ func (a app) runOnboard(args []string) error {
 		if err := markTourComplete(root); err != nil {
 			return err
 		}
-		fmt.Fprintln(a.stdout, "onboard\tcomplete")
+		fmt.Fprintln(a.stdout, "Onboarding complete.")
 		return nil
 	}
 	a.printOnboardUnmarkedSetup(opts, doc.ref.Name, root, configured, "setup review declined")
@@ -448,9 +454,9 @@ func (a app) runOnboardAgent(opts onboardOptions) error {
 		return err
 	}
 	if ok && len(docs) != 0 && len(docs) != 1 {
-		return fmt.Errorf("my onboard --agent requires exactly one manifest; pass --manifest")
+		return fmt.Errorf("my onboarding requires exactly one manifest; pass --manifest")
 	}
-	h, err := a.selectOnboardHarness(opts.harnessName)
+	h, err := a.selectOnboardHarness(opts.harnessName, opts.home)
 	if err != nil {
 		return err
 	}
@@ -488,14 +494,30 @@ func (a app) runOnboardAgentAuthor(opts onboardOptions, h harness.Harness) error
 	return a.runHarness(binary, args, cwd)
 }
 
-func (a app) selectOnboardHarness(name string) (harness.Harness, error) {
+func (a app) selectOnboardHarness(name, home string) (harness.Harness, error) {
 	if name != "" {
-		return harness.Parse(name)
+		h, err := harness.Parse(name)
+		if err != nil {
+			return "", err
+		}
+		a.printOnboardHarnessChoice(h, "")
+		return h, nil
+	}
+	if h, reason, ok := a.autoDetectHarness(home); ok {
+		a.printOnboardHarnessChoice(h, reason)
+		return h, nil
 	}
 	all := harness.All()
 	fmt.Fprintln(a.stdout, "Select a harness:")
 	for i, h := range all {
-		fmt.Fprintf(a.stdout, "  %d) %s\n", i+1, h)
+		label := string(h)
+		switch {
+		case a.harnessInstalled(h) && a.harnessHasLogin(h, home):
+			label += " (installed, logged in)"
+		case a.harnessInstalled(h):
+			label += " (installed)"
+		}
+		fmt.Fprintf(a.stdout, "  %d) %s\n", i+1, label)
 	}
 	for {
 		line, err := a.promptLine("Harness (--harness to skip this prompt): ")
@@ -511,17 +533,71 @@ func (a app) selectOnboardHarness(name string) (harness.Harness, error) {
 		}
 		if n, err := strconv.Atoi(line); err == nil {
 			if n >= 1 && n <= len(all) {
-				return all[n-1], nil
+				h := all[n-1]
+				a.printOnboardHarnessChoice(h, "")
+				return h, nil
 			}
 			fmt.Fprintf(a.stdout, "Enter a number from 1 to %d, or a harness name.\n", len(all))
 			continue
 		}
 		h, err := harness.Parse(line)
 		if err == nil {
+			a.printOnboardHarnessChoice(h, "")
 			return h, nil
 		}
 		fmt.Fprintln(a.stdout, err)
 	}
+}
+
+func (a app) printOnboardHarnessChoice(h harness.Harness, reason string) {
+	if reason == "" {
+		fmt.Fprintf(a.stdout, "Onboarding with %s.\n", h)
+		return
+	}
+	fmt.Fprintf(a.stdout, "Onboarding with %s (%s).\n", h, reason)
+}
+
+// autoDetectHarness picks a harness without prompting when the choice is
+// unambiguous: a single logged-in harness wins, otherwise a single installed
+// harness. Anything ambiguous returns ok=false so the caller prompts. Login
+// detection is best-effort; the launched session's "reply OK" handshake is the
+// real check that the chosen harness can actually run.
+func (a app) autoDetectHarness(home string) (harness.Harness, string, bool) {
+	var installed, loggedIn []harness.Harness
+	for _, h := range harness.All() {
+		if !a.harnessInstalled(h) {
+			continue
+		}
+		installed = append(installed, h)
+		if a.harnessHasLogin(h, home) {
+			loggedIn = append(loggedIn, h)
+		}
+	}
+	switch {
+	case len(loggedIn) == 1:
+		return loggedIn[0], "installed, logged in", true
+	case len(loggedIn) == 0 && len(installed) == 1:
+		return installed[0], "installed", true
+	}
+	return "", "", false
+}
+
+func (a app) harnessInstalled(h harness.Harness) bool {
+	_, err := a.lookupPath(h.CommandName())
+	return err == nil
+}
+
+func (a app) harnessHasLogin(h harness.Harness, home string) bool {
+	resolved, err := resolveHome(home)
+	if err != nil {
+		return false
+	}
+	for _, p := range h.LoginMarkers(resolved) {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func onboardAgentLaunchArgs(opts onboardOptions, manifestName, root string, h harness.Harness) []string {
@@ -540,7 +616,8 @@ func onboardAgentLaunchArgs(opts onboardOptions, manifestName, root string, h ha
 
 func onboardAgentPrompt(branch, manifestName, root string) string {
 	var b strings.Builder
-	b.WriteString("Use the bundled `my` skill, section `Agent-Operated Onboarding`, to run model-driven onboarding.\n")
+	b.WriteString("You are this person's My AI onboarding assistant. Start by greeting them in one or two warm sentences, introduce yourself, and ask them to reply \"OK\" so you can confirm you are connected before doing anything else. Do not run any command until they respond.\n")
+	b.WriteString("Once they reply, use the bundled `my` skill, section `Agent-Operated Onboarding`, to run model-driven onboarding. Hold a real conversation, ask one question at a time, and teach inline: say in one short line what each `my` command does as you run it.\n")
 	switch branch {
 	case "AUTHOR":
 		b.WriteString("Branch: AUTHOR. No My AI manifest is registered for this invocation. Hold a conversation, ask one question at a time, and make the first durable control-plane action `my init` only after explicit human approval.\n")
@@ -565,65 +642,84 @@ func onboardAgentPrompt(branch, manifestName, root string) string {
 }
 
 func (a app) printOnboardUnmarkedSetup(opts onboardOptions, manifestName, root string, configured bool, reason string) {
-	fmt.Fprintf(a.stdout, "next\tsetup\t%s\n", shellCommandLine("", "my", append([]string{"setup", "--interactive"}, setupCommandFlags(opts, manifestName, root)...)))
-	message := "run setup to create the umbrella before completion can be recorded"
+	message := "Run setup to create the umbrella before onboarding can be recorded as complete."
 	if configured {
-		message = "run setup when you are ready to review configuration"
+		message = "Run setup when you are ready to review your configuration."
 	}
 	if reason != "" {
-		message += "; " + reason
+		message += " (" + reason + ")"
 	}
-	fmt.Fprintf(a.stdout, "onboard\tunmarked\t%s\n", message)
+	fmt.Fprintln(a.stdout, message)
+	fmt.Fprintln(a.stdout)
+	fmt.Fprintln(a.stdout, "Next step:")
+	fmt.Fprintf(a.stdout, "  %s\n", shellCommandLine("", "my", append([]string{"setup", "--interactive"}, setupCommandFlags(opts, manifestName, root)...)))
 }
 
 func (a app) printOnboardUsage() {
-	fmt.Fprintln(a.stderr, `Usage of my onboard:
-  my onboard [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-  my onboard --agent [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+	fmt.Fprintln(a.stderr, `Usage of my onboarding:
+  my onboarding [--agent|--no-agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 
-Runs the human walkthrough. The tour explains the My AI model, then offers to
-run the existing setup configurator interactively. It does not add manifests or
-create new top-level configuration concepts.
+Run interactively, my onboarding launches a harness with the bundled my self-skill
+and an agent-operated onboarding prompt: the model greets the operator, confirms
+it is connected, then introduces the My AI model and configures the workspace
+through validated my commands. With no registered manifest the harness starts
+from the current directory and drives the AUTHOR branch; with a registered
+manifest it reuses the normal my ai launch path for the JOIN branch. A harness is
+auto-detected (preferring one that is logged in); pass --harness to choose.
 
-With --agent, launches a harness with the bundled my self-skill and an
-agent-operated onboarding prompt. With no registered manifest, the harness starts
-from the current directory and drives the AUTHOR branch. With a registered
-manifest, it reuses the normal my ai launch path for the JOIN branch.`)
+--agent forces the harness launch even when stdout is not a TTY. --no-agent (and
+non-interactive runs such as pipes or CI) instead print the deterministic
+walkthrough: it explains the model and points at my setup --interactive.
+
+my onboard remains available as a compatibility alias.`)
 }
 
 func (a app) printOnboardZeroManifest() {
-	fmt.Fprintln(a.stdout, "My AI starts from a registered organization manifest.")
+	fmt.Fprintln(a.stdout, "My AI starts from a registered organization manifest, and none is registered yet.")
 	fmt.Fprintln(a.stdout, "Ask your organization admin for the manifest name and Git URL, then run:")
-	fmt.Fprintln(a.stdout, "next\tregister\tmy manifests add <name> <git-url>")
-	fmt.Fprintln(a.stdout, "next\tsetup\tmy setup --interactive")
-	fmt.Fprintln(a.stdout, "onboard\tunmarked\tno umbrella exists yet")
+	fmt.Fprintln(a.stdout)
+	fmt.Fprintln(a.stdout, "Next steps:")
+	fmt.Fprintln(a.stdout, "  Register a manifest:")
+	fmt.Fprintln(a.stdout, "    my manifests add <name> <git-url>")
+	fmt.Fprintln(a.stdout, "  Configure:")
+	fmt.Fprintln(a.stdout, "    my setup --interactive")
+	fmt.Fprintln(a.stdout)
+	fmt.Fprintln(a.stdout, "Or run `my onboarding --agent` to have an assistant build a new organization with you.")
 }
 
 func (a app) printOnboardIntro(doc registeredDoc, root string, configured bool) {
-	fmt.Fprintf(a.stdout, "onboard\tmanifest\t%s\t%s\n", doc.ref.Name, doc.doc.Organization.ID)
-	fmt.Fprintf(a.stdout, "onboard\tumbrella\t%s\n", root)
-	fmt.Fprintln(a.stdout, "model\tmanifest\tcontrol plane: skills, mounts, services, roles, tools")
-	fmt.Fprintln(a.stdout, "model\tmounts\tdata plane: local content folders such as customers, meetings, support, fleet")
-	fmt.Fprintln(a.stdout, "model\tsetup\twrites guidance, MCP config, mounts, repos, skills, and local role state")
+	fmt.Fprintf(a.stdout, "My AI - %s (%s)\n", doc.ref.Name, doc.doc.Organization.ID)
+	fmt.Fprintf(a.stdout, "Umbrella: %s\n", root)
+	fmt.Fprintln(a.stdout)
+	fmt.Fprintln(a.stdout, "How it fits together:")
+	fmt.Fprintln(a.stdout, "  - Manifest (control plane): skills, mounts, services, roles, tools")
+	fmt.Fprintln(a.stdout, "  - Mounts (data plane): local content folders such as customers, meetings, support, fleet")
+	fmt.Fprintln(a.stdout, "  - Setup writes guidance, MCP config, mounts, repos, skills, and local role state")
+	fmt.Fprintln(a.stdout)
 	if configured {
-		fmt.Fprintln(a.stdout, "onboard\tstate\tconfigured")
+		fmt.Fprintln(a.stdout, "Status: configured")
 	} else {
-		fmt.Fprintln(a.stdout, "onboard\tstate\tsetup needed")
+		fmt.Fprintln(a.stdout, "Status: setup needed")
 	}
 }
 
 func (a app) printOnboardComplete(doc registeredDoc, root string, state umbrella.State) {
-	fmt.Fprintf(a.stdout, "onboard\tcomplete\t%s\t%s\n", doc.ref.Name, root)
-	if state.Tour != nil && state.Tour.Version < onboardingTourVersion {
-		fmt.Fprintf(a.stdout, "onboard\tupdated\tcurrent tour version is %d\n", onboardingTourVersion)
-	}
+	fmt.Fprintf(a.stdout, "Onboarding complete - %s\n", doc.ref.Name)
+	fmt.Fprintf(a.stdout, "Umbrella: %s\n", root)
 	if state.SelectedRole != "" {
-		fmt.Fprintf(a.stdout, "role\tselected\t%s\n", state.SelectedRole)
+		fmt.Fprintf(a.stdout, "Role: %s\n", state.SelectedRole)
 	} else {
-		fmt.Fprintln(a.stdout, "role\tselected\tunscoped")
+		fmt.Fprintln(a.stdout, "Role: unscoped")
 	}
-	fmt.Fprintf(a.stdout, "next\tsetup\t%s\n", shellCommandLine(root, "my", []string{"setup", "--interactive", "--manifest", doc.ref.Name}))
-	fmt.Fprintf(a.stdout, "next\tlaunch\t%s\n", shellCommandLine(root, "my", []string{"ai", "codex"}))
+	if state.Tour != nil && state.Tour.Version < onboardingTourVersion {
+		fmt.Fprintf(a.stdout, "A newer guided tour is available (version %d); run `my onboarding --agent` to revisit it.\n", onboardingTourVersion)
+	}
+	fmt.Fprintln(a.stdout)
+	fmt.Fprintln(a.stdout, "Next steps:")
+	fmt.Fprintln(a.stdout, "  Review setup:")
+	fmt.Fprintf(a.stdout, "    %s\n", shellCommandLine(root, "my", []string{"setup", "--interactive", "--manifest", doc.ref.Name}))
+	fmt.Fprintln(a.stdout, "  Launch:")
+	fmt.Fprintf(a.stdout, "    %s\n", shellCommandLine(root, "my", []string{"ai", "codex"}))
 }
 
 func onboardSetupArgs(opts onboardOptions, manifestName, root string) []string {

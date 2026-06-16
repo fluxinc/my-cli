@@ -17,20 +17,20 @@ Documentation: https://my-cli.com/
 curl -sSL https://raw.githubusercontent.com/fluxinc/my-cli/master/install.sh | sh
 
 my init acme --name "Acme"
-my onboard
-my onboard --agent --harness codex
+my onboarding --harness codex
 my ai codex
 ```
 
-That's the whole first run. `my onboard` is the human walkthrough; it explains
-the model and offers to run `my setup --interactive`. `my onboard --agent`
-launches a harness with the bundled onboarding guidance so an agent can
-interview, teach inline, and drive AUTHOR/JOIN setup through validated `my`
-commands. `my setup` remains the scriptable machine configurator. `my ai
-codex` resolves the umbrella, verifies the generated guidance, and starts Codex
-in the base umbrella. Agents that need isolated content work opt in with
-`my ai --new-session codex` or resume a known session with
-`my ai --session <id> codex`.
+That's the whole first run. `my onboarding` launches a harness in an interactive
+terminal, greets the operator, waits for an `OK` handshake, and then interviews,
+teaches inline, and drives AUTHOR/JOIN setup through validated `my` commands.
+Use `my onboarding --no-agent` for the deterministic walkthrough that explains
+the model and points at `my setup --interactive`. `my setup` remains the
+scriptable machine configurator. `my ai codex` resolves the umbrella, verifies
+the generated guidance, and starts Codex in the base umbrella. Agents that need
+isolated content work opt in with `my ai --new-session codex` or resume a known
+session with `my ai --session <id> codex`.
+
 `my init` creates two local repos — a private manifest repo (the control
 plane: manifest, product/repo catalog, skills) and a content repo at
 `~/acme/workspace` (the actual workspace, including customer records) —
@@ -74,9 +74,9 @@ Run `my --help` for the authoritative surface. The essentials:
 ### Onboarding
 
 ```sh
-my onboard                    # human walkthrough; offers interactive setup
-my onboard --agent --harness codex
-                               # model-driven onboarding; omit --harness to choose interactively
+my onboarding [--harness codex]
+                               # model-driven onboarding; auto-detects a harness when unambiguous
+my onboarding --no-agent       # deterministic walkthrough; offers interactive setup
 my setup [harness...] | --all # create umbrella, write guidance/MCP config, install self-skill, sync mounts
                                     # [--manifest NAME] [--umbrella DIR] [--role ROLE] [--copy] [--link] [--print]
                                     # [--interactive] [--no-refresh] [--no-update-check]
@@ -84,9 +84,9 @@ my setup [harness...] | --all # create umbrella, write guidance/MCP config, inst
 
 `setup` is the normal machine path: idempotent, non-interactive, safe to
 re-run. Use `setup --interactive` when you want prompts for manifest and role
-selection. Use `onboard --agent` when you want a harness to run the adaptive
-AUTHOR/JOIN onboarding flow; publish still requires `my publish --print` and
-explicit human approval.
+selection. Use `my onboarding` when you want a harness to run the adaptive
+AUTHOR/JOIN onboarding flow; `my onboard` remains a compatibility alias.
+Publish still requires `my publish --print` and explicit human approval.
 
 ### Startup
 
@@ -528,8 +528,8 @@ indexed in [docs/plans/](docs/plans/README.md):
   fetch/cache remain later phases.
   Plans: [compile launch projection](docs/plans/2026-06-14-compile-launch-plan.md),
   [execution plane](docs/plans/2026-06-10-execution-plane.md).
-- **Shipped (v0.26.0) — human onboarding walkthrough.** `my onboard` is a
-  minimal human tour; `my setup` stays the deterministic machine configurator,
+- **Shipped (v0.26.0) — human onboarding walkthrough.** `my onboard` introduced
+  a minimal human tour; `my setup` stays the deterministic machine configurator,
   with explicit `my setup --interactive` for prompting. Tour completion is
   stored umbrella-local; no new top-level verbs such as `configuration`,
   `configure`, or `tour`. Plan:
@@ -544,9 +544,10 @@ indexed in [docs/plans/](docs/plans/README.md):
   Antigravity (`agy`). Plans:
   [launch-scoped skill composition](docs/plans/2026-06-14-launch-scoped-skill-composition.md),
   [ADR 0001](docs/decisions/0001-launch-scoped-skill-composition.md).
-- **Shipped (v0.29.0) — model-driven onboarding.** `my onboard --agent [--harness NAME]`
-  launches a harness with the bundled `my` self-skill's Agent-Operated
-  Onboarding guidance. The launcher chooses AUTHOR vs JOIN from manifest state,
+- **Shipped (v0.29.0), refined after dogfood — model-driven onboarding.**
+  `my onboarding [--harness NAME]` launches a harness with the bundled `my`
+  self-skill's Agent-Operated Onboarding guidance, and `my onboard` remains a
+  compatibility alias. The launcher chooses AUTHOR vs JOIN from manifest state,
   uses direct harness exec for zero-manifest bootstrap, reuses `my ai --setup`
   when a manifest exists, and keeps publish behind `my publish --print` plus
   explicit human approval. Role/service authoring is command-driven; extra

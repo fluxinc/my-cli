@@ -68,16 +68,20 @@ running `my manifests sync` against a private repo.
 ## Onboard the workspace
 
 ```sh
-my onboard
-my setup
+my onboarding
+# or: my onboarding --no-agent, then my setup
 # my setup --manifest acme    # only needed when several manifests are registered
 # my setup --role operator    # optional: select role-specific guidance/services
 # my setup --interactive      # prompt for manifest/role choices
 ```
 
-`my onboard` is the human walkthrough. It explains the model and offers to run
-`my setup --interactive`; if no manifest is registered yet, it prints the
-`my manifests add <name> <git-url>` next step and leaves the tour unmarked.
+`my onboarding` launches guided onboarding in a harness when run interactively.
+Use `my onboarding --no-agent` for the deterministic walkthrough: it explains
+the model, offers to run `my setup --interactive`, and if no manifest is
+registered yet, prints the `my manifests add <name> <git-url>` next step while
+leaving the tour unmarked. Run `my setup` after the deterministic walkthrough
+or whenever you want to converge the workspace without an onboarding
+conversation.
 Plain `my setup` stays deterministic and scriptable. With one registered
 manifest, every command defaults to it. Setup is safe to re-run: it validates
 the manifest, installs the bundled self-skill, creates the umbrella, writes

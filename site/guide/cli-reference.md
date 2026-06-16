@@ -33,8 +33,7 @@ Three commands sound alike; the split is converge vs. diagnose vs. plumbing:
 ```sh
 my init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
 my publish [--manifest NAME] [--home DIR] [--print] [--json]
-my onboard [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-my onboard --agent [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
+my onboarding [--agent|--no-agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 my setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 my root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 my ai [--new-session|--session ID|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
@@ -50,16 +49,20 @@ registry path (the control plane) and a content repo at
 prints the follow-up `my setup`, `my ai`, and `my publish` commands. Both
 repos work offline and report `local-only` until published.
 
-`my onboard` is the human tour. With no registered manifest it prints the
-`my manifests add <name> <git-url>` next step and writes no state. With a
-manifest, it explains the model, offers `my setup --interactive`, and records
-tour completion in the umbrella. Plain `my setup` remains non-interactive and
-scriptable; `--interactive` prompts for manifest and role selection.
+`my onboarding` is the guided first-run path. In an interactive terminal it
+launches a harness with the bundled Agent-Operated Onboarding guidance, asks the
+model to greet the operator and wait for an `OK` handshake, then runs the
+adaptive AUTHOR/JOIN flow through validated `my` commands. A harness is
+auto-detected when the choice is unambiguous; pass `--harness NAME` to choose.
+`--agent` forces the harness path from non-interactive contexts.
 
-`my onboard --agent` launches a harness with the bundled Agent-Operated
-Onboarding guidance. With no registered manifest it starts the harness from the
-current directory for AUTHOR bootstrap; with a registered manifest it reuses the
-normal `my ai --setup --no-session` launch path for JOIN onboarding.
+`my onboarding --no-agent` and non-interactive runs use the deterministic
+walkthrough: with no registered manifest it prints the
+`my manifests add <name> <git-url>` next step and writes no state; with a
+manifest it explains the model, offers `my setup --interactive`, and records
+tour completion only after setup actually runs. Plain `my setup` remains
+non-interactive and scriptable; `--interactive` prompts for manifest and role
+selection. `my onboard` remains a compatibility alias.
 
 `my publish` takes the organization online idempotently: it creates private
 remotes (`<org>-workspace`, `<org>-manifest`) via `gh`, or adopts existing
