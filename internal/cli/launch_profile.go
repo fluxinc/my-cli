@@ -84,7 +84,7 @@ func (a app) ensureLaunchOrgSkills(h harness.Harness, opts launchCommandOpts, do
 		targets = append(targets, mirror)
 	}
 	for _, dir := range targets {
-		if err := materializeLaunchSkillDir(dir, selected); err != nil {
+		if err := a.materializeLaunchSkillDir(dir, selected, opts.promptLaunchSkillCollisions); err != nil {
 			return err
 		}
 	}
@@ -156,12 +156,13 @@ func (a app) launchProfileSkills(home string, doc registeredDoc, ids []string) (
 	return selected, nil
 }
 
-func materializeLaunchSkillDir(dir string, selected []skills.Skill) error {
+func (a app) materializeLaunchSkillDir(dir string, selected []skills.Skill, promptCollisions bool) error {
 	selectedByName := map[string]skills.Skill{}
 	for _, skill := range selected {
 		selectedByName[skill.Name] = skill
 	}
-	if err := preflightLaunchSkillCollisions(dir, selectedByName); err != nil {
+	skipped, err := a.resolveLaunchSkillCollisions(dir, selectedByName, promptCollisions)
+	if err != nil {
 		return err
 	}
 	if err := removeStaleLaunchSkills(dir, selectedByName); err != nil {
@@ -174,6 +175,9 @@ func materializeLaunchSkillDir(dir string, selected []skills.Skill) error {
 		return err
 	}
 	for _, skill := range selected {
+		if skipped[skill.Name] {
+			continue
+		}
 		target := filepath.Join(dir, skill.Name)
 		if info, err := os.Lstat(target); err == nil {
 			if err := removeLaunchSkill(target, info); err != nil {
@@ -192,21 +196,50 @@ func materializeLaunchSkillDir(dir string, selected []skills.Skill) error {
 	return nil
 }
 
-func preflightLaunchSkillCollisions(dir string, selected map[string]skills.Skill) error {
-	for name := range selected {
+type launchSkillCollision struct {
+	skill  skills.Skill
+	target string
+}
+
+func (a app) resolveLaunchSkillCollisions(dir string, selected map[string]skills.Skill, prompt bool) (map[string]bool, error) {
+	collisions, err := findLaunchSkillCollisions(dir, selected)
+	if err != nil {
+		return nil, err
+	}
+	skipped := map[string]bool{}
+	for _, collision := range collisions {
+		if !prompt {
+			return nil, fmt.Errorf("launch skill %q collides with non-My AI entry at %s", collision.skill.Name, collision.target)
+		}
+		fmt.Fprintf(a.stdout, "\nLaunch skill %q already exists and is not My AI-managed:\n  %s\n", collision.skill.Name, collision.target)
+		replace, answered, err := a.promptConfirm("Replace it for this launch?", false)
+		if err != nil {
+			return nil, err
+		}
+		if !answered || !replace {
+			skipped[collision.skill.Name] = true
+			fmt.Fprintf(a.stdout, "Skipping launch skill %q; existing entry left in place.\n", collision.skill.Name)
+		}
+	}
+	return skipped, nil
+}
+
+func findLaunchSkillCollisions(dir string, selected map[string]skills.Skill) ([]launchSkillCollision, error) {
+	var collisions []launchSkillCollision
+	for name, skill := range selected {
 		target := filepath.Join(dir, name)
 		info, err := os.Lstat(target)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if !launchSkillManaged(target, info) {
-			return fmt.Errorf("launch skill %q collides with non-My AI entry at %s", name, target)
+			collisions = append(collisions, launchSkillCollision{skill: skill, target: target})
 		}
 	}
-	return nil
+	return collisions, nil
 }
 
 func removeStaleLaunchSkills(dir string, selected map[string]skills.Skill) error {

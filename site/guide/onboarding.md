@@ -39,6 +39,10 @@ or joining an existing one:
   pick a role, runs setup, pulls workspace content, and points the person at
   `my ai <harness>` for daily work.
 
+If a selected launch skill already exists from a manual install or old
+workspace rename, interactive onboarding asks whether to replace or skip that
+entry and then continues launching the harness.
+
 The launcher itself does not publish anything. The onboarding guidance keeps
 publish at the end: the model must run `my publish --print`, show the planned
 remotes and pushes, and get explicit human approval before the real

@@ -117,7 +117,9 @@ touching dirty, diverged, repo, or remote-unknown checkouts. Use
 Startup commands also print stderr `notice` lines for dirty, ahead, behind, or
 diverged checkouts, each with the remediation command, keeping stdout clean.
 They additionally check, at most once per day, whether a newer My AI
-release exists. Notices are stderr-only so `cd "$(my root)"` stays path-pure.
+release exists, using GitHub's public release redirect rather than the
+rate-limited REST API. Notices are stderr-only so `cd "$(my root)"` stays
+path-pure.
 Use `--no-update-check` for one command, `MYCLI_NO_UPDATE_CHECK=1` globally, or
 `MYCLI_UPDATE_CHECK_TTL=12h` to tune the check window.
 

@@ -82,20 +82,21 @@ Options:`)
 }
 
 type launchCommandOpts struct {
-	home           string
-	manifestName   string
-	umbrellaRoot   string
-	repoID         string
-	legacyProduct  string
-	sessionID      string
-	newSession     bool
-	noSession      bool
-	onboard        bool
-	printOnly      bool
-	skillsSelector string
-	profileID      string
-	noRefresh      bool
-	noUpdateCheck  bool
+	home                        string
+	manifestName                string
+	umbrellaRoot                string
+	repoID                      string
+	legacyProduct               string
+	sessionID                   string
+	newSession                  bool
+	noSession                   bool
+	onboard                     bool
+	printOnly                   bool
+	skillsSelector              string
+	profileID                   string
+	noRefresh                   bool
+	noUpdateCheck               bool
+	promptLaunchSkillCollisions bool
 }
 
 func (a app) runLaunch(args []string) error {
@@ -121,6 +122,7 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 			return err
 		}
 		harnessArgs = append(harnessArgs, promptArgs...)
+		opts.promptLaunchSkillCollisions = true
 	}
 	commandName := h.CommandName()
 	selector, err := launchSelectorFromOpts(opts)

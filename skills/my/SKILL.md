@@ -297,6 +297,9 @@ also counts as adoption.
 launch-scoped skill reconciliation notices. `my ai` materializes the actual
 organization skill loadout into each launch root where the harness supports it;
 OpenCode keeps org skills on its global compatibility path for now.
+During interactive onboarding, if an existing launch-scope skill entry collides
+with the selected manifest skill, the CLI asks whether to replace or skip it and
+then continues. Treat this as an operator choice, not a fatal setup condition.
 
 Rule of thumb for the three similar verbs: `my sync` converges everything
 (use it by default); `my doctor` is the repair dry run — it diagnoses,

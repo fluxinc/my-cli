@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.30.1 - 2026-06-16
+
+### Changed
+
+- `my update` now resolves the latest release through GitHub's public
+  `releases/latest` redirect instead of the rate-limited REST API.
+
+### Fixed
+
+- Interactive model-driven onboarding now prompts to replace or skip an existing
+  non-My AI launch skill entry instead of aborting before the harness starts.
 
 ## 0.30.0 - 2026-06-16
 

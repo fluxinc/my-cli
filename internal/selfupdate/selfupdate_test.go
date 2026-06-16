@@ -254,6 +254,35 @@ func TestNoticeRefreshesStaleOrCorruptCache(t *testing.T) {
 	}
 }
 
+func TestLatestVersionUsesReleaseRedirectWithoutAPIBaseURL(t *testing.T) {
+	var apiRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/releases/latest":
+			http.Redirect(w, r, "/releases/tag/v0.4.0", http.StatusFound)
+		case "/releases/tag/v0.4.0":
+			_, _ = w.Write([]byte("latest release"))
+		case "/api/releases/latest":
+			apiRequests++
+			http.Error(w, "api should not be used", http.StatusTooManyRequests)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	got, err := (Source{Client: server.Client(), DownloadBaseURL: server.URL}).LatestVersion(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "0.4.0" {
+		t.Fatalf("LatestVersion = %q, want 0.4.0", got)
+	}
+	if apiRequests != 0 {
+		t.Fatalf("api requests = %d, want 0", apiRequests)
+	}
+}
+
 type releaseServer struct {
 	t             *testing.T
 	server        *httptest.Server

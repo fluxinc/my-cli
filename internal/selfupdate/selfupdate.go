@@ -299,6 +299,13 @@ func CompareVersions(a, b string) (int, error) {
 
 // LatestVersion fetches the latest GitHub release tag.
 func (s Source) LatestVersion(ctx context.Context) (string, error) {
+	if strings.TrimSpace(s.APIBaseURL) == "" {
+		return s.latestVersionFromWeb(ctx)
+	}
+	return s.latestVersionFromAPI(ctx)
+}
+
+func (s Source) latestVersionFromAPI(ctx context.Context) (string, error) {
 	data, err := s.get(ctx, strings.TrimRight(s.apiBaseURL(), "/")+"/releases/latest", 3*time.Second)
 	if err != nil {
 		return "", err
@@ -311,6 +318,63 @@ func (s Source) LatestVersion(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("latest release response is missing tag_name")
 	}
 	return NormalizeVersion(payload.TagName)
+}
+
+func (s Source) latestVersionFromWeb(ctx context.Context) (string, error) {
+	rawURL := strings.TrimRight(s.downloadBaseURL(), "/") + "/releases/latest"
+	client := s.Client
+	if client == nil {
+		client = &http.Client{Timeout: 3 * time.Second}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "text/html")
+	req.Header.Set("User-Agent", "my-self-update")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	releaseURL := resp.Request.URL
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		location := strings.TrimSpace(resp.Header.Get("Location"))
+		if location == "" {
+			return "", fmt.Errorf("GET %s: redirect missing Location", rawURL)
+		}
+		releaseURL, err = resp.Request.URL.Parse(location)
+		if err != nil {
+			return "", fmt.Errorf("parse latest release redirect: %w", err)
+		}
+	} else if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		message := strings.TrimSpace(string(body))
+		if message == "" {
+			message = resp.Status
+		}
+		return "", fmt.Errorf("GET %s: %s", rawURL, message)
+	}
+	return versionFromReleaseURL(releaseURL)
+}
+
+func versionFromReleaseURL(releaseURL *url.URL) (string, error) {
+	if releaseURL == nil {
+		return "", fmt.Errorf("latest release URL is empty")
+	}
+	const marker = "/releases/tag/"
+	path := strings.TrimRight(releaseURL.Path, "/")
+	i := strings.LastIndex(path, marker)
+	if i < 0 {
+		return "", fmt.Errorf("latest release URL %s does not contain %s", releaseURL.String(), marker)
+	}
+	tag := path[i+len(marker):]
+	tag, err := url.PathUnescape(tag)
+	if err != nil {
+		return "", fmt.Errorf("parse latest release tag: %w", err)
+	}
+	return NormalizeVersion(tag)
 }
 
 // DownloadAsset downloads a release asset by tag and filename.

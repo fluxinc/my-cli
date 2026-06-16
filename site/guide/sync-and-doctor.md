@@ -75,5 +75,6 @@ my update --version X.Y.Z     # specific release
 atomically replaces the binary when the install is writable and not
 package-managed; otherwise it prints the right follow-up (`brew upgrade`,
 `go install`, or re-running `install.sh`). The same startup commands above
-emit a stderr-only notice when a newer release exists; suppress with
+emit a stderr-only notice when a newer release exists, using GitHub's public
+release redirect rather than the rate-limited REST API; suppress with
 `--no-update-check` or `MYCLI_NO_UPDATE_CHECK=1`.

@@ -954,6 +954,83 @@ func TestLaunchRefusesNonMySkillCollisionWithoutPartialMaterialization(t *testin
 	}
 }
 
+func TestOnboardingLaunchPromptsAndReplacesSkillCollision(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
+	writeLegacyOurLaunchSkill(t, filepath.Join(umbrellaRoot, ".agents", "skills", "acme-handbook"), "acme:handbook")
+	var stdout, stderr bytes.Buffer
+	var execCalled bool
+	a := app{
+		stdout:      &stdout,
+		stderr:      &stderr,
+		stdin:       strings.NewReader("y\n"),
+		interactive: true,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			execCalled = true
+			return nil
+		},
+	}
+	err := a.runLaunchWithInitialPrompt([]string{"--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "codex"}, "hello")
+	if err != nil {
+		t.Fatalf("launch with collision replace: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if !execCalled {
+		t.Fatal("execHarness was not called after replacing collision")
+	}
+	if !strings.Contains(stdout.String(), `Launch skill "acme-handbook" already exists`) ||
+		!strings.Contains(stdout.String(), "Replace it for this launch? [y/N]:") {
+		t.Fatalf("stdout missing replace prompt:\n%s", stdout.String())
+	}
+	assertLaunchSkill(t, filepath.Join(umbrellaRoot, ".agents", "skills", "acme-handbook"), "acme:handbook")
+	assertLaunchSkill(t, filepath.Join(umbrellaRoot, ".agents", "skills", "acme-calendar"), "acme:calendar")
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, ".agents", "skills", "acme-handbook", ".our-managed.json")); !os.IsNotExist(err) {
+		t.Fatalf("legacy marker should be removed on replace: %v", err)
+	}
+}
+
+func TestOnboardingLaunchPromptsAndSkipsSkillCollision(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchProfileFixture(t)
+	target := filepath.Join(umbrellaRoot, ".agents", "skills", "acme-handbook")
+	writeLegacyOurLaunchSkill(t, target, "acme:handbook")
+	var stdout, stderr bytes.Buffer
+	var execCalled bool
+	a := app{
+		stdout:      &stdout,
+		stderr:      &stderr,
+		stdin:       strings.NewReader("n\n"),
+		interactive: true,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			execCalled = true
+			return nil
+		},
+	}
+	err := a.runLaunchWithInitialPrompt([]string{"--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--no-session", "--no-refresh", "--no-update-check", "codex"}, "hello")
+	if err != nil {
+		t.Fatalf("launch with collision skip: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if !execCalled {
+		t.Fatal("execHarness was not called after skipping collision")
+	}
+	if !strings.Contains(stdout.String(), `Skipping launch skill "acme-handbook"; existing entry left in place.`) {
+		t.Fatalf("stdout missing skip notice:\n%s", stdout.String())
+	}
+	if got := readCLITestFile(t, filepath.Join(target, "SKILL.md")); !strings.Contains(got, "legacy") {
+		t.Fatalf("collision target was replaced despite skip:\n%s", got)
+	}
+	if _, err := os.Stat(filepath.Join(target, ".our-managed.json")); err != nil {
+		t.Fatalf("legacy marker should remain on skip: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(target, bundle.MarkerName)); !os.IsNotExist(err) {
+		t.Fatalf("my marker should not be written on skip: %v", err)
+	}
+	assertLaunchSkill(t, filepath.Join(umbrellaRoot, ".agents", "skills", "acme-calendar"), "acme:calendar")
+}
+
 func TestLaunchProductFlagRemoved(t *testing.T) {
 	home, _ := setupCLILaunchFixture(t)
 	var stdout, stderr bytes.Buffer
@@ -966,6 +1043,19 @@ func TestLaunchProductFlagRemoved(t *testing.T) {
 		!strings.Contains(stderr.String(), "--repo") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
+}
+
+func writeLegacyOurLaunchSkill(t *testing.T, dir, canonicalID string) {
+	t.Helper()
+	writeCLITestFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: "+filepath.Base(dir)+"\n---\nlegacy\n")
+	writeCLITestFile(t, filepath.Join(dir, ".our-managed.json"), `{
+  "installer": "our",
+  "version": "v0.27.0",
+  "mode": "copy",
+  "source": "/tmp/our",
+  "canonical_id": "`+canonicalID+`",
+  "scope": "launch"
+}`)
 }
 
 func setupCLILaunchProfileFixture(t *testing.T) (string, string) {

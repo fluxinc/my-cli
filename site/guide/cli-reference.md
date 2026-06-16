@@ -214,8 +214,10 @@ credentials, or fetching service descriptors.
 
 Those startup commands also emit a stderr-only notice when a newer My AI release
 is available. Stdout remains clean for command substitutions such as
-`cd "$(my root)"`. Use `--no-update-check`, `MYCLI_NO_UPDATE_CHECK=1`, or
-`MYCLI_UPDATE_CHECK_TTL=12h` to suppress or tune that check.
+`cd "$(my root)"`. The check follows GitHub's public release redirect rather
+than the rate-limited REST API. Use `--no-update-check`,
+`MYCLI_NO_UPDATE_CHECK=1`, or `MYCLI_UPDATE_CHECK_TTL=12h` to suppress or tune
+that check.
 
 `my update` downloads the selected GitHub release tarball, verifies it against
 `checksums.txt`, and atomically replaces the running binary when the install is
