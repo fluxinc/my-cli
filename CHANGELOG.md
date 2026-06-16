@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.29.0 - 2026-06-16
+
 ### Added
 
 - `my admin roles add|edit|remove` and `my admin services add|edit|remove`
@@ -10,6 +12,13 @@
   Agent-Operated Onboarding guidance. Zero-manifest runs start the harness from
   the current directory for AUTHOR bootstrap; registered-manifest runs reuse the
   normal `my ai --setup --no-session` launch path for JOIN onboarding.
+
+### Changed
+
+- The project is now **My AI**: the CLI is `my`, installed from
+  `fluxinc/my-cli` (https://my-cli.com), with umbrella state under `.my-cli/`
+  and `MYCLI_*` environment variables. Release archives are
+  `my-cli_<version>_<os>_<arch>.tar.gz`.
 
 ## 0.28.0 - 2026-06-15
 
