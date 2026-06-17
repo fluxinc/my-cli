@@ -197,7 +197,7 @@ description: Acme handbook
 	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "acme-handbook")); !os.IsNotExist(err) {
 		t.Fatalf("manifest sync installed org skill globally: %v", err)
 	}
-	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "my")); err != nil {
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "my-cli")); err != nil {
 		t.Fatalf("self-skill was pruned by manifest sync derived reconcile: %v", err)
 	}
 }

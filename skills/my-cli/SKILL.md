@@ -1,5 +1,5 @@
 ---
-name: my
+name: my-cli
 description: Use when working inside a My AI umbrella (a per-user operating dir, e.g. ~/my, containing a .my-cli/ directory and a generated AGENTS.md), or when the user asks about the `my` CLI, organization manifests, launch-scoped skills, mounts, meeting notes, customers, the product catalog, onboarding a harness, or syncing/publishing local workspace changes. Also use when an AGENTS.md says the workspace is My AI-managed.
 ---
 
@@ -155,7 +155,7 @@ and `my doctor` names the offending mounts.
 manifest/content checkouts before reading workspace context. They do not touch
 dirty, diverged, repo, or remote-unknown repositories. Use `--no-refresh`
 for one command, `MYCLI_NO_AUTO_REFRESH=1` globally, or `MYCLI_REFRESH_TTL=30m`
-to tune the default six-hour window. `my ai` also ensures the bundled `my`
+to tune the default six-hour window. `my ai` also ensures the bundled `my-cli`
 self-skill is installed for the selected filesystem harness before exec.
 
 Use `my setup --role <id>` when the manifest declares local operating roles.

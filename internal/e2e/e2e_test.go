@@ -149,7 +149,7 @@ status: finalized
 	if strings.Contains(installOut, "launch-scoped") {
 		t.Fatalf("setup output = %q, want concise default without launch-scoped rows", installOut)
 	}
-	selfTarget := filepath.Join(home, ".claude", "skills", "my")
+	selfTarget := filepath.Join(home, ".claude", "skills", "my-cli")
 	if _, err := os.Lstat(selfTarget); err != nil {
 		t.Fatalf("self-skill was not ensured in the harness dir: err=%v\n%s", err, installOut)
 	}

@@ -5,7 +5,7 @@
 This repository builds the public `my` CLI. The executable entrypoint is
 `cmd/my/main.go`; implementation lives in `internal/<package>/` with tests
 co-located as `*_test.go`. Bundled agent guidance and the public self-skill live
-in `internal/guidance/baseline/` and `skills/my/`. Public fixture data is under
+in `internal/guidance/baseline/` and `skills/my-cli/`. Public fixture data is under
 `examples/acme-workspace/`. Long-form design notes and plans are in `docs/`.
 The documentation site is a VitePress project in `site/`, with static assets in
 `site/public/`.

@@ -11,6 +11,12 @@
 - `my manifests default [<name>] [--clear]` shows or repoints the global default
   manifest, and `my manifests list` marks the active default.
 
+### Changed
+
+- Renamed the bundled self-skill from `my` to `my-cli`; existing managed
+  installs migrate automatically on the next CLI run or explicit self-skill
+  install, while the canonical id remains `my:self`.
+
 ## 0.32.1 - 2026-06-16
 
 ### Fixed

@@ -215,7 +215,7 @@ type Result struct {
 	Skill       string
 	CanonicalID string `json:"canonical_id,omitempty"`
 	TargetPath  string
-	Status      string // installed | updated | removed | skipped | dry-run | failed | not-installed | blocked
+	Status      string // installed | updated | removed | migrated | skipped | dry-run | failed | not-installed | blocked
 	Message     string
 	Err         error
 }
@@ -238,6 +238,7 @@ const (
 	StatusInstalled    = "installed"
 	StatusUpdated      = "updated"
 	StatusRemoved      = "removed"
+	StatusMigrated     = "migrated"
 	StatusSkipped      = "skipped"
 	StatusDryRun       = "dry-run"
 	StatusFailed       = "failed"
@@ -635,7 +636,7 @@ func sameFilesystemPath(a, b string) bool {
 
 func writeManagedMarker(dir, mode, source, canonicalID, scope string) error {
 	marker := bundle.Marker{
-		Installer:   "my",
+		Installer:   "my-cli",
 		Version:     bundle.Version(),
 		Mode:        mode,
 		Source:      source,
@@ -685,7 +686,7 @@ func readManagedIndex(dir string) managedIndex {
 
 func updateManagedIndex(dir, skillName, canonicalID, scope string) error {
 	index := readManagedIndex(dir)
-	index.Installer = "my"
+	index.Installer = "my-cli"
 	index.Version = bundle.Version()
 	index.Mode = "index"
 	if index.Skills == nil {
@@ -787,7 +788,7 @@ func dirContentDiffers(src, dst string) (bool, error) {
 		if err != nil {
 			return err
 		}
-		if rel == "." {
+		if rel == "." || rel == bundle.MarkerName {
 			return nil
 		}
 		target := filepath.Join(dst, rel)

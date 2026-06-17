@@ -7,7 +7,7 @@ Skill commands answer what capabilities an agent can use locally.
 Skills reach a harness from two places, and the difference is the public/private
 boundary:
 
-- **The `my` self-skill** ships *inside the CLI binary*. It is
+- **The `my-cli` self-skill** ships *inside the CLI binary*. It is
   organization-neutral — it only teaches harnesses how to drive `my` itself —
   so it is safe to install anywhere and carries no company content. The binary
   owns its lifecycle (`install.sh`, `my setup`, `my ai`, and a quiet refresh
@@ -61,7 +61,7 @@ my skills self install --all
 my skills self uninstall codex
 ```
 
-The `my` self-skill is bundled with the CLI and teaches harnesses how to use
+The `my-cli` self-skill is bundled with the CLI and teaches harnesses how to use
 My AI itself. `install.sh` installs it into existing harnesses, `my setup`
 refreshes it with the selected harnesses, `my ai` ensures it exists for the
 selected filesystem harness before launch, and normal human CLI runs quietly
@@ -93,7 +93,7 @@ harness materializations. They do not edit the manifest and are no longer the
 automatic setup path for organization skills.
 
 `sync` installs or updates declared skills and prunes stale My AI-managed
-manifest targets by default. It leaves the bundled `my` self-skill to
+manifest targets by default. It leaves the bundled `my-cli` self-skill to
 `my skills self ...`. Only the canonical id `my:self` is protected from
 pruning; a manifest-declared skill that happens to be named `my` is ordinary
 and removable. Pass `--no-prune` to only install or update. When the manifest
