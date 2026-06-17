@@ -573,6 +573,14 @@ indexed in [docs/plans/](docs/plans/README.md):
   and admin commands. Publish remains behind `my publish --print` plus explicit
   human approval. Plan:
   [model-driven onboarding](docs/plans/2026-06-15-model-driven-onboarding.md).
+- **Shipped (v0.33.0) — default manifests and self-skill rename.** With
+  multiple registered manifests, commands resolve explicit `--manifest`, then
+  the current umbrella's manifest, then the registry default; `my manifests
+  default [<name>] [--clear]` inspects or repoints that fallback. The bundled
+  public self-skill install slug is now `my-cli`, while canonical id `my:self`
+  remains stable and managed legacy `my` installs migrate automatically.
+  Plan:
+  [skill rename](docs/plans/2026-06-16-skill-rename-my-to-my-cli.md).
 - **Later — substrate upgrades.** A gnit backend for sessions once umbrellas
   bootstrap as gnit control workspaces, and managed read-only base mounts
   for contained launches. Plan:

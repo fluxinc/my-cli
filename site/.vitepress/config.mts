@@ -27,7 +27,7 @@ export default defineConfig({
       { text: 'Guide', link: '/guide/what-is-my-cli' },
       { text: 'CLI', link: '/guide/cli-reference' },
       {
-        text: 'v0.32.1',
+        text: 'v0.33.0',
         items: [
           { text: 'Changelog', link: '/changelog' },
           { text: 'GitHub', link: 'https://github.com/fluxinc/my-cli' },
