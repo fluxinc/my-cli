@@ -16,44 +16,52 @@ import (
 )
 
 func contentRoots(home, manifestName, workspaceID, umbrellaRoot, noun string, kinds []string) ([]record.Root, error) {
-	filterRoots := func(roots []record.Root) ([]record.Root, error) {
-		return applyDataBinding(home, manifestName, noun, roots)
+	filterRoots := func(bindingManifest string, roots []record.Root) ([]record.Root, error) {
+		return applyDataBinding(home, bindingManifest, noun, roots)
 	}
 	if umbrellaRoot != "" {
 		root, err := resolveUmbrellaRoot(home, umbrellaRoot)
 		if err != nil {
 			return nil, err
 		}
+		bindingManifest := manifestName
+		if bindingManifest == "" {
+			if ws, err := umbrella.LoadWorkspace(root); err == nil {
+				bindingManifest = ws.ManifestRef
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return nil, err
+			}
+		}
 		if roots, ok, err := currentSessionContentRoots(root, workspaceID, noun, kinds); ok || err != nil {
 			if err != nil {
 				return nil, err
 			}
-			return filterRoots(roots)
+			return filterRoots(bindingManifest, roots)
 		}
 		roots, err := umbrellaContentRootsForRoot(root, workspaceID, noun, kinds)
 		if err != nil {
 			return nil, err
 		}
-		return filterRoots(roots)
+		return filterRoots(bindingManifest, roots)
 	}
 	if root, ok := umbrella.FindRoot("."); ok {
 		if roots, ok, err := currentSessionContentRoots(root, workspaceID, noun, kinds); ok || err != nil {
 			if err != nil {
 				return nil, err
 			}
-			return filterRoots(roots)
+			return filterRoots(manifestName, roots)
 		}
 		roots, err := umbrellaContentRootsForRoot(root, workspaceID, noun, kinds)
 		if err != nil {
 			return nil, err
 		}
-		return filterRoots(roots)
+		return filterRoots(manifestName, roots)
 	}
 	if roots, ok, err := configuredUmbrellaContentRoots(home, manifestName, workspaceID, noun, kinds); ok || err != nil {
 		if err != nil {
 			return nil, err
 		}
-		return filterRoots(roots)
+		return filterRoots(manifestName, roots)
 	}
 	if manifestName == "" {
 		return nil, noUmbrellaError("no my umbrella found; run my setup or pass --umbrella", "run my setup or pass --umbrella <path>")
@@ -79,7 +87,7 @@ func contentRoots(home, manifestName, workspaceID, umbrellaRoot, noun string, ki
 		}
 		return nil, fmt.Errorf("no workspaces declared by selected manifests")
 	}
-	return filterRoots(roots)
+	return filterRoots(manifestName, roots)
 }
 
 func applyDataBinding(home, manifestName, noun string, roots []record.Root) ([]record.Root, error) {

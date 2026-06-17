@@ -24,8 +24,9 @@ const (
 
 // Registry records configured organization manifests on this machine.
 type Registry struct {
-	Version   int   `json:"version"`
-	Manifests []Ref `json:"manifests"`
+	Version         int    `json:"version"`
+	DefaultManifest string `json:"default_manifest,omitempty"`
+	Manifests       []Ref  `json:"manifests"`
 }
 
 // Ref points at one configured organization manifest repository.
@@ -240,9 +241,7 @@ func LoadRegistry(home string) (Registry, error) {
 	if err := json.Unmarshal(data, &reg); err != nil {
 		return Registry{}, fmt.Errorf("read manifest registry: %w", err)
 	}
-	if reg.Version == 0 {
-		reg.Version = registryVersion
-	}
+	reg.normalize()
 	return reg, nil
 }
 
@@ -252,9 +251,7 @@ func SaveRegistry(home string, reg Registry) error {
 	if err != nil {
 		return err
 	}
-	if reg.Version == 0 {
-		reg.Version = registryVersion
-	}
+	reg.normalize()
 	data, err := json.MarshalIndent(reg, "", "  ")
 	if err != nil {
 		return err
@@ -264,6 +261,38 @@ func SaveRegistry(home string, reg Registry) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
+}
+
+func (reg *Registry) normalize() {
+	if reg.Version == 0 {
+		reg.Version = registryVersion
+	}
+	if len(reg.Manifests) == 0 {
+		reg.DefaultManifest = ""
+		return
+	}
+	for _, ref := range reg.Manifests {
+		if ref.Name == reg.DefaultManifest {
+			return
+		}
+	}
+	reg.DefaultManifest = reg.Manifests[0].Name
+}
+
+// DefaultRef returns the configured default manifest, falling back to the first
+// registered manifest for registries written before default_manifest existed.
+func (reg Registry) DefaultRef() (Ref, bool) {
+	if len(reg.Manifests) == 0 {
+		return Ref{}, false
+	}
+	if reg.DefaultManifest != "" {
+		for _, ref := range reg.Manifests {
+			if ref.Name == reg.DefaultManifest {
+				return ref, true
+			}
+		}
+	}
+	return reg.Manifests[0], true
 }
 
 // Add registers or updates one organization manifest source.
@@ -328,6 +357,37 @@ func SetLocalPath(home, name, localPath string) (Ref, error) {
 		}
 	}
 	return Ref{}, fmt.Errorf("manifest %q is not registered; run my manifests add %s <git-url>", name, name)
+}
+
+// SetDefault repoints the registry's default manifest to name. Passing an empty
+// name clears the override, reverting the default to the first-added manifest.
+// It returns the resolved default after the change.
+func SetDefault(home, name string) (Ref, error) {
+	reg, err := LoadRegistry(home)
+	if err != nil {
+		return Ref{}, err
+	}
+	if name != "" {
+		found := false
+		for _, existing := range reg.Manifests {
+			if existing.Name == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return Ref{}, fmt.Errorf("manifest %q is not registered; run my manifests add %s <git-url>", name, name)
+		}
+	}
+	reg.DefaultManifest = name
+	if err := SaveRegistry(home, reg); err != nil {
+		return Ref{}, err
+	}
+	ref, ok := reg.DefaultRef()
+	if !ok {
+		return Ref{}, fmt.Errorf("no registered manifests")
+	}
+	return ref, nil
 }
 
 // NormalizeRemote canonicalizes a git remote URL for equality checks. It
@@ -602,7 +662,10 @@ func selectedRefs(reg Registry, names []string, all bool) ([]Ref, error) {
 		return reg.Manifests, nil
 	}
 	if len(names) == 0 {
-		return nil, fmt.Errorf("select a manifest name or pass --all")
+		if ref, ok := reg.DefaultRef(); ok {
+			return []Ref{ref}, nil
+		}
+		return nil, fmt.Errorf("no registered manifests")
 	}
 	byName := make(map[string]Ref, len(reg.Manifests))
 	for _, ref := range reg.Manifests {
@@ -637,10 +700,11 @@ func singleRef(home, manifestName string) (Ref, error) {
 	if len(reg.Manifests) == 0 {
 		return Ref{}, fmt.Errorf("no registered manifests")
 	}
-	if len(reg.Manifests) != 1 {
-		return Ref{}, fmt.Errorf("multiple manifests registered; pass --manifest")
+	ref, ok := reg.DefaultRef()
+	if !ok {
+		return Ref{}, fmt.Errorf("no registered manifests")
 	}
-	return reg.Manifests[0], nil
+	return ref, nil
 }
 
 func syncOne(ref Ref, dryRun bool, runner Runner) SyncResult {

@@ -202,7 +202,10 @@ func selectedManifestRefs(home, manifestName string) ([]manifest.Ref, error) {
 	if err != nil {
 		return nil, err
 	}
-	return reg.Manifests, nil
+	if ref, ok := reg.DefaultRef(); ok {
+		return []manifest.Ref{ref}, nil
+	}
+	return nil, nil
 }
 
 func loadManifest(ref manifest.Ref) (manifest.Document, error) {

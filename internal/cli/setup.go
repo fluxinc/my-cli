@@ -172,7 +172,17 @@ func (a app) runSetup(args []string) error {
 	if err != nil {
 		return err
 	}
+	if !opts.interactive && opts.manifestName == "" {
+		if name, ok, err := defaultManifestNameIfAny(opts.home, "", opts.umbrellaRoot); err != nil {
+			return err
+		} else if ok {
+			opts.manifestName = name
+		}
+	}
 	docs, ok, err := a.skillManifestDocs(opts.home, opts.manifestName)
+	if err == nil && opts.interactive && opts.manifestName == "" {
+		docs, ok, err = a.allSkillManifestDocs(opts.home)
+	}
 	if err != nil {
 		return err
 	}
@@ -415,6 +425,13 @@ func (a app) runOnboard(args []string) error {
 	if opts.agent || opts.harnessName != "" || (!opts.noAgent && a.interactive) {
 		return a.runOnboardAgent(opts)
 	}
+	if opts.manifestName == "" {
+		if name, ok, err := defaultManifestNameIfAny(opts.home, "", opts.umbrellaRoot); err != nil {
+			return err
+		} else if ok {
+			opts.manifestName = name
+		}
+	}
 	docs, ok, err := a.skillManifestDocs(opts.home, opts.manifestName)
 	if err != nil {
 		return err
@@ -486,6 +503,13 @@ func (a app) runOnboard(args []string) error {
 }
 
 func (a app) runOnboardAgent(opts onboardOptions) error {
+	if opts.manifestName == "" {
+		if name, ok, err := defaultManifestNameIfAny(opts.home, "", opts.umbrellaRoot); err != nil {
+			return err
+		} else if ok {
+			opts.manifestName = name
+		}
+	}
 	docs, ok, err := a.skillManifestDocs(opts.home, opts.manifestName)
 	if err != nil {
 		return err

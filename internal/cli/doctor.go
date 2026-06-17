@@ -108,6 +108,12 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 		root = found
 		report.Umbrella = append(report.Umbrella, doctorUmbrella(home, root)...)
 	}
+	if name, ok, err := defaultManifestNameIfAny(home, manifestName, root); err != nil {
+		report.Manifests = append(report.Manifests, doctorItem{Name: manifestName, Status: "error", Message: err.Error()})
+		return report
+	} else if ok {
+		manifestName = name
+	}
 	report.Legacy = append(report.Legacy, doctorLegacy(home, root)...)
 	refs, err := manifestRefs(home, manifestName)
 	if err != nil {

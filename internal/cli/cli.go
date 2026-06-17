@@ -227,7 +227,8 @@ Usage:
   my admin contract add|remove ...          (edit manifest contract rules)
   my manifests add <name> <git-url>
   my manifests list
-  my manifests sync <name...> | --all [--umbrella DIR] [--no-derived] [--print]
+  my manifests default [<name>] [--clear]
+  my manifests sync [name...] | --all [--umbrella DIR] [--no-derived] [--print]
   my manifests validate <name|path>
   my mounts list [--manifest NAME]
   my mounts add <kind:id|id> [--manifest NAME]

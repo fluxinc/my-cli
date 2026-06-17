@@ -70,7 +70,7 @@ running `my manifests sync` against a private repo.
 ```sh
 my onboarding
 # or: my onboarding --no-agent, then my setup
-# my setup --manifest acme    # only needed when several manifests are registered
+# my setup --manifest acme    # override the current/default manifest
 # my setup --role operator    # optional: select role-specific guidance/services
 # my setup --interactive      # prompt for manifest/role choices
 ```

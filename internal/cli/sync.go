@@ -75,6 +75,10 @@ func (a app) runSync(args []string) error {
 	if push && publishExplicit {
 		return fmt.Errorf("--push and --publish cannot be combined")
 	}
+	manifestName, err = defaultManifestName(home, manifestName, umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(jsonOut, err)
+	}
 	if push {
 		publish, err = a.syncPushPublish(home, manifestName)
 		if err != nil {

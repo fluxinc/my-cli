@@ -147,10 +147,15 @@ prints the matching follow-up, such as `brew upgrade my`,
 my init <org-id> [--name NAME] [--path DIR] # create manifest + content repos locally
 my publish [--manifest NAME] [--print]      # create private remotes, rewrite mount URLs, push
 my manifests add <name> <git-url>          # register an org manifest
-my manifests sync <name...> | --all        # refresh checkout and derived artifacts
+my manifests sync [name...] | --all        # refresh checkout and derived artifacts
 my manifests list                          # list registered manifests
 my manifests validate <name|path>          # schema + reference checks
 ```
+
+When `--manifest` is omitted, `my` uses the manifest recorded by the current
+umbrella (or `--umbrella DIR`) first. Outside an umbrella it uses the registry
+default, which is initialized to the first manifest you add. `my manifests list`
+marks that default.
 
 When a non-print manifest sync pulls or clones exactly one manifest, `my`
 reconciles derived workspace artifacts for an existing matching umbrella:

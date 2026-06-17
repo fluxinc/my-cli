@@ -55,6 +55,11 @@ func (a app) runRoot(args []string) error {
 	if err != nil {
 		return err
 	}
+	if name, ok, err := defaultManifestNameIfAny(home, manifestName, root); err != nil {
+		return err
+	} else if ok {
+		manifestName = name
+	}
 	a.maybeAutoRefresh(home, manifestName, root, root, noRefresh)
 	a.maybeUpdateNotice(home, noUpdateCheck)
 	target := root
@@ -136,6 +141,11 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 	root, err := resolveMyRoot(opts.home, opts.manifestName, opts.umbrellaRoot)
 	if err != nil {
 		return err
+	}
+	if name, ok, err := defaultManifestNameIfAny(opts.home, opts.manifestName, root); err != nil {
+		return err
+	} else if ok {
+		opts.manifestName = name
 	}
 	if err := validateLaunchSessionOptions(opts); err != nil {
 		var structured structuredCommandError

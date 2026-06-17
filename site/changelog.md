@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Default manifest resolution: with more than one registered manifest, `my`
+  commands no longer require `--manifest`. Precedence is explicit `--manifest`,
+  then the current umbrella's manifest, then a registry default (initially the
+  first-added manifest).
+- `my manifests default [<name>] [--clear]` shows or repoints the global default
+  manifest, and `my manifests list` marks the active default.
+
 ## 0.32.1 - 2026-06-16
 
 ### Fixed

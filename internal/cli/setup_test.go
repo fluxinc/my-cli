@@ -426,6 +426,59 @@ func TestSetupInteractiveSelectsManifestAndErrorsOnAmbiguousEOF(t *testing.T) {
 	}
 }
 
+func TestSetupDefaultsToFirstRegisteredManifest(t *testing.T) {
+	home := t.TempDir()
+	writeSimpleSetupManifest(t, home, "acme", "Acme Example")
+	writeSimpleSetupManifest(t, home, "beta", "Beta Example")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "setup", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+		t.Fatalf("setup default manifest: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	ws, err := umbrella.LoadWorkspace(filepath.Join(home, "acme"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws.ManifestRef != "acme" {
+		t.Fatalf("manifest ref = %q, want acme", ws.ManifestRef)
+	}
+	if _, err := os.Stat(filepath.Join(home, "beta", ".my-cli", "workspace.json")); !os.IsNotExist(err) {
+		t.Fatalf("beta umbrella should not be set up by default: %v", err)
+	}
+}
+
+func TestRootUsesCurrentUmbrellaBeforeRegistryDefault(t *testing.T) {
+	home := t.TempDir()
+	writeSimpleSetupManifest(t, home, "acme", "Acme Example")
+	writeSimpleSetupManifest(t, home, "beta", "Beta Example")
+	betaRoot := filepath.Join(home, "beta")
+	if _, _, err := umbrella.Ensure(betaRoot, "beta", "beta"); err != nil {
+		t.Fatal(err)
+	}
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldwd); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err := os.Chdir(betaRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "root", "--home", home, "--no-refresh", "--no-update-check"}); err != nil {
+		t.Fatalf("root in beta umbrella: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); !samePath(got, betaRoot) {
+		t.Fatalf("root = %q, want %q", got, betaRoot)
+	}
+}
+
 func TestSetupInteractiveRoleDefaultAndClear(t *testing.T) {
 	home := t.TempDir()
 	umbrellaRoot := writeRoleSetupManifest(t, home)

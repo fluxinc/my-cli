@@ -58,6 +58,10 @@ func (a app) runWorkspaceList(args []string) error {
 	if len(rest) != 0 {
 		return fmt.Errorf("workspace list does not accept positional arguments")
 	}
+	manifestName, err = defaultManifestName(home, manifestName, "")
+	if err != nil {
+		return err
+	}
 	entries, err := workspace.List(home, manifestName)
 	if err != nil {
 		return err
@@ -87,6 +91,10 @@ func (a app) runWorkspaceSync(args []string) error {
 		"home":     true,
 		"manifest": true,
 	})
+	if err != nil {
+		return err
+	}
+	manifestName, err = defaultManifestName(home, manifestName, "")
 	if err != nil {
 		return err
 	}
@@ -326,6 +334,10 @@ func (a app) runMountList(args []string) error {
 	if len(rest) != 0 {
 		return fmt.Errorf("mount list does not accept positional arguments")
 	}
+	manifestName, err = defaultManifestName(home, manifestName, umbrellaRoot)
+	if err != nil {
+		return err
+	}
 	entries, err := workspace.ListMounts(home, manifestName, umbrellaRoot)
 	if err != nil {
 		return err
@@ -377,6 +389,10 @@ func (a app) runMountAdd(args []string) error {
 	if kind == "repo" {
 		return a.repoAddByID(home, manifestName, umbrellaRoot, id, printOnly, jsonOut)
 	}
+	manifestName, err = defaultManifestName(home, manifestName, umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(jsonOut, err)
+	}
 	entries, err := workspace.ListMounts(home, manifestName, umbrellaRoot)
 	if err != nil {
 		return a.maybeJSONError(jsonOut, err)
@@ -410,6 +426,11 @@ func (a app) runMountAdd(args []string) error {
 func (a app) repoAddByID(home, manifestName, umbrellaRoot, id string, printOnly bool, jsonOut bool) error {
 	if !portableMountID(id) {
 		return fmt.Errorf("repo id %q must be lowercase kebab-case", id)
+	}
+	var err error
+	manifestName, err = defaultManifestName(home, manifestName, umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(jsonOut, err)
 	}
 	doc, err := loadSingleRegisteredDoc(home, manifestName)
 	if err != nil {
@@ -483,6 +504,10 @@ func (a app) runMountSync(args []string) error {
 	mountRefs, repoIDs, err := splitMountSyncRefs(rest, all)
 	if err != nil {
 		return err
+	}
+	manifestName, err = defaultManifestName(home, manifestName, umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(jsonOut, err)
 	}
 	var results []workspace.SyncResult
 	if all || len(mountRefs) != 0 {

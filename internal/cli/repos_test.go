@@ -155,6 +155,66 @@ func TestReposListReportsCatalogAndCloneState(t *testing.T) {
 	}
 }
 
+func TestReposListUsesCurrentUmbrellaManifestBeforeRegistryDefault(t *testing.T) {
+	home := t.TempDir()
+	acmeCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(acmeCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	writeCLITestFile(t, filepath.Join(acmeCache, "catalog", "repos.json"), `[
+  { "id": "default-service", "git_url": "https://github.com/acme/default-service.git" }
+]`)
+	betaCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "beta")
+	writeCLITestFile(t, filepath.Join(betaCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "beta", "name": "Beta Example" },
+  "umbrella": { "recommended_path": "~/beta" }
+}`)
+	writeCLITestFile(t, filepath.Join(betaCache, "catalog", "repos.json"), `[
+  { "id": "admin-service", "git_url": "https://github.com/acme/admin-service.git" }
+]`)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "manifests", "add", "acme", "https://github.com/acme/acme-ai-manifest.git", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.run([]string{"my", "manifests", "add", "beta", "https://github.com/acme/beta-ai-manifest.git", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	betaRoot := filepath.Join(home, "beta")
+	if _, _, err := umbrella.Ensure(betaRoot, "beta", "beta"); err != nil {
+		t.Fatal(err)
+	}
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldwd); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err := os.Chdir(betaRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"my", "repos", "list", "--home", home, "--json"}); err != nil {
+		t.Fatalf("repos list in beta umbrella: %v\nstderr: %s", err, stderr.String())
+	}
+	var entries []repoListEntry
+	if err := json.Unmarshal(stdout.Bytes(), &entries); err != nil {
+		t.Fatalf("parse JSON: %v\nstdout: %s", err, stdout.String())
+	}
+	if len(entries) != 1 || entries[0].ID != "admin-service" {
+		t.Fatalf("entries = %#v, want beta admin-service", entries)
+	}
+}
+
 func TestReposRemoveDeselectsAndKeepsCloneWithoutForce(t *testing.T) {
 	home, umbrellaRoot, _ := setupCLIRepoCatalog(t)
 	var stdout, stderr bytes.Buffer

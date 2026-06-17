@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 type registeredDoc struct {
@@ -19,6 +21,18 @@ func loadRegisteredDocs(home, manifestName string) ([]registeredDoc, error) {
 	if err != nil {
 		return nil, err
 	}
+	return loadDocsForRefs(refs)
+}
+
+func loadAllRegisteredDocs(home string) ([]registeredDoc, error) {
+	reg, err := manifest.LoadRegistry(home)
+	if err != nil {
+		return nil, err
+	}
+	return loadDocsForRefs(reg.Manifests)
+}
+
+func loadDocsForRefs(refs []manifest.Ref) ([]registeredDoc, error) {
 	docs := make([]registeredDoc, 0, len(refs))
 	for _, ref := range refs {
 		doc, _, err := manifest.LoadDocument(ref.LocalPath)
@@ -50,12 +64,18 @@ func loadSingleRegisteredDoc(home, manifestName string) (registeredDoc, error) {
 
 func manifestRefs(home, manifestName string) ([]manifest.Ref, error) {
 	if manifestName != "" {
-		ref, ok, err := manifest.Find(home, manifestName)
+		ref, err := registeredManifestRef(home, manifestName)
 		if err != nil {
 			return nil, err
 		}
-		if !ok {
-			return nil, fmt.Errorf("manifest %q is not registered", manifestName)
+		return []manifest.Ref{ref}, nil
+	}
+	if name, ok, err := manifestNameFromUmbrellaContext(home, ""); err != nil {
+		return nil, err
+	} else if ok {
+		ref, err := registeredManifestRef(home, name)
+		if err != nil {
+			return nil, err
 		}
 		return []manifest.Ref{ref}, nil
 	}
@@ -63,7 +83,89 @@ func manifestRefs(home, manifestName string) ([]manifest.Ref, error) {
 	if err != nil {
 		return nil, err
 	}
-	return reg.Manifests, nil
+	if ref, ok := reg.DefaultRef(); ok {
+		return []manifest.Ref{ref}, nil
+	}
+	return nil, nil
+}
+
+func registeredManifestRef(home, name string) (manifest.Ref, error) {
+	ref, ok, err := manifest.Find(home, name)
+	if err != nil {
+		return manifest.Ref{}, err
+	}
+	if !ok {
+		return manifest.Ref{}, fmt.Errorf("manifest %q is not registered", name)
+	}
+	return ref, nil
+}
+
+func defaultManifestName(home, manifestName, umbrellaRoot string) (string, error) {
+	if manifestName != "" {
+		return manifestName, nil
+	}
+	if name, ok, err := manifestNameFromUmbrellaContext(home, umbrellaRoot); err != nil {
+		return "", err
+	} else if ok {
+		return name, nil
+	}
+	reg, err := manifest.LoadRegistry(home)
+	if err != nil {
+		return "", err
+	}
+	ref, ok := reg.DefaultRef()
+	if !ok {
+		return "", fmt.Errorf("my requires a registered manifest")
+	}
+	return ref.Name, nil
+}
+
+func defaultManifestNameIfAny(home, manifestName, umbrellaRoot string) (string, bool, error) {
+	if manifestName != "" {
+		return manifestName, true, nil
+	}
+	if name, ok, err := manifestNameFromUmbrellaContext(home, umbrellaRoot); err != nil {
+		return "", false, err
+	} else if ok {
+		return name, true, nil
+	}
+	reg, err := manifest.LoadRegistry(home)
+	if err != nil {
+		return "", false, err
+	}
+	ref, ok := reg.DefaultRef()
+	if !ok {
+		return "", false, nil
+	}
+	return ref.Name, true, nil
+}
+
+func manifestNameFromUmbrellaContext(home, explicit string) (string, bool, error) {
+	var root string
+	if explicit != "" {
+		resolved, err := resolveUmbrellaRoot(home, explicit)
+		if err != nil {
+			return "", false, err
+		}
+		root = resolved
+	} else {
+		found, ok := umbrella.FindRoot(".")
+		if !ok {
+			return "", false, nil
+		}
+		root = found
+	}
+	ws, err := umbrella.LoadWorkspace(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if ws.ManifestRef == "" {
+		return "", false, nil
+	}
+	return ws.ManifestRef, true, nil
 }
 
 func (a app) runManifest(args []string) error {
@@ -76,6 +178,8 @@ func (a app) runManifest(args []string) error {
 		return a.runManifestAdd(args[1:])
 	case "list":
 		return a.runManifestList(args[1:])
+	case "default":
+		return a.runManifestDefault(args[1:])
 	case "sync":
 		return a.runManifestSync(args[1:])
 	case "validate":
@@ -92,7 +196,8 @@ func (a app) printManifestUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
   my manifests add <name> <git-url> [--home DIR] [--json]
   my manifests list [--home DIR] [--json]
-  my manifests sync <name...> | --all [--home DIR] [--umbrella DIR] [--no-derived] [--print] [--json]
+  my manifests default [<name>] [--clear] [--home DIR] [--json]
+  my manifests sync [name...] | --all [--home DIR] [--umbrella DIR] [--no-derived] [--print] [--json]
   my manifests validate <name|path> [--home DIR] [--json]`)
 }
 
@@ -141,8 +246,60 @@ func (a app) runManifestList(args []string) error {
 		return printJSON(a.stdout, reg)
 	}
 	for _, ref := range reg.Manifests {
-		fmt.Fprintf(a.stdout, "%s\t%s\t%s\n", ref.Name, ref.GitURL, ref.LocalPath)
+		line := fmt.Sprintf("%s\t%s\t%s", ref.Name, ref.GitURL, ref.LocalPath)
+		if ref.Name == reg.DefaultManifest || (reg.DefaultManifest == "" && len(reg.Manifests) != 0 && ref.Name == reg.Manifests[0].Name) {
+			line += "\tdefault"
+		}
+		fmt.Fprintln(a.stdout, line)
 	}
+	return nil
+}
+
+func (a app) runManifestDefault(args []string) error {
+	var home string
+	var jsonOut bool
+	var clear bool
+	fs := newFlagSet("my manifests default", a.stderr)
+	fs.StringVar(&home, "home", "", "override home directory")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	fs.BoolVar(&clear, "clear", false, "revert the default to the first-added manifest")
+	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true})
+	if err != nil {
+		return err
+	}
+	if clear && len(rest) > 0 {
+		return fmt.Errorf("usage: my manifests default [<name>] | --clear")
+	}
+	if len(rest) > 1 {
+		return fmt.Errorf("usage: my manifests default [<name>] [--clear]")
+	}
+	if len(rest) == 0 && !clear {
+		reg, err := manifest.LoadRegistry(home)
+		if err != nil {
+			return err
+		}
+		ref, ok := reg.DefaultRef()
+		if !ok {
+			return fmt.Errorf("no registered manifests; run my manifests add <name> <git-url>")
+		}
+		if jsonOut {
+			return printJSON(a.stdout, ref)
+		}
+		fmt.Fprintln(a.stdout, ref.Name)
+		return nil
+	}
+	name := ""
+	if !clear {
+		name = rest[0]
+	}
+	ref, err := manifest.SetDefault(home, name)
+	if err != nil {
+		return err
+	}
+	if jsonOut {
+		return printJSON(a.stdout, ref)
+	}
+	fmt.Fprintf(a.stdout, "default manifest is now %s\n", ref.Name)
 	return nil
 }
 
@@ -163,6 +320,13 @@ func (a app) runManifestSync(args []string) error {
 	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true, "umbrella": true})
 	if err != nil {
 		return err
+	}
+	if !all && len(rest) == 0 {
+		if name, ok, err := defaultManifestNameIfAny(home, "", umbrellaRoot); err != nil {
+			return err
+		} else if ok {
+			rest = []string{name}
+		}
 	}
 	results, err := manifest.Sync(home, rest, all, printOnly, nil)
 	if err != nil {

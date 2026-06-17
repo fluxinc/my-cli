@@ -70,6 +70,10 @@ func (a app) runReposList(args []string) error {
 	if len(rest) != 0 {
 		return fmt.Errorf("usage: my repos list [--json]")
 	}
+	opts.manifestName, err = defaultManifestName(opts.home, opts.manifestName, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
 	repos, err := manifest.LoadRepoCatalog(opts.home, opts.manifestName)
 	if err != nil {
 		return a.maybeJSONError(opts.jsonOut, err)

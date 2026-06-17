@@ -1121,6 +1121,18 @@ func (a app) skillManifestDocs(home, manifestName string) ([]registeredDoc, bool
 	return docs, true, err
 }
 
+func (a app) allSkillManifestDocs(home string) ([]registeredDoc, bool, error) {
+	reg, err := manifest.LoadRegistry(home)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(reg.Manifests) == 0 {
+		return nil, false, nil
+	}
+	docs, err := loadAllRegisteredDocs(home)
+	return docs, true, err
+}
+
 func (a app) installToolSkills(home string, docs []registeredDoc, dryRun bool, refs []string) error {
 	needed := manifestToolSkillIDs(docs, refs)
 	if len(needed) == 0 {

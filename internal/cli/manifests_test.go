@@ -69,6 +69,74 @@ func TestManifestCommands(t *testing.T) {
 	}
 }
 
+func TestManifestDefaultShowSetAndClear(t *testing.T) {
+	home := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	for _, name := range []string{"acme", "beta"} {
+		if err := a.run([]string{"my", "manifests", "add", name, "https://github.com/acme/" + name + "-ai-manifest.git", "--home", home}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// show: defaults to the first-added manifest
+	stdout.Reset()
+	if err := a.run([]string{"my", "manifests", "default", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "acme" {
+		t.Fatalf("default show = %q, want acme", got)
+	}
+
+	// set: repoint the global default to beta
+	stdout.Reset()
+	if err := a.run([]string{"my", "manifests", "default", "beta", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "beta") {
+		t.Fatalf("default set stdout = %q, want beta", stdout.String())
+	}
+
+	// list: beta is now marked default, acme is not
+	stdout.Reset()
+	if err := a.run([]string{"my", "manifests", "list", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n") {
+		if strings.HasPrefix(line, "beta\t") && !strings.Contains(line, "default") {
+			t.Fatalf("beta line missing default marker: %q", line)
+		}
+		if strings.HasPrefix(line, "acme\t") && strings.Contains(line, "default") {
+			t.Fatalf("acme line should not be default: %q", line)
+		}
+	}
+
+	// clear: revert to the first-added manifest
+	stdout.Reset()
+	if err := a.run([]string{"my", "manifests", "default", "--clear", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	if err := a.run([]string{"my", "manifests", "default", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "acme" {
+		t.Fatalf("default after clear = %q, want acme", got)
+	}
+}
+
+func TestManifestDefaultRejectsUnregistered(t *testing.T) {
+	home := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "manifests", "add", "acme", "https://github.com/acme/acme-ai-manifest.git", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.run([]string{"my", "manifests", "default", "ghost", "--home", home}); err == nil {
+		t.Fatal("expected error for unregistered manifest")
+	}
+}
+
 func TestManifestSyncReconcilesDerivedAfterPull(t *testing.T) {
 	home, umbrellaRoot, _, _, writer := setupCLITrackedManifestBody(t, `{
   "manifest_version": 1,

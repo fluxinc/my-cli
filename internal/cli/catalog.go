@@ -145,6 +145,10 @@ func (a app) runProductsList(args []string) error {
 	if len(rest) != 0 {
 		return fmt.Errorf("usage: my products list")
 	}
+	manifestName, err = defaultManifestName(home, manifestName, "")
+	if err != nil {
+		return a.maybeJSONError(jsonOut, err)
+	}
 	products, err := manifest.LoadCatalog(home, manifestName)
 	if err != nil {
 		return a.maybeJSONError(jsonOut, err)

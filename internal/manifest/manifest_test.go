@@ -29,6 +29,130 @@ func TestAddAndLoadRegistry(t *testing.T) {
 	if len(reg.Manifests) != 1 || reg.Manifests[0].GitURL != ref.GitURL {
 		t.Fatalf("registry = %#v", reg)
 	}
+	if reg.DefaultManifest != "acme" {
+		t.Fatalf("default manifest = %q, want acme", reg.DefaultManifest)
+	}
+}
+
+func TestRegistryDefaultUsesFirstAddedManifest(t *testing.T) {
+	home := t.TempDir()
+	if _, err := Add(home, "acme", "https://github.com/acme/acme-ai-manifest.git"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Add(home, "beta", "https://github.com/acme/beta-ai-manifest.git"); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := LoadRegistry(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reg.DefaultManifest != "acme" {
+		t.Fatalf("default manifest = %q, want acme", reg.DefaultManifest)
+	}
+	ref, ok := reg.DefaultRef()
+	if !ok || ref.Name != "acme" {
+		t.Fatalf("DefaultRef = %#v, %v; want acme", ref, ok)
+	}
+}
+
+func TestRegistryDefaultFallsBackToFirstForLegacyRegistry(t *testing.T) {
+	home := t.TempDir()
+	path, err := RegistryPath(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{
+  "version": 1,
+  "manifests": [
+    { "name": "acme", "git_url": "https://github.com/acme/acme-ai-manifest.git", "local_path": "/tmp/acme" },
+    { "name": "beta", "git_url": "https://github.com/acme/beta-ai-manifest.git", "local_path": "/tmp/beta" }
+  ]
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := LoadRegistry(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, ok := reg.DefaultRef()
+	if !ok || ref.Name != "acme" {
+		t.Fatalf("DefaultRef = %#v, %v; want legacy first manifest", ref, ok)
+	}
+}
+
+func TestSetDefaultRepointsRegistry(t *testing.T) {
+	home := t.TempDir()
+	if _, err := Add(home, "acme", "https://github.com/acme/acme-ai-manifest.git"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Add(home, "beta", "https://github.com/acme/beta-ai-manifest.git"); err != nil {
+		t.Fatal(err)
+	}
+	ref, err := SetDefault(home, "beta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref.Name != "beta" {
+		t.Fatalf("SetDefault returned %q, want beta", ref.Name)
+	}
+	reg, err := LoadRegistry(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reg.DefaultManifest != "beta" {
+		t.Fatalf("default manifest = %q, want beta", reg.DefaultManifest)
+	}
+	got, ok := reg.DefaultRef()
+	if !ok || got.Name != "beta" {
+		t.Fatalf("DefaultRef = %#v, %v; want beta", got, ok)
+	}
+}
+
+func TestSetDefaultRejectsUnregisteredManifest(t *testing.T) {
+	home := t.TempDir()
+	if _, err := Add(home, "acme", "https://github.com/acme/acme-ai-manifest.git"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SetDefault(home, "ghost"); err == nil {
+		t.Fatal("SetDefault accepted unregistered manifest; want error")
+	}
+	reg, err := LoadRegistry(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reg.DefaultManifest != "acme" {
+		t.Fatalf("default manifest = %q, want acme unchanged", reg.DefaultManifest)
+	}
+}
+
+func TestSetDefaultEmptyRevertsToFirstAdded(t *testing.T) {
+	home := t.TempDir()
+	if _, err := Add(home, "acme", "https://github.com/acme/acme-ai-manifest.git"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Add(home, "beta", "https://github.com/acme/beta-ai-manifest.git"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SetDefault(home, "beta"); err != nil {
+		t.Fatal(err)
+	}
+	ref, err := SetDefault(home, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref.Name != "acme" {
+		t.Fatalf("SetDefault(\"\") returned %q, want acme (first-added)", ref.Name)
+	}
+	reg, err := LoadRegistry(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reg.DefaultManifest != "acme" {
+		t.Fatalf("default manifest = %q, want acme after clear", reg.DefaultManifest)
+	}
 }
 
 func TestSetLocalPathRepointsRegistry(t *testing.T) {

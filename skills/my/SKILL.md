@@ -125,6 +125,12 @@ my compile --role ROLE [--manifest NAME] [--home DIR]
 my doctor [--no-fetch] [--fix]   # git freshness, sessions, services, derived drift, last sync, manifests, tools
 ```
 
+When `--manifest` is omitted, `my` prefers the manifest recorded by the current
+umbrella or `--umbrella DIR`. Outside an umbrella it uses the registry default,
+which starts as the first manifest added; repoint it with
+`my manifests default <name>` (or `my manifests default --clear` to revert to the
+first added). Use `--manifest` to override per command.
+
 Use `my onboarding` when a human wants the guided tour. In an interactive
 terminal it launches a harness by default, introduces the operator to My AI,
 and configures the workspace through validated `my` commands. Use

@@ -91,10 +91,10 @@ my skills sync [harness...] | --all [--skill ID_OR_SLUG] [--no-prune] [--print] 
 my skills purge <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
 ```
 
-`--manifest NAME` reads skills from a synced manifest (the default when one is
-registered); `--source DIR` reads them from a local directory instead. With no
-harness arguments, install targets every supported harness and silently skips
-ones that are not present.
+`--manifest NAME` reads skills from a synced manifest and overrides the
+current/default manifest; `--source DIR` reads them from a local directory
+instead. With no harness arguments, install targets every supported harness and
+silently skips ones that are not present.
 
 ## Admin
 
@@ -116,10 +116,16 @@ review-commit-push workflow that follows every admin edit.
 
 ## Manifests, mounts, and workspace
 
+`my manifests default [<name>]` shows or repoints the global default manifest
+(initially the first one added; `--clear` reverts to it). When `--manifest` is
+omitted, commands prefer the current umbrella's manifest, then fall back to this
+registry default.
+
 ```sh
 my manifests add <name> <git-url>
 my manifests list
-my manifests sync <name...> | --all [--home DIR] [--umbrella DIR] [--no-derived] [--print] [--json]
+my manifests default [<name>] [--clear] [--home DIR] [--json]
+my manifests sync [name...] | --all [--home DIR] [--umbrella DIR] [--no-derived] [--print] [--json]
 my manifests validate <name|path>
 
 my mounts list [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
@@ -136,6 +142,10 @@ my work list [--all] [--json]
 my work resume [session-id] [--json]
 my work finish [session-id] --land|--publish|--discard [--message TEXT] [--verbose] [--json]
 ```
+
+With no `--manifest`, commands prefer the manifest recorded by the current
+umbrella or `--umbrella DIR`. Outside an umbrella, they use the registry default,
+which is the first manifest added unless the registry names another default.
 
 ## Content and diagnostics
 
