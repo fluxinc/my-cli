@@ -146,7 +146,7 @@ func TestOnboardAgentZeroManifestExecsHarnessFromCurrentDir(t *testing.T) {
 	if len(reg.Manifests) != 0 {
 		t.Fatalf("onboard --agent must not register manifests itself: %#v", reg.Manifests)
 	}
-	if _, err := os.Lstat(filepath.Join(home, ".codex", "skills", "my")); err != nil {
+	if _, err := os.Lstat(filepath.Join(home, ".codex", "skills", "my-cli")); err != nil {
 		t.Fatalf("self-skill was not installed for zero-manifest agent launch: %v", err)
 	}
 }
@@ -195,7 +195,7 @@ func TestOnboardingInteractiveDefaultExecsHarness(t *testing.T) {
 }
 
 func TestBundledOnboardingSkillUsesLearnByExampleBasics(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "skills", "my", "SKILL.md"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "skills", "my-cli", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -248,7 +248,7 @@ func TestDoctorFixReinstallsAbsentSelfSkill(t *testing.T) {
 	if !strings.Contains(out, "fix\tselfskill:claude-code\tfixed") {
 		t.Fatalf("doctor stdout = %q, want self-skill fix", out)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "my", "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "my-cli", "SKILL.md")); err != nil {
 		t.Fatalf("self-skill not reinstalled: %v", err)
 	}
 }

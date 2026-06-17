@@ -294,7 +294,7 @@ func removeLaunchSkill(target string, info fs.FileInfo) error {
 
 func writeLaunchManagedMarker(dir string, skill skills.Skill) error {
 	marker := bundle.Marker{
-		Installer:   "my",
+		Installer:   "my-cli",
 		Version:     bundle.Version(),
 		Mode:        "copy",
 		Source:      skill.SourceRoot,

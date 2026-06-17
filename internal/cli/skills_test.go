@@ -68,10 +68,10 @@ func TestSkillsSelfInstallAndStatus(t *testing.T) {
 	if err := a.run([]string{"my", "skills", "self", "install", "codex", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), "codex\tmy\tinstalled") {
+	if !strings.Contains(stdout.String(), "codex\tmy-cli\tinstalled") {
 		t.Fatalf("install stdout = %q", stdout.String())
 	}
-	if _, err := os.Lstat(filepath.Join(home, ".codex", "skills", "my")); err != nil {
+	if _, err := os.Lstat(filepath.Join(home, ".codex", "skills", "my-cli")); err != nil {
 		t.Fatalf("self skill was not installed: %v", err)
 	}
 
@@ -82,7 +82,7 @@ func TestSkillsSelfInstallAndStatus(t *testing.T) {
 	}
 	for _, want := range []string{
 		`"harness": "codex"`,
-		`"skill": "my"`,
+		`"skill": "my-cli"`,
 		`"canonical_id": "my:self"`,
 		`"status": "installed"`,
 	} {
@@ -425,7 +425,7 @@ func TestSkillsSyncKeepsBundledSelfSkill(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "my")); err != nil {
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "my-cli")); err != nil {
 		t.Fatalf("self-skill was pruned by manifest sync: %v", err)
 	}
 	if strings.Contains(stdout.String(), "claude-code\tour\tremoved") {
@@ -547,7 +547,7 @@ func TestSkillsPurgeKeepsBundledSelfSkill(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "my")); err != nil {
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "my-cli")); err != nil {
 		t.Fatalf("self-skill was purged by manifest purge: %v", err)
 	}
 	if strings.Contains(stdout.String(), "claude-code\tour\tremoved") {
@@ -562,7 +562,7 @@ func TestSkillsPurgeKeepsBundledSelfSkill(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "my")); err != nil {
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "my-cli")); err != nil {
 		t.Fatalf("self-skill was purged by explicit manifest purge: %v", err)
 	}
 	if strings.Contains(stdout.String(), "claude-code\tour\tremoved") {

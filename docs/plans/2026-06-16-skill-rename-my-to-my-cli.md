@@ -1,6 +1,7 @@
 # Plan: Rename bundled self-skill `my` → `my-cli` (with install migration)
 
-Status: DRAFT (Claude) — awaiting Codex final pass + implementation.
+Status: FINAL (Claude draft, Codex final pass) — implemented and locally
+verified; awaiting peer signoff.
 Branch: `rename-self-skill-my-cli` (off master).
 
 ## Goal
@@ -37,8 +38,9 @@ Other constraints:
 ### 2. Installer constant — `internal/selfskill/selfskill.go`
 - Line 18: `Name = "my"` → `Name = "my-cli"`.
 - Line 19: `CanonicalID = "my:self"` — **unchanged**.
-- Line ~74 marker field `Installer: "my"`: decide — recommend setting to `Name`
-  (so the managed marker reflects the new slug). Low risk; our own marker.
+- Line ~74 marker field `Installer: "my"`: set to `Name` (so the managed
+  marker reflects the new slug). Existing readers continue accepting legacy
+  `"my"` markers.
 - Everything else in the file already derives from `Name`
   (`InstallSlug`, `Path`, target paths, uninstall, inspect), so it follows the
   constant automatically.
@@ -67,10 +69,13 @@ After `Materialize`, before the per-harness ensure loop, for each harness `h`:
 
 Notes:
 - Idempotent: after the first run `oldTarget` is gone, so it's a no-op.
-- Quiet, but record migrated harnesses in the result set so
-  `my skills self sync` (and any verbose path) can report `migrated`.
+- Quiet during automatic startup sync, but record migrated harnesses in the
+  result set so explicit self-skill install and tests can report `migrated`.
 - Handle symlink case: a symlinked `oldTarget` should `os.Rename` cleanly; if
   rename fails (cross-device etc.), fall back to remove-old + reinstall-new.
+- After harness migration, remove the stale embedded source directory
+  `~/.local/share/my-cli/skills/my` only when it carries the managed
+  `my:self` marker.
 
 ### 4. Tests — TEST EVERYTHING
 Update existing literals (keep `my:self`):
@@ -103,7 +108,7 @@ New migration tests (`internal/selfskill/selfskill_test.go`):
   migrated automatically on the next CLI run (canonical id `my:self`
   unchanged)."
 - `docs/plans/*` historical dated files that mention `skills/my`: **leave as
-  historical record** (do not rewrite past plans). [decision — confirm]
+  historical record** (do not rewrite past plans).
 - Rebuild: `cd site && npm run build`.
 
 ### 6. Verification
@@ -114,13 +119,12 @@ New migration tests (`internal/selfskill/selfskill_test.go`):
   idempotency; confirm a non-managed `my/` is left alone.
 - `cd site && npm run build`.
 
-## Open decisions (Codex final pass / operator)
-1. Update the marker `Installer:` field to `Name`, or leave `"my"`?
-   (Recommend: `Name`.)
-2. Rewrite historical `docs/plans/*` references, or leave them as dated records?
-   (Recommend: leave.)
-3. Emit a `migrated` result line from `my skills self sync`? (Recommend: yes —
-   quiet by default, shown on the sync report.)
+## Decisions (Codex final pass)
+
+1. New managed markers use `my-cli`; readers accept both `my` and `my-cli`.
+2. Historical `docs/plans/*` references are left as dated records.
+3. Migration emits a `migrated` result internally and on explicit self-skill
+   install output when a legacy target is moved or removed.
 
 ## Ownership / turns
 Per operator: Claude drafted this plan; **Codex does the final pass on this plan

@@ -149,7 +149,7 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 				continue
 			}
 			if item.Name == "selfskill" {
-				item.WouldFix = "reinstall the my self-skill"
+				item.WouldFix = "reinstall the my-cli self-skill"
 			} else if item.WouldFix == "" {
 				item.WouldFix = "reconcile derived guidance and skills"
 			}
@@ -506,7 +506,7 @@ func (a app) doctorFixSelfSkill(home string) []doctorItem {
 			Message: result.Message,
 		}
 		if item.Message == "" {
-			item.Message = "reinstalled my self-skill"
+			item.Message = "reinstalled my-cli self-skill"
 		}
 		if result.Err != nil {
 			item.Details = append(item.Details, result.Err.Error())
@@ -640,7 +640,7 @@ func doctorFixStatusFromGuidance(status string) string {
 
 func doctorFixStatusFromSkill(status string) string {
 	switch status {
-	case skills.StatusInstalled, skills.StatusUpdated, skills.StatusRemoved:
+	case skills.StatusInstalled, skills.StatusUpdated, skills.StatusRemoved, skills.StatusMigrated:
 		return "fixed"
 	case skills.StatusFailed, skills.StatusBlocked:
 		return "error"
@@ -763,7 +763,7 @@ func (a app) doctorSelfSkill(home string) []doctorItem {
 		items = append(items, item)
 	}
 	if len(items) == 0 {
-		items = append(items, doctorItem{Name: "selfskill", Status: "ok", Message: "my self-skill installed for present harnesses"})
+		items = append(items, doctorItem{Name: "selfskill", Status: "ok", Message: "my-cli self-skill installed for present harnesses"})
 	}
 	return items
 }

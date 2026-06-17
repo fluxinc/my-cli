@@ -403,7 +403,7 @@ func TestLaunchInstallsAbsentSelfSkillBeforeExec(t *testing.T) {
 	if err := a.run([]string{"my", "setup", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.RemoveAll(filepath.Join(home, ".codex", "skills", "my")); err != nil {
+	if err := os.RemoveAll(filepath.Join(home, ".codex", "skills", "my-cli")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -415,7 +415,7 @@ func TestLaunchInstallsAbsentSelfSkillBeforeExec(t *testing.T) {
 			if name != "codex" {
 				t.Fatalf("lookPath name = %q, want codex", name)
 			}
-			if _, err := os.Lstat(filepath.Join(home, ".codex", "skills", "my")); err != nil {
+			if _, err := os.Lstat(filepath.Join(home, ".codex", "skills", "my-cli")); err != nil {
 				t.Fatalf("self-skill was not installed before lookupPath: %v", err)
 			}
 			return "/test/bin/codex", nil
@@ -993,14 +993,14 @@ func TestLaunchMaterializesOrgSkillsIntoLaunchRootAndMirror(t *testing.T) {
 	} {
 		assertLaunchSkill(t, filepath.Join(base, "acme-handbook"), "acme:handbook")
 		assertLaunchSkill(t, filepath.Join(base, "acme-calendar"), "acme:calendar")
-		if _, err := os.Stat(filepath.Join(base, "my")); !os.IsNotExist(err) {
-			t.Fatalf("self-skill was materialized into launch root at %s: %v", filepath.Join(base, "my"), err)
+		if _, err := os.Stat(filepath.Join(base, "my-cli")); !os.IsNotExist(err) {
+			t.Fatalf("self-skill was materialized into launch root at %s: %v", filepath.Join(base, "my-cli"), err)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "acme-handbook")); !os.IsNotExist(err) {
 		t.Fatalf("org skill was installed globally: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "my", "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "my-cli", "SKILL.md")); err != nil {
 		t.Fatalf("global self-skill missing: %v", err)
 	}
 }
@@ -1025,7 +1025,7 @@ func TestLaunchCodexUsesAgentsSkillsWithoutMirror(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(umbrellaRoot, ".codex", "skills", "acme-handbook")); !os.IsNotExist(err) {
 		t.Fatalf("codex mirror should not be written because codex reads .agents/skills: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".codex", "skills", "my", "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(home, ".codex", "skills", "my-cli", "SKILL.md")); err != nil {
 		t.Fatalf("global self-skill missing: %v", err)
 	}
 }
@@ -1047,7 +1047,7 @@ func TestLaunchOpenCodeUsesCompatibilityGlobalSkills(t *testing.T) {
 	globalSkillsDir := filepath.Join(home, ".config", "opencode", "skills")
 	assertIndexedGlobalSkill(t, globalSkillsDir, "acme-handbook", "acme:handbook", compatibilityGlobalSkillScope)
 	assertIndexedGlobalSkill(t, globalSkillsDir, "acme-calendar", "acme:calendar", compatibilityGlobalSkillScope)
-	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", "skills", "my", "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", "skills", "my-cli", "SKILL.md")); err != nil {
 		t.Fatalf("global self-skill missing: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(umbrellaRoot, ".agents", "skills", "acme-handbook")); !os.IsNotExist(err) {
@@ -1300,8 +1300,8 @@ func assertLaunchSkill(t *testing.T, dir, canonicalID string) {
 	if err := json.Unmarshal(data, &marker); err != nil {
 		t.Fatalf("marker JSON: %v\n%s", err, data)
 	}
-	if marker.Installer != "my" || marker.CanonicalID != canonicalID || marker.Scope != "launch" {
-		t.Fatalf("marker = %+v, want canonical_id=%q scope=launch", marker, canonicalID)
+	if marker.Installer != "my-cli" || marker.CanonicalID != canonicalID || marker.Scope != "launch" {
+		t.Fatalf("marker = %+v, want installer=my-cli canonical_id=%q scope=launch", marker, canonicalID)
 	}
 }
 
@@ -1326,8 +1326,8 @@ func assertIndexedGlobalSkill(t *testing.T, skillsDir, skillName, canonicalID, s
 		t.Fatalf("index JSON: %v\n%s", err, data)
 	}
 	item, ok := index.Skills[skillName]
-	if index.Installer != "my" || index.Mode != "index" || !ok || item.CanonicalID != canonicalID || item.Scope != scope {
-		t.Fatalf("index = %+v, want %s canonical_id=%q scope=%s", index, skillName, canonicalID, scope)
+	if index.Installer != "my-cli" || index.Mode != "index" || !ok || item.CanonicalID != canonicalID || item.Scope != scope {
+		t.Fatalf("index = %+v, want installer=my-cli %s canonical_id=%q scope=%s", index, skillName, canonicalID, scope)
 	}
 }
 

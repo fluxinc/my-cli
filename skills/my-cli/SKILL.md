@@ -1,5 +1,5 @@
 ---
-name: my
+name: my-cli
 description: Use when working inside a My AI umbrella (a per-user operating dir, e.g. ~/my, containing a .my-cli/ directory and a generated AGENTS.md), or when the user asks about the `my` CLI, organization manifests, launch-scoped skills, mounts, meeting notes, customers, the product catalog, onboarding a harness, or syncing/publishing local workspace changes. Also use when an AGENTS.md says the workspace is My AI-managed.
 ---
 

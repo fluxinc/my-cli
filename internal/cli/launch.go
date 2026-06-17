@@ -393,7 +393,7 @@ func (a app) ensureLaunchSelfSkill(h harness.Harness, home string) error {
 }
 
 func (a app) printLaunchSelfSkillBlock(result skills.Result) {
-	fmt.Fprintf(a.stderr, "my self-skill %s for %s", result.Status, result.Harness)
+	fmt.Fprintf(a.stderr, "my-cli self-skill %s for %s", result.Status, result.Harness)
 	if result.TargetPath != "" {
 		fmt.Fprintf(a.stderr, " at %s", result.TargetPath)
 	}

@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	Name        = "my"
+	Name        = "my-cli"
 	CanonicalID = "my:self"
+	legacyName  = "my"
 )
 
 // Options controls bundled self-skill operations.
@@ -71,7 +72,7 @@ func Materialize(home string) (skills.Skill, string, error) {
 
 func writeSelfSkillMarker(sourceRoot string) error {
 	marker := bundle.Marker{
-		Installer:   "my",
+		Installer:   Name,
 		Version:     bundle.Version(),
 		Mode:        "symlink",
 		Source:      sourceRoot,
@@ -97,7 +98,16 @@ func Install(hs []harness.Harness, opts Options) ([]skills.Result, error) {
 	}
 	installOpts := installOptions(opts, sourceRoot)
 	var results []skills.Result
+	home, err := resolveHome(opts.Home)
+	if err != nil {
+		return nil, err
+	}
+	migrationResults, skipInstall := migrateLegacySelfSkills(hs, home, opts)
+	results = append(results, migrationResults...)
 	for _, h := range hs {
+		if skipInstall[h] {
+			continue
+		}
 		results = append(results, skills.Install(self, h, installOpts))
 	}
 	return results, nil
@@ -199,10 +209,26 @@ func SyncExisting(opts Options) ([]skills.Result, error) {
 		return nil, err
 	}
 	existing := map[harness.Harness]fs.FileInfo{}
+	legacy := map[harness.Harness]fs.FileInfo{}
 	for _, h := range harness.All() {
 		target := h.SkillTargetPath(home, Name)
 		info, err := os.Lstat(target)
 		if errors.Is(err, fs.ErrNotExist) {
+			legacyTarget := h.SkillTargetPath(home, legacyName)
+			legacyInfo, legacyErr := os.Lstat(legacyTarget)
+			if errors.Is(legacyErr, fs.ErrNotExist) {
+				continue
+			}
+			if legacyErr != nil {
+				return []skills.Result{{
+					Harness:    h,
+					Skill:      Name,
+					TargetPath: legacyTarget,
+					Status:     skills.StatusFailed,
+					Err:        legacyErr,
+				}}, nil
+			}
+			legacy[h] = legacyInfo
 			continue
 		}
 		if err != nil {
@@ -215,8 +241,21 @@ func SyncExisting(opts Options) ([]skills.Result, error) {
 			}}, nil
 		}
 		existing[h] = info
+		legacyTarget := h.SkillTargetPath(home, legacyName)
+		legacyInfo, legacyErr := os.Lstat(legacyTarget)
+		if legacyErr == nil {
+			legacy[h] = legacyInfo
+		} else if !errors.Is(legacyErr, fs.ErrNotExist) {
+			return []skills.Result{{
+				Harness:    h,
+				Skill:      Name,
+				TargetPath: legacyTarget,
+				Status:     skills.StatusFailed,
+				Err:        legacyErr,
+			}}, nil
+		}
 	}
-	if len(existing) == 0 {
+	if len(existing) == 0 && len(legacy) == 0 {
 		return nil, nil
 	}
 
@@ -228,12 +267,52 @@ func SyncExisting(opts Options) ([]skills.Result, error) {
 	baseOpts.SkipMissing = true
 
 	var results []skills.Result
+	preferLink := map[harness.Harness]bool{}
+	ensure := map[harness.Harness]bool{}
+	for h, info := range existing {
+		preferLink[h] = info.Mode()&os.ModeSymlink != 0
+		ensure[h] = true
+	}
+	for h, info := range legacy {
+		migrated, shouldEnsure := migrateLegacySelfSkill(h, home, info, opts)
+		if migrated.Status != "" {
+			results = append(results, migrated)
+		}
+		if shouldEnsure {
+			preferLink[h] = info.Mode()&os.ModeSymlink != 0
+			ensure[h] = true
+		}
+	}
 	for _, h := range harness.All() {
-		info, ok := existing[h]
-		if !ok {
+		if !ensure[h] {
 			continue
 		}
 		target := h.SkillTargetPath(home, Name)
+		info, err := os.Lstat(target)
+		if errors.Is(err, fs.ErrNotExist) {
+			installOpts := baseOpts
+			installOpts.Link = preferLink[h]
+			results = append(results, skills.Install(self, h, installOpts))
+			continue
+		}
+		if err != nil {
+			results = append(results, skills.Result{
+				Harness:    h,
+				Skill:      Name,
+				TargetPath: target,
+				Status:     skills.StatusFailed,
+				Err:        err,
+			})
+			continue
+		}
+		_, ok := existing[h]
+		if !ok {
+			existing[h] = info
+		}
+		info, ok = existing[h]
+		if !ok {
+			continue
+		}
 		inspection, err := skills.InspectDeclared(self, h, baseOpts)
 		if err != nil {
 			results = append(results, skills.Result{
@@ -252,7 +331,156 @@ func SyncExisting(opts Options) ([]skills.Result, error) {
 		installOpts.Link = info.Mode()&os.ModeSymlink != 0
 		results = append(results, skills.Install(self, h, installOpts))
 	}
+	if result := removeLegacySource(sourceRoot); result.Status != "" {
+		results = append(results, result)
+	}
 	return results, nil
+}
+
+func migrateLegacySelfSkills(hs []harness.Harness, home string, opts Options) ([]skills.Result, map[harness.Harness]bool) {
+	var results []skills.Result
+	skipInstall := map[harness.Harness]bool{}
+	for _, h := range hs {
+		oldTarget := h.SkillTargetPath(home, legacyName)
+		info, err := os.Lstat(oldTarget)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			results = append(results, skills.Result{
+				Harness:    h,
+				Skill:      Name,
+				TargetPath: oldTarget,
+				Status:     skills.StatusFailed,
+				Err:        err,
+			})
+			skipInstall[h] = true
+			continue
+		}
+		result, shouldEnsure := migrateLegacySelfSkill(h, home, info, opts)
+		if result.Status != "" {
+			results = append(results, result)
+		}
+		if !shouldEnsure && (result.Status == skills.StatusBlocked || result.Status == skills.StatusFailed) {
+			skipInstall[h] = true
+		}
+	}
+	return results, skipInstall
+}
+
+func migrateLegacySelfSkill(h harness.Harness, home string, oldInfo fs.FileInfo, opts Options) (skills.Result, bool) {
+	oldTarget := h.SkillTargetPath(home, legacyName)
+	if !isManagedSelfSkill(oldTarget) {
+		return skills.Result{}, false
+	}
+	newTarget := h.SkillTargetPath(home, Name)
+	result := skills.Result{
+		Harness:     h,
+		Skill:       Name,
+		CanonicalID: CanonicalID,
+		TargetPath:  newTarget,
+	}
+	if opts.DryRun {
+		result.Status = skills.StatusDryRun
+		result.Message = fmt.Sprintf("would migrate legacy self-skill %s -> %s", oldTarget, newTarget)
+		return result, false
+	}
+
+	_, err := os.Lstat(newTarget)
+	if errors.Is(err, fs.ErrNotExist) {
+		if err := os.Rename(oldTarget, newTarget); err == nil {
+			result.Status = skills.StatusMigrated
+			result.Message = fmt.Sprintf("migrated legacy self-skill from %s", oldTarget)
+			return result, true
+		}
+		if err := removePath(oldTarget, oldInfo); err != nil {
+			result.Status = skills.StatusFailed
+			result.Err = err
+			return result, false
+		}
+		result.Status = skills.StatusMigrated
+		result.Message = fmt.Sprintf("removed legacy self-skill at %s; reinstalling", oldTarget)
+		return result, true
+	}
+	if err != nil {
+		result.Status = skills.StatusFailed
+		result.Err = err
+		return result, false
+	}
+	if !opts.Force && !isManagedSelfSkill(newTarget) {
+		result.TargetPath = oldTarget
+		result.Status = skills.StatusBlocked
+		result.Message = fmt.Sprintf("legacy self-skill is managed, but %s exists and is not My AI-managed; re-run with --force to replace it", newTarget)
+		return result, false
+	}
+	if err := removePath(oldTarget, oldInfo); err != nil {
+		result.Status = skills.StatusFailed
+		result.Err = err
+		return result, false
+	}
+	result.Status = skills.StatusMigrated
+	if isManagedSelfSkill(newTarget) {
+		result.Message = fmt.Sprintf("removed legacy duplicate at %s", oldTarget)
+	} else {
+		result.Message = fmt.Sprintf("removed legacy self-skill at %s; replacing forced target", oldTarget)
+	}
+	return result, true
+}
+
+func removeLegacySource(sourceRoot string) skills.Result {
+	legacyPath := filepath.Join(sourceRoot, legacyName)
+	info, err := os.Lstat(legacyPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return skills.Result{}
+	}
+	result := skills.Result{
+		Skill:       Name,
+		CanonicalID: CanonicalID,
+		TargetPath:  legacyPath,
+	}
+	if err != nil {
+		result.Status = skills.StatusFailed
+		result.Err = err
+		return result
+	}
+	if !isManagedSelfSkill(legacyPath) {
+		return skills.Result{}
+	}
+	if err := removePath(legacyPath, info); err != nil {
+		result.Status = skills.StatusFailed
+		result.Err = err
+		return result
+	}
+	result.Status = skills.StatusMigrated
+	result.Message = "removed legacy embedded self-skill source"
+	return result
+}
+
+func isManagedSelfSkill(dir string) bool {
+	marker, ok := readManagedMarker(dir)
+	return ok && marker.CanonicalID == CanonicalID
+}
+
+func readManagedMarker(dir string) (bundle.Marker, bool) {
+	data, err := os.ReadFile(filepath.Join(dir, bundle.MarkerName))
+	if err != nil {
+		return bundle.Marker{}, false
+	}
+	var marker bundle.Marker
+	if err := json.Unmarshal(data, &marker); err != nil {
+		return bundle.Marker{}, false
+	}
+	if marker.Installer != legacyName && marker.Installer != Name {
+		return bundle.Marker{}, false
+	}
+	return marker, true
+}
+
+func removePath(target string, info fs.FileInfo) error {
+	if info.Mode()&os.ModeSymlink != 0 {
+		return os.Remove(target)
+	}
+	return os.RemoveAll(target)
 }
 
 func installOptions(opts Options, sourceRoot string) skills.InstallOpts {

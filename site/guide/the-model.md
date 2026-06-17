@@ -48,7 +48,7 @@ workspace-satisfied skills for a session, all org skills for an unscoped
 umbrella, and no org skills for a repo launch. OpenCode is compatibility-global
 until a launch-root seam is proven, so its org skills stay user-global and these
 selectors are rejected for it. The public CLI also ships one bundled
-organization-neutral self-skill named `my`, managed by `my skills self ...`,
+organization-neutral self-skill named `my-cli`, managed by `my skills self ...`,
 so harnesses know how to use My AI itself.
 These are the two skill sources, split by a public/private line: the self-skill
 is public and ships in the binary; organization skills are private to a manifest

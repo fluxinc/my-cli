@@ -42,7 +42,7 @@ published content repo, and pushes both; teammates join with a single
 Run `my update` to update an install from the latest GitHub release; re-running
 `install.sh` still works as a fallback. Developers can still install from source
 with `go install github.com/fluxinc/my-cli/cmd/my@latest`. The installer also
-installs My AI's bundled `my` skill into existing harnesses
+installs My AI's bundled `my-cli` skill into existing harnesses
 so agents know how to use the CLI itself.
 
 ## The Model
@@ -52,7 +52,7 @@ so agents know how to use the CLI itself.
 | Concept | What it is |
 |---|---|
 | **Manifest** | An organization's configuration, stored in its own private Git repo — the control plane. Declares skills, mounts, data bindings, catalog, services, roles, and tool hints. The single source of truth; it is not the workspace, and day-to-day work never touches it. |
-| **Skill** | A capability exposed to harnesses. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer); `my ai` composes them into the launch root for harnesses with a project-local skill seam. The CLI also ships one public, organization-neutral *self-skill* named `my`, embedded in the binary, that teaches harnesses how to use `my` itself. |
+| **Skill** | A capability exposed to harnesses. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer); `my ai` composes them into the launch root for harnesses with a project-local skill seam. The CLI also ships one public, organization-neutral *self-skill* named `my-cli`, embedded in the binary, that teaches harnesses how to use `my` itself. |
 | **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.my-cli/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Gnit control workspace so multi-repo commits and pushes have one substrate. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, customers, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
 | **Session** | An isolated unit of work under `work/<id>`: a git worktree per content mount on a fresh branch, plus session-local scratch and generated guidance with concrete startup context. Create one with `my work start` or `my ai --new-session`; inspect it with `my work status` or `my work list`; work leaves only through `my work finish --land\|--publish\|--discard`. |
@@ -60,7 +60,7 @@ so agents know how to use the CLI itself.
 | **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared and role-specific fragments. `CLAUDE.md` points to the same file. |
 | **Tool** | An external executable the org depends on. `my` reports presence and install hints — it never silently installs tools. |
 
-Skills arrive from two places, split by a public/private line. The `my`
+Skills arrive from two places, split by a public/private line. The `my-cli`
 self-skill is **public** and travels **inside the CLI binary** — it is
 organization-neutral, carries no company content, and the binary keeps it
 current on its own. **Organization skills** are **private** to a manifest repo
@@ -200,7 +200,7 @@ review-commit-push flow against a maintainer manifest checkout.
 ### Skills
 
 ```sh
-my skills self status [--json]            # installed/absent status for the bundled my skill
+my skills self status [--json]            # installed/absent status for the bundled my-cli skill
 my skills self install [harness...] | --all
 my skills list [--json]                   # manifest/source skills available to install
 my skills show <id|slug> [--json]         # one skill's metadata and source path
@@ -211,7 +211,7 @@ my skills sync [harness...] | --all       # install/update and prune stale My AI
 my skills purge <harness...> | --all      # remove My AI-managed materializations
 ```
 
-`my skills self ...` manages the bundled, public-safe `my` CLI skill. It is
+`my skills self ...` manages the bundled, public-safe `my-cli` CLI skill. It is
 installed by `install.sh`, refreshed during `my setup`, ensured for the
 selected filesystem harness before `my ai` execs it, and quietly kept current
 for already-installed file-based harness copies when a newer binary runs.
@@ -226,7 +226,7 @@ opencode --skills/--profile` is rejected until OpenCode has a proven
 project-local seam. Manual manifest skills install as symlinks by default
 (`--copy` to vendor a copy). `my` records provenance and refuses to clobber a
 directory it did not place. `skills sync` prunes stale My AI-managed manual
-manifest skills by default, but does not remove the bundled `my` self-skill;
+manifest skills by default, but does not remove the bundled `my-cli` self-skill;
 pass `--no-prune` to only install/update. Skill commands only refresh harness
 skill directories; run `my setup` when manifest guidance or the generated
 umbrella `AGENTS.md` should change without a manifest sync.
@@ -551,13 +551,13 @@ indexed in [docs/plans/](docs/plans/README.md):
   the launch root, with harness mirrors where a launch-root seam exists.
   Automatic setup/sync/doctor paths stop installing organization skills globally
   for launch-root-capable harnesses; OpenCode remains compatibility-global until
-  a project-local skill seam is proven; the global `my` self-skill remains
+  a project-local skill seam is proven; the global `my-cli` self-skill remains
   during migration. Gemini harness support was removed entirely in favor of
   Antigravity (`agy`). Plans:
   [launch-scoped skill composition](docs/plans/2026-06-14-launch-scoped-skill-composition.md),
   [ADR 0001](docs/decisions/0001-launch-scoped-skill-composition.md).
 - **Shipped (v0.29.0), refined after dogfood — model-driven onboarding.**
-  `my onboarding [--harness NAME]` launches a harness with the bundled `my`
+  `my onboarding [--harness NAME]` launches a harness with the bundled `my-cli`
   self-skill's Agent-Operated Onboarding guidance, and `my onboard` remains a
   compatibility alias. The launcher chooses AUTHOR vs JOIN from manifest state,
   uses direct harness exec for zero-manifest bootstrap, reuses `my ai --setup`

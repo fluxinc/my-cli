@@ -17,7 +17,7 @@ import (
 
 const (
 	modulePath  = "github.com/fluxinc/my-cli"
-	installer   = "my"
+	installer   = "my-cli"
 	skillsDir   = "skills"
 	sourceFlag  = "--source flag"
 	sourceEnv   = "$MYCLI_HOME"
