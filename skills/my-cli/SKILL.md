@@ -149,7 +149,7 @@ and `my doctor` names the offending mounts.
 manifest/content checkouts before reading workspace context. They do not touch
 dirty, diverged, repo, or remote-unknown repositories. Use `--no-refresh`
 for one command, `MYCLI_NO_AUTO_REFRESH=1` globally, or `MYCLI_REFRESH_TTL=30m`
-to tune the default six-hour window. `my ai` also ensures the bundled `my`
+to tune the default six-hour window. `my ai` also ensures the bundled `my-cli`
 self-skill is installed for the selected filesystem harness before exec.
 
 Use `my setup --role <id>` when the manifest declares local operating roles.

@@ -198,7 +198,7 @@ checkout changes unless `--no-derived` is passed.
 `my root`, `my ai`, and `my setup` run a best-effort, TTL-gated
 refresh for clean manifest/content checkouts before using workspace context.
 They leave dirty, diverged, repo, and remote-unknown checkouts untouched.
-`my ai` also ensures the bundled `my` self-skill exists for the selected
+`my ai` also ensures the bundled `my-cli` self-skill exists for the selected
 filesystem harness before launching it. By default it launches from the base
 umbrella, or from the current active session when run inside `work/<id>`. Use
 `--new-session` to create a fresh isolated session, `--session <id>` or

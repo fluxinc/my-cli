@@ -130,5 +130,5 @@ Re-running the installer still works as a fallback:
 curl -sSL https://raw.githubusercontent.com/fluxinc/my-cli/master/install.sh | sh
 ```
 
-The installer also refreshes the bundled `my` self-skill in existing harnesses
+The installer also refreshes the bundled `my-cli` self-skill in existing harnesses
 so agents keep current CLI guidance.
