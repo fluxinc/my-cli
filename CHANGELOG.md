@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.34.0 - 2026-06-22
+
+### Added
+
+- `my session start|join|resume|status|list|finish` is the primary surface for
+  isolated work units (a git worktree per content mount). `my ai --new-session`,
+  `--session ID`, and `-r`/`--resume` remain as launch shortcuts; `--new-session`
+  now prints join/finish hints. Creating a session surfaces its id, path, and
+  mounts plus hints for joining another harness and finishing, and `--json`
+  carries `launch_command`, `join_command`, and `finish_command`.
+
+### Changed
+
+- The worktree work-unit is consolidated onto the noun "session" end to end:
+  on-disk `work/<id>` becomes `sessions/<id>`, branches `my/work/<id>` become
+  `my/session/<id>`, and default ids are noun-free (`YYYY-MM-DD-<hex>`). A lazy,
+  idempotent, safe migration moves legacy layouts on session commands and
+  `my doctor --fix` (never during `my ai`), skipping ambiguous mounts without
+  mutating them. `my work` remains as a deprecated alias.
+
+### Fixed
+
+- `my ai` no longer falsely reports workspace guidance as stale (and no longer
+  loops you back to `my setup`) when the selected role contributes guidance: the
+  launch freshness check is now role-aware, matching `my setup` and `my doctor`.
+  Repairable managed guidance (missing, stale, or broken `CLAUDE.md` alias) is
+  reconciled in place before launch; unmanaged guidance still requires
+  `my setup --force`.
+
 ## 0.33.0 - 2026-06-17
 
 ### Added

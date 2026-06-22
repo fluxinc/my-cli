@@ -492,7 +492,7 @@ indexed in [docs/plans/](docs/plans/README.md):
   remains the default). Session guidance now includes concrete startup context
   and is refreshed on resume.
   Plan: [execution plane](docs/plans/2026-06-10-execution-plane.md), Mode A.
-- **Implemented; awaiting release — session command/layout consolidation.** `my session
+- **Shipped — session command/layout consolidation (v0.34.0).** `my session
   start|join|resume|status|list|finish` is the primary noun; `my work` remains
   a deprecated compatibility alias. New sessions use `sessions/<id>` and
   `my/session/<id>` with noun-free default ids; active legacy `work/<id>`
