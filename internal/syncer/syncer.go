@@ -610,7 +610,7 @@ func sessionHoldMessage(sessionHold SessionHold) string {
 		location += " (" + sessionHold.SessionPath + ")"
 	}
 	return fmt.Sprintf(
-		"active session %s has %s on mount %s; run my work finish %s --land|--publish (or --discard), or my work status to inspect",
+		"active session %s has %s on mount %s; run my session finish %s --land|--publish (or --discard), or my session status to inspect",
 		location, detail, sessionHold.MountID, sessionHold.SessionID,
 	)
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fluxinc/my-cli/internal/harness"
 	"github.com/fluxinc/my-cli/internal/syncer"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 	"github.com/fluxinc/my-cli/internal/worksession"
@@ -39,40 +40,104 @@ func workValueFlags() map[string]bool {
 	}
 }
 
+type sessionStartCommandReport struct {
+	worksession.Session
+	LaunchCommand string `json:"launch_command,omitempty"`
+	JoinCommand   string `json:"join_command"`
+	FinishCommand string `json:"finish_command"`
+}
+
+func (a app) runSession(args []string) error {
+	return a.runSessionGroup("session", args)
+}
+
 func (a app) runWork(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: my work start|status|list|resume|finish [flags]")
+	return a.runSessionGroup("work", args)
+}
+
+func (a app) runSessionGroup(group string, args []string) error {
+	if len(args) == 0 || isHelpArg(args[0]) {
+		a.printSessionGroupUsage(group)
+		return nil
 	}
 	switch args[0] {
 	case "start":
-		return a.runWorkStart(args[1:])
+		return a.runWorkStart(args[1:], group)
+	case "join":
+		if group != "session" {
+			return fmt.Errorf("unknown work subcommand %q (expected start|status|list|resume|finish)", args[0])
+		}
+		return a.runSessionJoin(args[1:])
 	case "status", "list":
-		return a.runWorkStatus(args[1:], args[0])
+		return a.runWorkStatus(args[1:], group, args[0])
 	case "resume":
-		return a.runWorkResume(args[1:])
+		return a.runWorkResume(args[1:], group)
 	case "finish":
-		return a.runWorkFinish(args[1:])
+		return a.runWorkFinish(args[1:], group)
 	default:
+		if group == "session" {
+			return fmt.Errorf("unknown session subcommand %q (expected start|join|status|list|resume|finish)", args[0])
+		}
 		return fmt.Errorf("unknown work subcommand %q (expected start|status|list|resume|finish)", args[0])
 	}
 }
 
-func (a app) runWorkStart(args []string) error {
+func isHelpArg(arg string) bool {
+	return arg == "-h" || arg == "--help" || arg == "help"
+}
+
+func (a app) printSessionGroupUsage(group string) {
+	if group == "work" {
+		fmt.Fprintln(a.stdout, `Usage of my work (deprecated; use my session):
+  my work start [--slug SLUG] [--json] [--print] [harness] [-- harness args...]
+  my work status [--all] [--json]
+  my work list [--all] [--json]
+  my work resume [session-id] [harness] [--json]
+  my work finish [session-id] --land|--publish|--discard [--message TEXT] [--verbose] [--json]`)
+		return
+	}
+	fmt.Fprintln(a.stdout, `Usage of my session:
+  my session start [--slug SLUG] [--json] [--print] [harness] [-- harness args...]
+  my session join <session-id> <harness> [-- harness args...]
+  my session resume [session-id] [harness] [--json]
+  my session status [--all] [--json]
+  my session list [--all] [--json]
+  my session finish [session-id] --land|--publish|--discard [--message TEXT] [--verbose] [--json]`)
+}
+
+func (a app) runWorkStart(args []string, group string) error {
 	var opts workCommonOpts
 	var slug string
-	fs := newFlagSet("my work start", a.stderr)
+	var printOnly bool
+	fs := newFlagSet("my "+group+" start", a.stderr)
 	bindWorkCommonFlags(fs, &opts)
 	fs.StringVar(&slug, "slug", "", "short session slug (lowercase, digits, hyphens)")
+	fs.BoolVar(&printOnly, "print", false, "print the launch command without execing")
 	rest, err := parseInterspersed(fs, args, workValueFlags())
 	if err != nil {
 		return err
 	}
-	if len(rest) != 0 {
-		return fmt.Errorf("usage: my work start [--slug SLUG] [--json]")
+	if opts.jsonOut && printOnly {
+		return fmt.Errorf("--json cannot be combined with --print")
+	}
+	var harnessName string
+	var harnessArgs []string
+	var h harness.Harness
+	if len(rest) > 0 {
+		harnessName = rest[0]
+		parsed, err := harness.Parse(harnessName)
+		if err != nil {
+			return err
+		}
+		h = parsed
+		harnessArgs = append([]string(nil), rest[1:]...)
 	}
 
 	root, err := resolveWorkUmbrella(opts.home, opts.manifestName, opts.umbrellaRoot)
 	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	if err := a.migrateSessionLayout(root); err != nil {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
 	specs, err := sessionMountSpecs(opts.home, opts.manifestName, root)
@@ -104,22 +169,136 @@ func (a app) runWorkStart(args []string) error {
 	if err != nil {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
+	report := sessionStartReport(session, h, harnessArgs)
 	if opts.jsonOut {
-		return printJSON(a.stdout, session)
+		return printJSON(a.stdout, report)
 	}
-	fmt.Fprintf(a.stdout, "started session %s\n", session.ID)
-	fmt.Fprintf(a.stdout, "  path: %s\n", session.Path)
-	for _, m := range session.Mounts {
-		fmt.Fprintf(a.stdout, "  %s -> %s (from %s)\n", m.ID, m.Branch, m.BaseBranch)
+	if printOnly {
+		a.printSessionCreatedHint(a.stderr, session)
+		if harnessName == "" {
+			fmt.Fprintf(a.stdout, "cd %s\n", shellQuote(session.Path))
+			return nil
+		}
+		fmt.Fprintln(a.stdout, shellCommandLine(session.Path, h.CommandName(), harnessArgs))
+		return nil
 	}
-	fmt.Fprintf(a.stdout, "finish with: my work finish %s --land | --publish | --discard\n", session.ID)
+	if harnessName != "" {
+		a.printSessionCreatedHint(a.stderr, session)
+		fmt.Fprintf(a.stderr, "launching %s...\n", h.CommandName())
+		return a.runLaunch(existingSessionLaunchArgs(opts, session.ID, harnessName, harnessArgs))
+	}
+	a.printSessionStarted(a.stdout, session)
 	return nil
 }
 
-func (a app) runWorkStatus(args []string, command string) error {
+func sessionStartReport(session worksession.Session, h harness.Harness, harnessArgs []string) sessionStartCommandReport {
+	report := sessionStartCommandReport{
+		Session:       session,
+		JoinCommand:   "my session join " + session.ID + " <harness>",
+		FinishCommand: "my session finish " + session.ID + " --land|--publish|--discard",
+	}
+	if h != "" {
+		report.LaunchCommand = "my ai --session " + shellQuote(session.ID) + " " + shellCommandParts(h.CommandName(), harnessArgs)
+	} else {
+		report.LaunchCommand = "cd " + shellQuote(session.Path)
+	}
+	return report
+}
+
+func shellCommandParts(command string, args []string) string {
+	parts := []string{shellQuote(command)}
+	for _, arg := range args {
+		parts = append(parts, shellQuote(arg))
+	}
+	return strings.Join(parts, " ")
+}
+
+func (a app) printSessionStarted(w interface{ Write([]byte) (int, error) }, session worksession.Session) {
+	fmt.Fprintf(w, "started session %s\n", session.ID)
+	fmt.Fprintf(w, "  path: %s\n", session.Path)
+	for _, m := range session.Mounts {
+		fmt.Fprintf(w, "  %s -> %s (from %s)\n", m.ID, m.Branch, m.BaseBranch)
+	}
+	fmt.Fprintf(w, "  join (another harness): my session join %s <harness>\n", session.ID)
+	fmt.Fprintf(w, "  finish:                 my session finish %s --land | --publish | --discard\n", session.ID)
+}
+
+func (a app) printSessionCreatedHint(w interface{ Write([]byte) (int, error) }, session worksession.Session) {
+	fmt.Fprintf(w, "started session %s (path: %s)\n", session.ID, session.Path)
+	fmt.Fprintf(w, "  join (another harness): my session join %s <harness>\n", session.ID)
+	fmt.Fprintf(w, "  finish:                 my session finish %s --land|--publish|--discard\n", session.ID)
+}
+
+func existingSessionLaunchArgs(opts workCommonOpts, sessionID, harnessName string, harnessArgs []string) []string {
+	args := []string{"--session", sessionID}
+	args = appendWorkLaunchScopeArgs(args, opts)
+	args = append(args, harnessName)
+	args = append(args, harnessArgs...)
+	return args
+}
+
+func appendWorkLaunchScopeArgs(args []string, opts workCommonOpts) []string {
+	if opts.home != "" {
+		args = append(args, "--home", opts.home)
+	}
+	if opts.manifestName != "" {
+		args = append(args, "--manifest", opts.manifestName)
+	}
+	if opts.umbrellaRoot != "" {
+		args = append(args, "--umbrella", opts.umbrellaRoot)
+	}
+	return args
+}
+
+func (a app) migrateSessionLayout(root string) error {
+	report, err := worksession.Migrate(root)
+	if err != nil {
+		return err
+	}
+	for _, session := range report.Sessions {
+		switch session.Status {
+		case "fixed":
+			fmt.Fprintf(a.stderr, "migrated session %s to %s\n", session.ID, session.To)
+		case "skipped":
+			fmt.Fprintf(a.stderr, "warning: session %s not migrated: %s\n", session.ID, session.Message)
+		}
+	}
+	return nil
+}
+
+func (a app) runSessionJoin(args []string) error {
+	var opts workCommonOpts
+	fs := newFlagSet("my session join", a.stderr)
+	bindWorkCommonFlags(fs, &opts)
+	rest, err := parseInterspersed(fs, args, workValueFlags())
+	if err != nil {
+		return err
+	}
+	if opts.jsonOut {
+		return fmt.Errorf("--json cannot be used with my session join")
+	}
+	if len(rest) < 2 {
+		return fmt.Errorf("usage: my session join <session-id> <harness> [-- harness args...]")
+	}
+	sessionID := rest[0]
+	harnessName := rest[1]
+	if _, err := harness.Parse(harnessName); err != nil {
+		return err
+	}
+	root, err := resolveWorkUmbrella(opts.home, opts.manifestName, opts.umbrellaRoot)
+	if err != nil {
+		return err
+	}
+	if err := a.migrateSessionLayout(root); err != nil {
+		return err
+	}
+	return a.runLaunch(existingSessionLaunchArgs(opts, sessionID, harnessName, rest[2:]))
+}
+
+func (a app) runWorkStatus(args []string, group string, command string) error {
 	var opts workCommonOpts
 	var all bool
-	fs := newFlagSet("my work "+command, a.stderr)
+	fs := newFlagSet("my "+group+" "+command, a.stderr)
 	bindWorkCommonFlags(fs, &opts)
 	fs.BoolVar(&all, "all", false, "include finished and discarded sessions")
 	rest, err := parseInterspersed(fs, args, workValueFlags())
@@ -127,11 +306,14 @@ func (a app) runWorkStatus(args []string, command string) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return fmt.Errorf("usage: my work %s [--all] [--json]", command)
+		return fmt.Errorf("usage: my %s %s [--all] [--json]", group, command)
 	}
 
 	root, err := resolveWorkUmbrella(opts.home, opts.manifestName, opts.umbrellaRoot)
 	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	if err := a.migrateSessionLayout(root); err != nil {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
 	sessions, err := worksession.List(root)
@@ -181,34 +363,61 @@ func archivedWorkSessionStatus(session worksession.Session) worksession.SessionS
 	return status
 }
 
-func (a app) runWorkResume(args []string) error {
+func (a app) runWorkResume(args []string, group string) error {
 	var opts workCommonOpts
-	fs := newFlagSet("my work resume", a.stderr)
+	fs := newFlagSet("my "+group+" resume", a.stderr)
 	bindWorkCommonFlags(fs, &opts)
 	fs.Usage = func() {
-		fmt.Fprintln(a.stderr, `Usage of my work resume:
-  my work resume [session-id] [--json]
+		fmt.Fprintf(a.stderr, `Usage of my %s resume:
+  my %s resume [session-id] [harness] [--json]
 
 Print a shell cd command for an active work session. This command does not
 change the parent shell by itself. To launch a harness in the session, use:
 
-  my ai -r [session-id] [harness]
+  my session resume [session-id] [harness]
 
-Options:`)
+Options:
+`, group, group)
 		fs.PrintDefaults()
 	}
 	rest, err := parseInterspersed(fs, args, workValueFlags())
 	if err != nil {
 		return err
 	}
-	if len(rest) > 1 {
-		return fmt.Errorf("usage: my work resume [session-id] [--json]")
+	var sessionArg []string
+	var harnessName string
+	var harnessArgs []string
+	if len(rest) > 0 {
+		if _, err := harness.Parse(rest[0]); err == nil {
+			harnessName = rest[0]
+			harnessArgs = append([]string(nil), rest[1:]...)
+		} else {
+			sessionArg = []string{rest[0]}
+			if len(rest) > 1 {
+				harnessName = rest[1]
+				if _, err := harness.Parse(harnessName); err != nil {
+					return err
+				}
+				harnessArgs = append([]string(nil), rest[2:]...)
+			}
+		}
+	}
+	if harnessName == "" && len(rest) > 1 {
+		return fmt.Errorf("usage: my %s resume [session-id] [harness] [--json]", group)
+	}
+	if harnessName != "" {
+		if _, err := harness.Parse(harnessName); err != nil {
+			return err
+		}
 	}
 	root, err := resolveWorkUmbrella(opts.home, opts.manifestName, opts.umbrellaRoot)
 	if err != nil {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
-	sessionID, err := selectWorkSessionID(root, rest)
+	if err := a.migrateSessionLayout(root); err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	sessionID, err := selectWorkSessionID(root, sessionArg)
 	if err != nil {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
@@ -222,6 +431,9 @@ Options:`)
 	if opts.jsonOut {
 		return printJSON(a.stdout, session)
 	}
+	if harnessName != "" {
+		return a.runLaunch(existingSessionLaunchArgs(opts, session.ID, harnessName, harnessArgs))
+	}
 	fmt.Fprintf(a.stdout, "cd %s\n", shellQuote(session.Path))
 	return nil
 }
@@ -232,14 +444,14 @@ type workFinishCommandReport struct {
 	Sync   *syncer.Report           `json:"sync,omitempty"`
 }
 
-func (a app) runWorkFinish(args []string) error {
+func (a app) runWorkFinish(args []string, group string) error {
 	var opts workCommonOpts
 	var land bool
 	var publish bool
 	var discard bool
 	var verbose bool
 	var message string
-	fs := newFlagSet("my work finish", a.stderr)
+	fs := newFlagSet("my "+group+" finish", a.stderr)
 	bindWorkCommonFlags(fs, &opts)
 	fs.BoolVar(&land, "land", false, "merge the session into the base checkouts")
 	fs.BoolVar(&publish, "publish", false, "land the session and publish landed content")
@@ -251,7 +463,7 @@ func (a app) runWorkFinish(args []string) error {
 		return err
 	}
 	if len(rest) > 1 {
-		return fmt.Errorf("usage: my work finish [session-id] --land|--publish|--discard")
+		return fmt.Errorf("usage: my %s finish [session-id] --land|--publish|--discard", group)
 	}
 	modeCount := boolCount(land, publish, discard)
 	if modeCount != 1 {
@@ -263,6 +475,9 @@ func (a app) runWorkFinish(args []string) error {
 
 	root, err := resolveWorkUmbrella(opts.home, opts.manifestName, opts.umbrellaRoot)
 	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	if err := a.migrateSessionLayout(root); err != nil {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
 	sessionID, err := selectWorkSessionID(root, rest)
@@ -475,14 +690,14 @@ func workFinishNextStep(report workFinishCommandReport) (string, string) {
 		return "publish", "my sync --push"
 	case "publish":
 		if report.Finish.Session.Outcome == worksession.OutcomePublished {
-			return "status", "my work status"
+			return "status", "my session status"
 		}
 		if report.Sync != nil && syncReportHasPublishDisabledHold(*report.Sync) {
 			return "", ""
 		}
 		return "review", "my sync --push --print"
 	case "discard":
-		return "status", "my work status"
+		return "status", "my session status"
 	default:
 		return "", ""
 	}
@@ -625,6 +840,27 @@ func doctorSessions(root string) []doctorItem {
 			Message: fmt.Sprintf("finished=%d discarded=%d", finished, discarded),
 		})
 	}
+	if legacy, err := worksession.LegacyLayout(root); err != nil {
+		items = append(items, doctorItem{Name: "legacy-layout", Status: "error", Message: err.Error()})
+	} else {
+		for _, session := range legacy.Sessions {
+			items = append(items, doctorItem{
+				Name:     session.ID,
+				Status:   "warning",
+				Path:     session.From,
+				Message:  "legacy session layout; run my session status or my doctor --fix to migrate",
+				WouldFix: "migrate session layout to " + session.To,
+			})
+		}
+		for _, orphan := range legacy.Orphans {
+			items = append(items, doctorItem{
+				Name:    "orphan:" + filepath.Base(orphan),
+				Status:  "warning",
+				Path:    orphan,
+				Message: "orphan legacy work directory has no session registry record; inspect and remove manually if obsolete",
+			})
+		}
+	}
 	return items
 }
 
@@ -634,7 +870,7 @@ func doctorSessionItem(session worksession.Session) doctorItem {
 		if _, err := os.Stat(mount.WorktreePath); err != nil {
 			item.Status = "error"
 			item.Message = "worktree missing for mount " + mount.ID
-			item.Details = append(item.Details, "discard the session record with: my work finish "+session.ID+" --discard")
+			item.Details = append(item.Details, "discard the session record with: my session finish "+session.ID+" --discard")
 			return item
 		}
 	}
@@ -660,6 +896,49 @@ func doctorSessionItem(session worksession.Session) doctorItem {
 		return item
 	}
 	item.Status = "warning"
-	item.Message = fmt.Sprintf("active: %d dirty, %d unlanded; finish with: my work finish %s --land", dirty, unlanded, session.ID)
+	item.Message = fmt.Sprintf("active: %d dirty, %d unlanded; finish with: my session finish %s --land", dirty, unlanded, session.ID)
 	return item
+}
+
+func (a app) doctorFixSessionLayout(root string) []doctorItem {
+	if root == "" {
+		return nil
+	}
+	report, err := worksession.Migrate(root)
+	if err != nil {
+		return []doctorItem{{Name: "session-layout", Status: "error", Message: err.Error()}}
+	}
+	var items []doctorItem
+	for _, session := range report.Sessions {
+		item := doctorItem{
+			Name:    "session-layout:" + session.ID,
+			Path:    session.To,
+			Message: session.Message,
+		}
+		switch session.Status {
+		case "fixed":
+			item.Status = "fixed"
+			if item.Message == "" {
+				item.Message = "migrated session layout"
+			}
+			item.Details = append(item.Details, "from="+session.From)
+		case "skipped":
+			item.Status = "skipped"
+			if item.Message == "" {
+				item.Message = "session layout migration skipped"
+			}
+		default:
+			item.Status = session.Status
+		}
+		items = append(items, item)
+	}
+	for _, orphan := range report.Orphans {
+		items = append(items, doctorItem{
+			Name:    "session-layout:orphan:" + filepath.Base(orphan),
+			Status:  "skipped",
+			Path:    orphan,
+			Message: "orphan legacy work directory has no session registry record",
+		})
+	}
+	return items
 }

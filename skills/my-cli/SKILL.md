@@ -53,11 +53,12 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
   from here so they pick up the generated `AGENTS.md` context.
 - **Mount** — a Git-backed content folder cloned into the umbrella (handbook,
   customers, meeting notes, policy, docs).
-- **Session** — an isolated unit of work under `<umbrella>/work/<id>`: a git
-  worktree per content mount on a fresh `my/work/<id>` branch, plus
+- **Session** — an isolated unit of work under `<umbrella>/sessions/<id>`: a git
+  worktree per content mount on a fresh `my/session/<id>` branch, plus
   session-local `scratch/`, with a registry record under `.my-cli/sessions/`.
-  Create one with `my work start` or `my ai --new-session`; work leaves a
-  session only through `my work finish --land | --publish | --discard`.
+  Create one with `my session start` or `my ai --new-session`; join another
+  harness with `my session join <id> <harness>`. Work leaves a session only
+  through `my session finish --land | --publish | --discard`.
 - **Catalog** — JSON inventories: products (business entities, which may link
   repos) and repos (the organization's repositories, cloned on demand under
   `repos/<id>` via `my repos add`). Customer identities are mounted workspace
@@ -82,7 +83,7 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
   `my services list/get`, `my roles list/get`, `my contract list`,
   `my compile`, `my root`,
   `my ai`, `my doctor`, `my manifests list`, `my mounts list`,
-  `my work start/status/list/resume/finish` (sessions are local execution-plane
+  `my session start/join/status/list/resume/finish` (sessions are local execution-plane
   state; `finish --publish` only publishes what the sync policy allows),
   `my sync`, and `my sync --print`.
   `my update --check` is also safe for inspection. Run `my update` itself
@@ -173,7 +174,7 @@ compiles an unscoped full projection. A local mount `git_url` is a compile
 error because contained launches must not leak host paths.
 
 By default, `my ai` starts the harness from the base umbrella, or from the
-current active session when run inside `<umbrella>/work/<id>`. Treat the base
+current active session when run inside `<umbrella>/sessions/<id>`. Treat the base
 umbrella as inspection/admin space; do not create shared content directly in
 base mounts unless the operator explicitly asks for a base edit. Use
 `my ai --new-session <harness>` to create an isolated content session,
@@ -200,25 +201,27 @@ safe. Use `--no-update-check`, `MYCLI_NO_UPDATE_CHECK=1`, or
 Work in sessions:
 
 ```sh
-my work start [--slug SLUG]      # create an isolated session: worktree per content mount + scratch/
-my work status [--all]           # list sessions with per-mount dirty and unlanded state
-my work list [--all]             # alias for status
-my ai -r [session-id] [harness]  # launch a harness in an active session; prompts only in an interactive TTY
-my work resume [session-id]      # print the cd command for manual shell navigation
-my work finish [session-id] --land     # commit session content, merge into base, remove worktrees
-my work finish [session-id] --publish  # land, then publish landed content per the sync policy
-my work finish [session-id] --discard  # delete the session's worktrees, branches, and directory
+my session start [--slug SLUG] [harness]  # create an isolated session; optionally launch a harness
+my session join <session-id> <harness>    # launch another harness in the same session
+my session status [--all]                 # list sessions with per-mount dirty and unlanded state
+my session list [--all]                   # alias for status
+my session resume [session-id] [harness]  # print cd, or launch a harness in an active session
+my session finish [session-id] --land     # commit session content, merge into base, remove worktrees
+my session finish [session-id] --publish  # land, then publish landed content per the sync policy
+my session finish [session-id] --discard  # delete the session's worktrees, branches, and directory
 ```
 
-Use `my ai -r <id> <harness>` to run multiple harnesses in the same session;
-for example, `my ai -r <id> claude-code` and `my ai -r <id> codex` launch into
-the same session directory. With exactly one active session, `my ai -r codex`
-auto-selects it. With multiple active sessions, an interactive terminal gets a
-picker; non-interactive agent use must pass an explicit id and never waits on a
-prompt. `my work resume` is only a shell helper that prints `cd <path>`.
+Use `my session join <id> <harness>` to run multiple harnesses in the same
+session; for example, `my session join <id> claude-code` and
+`my session join <id> codex` launch into the same session directory. The bot-stable
+shortcut is `my ai --session <id> <harness>`. With exactly one active session,
+`my session resume codex` or `my ai -r codex` auto-selects it. With multiple
+active sessions, an interactive terminal gets a picker; non-interactive agent
+use must pass an explicit id and never waits on a prompt. `my session resume`
+with no harness is a shell helper that prints `cd <path>`.
 
 If you are running inside a session (the working directory is under
-`<umbrella>/work/<id>`), keep all edits in the session's mount worktrees and
+`<umbrella>/sessions/<id>`), keep all edits in the session's mount worktrees and
 `scratch/`; never edit the base mounts directly. Content record commands
 (`my meetings/support/fleet add`) automatically target the current session's
 mount worktree when run from inside the session. Finish is the only exit:
@@ -437,9 +440,9 @@ normal harness conversation after the operator is oriented.
    cd "$(my root)"
    my ai <harness>
    my ai --new-session <harness>
-   my work status
+   my session status
    my ai -r <session-id> <harness>
-   my work finish <session-id> --land
+   my session finish <session-id> --land
    ```
 
    Explain that operators can paste transcripts, notes, screenshots, or issue
@@ -479,9 +482,9 @@ normal harness conversation after the operator is oriented.
 
    ```sh
    my ai --new-session <harness>
-   my work status
+   my session status
    my ai -r <session-id> <harness>
-   my work finish <session-id> --land
+   my session finish <session-id> --land
    ```
 
    Then:

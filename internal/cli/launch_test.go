@@ -257,8 +257,8 @@ func TestRootAutoRefreshNoticesHeldDirtyMountOnStderr(t *testing.T) {
 	}
 }
 
-func TestLaunchPrintsResolvedCommandWithoutCheckingGuidance(t *testing.T) {
-	home, _ := setupCLILaunchFixture(t)
+func TestLaunchPrintsResolvedCommandWithoutCheckingOrWritingGuidance(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchFixture(t)
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	err := a.run([]string{
@@ -275,6 +275,9 @@ func TestLaunchPrintsResolvedCommandWithoutCheckingGuidance(t *testing.T) {
 	want := "cd " + filepath.Join(home, "acme", "repos", "sample-service") + " && codex --model gpt-5\n"
 	if stdout.String() != want {
 		t.Fatalf("launch --print stdout = %q, want %q", stdout.String(), want)
+	}
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("launch --print wrote guidance: %v", err)
 	}
 }
 
@@ -336,24 +339,134 @@ func TestLaunchPrintCreatesNewSessionWhenRequested(t *testing.T) {
 	}
 }
 
-func TestLaunchRefusesMissingGuidance(t *testing.T) {
-	home, _ := setupCLILaunchFixture(t)
+func TestLaunchRepairsMissingGuidanceBeforeExec(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchFixture(t)
+	var stdout, stderr bytes.Buffer
+	var gotPath, gotDir string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			if _, err := os.Stat(filepath.Join(umbrellaRoot, "AGENTS.md")); err != nil {
+				t.Fatalf("guidance was not repaired before lookupPath: %v", err)
+			}
+			return "/test/bin/codex", nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotPath = path
+			gotDir = dir
+			return nil
+		},
+	}
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--no-session", "--no-refresh", "--no-update-check", "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/test/bin/codex" || gotDir != umbrellaRoot {
+		t.Fatalf("exec path=%q dir=%q", gotPath, gotDir)
+	}
+	if strings.Contains(stderr.String(), "workspace guidance missing") {
+		t.Fatalf("stderr = %q, want quiet guidance repair", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "refreshed workspace guidance at "+filepath.Join(umbrellaRoot, "AGENTS.md")) {
+		t.Fatalf("stderr = %q, want refresh notice", stderr.String())
+	}
+}
+
+func TestLaunchRepairsStaleManagedGuidanceBeforeExec(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchFixture(t)
+	writeCLITestFile(t, filepath.Join(umbrellaRoot, "AGENTS.md"), "<!-- my:generated workspace-guidance v1 -->\n\nold guidance\n")
+	var stdout, stderr bytes.Buffer
+	var gotDir string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			return "/test/bin/codex", nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotDir = dir
+			return nil
+		},
+	}
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--no-session", "--no-refresh", "--no-update-check", "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotDir != umbrellaRoot {
+		t.Fatalf("gotDir=%q, want %q", gotDir, umbrellaRoot)
+	}
+	agents, err := os.ReadFile(filepath.Join(umbrellaRoot, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(agents), "old guidance") {
+		t.Fatalf("stale guidance was not replaced:\n%s", agents)
+	}
+	if !strings.Contains(stderr.String(), "refreshed workspace guidance") {
+		t.Fatalf("stderr = %q, want refresh notice", stderr.String())
+	}
+}
+
+func TestLaunchRefusesUnmanagedGuidance(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchFixture(t)
+	writeCLITestFile(t, filepath.Join(umbrellaRoot, "AGENTS.md"), "hand-written guidance\n")
 	var stdout, stderr bytes.Buffer
 	a := app{
 		stdout: &stdout,
 		stderr: &stderr,
 		lookPath: func(string) (string, error) {
-			t.Fatal("lookPath called before guidance gate")
+			t.Fatal("lookPath called for unmanaged guidance")
 			return "", nil
 		},
 	}
-	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "codex"})
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check", "codex"})
 	if !errors.Is(err, errAlreadyPrinted) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}
-	if !strings.Contains(stderr.String(), "workspace guidance missing") ||
-		!strings.Contains(stderr.String(), "run my setup") {
+	if !strings.Contains(stderr.String(), "workspace guidance unmanaged") ||
+		!strings.Contains(stderr.String(), "run my setup --force") {
 		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestLaunchAcceptsSelectedRoleGuidance(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	configureCLIRecordWorkspaceContractAndRole(t, home, umbrellaRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+
+	var stdout, stderr bytes.Buffer
+	var gotDir string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			return "/test/bin/codex", nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotDir = dir
+			return nil
+		},
+	}
+	err := a.run([]string{"my", "ai", "--manifest", "acme", "--home", home, "--no-session", "--no-refresh", "--no-update-check", "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotDir != umbrellaRoot {
+		t.Fatalf("gotDir=%q, want %q", gotDir, umbrellaRoot)
+	}
+	if strings.Contains(stderr.String(), "workspace guidance stale") {
+		t.Fatalf("stderr = %q, want selected-role guidance accepted", stderr.String())
 	}
 }
 
@@ -524,7 +637,7 @@ func TestLaunchMissingHarnessNewSessionDoesNotCreateSession(t *testing.T) {
 		t.Fatalf("err = %v, want errAlreadyPrinted", err)
 	}
 	if !strings.Contains(stderr.String(), "codex not found on PATH") ||
-		!strings.Contains(stderr.String(), "no work session was created") {
+		!strings.Contains(stderr.String(), "no session was created") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 	sessions, err := worksession.List(umbrellaRoot)
@@ -609,6 +722,11 @@ func TestLaunchCreatesNewSessionWhenRequested(t *testing.T) {
 	}
 	if gotPath != "/test/bin/codex" || strings.Join(gotArgs, " ") != "--model gpt-5" {
 		t.Fatalf("exec path=%q args=%#v", gotPath, gotArgs)
+	}
+	if !strings.Contains(stderr.String(), "join (another harness): my session join "+sessions[0].ID+" <harness>") ||
+		!strings.Contains(stderr.String(), "finish:                 my session finish "+sessions[0].ID) ||
+		!strings.Contains(stderr.String(), "launching codex") {
+		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
 
@@ -821,7 +939,7 @@ func TestLaunchResumeShortcutInteractivePickerKeepsPrintStdoutPure(t *testing.T)
 	if stdout.String() != want {
 		t.Fatalf("stdout = %q, want only command %q", stdout.String(), want)
 	}
-	if !strings.Contains(stderr.String(), "Select a work session:") ||
+	if !strings.Contains(stderr.String(), "Select a session:") ||
 		!strings.Contains(stderr.String(), second.ID) {
 		t.Fatalf("stderr = %q, want picker", stderr.String())
 	}
@@ -861,6 +979,62 @@ func TestLaunchFromInsideSessionUsesCurrentSession(t *testing.T) {
 	}
 	if gotDir != session.Path {
 		t.Fatalf("gotDir=%q, want current session path %q", gotDir, session.Path)
+	}
+}
+
+func TestLaunchFromInsideLegacySessionUsesCurrentSessionWithoutMigrating(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+	id := "2026-06-11-legacy-abcd"
+	legacyPath := filepath.Join(umbrellaRoot, "work", id)
+	legacyWorktree := filepath.Join(legacyPath, "handbook")
+	legacyBranch := "my/work/" + id
+	runCLIGit(t, workspaceRoot, "worktree", "add", "-b", legacyBranch, legacyWorktree)
+	if err := worksession.Save(umbrellaRoot, worksession.Session{
+		SchemaVersion: worksession.SchemaVersion,
+		ID:            id,
+		CreatedAt:     "2026-06-11T01:02:03Z",
+		Status:        worksession.StatusActive,
+		Path:          legacyPath,
+		Mounts: []worksession.Mount{{
+			ID:           "handbook",
+			Kind:         "handbook",
+			RepoPath:     workspaceRoot,
+			WorktreePath: legacyWorktree,
+			BaseBranch:   "master",
+			BaseHead:     strings.TrimSpace(gitCLIOutput(t, workspaceRoot, "rev-parse", "HEAD")),
+			Branch:       legacyBranch,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(legacyWorktree)
+
+	var stdout, stderr bytes.Buffer
+	var gotDir string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"my", "ai", "--home", home, "--no-refresh", "--no-update-check", "codex"}); err != nil {
+		t.Fatalf("ai from legacy session: %v\nstderr: %s", err, stderr.String())
+	}
+	if gotDir != legacyPath {
+		t.Fatalf("gotDir=%q, want legacy session path %q", gotDir, legacyPath)
+	}
+	if _, err := os.Stat(filepath.Join(umbrellaRoot, "sessions", id)); !os.IsNotExist(err) {
+		t.Fatalf("my ai migrated legacy session unexpectedly: %v", err)
+	}
+	if got := strings.TrimSpace(gitCLIOutput(t, legacyWorktree, "rev-parse", "--abbrev-ref", "HEAD")); got != legacyBranch {
+		t.Fatalf("legacy branch = %q", got)
 	}
 }
 

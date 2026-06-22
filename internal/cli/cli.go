@@ -172,6 +172,8 @@ func (a app) run(args []string) error {
 		return a.runFleet(args[2:])
 	case "record":
 		return a.runRecord(args[2:])
+	case "session":
+		return a.runSession(args[2:])
 	case "work":
 		return a.runWork(args[2:])
 	case "customers":
@@ -206,6 +208,12 @@ Usage:
   my publish [--manifest NAME] [--home DIR] [--print] [--json]
   my compile --role ROLE [--manifest NAME] [--home DIR]
   my sync [--backend auto|gnit|builtin] [--push|--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--no-derived] [--print] [--verbose] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
+  my session start [--slug SLUG] [--json] [--print] [harness] [-- harness args...]
+  my session join <session-id> <harness> [-- harness args...]
+  my session resume [session-id] [harness] [--json]
+  my session status [--all] [--json]
+  my session list [--all] [--json]
+  my session finish [session-id] --land|--publish|--discard [--message TEXT] [--verbose] [--json]
   my skills self install|uninstall|status ...
   my skills install [harness...] | --all [--skill ID_OR_SLUG] [--print] [--copy] [--link] [--force] [--source DIR] [--manifest NAME]
   my skills uninstall <harness...> | --all [--skill ID_OR_SLUG] [--print] [--force] [--source DIR] [--manifest NAME]
@@ -252,10 +260,10 @@ Usage:
   my fleet add <id>
   my fleet set <id> KEY=VALUE...
   my record adopt <path>
-  my work start [--slug SLUG] [--json]
+  my work start [--slug SLUG] [--json] [--print] [harness] [-- harness args...]   (deprecated; use my session)
   my work status [--all] [--json]
   my work list [--all] [--json]
-  my work resume [session-id] [--json]
+  my work resume [session-id] [harness] [--json]
   my work finish [session-id] --land|--publish|--discard [--message TEXT] [--verbose] [--json]
   my customers list
   my products list

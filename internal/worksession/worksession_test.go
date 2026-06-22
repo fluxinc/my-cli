@@ -50,7 +50,7 @@ func TestStartCreatesWorktreeScratchGuidanceAndRegistry(t *testing.T) {
 	if session.Status != StatusActive {
 		t.Fatalf("status = %q, want %q", session.Status, StatusActive)
 	}
-	wantPath := filepath.Join(root, "work", session.ID)
+	wantPath := filepath.Join(root, "sessions", session.ID)
 	if session.Path != wantPath {
 		t.Fatalf("path = %q, want %q", session.Path, wantPath)
 	}
@@ -58,7 +58,7 @@ func TestStartCreatesWorktreeScratchGuidanceAndRegistry(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(worktree, "README.md")); err != nil {
 		t.Fatalf("worktree missing seeded file: %v", err)
 	}
-	if got := gitOut(t, worktree, "rev-parse", "--abbrev-ref", "HEAD"); got != "my/work/"+session.ID {
+	if got := gitOut(t, worktree, "rev-parse", "--abbrev-ref", "HEAD"); got != "my/session/"+session.ID {
 		t.Fatalf("worktree branch = %q", got)
 	}
 	if got := gitOut(t, repo, "rev-parse", "--abbrev-ref", "HEAD"); got != "master" {
@@ -71,7 +71,7 @@ func TestStartCreatesWorktreeScratchGuidanceAndRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SESSION.md missing: %v", err)
 	}
-	for _, want := range []string{session.ID, "handbook", "my work finish"} {
+	for _, want := range []string{session.ID, "handbook", "my session finish"} {
 		if !strings.Contains(string(sessionDoc), want) {
 			t.Fatalf("SESSION.md missing %q:\n%s", want, sessionDoc)
 		}
@@ -80,7 +80,7 @@ func TestStartCreatesWorktreeScratchGuidanceAndRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AGENTS.md missing: %v", err)
 	}
-	for _, want := range []string{session.ID, "handbook/", "scratch/", "SESSION.md", "my work finish"} {
+	for _, want := range []string{session.ID, "handbook/", "scratch/", "SESSION.md", "my session finish"} {
 		if !strings.Contains(string(agentsDoc), want) {
 			t.Fatalf("AGENTS.md missing %q:\n%s", want, agentsDoc)
 		}
@@ -110,12 +110,12 @@ func TestStartCreatesWorktreeScratchGuidanceAndRegistry(t *testing.T) {
 	if m.WorktreePath != worktree {
 		t.Fatalf("worktree path = %q, want %q", m.WorktreePath, worktree)
 	}
-	if m.BaseBranch != "master" || m.BaseHead != baseHead || m.Branch != "my/work/"+session.ID {
+	if m.BaseBranch != "master" || m.BaseHead != baseHead || m.Branch != "my/session/"+session.ID {
 		t.Fatalf("mount git fields = %#v (base head %s)", m, baseHead)
 	}
 }
 
-func TestStartDefaultsSlugToWork(t *testing.T) {
+func TestStartDefaultsToNounFreeID(t *testing.T) {
 	root, repo := setupUmbrellaWithMount(t, "handbook")
 	session, err := Start(StartOptions{
 		Root: root,
@@ -128,15 +128,165 @@ func TestStartDefaultsSlugToWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.Slug != "work" || session.ID != "2026-06-11-work-9abc" {
-		t.Fatalf("session = %q slug %q, want default work slug", session.ID, session.Slug)
+	if session.Slug != "" || session.ID != "2026-06-11-9abc" {
+		t.Fatalf("session = %q slug %q, want noun-free default id", session.ID, session.Slug)
 	}
 	loaded, err := Load(root, session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Slug != "work" {
-		t.Fatalf("registry slug = %q, want work", loaded.Slug)
+	if loaded.Slug != "" {
+		t.Fatalf("registry slug = %q, want empty default slug", loaded.Slug)
+	}
+}
+
+func TestMigrateMovesActiveLegacySessionAndPreservesDirtyWork(t *testing.T) {
+	root, repo := setupUmbrellaWithMount(t, "handbook")
+	id := "2026-06-11-legacy-abcd"
+	legacyPath := filepath.Join(root, "work", id)
+	legacyWorktree := filepath.Join(legacyPath, "handbook")
+	legacyBranch := "my/work/" + id
+	runGit(t, repo, "worktree", "add", "-b", legacyBranch, legacyWorktree)
+	writeFile(t, filepath.Join(legacyPath, "SESSION.md"), "legacy session\n")
+	writeFile(t, filepath.Join(legacyPath, "AGENTS.md"), "legacy agents\n")
+	writeFile(t, filepath.Join(legacyPath, "scratch", "note.txt"), "scratch\n")
+	writeFile(t, filepath.Join(legacyWorktree, "meetings", "draft.md"), "draft\n")
+	session := Session{
+		SchemaVersion: SchemaVersion,
+		ID:            id,
+		CreatedAt:     "2026-06-11T01:02:03Z",
+		Status:        StatusActive,
+		Path:          legacyPath,
+		Mounts: []Mount{{
+			ID:           "handbook",
+			Kind:         "handbook",
+			RepoPath:     repo,
+			WorktreePath: legacyWorktree,
+			BaseBranch:   "master",
+			BaseHead:     gitOut(t, repo, "rev-parse", "HEAD"),
+			Branch:       legacyBranch,
+			ContentPaths: []string{"meetings"},
+		}},
+	}
+	if err := Save(root, session); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Migrate(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Sessions) != 1 || report.Sessions[0].Status != "fixed" {
+		t.Fatalf("migration report = %#v", report)
+	}
+	newPath := filepath.Join(root, "sessions", id)
+	newWorktree := filepath.Join(newPath, "handbook")
+	if _, err := os.Stat(newWorktree); err != nil {
+		t.Fatalf("migrated worktree missing: %v", err)
+	}
+	if got := gitOut(t, newWorktree, "rev-parse", "--abbrev-ref", "HEAD"); got != "my/session/"+id {
+		t.Fatalf("branch = %q", got)
+	}
+	if got := gitOut(t, newWorktree, "status", "--porcelain", "--", "meetings/draft.md"); !strings.Contains(got, "?? meetings/draft.md") {
+		t.Fatalf("dirty work not preserved: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(newPath, "scratch", "note.txt")); err != nil {
+		t.Fatalf("scratch not moved: %v", err)
+	}
+	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
+		t.Fatalf("legacy path remains: %v", err)
+	}
+	loaded, err := Load(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Path != newPath || loaded.Mounts[0].WorktreePath != newWorktree || loaded.Mounts[0].Branch != "my/session/"+id {
+		t.Fatalf("loaded migrated session = %#v", loaded)
+	}
+	second, err := Migrate(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Sessions) != 0 {
+		t.Fatalf("second migration = %#v, want idempotent no-op", second)
+	}
+}
+
+func TestMigrateReportsOrphanLegacyDirsWithoutMoving(t *testing.T) {
+	root := t.TempDir()
+	orphan := filepath.Join(root, "work", "2026-06-11-orphan-abcd")
+	writeFile(t, filepath.Join(orphan, "note.txt"), "orphan\n")
+
+	report, err := Migrate(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Sessions) != 0 || len(report.Orphans) != 1 || report.Orphans[0] != orphan {
+		t.Fatalf("migration report = %#v", report)
+	}
+	if _, err := os.Stat(orphan); err != nil {
+		t.Fatalf("orphan was moved or removed: %v", err)
+	}
+}
+
+func TestMigrateSkipsAmbiguousMountWithoutMutating(t *testing.T) {
+	root, repo := setupUmbrellaWithMount(t, "handbook")
+	id := "2026-06-11-ambig-abcd"
+	legacyPath := filepath.Join(root, "work", id)
+	legacyWorktree := filepath.Join(legacyPath, "handbook")
+	legacyBranch := "my/work/" + id
+	sessionBranch := "my/session/" + id
+	runGit(t, repo, "worktree", "add", "-b", legacyBranch, legacyWorktree)
+	// A pre-existing session branch makes the mount ambiguous: migration must
+	// refuse to guess and skip without touching anything.
+	runGit(t, repo, "branch", sessionBranch, "master")
+	writeFile(t, filepath.Join(legacyPath, "SESSION.md"), "legacy session\n")
+	session := Session{
+		SchemaVersion: SchemaVersion,
+		ID:            id,
+		CreatedAt:     "2026-06-11T01:02:03Z",
+		Status:        StatusActive,
+		Path:          legacyPath,
+		Mounts: []Mount{{
+			ID:           "handbook",
+			Kind:         "handbook",
+			RepoPath:     repo,
+			WorktreePath: legacyWorktree,
+			BaseBranch:   "master",
+			BaseHead:     gitOut(t, repo, "rev-parse", "HEAD"),
+			Branch:       legacyBranch,
+		}},
+	}
+	if err := Save(root, session); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Migrate(root)
+	if err != nil {
+		t.Fatalf("Migrate returned a fatal error for an ambiguous session: %v", err)
+	}
+	if len(report.Sessions) != 1 || report.Sessions[0].Status != "skipped" {
+		t.Fatalf("migration report = %#v, want one skipped session", report)
+	}
+	if !strings.Contains(report.Sessions[0].Message, "both") {
+		t.Fatalf("skip message = %q, want mention of the conflicting branches", report.Sessions[0].Message)
+	}
+	if len(report.Orphans) != 0 {
+		t.Fatalf("orphans = %#v, want none (session is tracked)", report.Orphans)
+	}
+	// Nothing was mutated: no target dir, legacy worktree/branch intact, record unchanged.
+	if _, err := os.Stat(filepath.Join(root, "sessions", id)); !os.IsNotExist(err) {
+		t.Fatalf("ambiguous session created a target dir: %v", err)
+	}
+	if got := gitOut(t, legacyWorktree, "rev-parse", "--abbrev-ref", "HEAD"); got != legacyBranch {
+		t.Fatalf("legacy worktree branch = %q, want %q", got, legacyBranch)
+	}
+	loaded, err := Load(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Path != legacyPath || loaded.Mounts[0].Branch != legacyBranch || loaded.Mounts[0].WorktreePath != legacyWorktree {
+		t.Fatalf("record changed for a skipped session: %#v", loaded)
 	}
 }
 
@@ -166,13 +316,13 @@ func TestStartFailsCleanlyOnNonGitMount(t *testing.T) {
 	if len(sessions) != 0 {
 		t.Fatalf("registry not empty after failed start: %#v", sessions)
 	}
-	if entries, _ := os.ReadDir(filepath.Join(root, "work")); len(entries) != 0 {
-		t.Fatalf("work dir not cleaned up: %v", entries)
+	if entries, _ := os.ReadDir(filepath.Join(root, "sessions")); len(entries) != 0 {
+		t.Fatalf("sessions dir not cleaned up: %v", entries)
 	}
-	if out := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Contains(out, "my/work/") {
+	if out := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Contains(out, "my/session/") {
 		t.Fatalf("stale worktree left behind:\n%s", out)
 	}
-	if out := gitOut(t, repo, "branch", "--list", "my/work/*"); strings.TrimSpace(out) != "" {
+	if out := gitOut(t, repo, "branch", "--list", "my/session/*"); strings.TrimSpace(out) != "" {
 		t.Fatalf("stale branch left behind: %q", out)
 	}
 }

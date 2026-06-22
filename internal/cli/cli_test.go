@@ -350,7 +350,11 @@ func ensureCLIGuidance(t *testing.T, home, umbrellaRoot string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := guidance.Ensure(umbrellaRoot, doc.ref.LocalPath, doc.doc, guidance.Options{})
+	opts, err := guidanceOptionsForSelectedRole(umbrellaRoot, doc.doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := guidance.Ensure(umbrellaRoot, doc.ref.LocalPath, doc.doc, opts)
 	if err != nil {
 		t.Fatal(err)
 	}

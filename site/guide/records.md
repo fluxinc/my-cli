@@ -106,7 +106,7 @@ mount" and "record the organization should see."
 
 ## Sessions and records
 
-When your current directory is inside an active work session (`work/<id>`),
+When your current directory is inside an active session (`sessions/<id>`),
 record commands write to that session's mount worktree instead of the base
 mount — session work does not leak until you finish the session. See
-[Work Sessions](./sessions.md).
+[Sessions](./sessions.md).

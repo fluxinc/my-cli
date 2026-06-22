@@ -282,18 +282,22 @@ func currentActiveSession(root string) (worksession.Session, bool, error) {
 }
 
 func activeSessionForPath(root, path string) (worksession.Session, bool, error) {
-	workRoot := filepath.Join(root, worksession.WorkDirName)
-	if !pathWithinRoot(path, workRoot) {
+	if !pathWithinRoot(path, root) {
 		return worksession.Session{}, false, nil
 	}
 	sessions, err := worksession.List(root)
 	if err != nil {
-		return worksession.Session{}, true, err
+		return worksession.Session{}, false, err
 	}
 	for _, session := range sessions {
 		if session.Status == worksession.StatusActive && pathWithinRoot(path, session.Path) {
 			return session, true, nil
 		}
 	}
-	return worksession.Session{}, true, fmt.Errorf("current directory is under %s but no active work session matched; run my work status or cd %s", workRoot, root)
+	sessionRoot := filepath.Join(root, worksession.WorkDirName)
+	legacyRoot := filepath.Join(root, worksession.LegacyWorkDirName)
+	if pathWithinRoot(path, sessionRoot) || pathWithinRoot(path, legacyRoot) {
+		return worksession.Session{}, true, fmt.Errorf("current directory is under a session directory but no active session matched; run my session status or cd %s", root)
+	}
+	return worksession.Session{}, false, nil
 }

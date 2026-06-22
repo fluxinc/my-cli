@@ -481,6 +481,7 @@ func (a app) doctorFix(home, manifestName, umbrellaRoot, root string, derived []
 	if manifestFixed || doctorDerivedHasDrift(derived) {
 		items = append(items, a.doctorFixDerived(home, manifestName, root)...)
 	}
+	items = append(items, a.doctorFixSessionLayout(root)...)
 	items = append(items, a.doctorFixSelfSkill(home)...)
 	return items
 }

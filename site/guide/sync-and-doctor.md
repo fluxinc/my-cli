@@ -51,8 +51,9 @@ my doctor [--no-fetch] [--fix] [--json]
 
 The dry run for workspace repair. It reports manifest validity, per-checkout
 Git freshness (fetching refs first unless `--no-fetch`), derived
-guidance/MCP drift, legacy global org-skill drift, service materialization health, work-session
-health, and the last sync audit. Every repairable finding is marked
+guidance/MCP drift, legacy global org-skill drift, service materialization health,
+session health, legacy session layout migration, and the last sync audit. Every
+repairable finding is marked
 `would ...` with a closing fixable count; nothing changes until you re-run
 with `--fix`, which applies exactly that plan. Findings `--fix` cannot repair
 — dirty or diverged checkouts, repo clones, session work — keep explanatory

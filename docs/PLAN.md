@@ -24,7 +24,7 @@ audiences:
 `my init` creates both locally; `my publish` creates the private remotes,
 rewrites mount URLs, and pushes. The umbrella (`~/<org>`) is not itself a
 Git repository; it is the per-user operating envelope containing `.my-cli/`,
-mounts, catalog repo clones under `repos/`, work sessions under `work/`, and
+mounts, catalog repo clones under `repos/`, sessions under `sessions/`, and
 local scratch under `personal/`.
 
 ## Current Baseline (v0.21.0)
@@ -47,11 +47,12 @@ local scratch under `personal/`.
   in-place updates), with qmd-first search when available; records created
   by the CLI are adopted via Git intent-to-add, the rest via
   `my record adopt`.
-- Work sessions, opt-in: `work/<id>` git worktrees per writable mount
-  (`my work start|status|list|resume|finish`, `my ai
-  --new-session|--session <id>|-r <id>`); content commands and plain `my ai` are
-  session-aware when run inside one; `my doctor` reports session health;
-  `my sync` holds mounts with dirty or unlanded active sessions.
+- Sessions, opt-in: `sessions/<id>` git worktrees per writable mount on
+  `my/session/<id>` branches (`my session start|join|status|list|resume|finish`,
+  `my ai --new-session|--session <id>|-r <id>`); content commands and plain
+  `my ai` are session-aware when run inside one; `my doctor` reports session
+  health and migrates active legacy `work/<id>` sessions with `--fix`; `my sync`
+  holds mounts with dirty or unlanded active sessions.
 - Manifest `data_bindings`: stable operational data nouns (`customers`,
   `meetings`, `support`, `fleet`) mapped to declared `mount:<id>` or
   `service:<id>` surfaces.
@@ -90,14 +91,19 @@ operator-approved combined path):
    (v0.17.0): `my ai` launches from the base umbrella, sessions are opt-in
    via `--new-session`/`--session <id>`/`-r <id>`, and content commands resolve
    to the session's mount worktrees when run inside one.
-3. **Shipped in v0.18.0** — manifest `roles` + `services` (org APIs, MCP
+3. **Implemented; awaiting release** — session command/layout consolidation:
+   `my session start|join|resume|status|list|finish` is the primary surface,
+   `my work` is a deprecated alias, new sessions live under `sessions/<id>` on
+   `my/session/<id>` branches, and active legacy `work/<id>` sessions migrate
+   lazily through session commands or `my doctor --fix`.
+4. **Shipped in v0.18.0** — manifest `roles` + `services` (org APIs, MCP
    servers as `kind: mcp`; reference-first descriptions; URI secret
    references such as `op://`), `my services`/`my roles` inspection,
    `my setup --role` with role-filtered guidance and service visibility,
    umbrella-root `.mcp.json` materialized only from checked-in or inline
    connection data, and doctor service-health checks (see
    `docs/plans/2026-06-12-v018-scope.md`).
-4. **Next** — org-side launch-artifact compilation for contained runners
+5. **Next** — org-side launch-artifact compilation for contained runners
    (container tooling formats are compile targets, not vocabulary sources);
    the manifest `contract` list maps to the artifact's enforce-level
    contract block rather than a parallel dialect; descriptor fetch/cache as

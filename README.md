@@ -55,7 +55,7 @@ so agents know how to use the CLI itself.
 | **Skill** | A capability exposed to harnesses. *Organization* skills are *static* (a directory in the manifest repo) or *tool-provided* (materialized by an external tool's own installer); `my ai` composes them into the launch root for harnesses with a project-local skill seam. The CLI also ships one public, organization-neutral *self-skill* named `my-cli`, embedded in the binary, that teaches harnesses how to use `my` itself. |
 | **Umbrella** | A per-user operating envelope (e.g. `~/acme`): a `.my-cli/` identity namespace plus mounts and local scratch as peers. When initialized for sync publishing, this is the Gnit control workspace so multi-repo commits and pushes have one substrate. |
 | **Mount** | A Git-backed content folder cloned into the umbrella (handbook, customers, meeting notes, policy, docs). Can be path-scoped so only the relevant subtree lands. |
-| **Session** | An isolated unit of work under `work/<id>`: a git worktree per content mount on a fresh branch, plus session-local scratch and generated guidance with concrete startup context. Create one with `my work start` or `my ai --new-session`; inspect it with `my work status` or `my work list`; work leaves only through `my work finish --land\|--publish\|--discard`. |
+| **Session** | An isolated unit of work under `sessions/<id>`: a git worktree per content mount on a fresh `my/session/<id>` branch, plus session-local scratch and generated guidance with concrete startup context. Create one with `my session start` or `my ai --new-session`; add another harness with `my session join <id> <harness>`; inspect it with `my session status` or `my session list`; work leaves only through `my session finish --land\|--publish\|--discard`. |
 | **Catalog** | JSON inventories for products (business entities, which may link repos) and repos (the organization's repositories). Users opt specific repos into their umbrella on demand. Customer identities are mounted workspace records, not manifest catalog rows. |
 | **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared and role-specific fragments. `CLAUDE.md` points to the same file. |
 | **Tool** | An external executable the org depends on. `my` reports presence and install hints — it never silently installs tools. |
@@ -98,20 +98,20 @@ my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--ski
                                              # verify guidance, then start a harness
 my ai codex --model gpt-5              # pass harness flags after the harness name
 my ai --new-session codex
-my ai --session 2026-06-11-work-ab12 codex
+my ai --session 2026-06-11-ab12 codex
 my ai -r codex                         # resume the only active session, or pick in a TTY
-my ai -r 2026-06-11-work-ab12 codex
+my ai -r 2026-06-11-ab12 codex
 my ai --repo sample-service codex
 my ai --print codex                    # print cd <umbrella> && codex
 ```
 
 `ai` refuses to start against missing or stale generated guidance. Pass
 `--setup` to reconcile first, or run `my setup` directly. By default it
-launches from the base umbrella, or from the current active work session when
-run inside `work/<id>`. Use `--new-session` to create a fresh isolated session,
-`--session` or `-r <id>` to resume a known active session, `-r <harness>` to
-resume the single active session or pick one interactively, and `--no-session`
-to ignore a current session for base inspection/admin/debug.
+launches from the base umbrella, or from the current active session when
+run inside `sessions/<id>`. Use `--new-session` to create a fresh isolated
+session, `--session` or `-r <id>` to launch into a known active session,
+`-r <harness>` to resume the single active session or pick one interactively,
+and `--no-session` to ignore a current session for base inspection/admin/debug.
 `root`, `ai`, and `setup` also run a best-effort, TTL-gated refresh of
 clean manifest/content checkouts so startup sees current context without
 touching dirty, diverged, repo, or remote-unknown checkouts. Use
@@ -492,6 +492,14 @@ indexed in [docs/plans/](docs/plans/README.md):
   remains the default). Session guidance now includes concrete startup context
   and is refreshed on resume.
   Plan: [execution plane](docs/plans/2026-06-10-execution-plane.md), Mode A.
+- **Implemented; awaiting release — session command/layout consolidation.** `my session
+  start|join|resume|status|list|finish` is the primary noun; `my work` remains
+  a deprecated compatibility alias. New sessions use `sessions/<id>` and
+  `my/session/<id>` with noun-free default ids; active legacy `work/<id>`
+  sessions migrate lazily through session commands or `my doctor --fix`.
+  Creating a session now prints id/path plus `join` and finish hints.
+  Plan:
+  [session command ergonomics](docs/plans/2026-06-18-session-command-ergonomics-design.md).
 - **Shipped — products/repos split (v0.15.0).** Catalog products are pure
   business entities (no `git_url`) that may link implementing repos;
   organization repositories live in `catalog/repos.json` with an `my repos`

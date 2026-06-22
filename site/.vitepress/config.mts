@@ -57,7 +57,7 @@ export default defineConfig({
         text: 'Daily Work',
         items: [
           { text: 'Records: Meetings, Support, Fleet', link: '/guide/records' },
-          { text: 'Work Sessions', link: '/guide/sessions' },
+          { text: 'Sessions', link: '/guide/sessions' },
           { text: 'Sync, Doctor, and Updates', link: '/guide/sync-and-doctor' },
         ],
       },

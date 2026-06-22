@@ -78,7 +78,7 @@ pins, while the member repositories remain ordinary Git checkouts.
 ├── workspace/           the org content repo (its own remote), mounted
 ├── <other mounts>/
 ├── repos/               opted-in catalog repositories
-├── work/                isolated work sessions: git worktrees per mount
+├── sessions/            isolated sessions: git worktrees per mount
 ├── personal/            local-only, never synced — agent + human scratch
 ├── .mcp.json            generated local MCP config for selected role services
 ├── AGENTS.md            generated workspace instructions for agents
@@ -88,7 +88,7 @@ pins, while the member repositories remain ordinary Git checkouts.
 `personal/` and `repos/` always exist after `setup`. Entity commands
 (`my meetings ...`) resolve against the umbrella by walking up from the
 working directory to find `.my-cli/workspace.json`; when the working directory
-is inside an active session under `work/<id>`, they resolve one level
+is inside an active session under `sessions/<id>`, they resolve one level
 further, to that session's mount worktrees instead of the base mounts. If the
 caller is outside the umbrella, meeting commands use the single configured
 registered manifest's recommended umbrella when it has been set up.
@@ -100,21 +100,25 @@ the user lacks access
 they are skipped with a warning, not a failure (RBAC by Git permissions, not by
 the CLI).
 
-**Session** — an isolated unit of work under `work/<id>` in the umbrella: a
-git worktree of each writable content mount on a fresh `my/work/<id>`
+**Session** — an isolated unit of work under `sessions/<id>` in the umbrella: a
+git worktree of each writable content mount on a fresh `my/session/<id>`
 branch, plus session-local scratch, a `SESSION.md` summary, and generated
 session guidance with concrete umbrella, organization, selected-role, session,
 mount, and exact finish/resume command context, recorded in a registry under
-`.my-cli/sessions/`. Sessions are opt-in: `my work start` or `my ai
---new-session` creates one, `my ai --session <id>` or `my ai -r <id>` resumes
-one, and plain `my ai` launches from the base umbrella. Resume launches rewrite
-session guidance before exec so older active sessions pick up the current
-startup contract. Commands are session-aware by working directory — run inside
-an active session, content commands write to that session's mount worktrees and
-plain `my ai` stays in the session; a directory under `work/` that matches no
-active session is an error, never a silent fallback to base.
+`.my-cli/sessions/`. Sessions are opt-in: `my session start` or `my ai
+--new-session` creates one, `my session join <id> <harness>` or
+`my ai --session <id>` launches another harness into one, and plain `my ai`
+launches from the base umbrella unless the current directory is already inside
+an active session. Resume launches rewrite session guidance before exec so
+older active sessions pick up the current startup contract. Commands are
+session-aware by working directory — run inside an active session, content
+commands write to that session's mount worktrees and plain `my ai` stays in
+the session; a directory under `sessions/` that matches no active session is an
+error, never a silent fallback to base. Legacy `work/<id>` sessions are
+recognized for launch compatibility and migrate lazily through session
+commands or `my doctor --fix`.
 Work leaves a
-session only through `my work finish --land | --publish | --discard`, and
+session only through `my session finish --land | --publish | --discard`, and
 `my sync` holds outbound publish of a mount while an active session on it is
 dirty or unlanded.
 

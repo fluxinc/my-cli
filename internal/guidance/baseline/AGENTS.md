@@ -55,7 +55,7 @@ Default layout:
 - `.my-cli/` contains workspace identity and local state.
 - `handbook/` and other mounts contain scoped organization content.
 - `repos/` contains detached clones of catalog repositories.
-- `work/` contains isolated My AI work sessions created by `my work start`
+- `sessions/` contains isolated My AI sessions created by `my session start`
   or `my ai --new-session`.
 - `personal/` is durable local-only scratch for the current user.
 
@@ -63,13 +63,14 @@ Operating orientation:
 
 - Launch agent harnesses with `my ai <harness>`. By default it starts from
   the base umbrella, or from the current active session when run inside
-  `work/<id>`. Use `my ai --new-session <harness>` for isolated content work;
-  finish or discard session work with `my work finish --land|--publish|--discard`.
+  `sessions/<id>`. Use `my ai --new-session <harness>` for isolated content work;
+  join another harness with `my session join <id> <harness>`, and finish or
+  discard session work with `my session finish --land|--publish|--discard`.
 - If the umbrella has a selected role, it is stored in `.my-cli/state.json`.
   Change it with `my setup --role <id>`; this regenerates role-specific
   guidance and umbrella-root `.mcp.json` for MCP services visible to that
   role.
-- Inspect active sessions with `my work status` or `my work list`; `my
+- Inspect active sessions with `my session status` or `my session list`; `my
   doctor` also reports session health.
 - Treat this base umbrella as inspection/admin space. Do not draft, edit, or
   create shared workspace content directly in base mounts unless the operator

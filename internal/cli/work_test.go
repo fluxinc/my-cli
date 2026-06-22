@@ -79,7 +79,7 @@ func TestWorkStartCreatesSessionAndRegistry(t *testing.T) {
 		t.Fatalf("worktree missing: %v", err)
 	}
 	branch := strings.TrimSpace(gitCLIOutput(t, worktree, "rev-parse", "--abbrev-ref", "HEAD"))
-	if branch != "my/work/"+session.ID {
+	if branch != "my/session/"+session.ID {
 		t.Fatalf("worktree branch = %q", branch)
 	}
 	if _, err := worksession.Load(umbrellaRoot, session.ID); err != nil {
@@ -128,9 +128,10 @@ func TestWorkStartSessionGuidanceIncludesConcreteContextAndContract(t *testing.T
 		"- Session path: " + session.Path,
 		"- Status: active",
 		session.Mounts[0].WorktreePath,
-		"branch my/work/" + session.ID,
+		"branch my/session/" + session.ID,
+		"my session join " + session.ID + " <harness>",
 		"my ai -r " + session.ID + " <harness>",
-		"my work finish " + session.ID + " --land | --publish | --discard",
+		"my session finish " + session.ID + " --land | --publish | --discard",
 		"## Organization Contract",
 		"Always preserve the example contract.",
 		"## Manifest Guidance: guidance/operator.md",
@@ -154,9 +155,186 @@ func TestWorkStartHumanOutputIncludesSessionFinishCommand(t *testing.T) {
 		t.Fatalf("work start stdout = %q", stdout.String())
 	}
 	sessionID := strings.TrimPrefix(lines[0], "started session ")
-	want := "finish with: my work finish " + sessionID + " --land | --publish | --discard"
+	want := "finish:                 my session finish " + sessionID + " --land | --publish | --discard"
 	if !strings.Contains(stdout.String(), want) {
 		t.Fatalf("work start stdout = %q, want %q", stdout.String(), want)
+	}
+	join := "join (another harness): my session join " + sessionID + " <harness>"
+	if !strings.Contains(stdout.String(), join) {
+		t.Fatalf("work start stdout = %q, want %q", stdout.String(), join)
+	}
+}
+
+func TestSessionStartJSONIncludesCommandsAndNewLayout(t *testing.T) {
+	home, _ := setupCLIRecordWorkspace(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "session", "start", "--slug", "notes", "--home", home, "--json"}); err != nil {
+		t.Fatalf("session start: %v\nstderr: %s", err, stderr.String())
+	}
+	var report sessionStartCommandReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("parse JSON: %v\nstdout: %s", err, stdout.String())
+	}
+	if report.ID == "" || !strings.Contains(report.ID, "-notes-") {
+		t.Fatalf("report id = %q", report.ID)
+	}
+	if !strings.Contains(report.Path, string(filepath.Separator)+"sessions"+string(filepath.Separator)) {
+		t.Fatalf("path = %q, want sessions layout", report.Path)
+	}
+	if len(report.Mounts) != 1 || !strings.HasPrefix(report.Mounts[0].Branch, "my/session/") {
+		t.Fatalf("mounts = %#v", report.Mounts)
+	}
+	if report.JoinCommand != "my session join "+report.ID+" <harness>" ||
+		!strings.Contains(report.FinishCommand, "my session finish "+report.ID) ||
+		!strings.HasPrefix(report.LaunchCommand, "cd ") {
+		t.Fatalf("commands = launch %q join %q finish %q", report.LaunchCommand, report.JoinCommand, report.FinishCommand)
+	}
+}
+
+func TestSessionStartWithHarnessPrintsHintAndExecs(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+	var stdout, stderr bytes.Buffer
+	var gotPath, gotDir string
+	var gotArgs []string
+	a := app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			if name != "codex" {
+				t.Fatalf("lookPath name = %q, want codex", name)
+			}
+			return "/test/bin/codex", nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotPath = path
+			gotArgs = append([]string(nil), args...)
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"my", "session", "start", "--slug", "launch", "--home", home, "codex", "--", "--model", "gpt-5"}); err != nil {
+		t.Fatalf("session start codex: %v\nstderr: %s", err, stderr.String())
+	}
+	sessions, err := worksession.List(umbrellaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || gotDir != sessions[0].Path || gotPath != "/test/bin/codex" {
+		t.Fatalf("sessions=%#v gotPath=%q gotDir=%q", sessions, gotPath, gotDir)
+	}
+	if strings.Join(gotArgs, " ") != "--model gpt-5" {
+		t.Fatalf("gotArgs = %#v", gotArgs)
+	}
+	if !strings.Contains(stderr.String(), "join (another harness): my session join "+sessions[0].ID+" <harness>") ||
+		!strings.Contains(stderr.String(), "finish:                 my session finish "+sessions[0].ID) ||
+		!strings.Contains(stderr.String(), "launching codex") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want launch path quiet", stdout.String())
+	}
+}
+
+func TestSessionJoinLaunchesExistingSession(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "session", "start", "--slug", "join", "--home", home, "--json"}); err != nil {
+		t.Fatalf("session start: %v", err)
+	}
+	var report sessionStartCommandReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	var gotDir string
+	stdout.Reset()
+	stderr.Reset()
+	a = app{
+		stdout: &stdout,
+		stderr: &stderr,
+		lookPath: func(name string) (string, error) {
+			return "/test/bin/" + name, nil
+		},
+		execHarness: func(path string, args []string, dir string) error {
+			gotDir = dir
+			return nil
+		},
+	}
+	if err := a.run([]string{"my", "session", "join", report.ID, "codex", "--home", home}); err != nil {
+		t.Fatalf("session join: %v\nstderr: %s", err, stderr.String())
+	}
+	if gotDir != report.Path {
+		t.Fatalf("gotDir = %q, want %q", gotDir, report.Path)
+	}
+}
+
+func TestSessionAndWorkGroupHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "session", "--help"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "my session join <session-id> <harness>") {
+		t.Fatalf("session help = %q", stdout.String())
+	}
+	stdout.Reset()
+	if err := a.run([]string{"my", "work", "--help"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "deprecated; use my session") {
+		t.Fatalf("work help = %q", stdout.String())
+	}
+}
+
+func TestSessionStartJSONAndPrintWithHarnessDoNotExec(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+	newApp := func(stdout, stderr *bytes.Buffer) app {
+		return app{
+			stdout: stdout,
+			stderr: stderr,
+			lookPath: func(name string) (string, error) {
+				return "/test/bin/" + name, nil
+			},
+			execHarness: func(path string, args []string, dir string) error {
+				t.Fatalf("--json/--print must not exec a harness; got %q", path)
+				return nil
+			},
+		}
+	}
+
+	// --json with a harness: report only, no exec, launch_command names the harness.
+	var stdout, stderr bytes.Buffer
+	a := newApp(&stdout, &stderr)
+	if err := a.run([]string{"my", "session", "start", "--slug", "js", "--home", home, "--json", "codex"}); err != nil {
+		t.Fatalf("session start --json codex: %v\nstderr: %s", err, stderr.String())
+	}
+	var report sessionStartCommandReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("parse JSON: %v\nstdout: %s", err, stdout.String())
+	}
+	if !strings.HasPrefix(report.LaunchCommand, "my ai --session ") || !strings.Contains(report.LaunchCommand, "codex") {
+		t.Fatalf("launch_command = %q, want a my-ai launch for codex", report.LaunchCommand)
+	}
+
+	// --print with a harness: prints a launch command to stdout, hint to stderr, no exec.
+	stdout.Reset()
+	stderr.Reset()
+	a = newApp(&stdout, &stderr)
+	if err := a.run([]string{"my", "session", "start", "--slug", "pr", "--home", home, "--print", "codex"}); err != nil {
+		t.Fatalf("session start --print codex: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "codex") {
+		t.Fatalf("--print stdout = %q, want a codex launch command", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "join (another harness): my session join ") {
+		t.Fatalf("--print stderr = %q, want the join hint", stderr.String())
 	}
 }
 
@@ -224,7 +402,7 @@ func TestWorkStartExpandsTildeUmbrella(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &session); err != nil {
 		t.Fatal(err)
 	}
-	wantPrefix := filepath.Join(home, "acme", "work")
+	wantPrefix := filepath.Join(home, "acme", "sessions")
 	if !strings.HasPrefix(session.Path, wantPrefix) {
 		t.Fatalf("session path = %q, want under %q", session.Path, wantPrefix)
 	}
@@ -285,7 +463,7 @@ func TestDoctorReportsActiveSessionDirty(t *testing.T) {
 	if item.Name != session.ID || item.Status != "warning" || item.Path != session.Path {
 		t.Fatalf("item = %#v", item)
 	}
-	if !strings.Contains(item.Message, "1 dirty") || !strings.Contains(item.Message, "my work finish "+session.ID) {
+	if !strings.Contains(item.Message, "1 dirty") || !strings.Contains(item.Message, "my session finish "+session.ID) {
 		t.Fatalf("message = %q", item.Message)
 	}
 
@@ -530,7 +708,7 @@ func TestSyncHoldsContentMountWithActiveSession(t *testing.T) {
 		found = true
 		if result.Status != "held back" ||
 			!strings.Contains(result.Message, session.ID) ||
-			!strings.Contains(result.Message, "my work finish "+session.ID) {
+			!strings.Contains(result.Message, "my session finish "+session.ID) {
 			t.Fatalf("content result = %#v, want session hold naming %s", result, session.ID)
 		}
 	}
@@ -755,7 +933,7 @@ func TestWorkFinishHumanOutputIncludesNextCommand(t *testing.T) {
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "session\t"+session.ID) ||
-		!strings.Contains(out, "next\tstatus\tmy work status") {
+		!strings.Contains(out, "next\tstatus\tmy session status") {
 		t.Fatalf("work finish stdout = %q", out)
 	}
 }

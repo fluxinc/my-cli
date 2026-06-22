@@ -23,9 +23,12 @@ import (
 
 const (
 	SchemaVersion = 1
-	WorkDirName   = "work"
+	WorkDirName   = "sessions"
 	RegistryDir   = "sessions"
-	BranchPrefix  = "my/work/"
+	BranchPrefix  = "my/session/"
+
+	LegacyWorkDirName  = "work"
+	LegacyBranchPrefix = "my/work/"
 
 	StatusActive    = "active"
 	StatusFinished  = "finished"
@@ -107,6 +110,34 @@ type MountStatus struct {
 	Error    string   `json:"error,omitempty"`
 }
 
+// MigrationReport describes legacy work/ -> sessions/ migration work.
+type MigrationReport struct {
+	Sessions []MigrationSessionResult `json:"sessions,omitempty"`
+	Orphans  []string                 `json:"orphans,omitempty"`
+}
+
+// MigrationSessionResult describes one session considered during migration.
+type MigrationSessionResult struct {
+	ID      string                 `json:"id"`
+	Status  string                 `json:"status"`
+	From    string                 `json:"from,omitempty"`
+	To      string                 `json:"to,omitempty"`
+	Message string                 `json:"message,omitempty"`
+	Mounts  []MigrationMountResult `json:"mounts,omitempty"`
+	Details []string               `json:"details,omitempty"`
+	Session *Session               `json:"session,omitempty"`
+}
+
+// MigrationMountResult describes one mount considered during migration.
+type MigrationMountResult struct {
+	ID      string `json:"id"`
+	Status  string `json:"status"`
+	From    string `json:"from,omitempty"`
+	To      string `json:"to,omitempty"`
+	Branch  string `json:"branch,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
 // SessionStatus is one session plus the live state of its mounts.
 type SessionStatus struct {
 	Session
@@ -163,12 +194,11 @@ type dirtyFile struct {
 
 var slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-// NewID builds a session id of the form YYYY-MM-DD-<slug>-<4hex>.
+// NewID builds a session id of the form YYYY-MM-DD-<4hex>, or
+// YYYY-MM-DD-<slug>-<4hex> when a custom slug is supplied.
 func NewID(now time.Time, slug string, random io.Reader) (string, error) {
-	if slug == "" {
-		slug = "work"
-	}
-	if !slugPattern.MatchString(slug) {
+	slug = strings.TrimSpace(slug)
+	if slug != "" && !slugPattern.MatchString(slug) {
 		return "", fmt.Errorf("invalid session slug %q: use lowercase letters, digits, and hyphens", slug)
 	}
 	if random == nil {
@@ -178,10 +208,14 @@ func NewID(now time.Time, slug string, random io.Reader) (string, error) {
 	if _, err := io.ReadFull(random, suffix); err != nil {
 		return "", fmt.Errorf("generate session id: %w", err)
 	}
-	return fmt.Sprintf("%s-%s-%s", now.UTC().Format("2006-01-02"), slug, hex.EncodeToString(suffix)), nil
+	date := now.UTC().Format("2006-01-02")
+	if slug == "" {
+		return fmt.Sprintf("%s-%s", date, hex.EncodeToString(suffix)), nil
+	}
+	return fmt.Sprintf("%s-%s-%s", date, slug, hex.EncodeToString(suffix)), nil
 }
 
-// Start creates one session: a work/<id> directory with a git worktree per
+// Start creates one session: a sessions/<id> directory with a git worktree per
 // mount on a fresh session branch, a scratch dir, SESSION.md, and a registry
 // record. A failed start cleans up everything it created.
 func Start(opts StartOptions) (Session, error) {
@@ -199,10 +233,7 @@ func Start(opts StartOptions) (Session, error) {
 	if runner == nil {
 		runner = execRunner
 	}
-	slug := opts.Slug
-	if slug == "" {
-		slug = "work"
-	}
+	slug := strings.TrimSpace(opts.Slug)
 	id, err := NewID(now, slug, opts.Rand)
 	if err != nil {
 		return Session{}, err
@@ -307,11 +338,12 @@ func writeSessionDoc(session Session) error {
 	}
 	b.WriteString("\nWork in the mount worktrees above; use scratch/ for unversioned\n")
 	b.WriteString("session-local files. Work leaves a session only through\n")
-	b.WriteString("`my work finish --land | --publish | --discard`.\n")
+	b.WriteString("`my session finish --land | --publish | --discard`.\n")
 	b.WriteString("\nUseful commands:\n")
-	b.WriteString("- Status: `my work status`\n")
-	fmt.Fprintf(&b, "- Resume a harness here: `my ai -r %s <harness>`\n", session.ID)
-	fmt.Fprintf(&b, "- Finish: `my work finish %s --land | --publish | --discard`\n", session.ID)
+	b.WriteString("- Status: `my session status`\n")
+	fmt.Fprintf(&b, "- Join another harness here: `my session join %s <harness>`\n", session.ID)
+	fmt.Fprintf(&b, "- Resume a harness here: `my session resume %s <harness>`\n", session.ID)
+	fmt.Fprintf(&b, "- Finish: `my session finish %s --land | --publish | --discard`\n", session.ID)
 	return os.WriteFile(filepath.Join(session.Path, "SESSION.md"), []byte(b.String()), 0o644)
 }
 
@@ -355,9 +387,10 @@ func writeSessionGuidance(session Session, guidance GuidanceContext) error {
 	}
 	fmt.Fprintf(&b, "\nExact commands for this session:\n\n")
 	b.WriteString("```sh\n")
-	b.WriteString("my work status\n")
+	b.WriteString("my session status\n")
+	fmt.Fprintf(&b, "my session join %s <harness>\n", session.ID)
 	fmt.Fprintf(&b, "my ai -r %s <harness>\n", session.ID)
-	fmt.Fprintf(&b, "my work finish %s --land | --publish | --discard\n", session.ID)
+	fmt.Fprintf(&b, "my session finish %s --land | --publish | --discard\n", session.ID)
 	b.WriteString("```\n\n")
 
 	b.WriteString("## Session Rules\n\n")
@@ -368,8 +401,8 @@ func writeSessionGuidance(session Session, guidance GuidanceContext) error {
 		fmt.Fprintf(&b, "  - %s/ - git worktree on branch %s, isolated from the base umbrella\n", m.ID, m.Branch)
 	}
 	b.WriteString("- Use scratch/ for unversioned session-local files; never commit them.\n")
-	b.WriteString("- Commit changes inside the worktrees as you go; `my work status` shows\n  dirty and unlanded state.\n")
-	b.WriteString("- Work leaves the session only through\n  `my work finish --land | --publish | --discard`.\n")
+	b.WriteString("- Commit changes inside the worktrees as you go; `my session status` shows\n  dirty and unlanded state.\n")
+	b.WriteString("- Work leaves the session only through\n  `my session finish --land | --publish | --discard`.\n")
 	if base := strings.TrimSpace(string(guidance.BaseGuidance)); base != "" {
 		b.WriteString("\n## Base Umbrella Guidance\n\n")
 		b.WriteString("The generated umbrella guidance below still applies inside this session. Interpret base-layout paths relative to the umbrella root above.\n\n")
@@ -448,6 +481,302 @@ func List(root string) ([]Session, error) {
 	}
 	sort.Slice(sessions, func(i, j int) bool { return sessions[i].ID < sessions[j].ID })
 	return sessions, nil
+}
+
+// LegacyLayout reports active sessions and orphan directories that still use
+// the pre-session-consolidation work/ layout. It is read-only.
+func LegacyLayout(root string) (MigrationReport, error) {
+	sessions, err := List(root)
+	if err != nil {
+		return MigrationReport{}, err
+	}
+	report := MigrationReport{}
+	for _, session := range sessions {
+		if session.Status == StatusActive && sessionHasLegacyLayout(root, session) {
+			report.Sessions = append(report.Sessions, MigrationSessionResult{
+				ID:      session.ID,
+				Status:  "pending",
+				From:    legacySessionPath(root, session),
+				To:      sessionPath(root, session.ID),
+				Message: "legacy session layout",
+			})
+		}
+	}
+	orphans, err := legacyOrphanDirs(root, sessions)
+	if err != nil {
+		return report, err
+	}
+	report.Orphans = orphans
+	return report, nil
+}
+
+// Migrate lazily migrates active sessions from work/<id> + my/work/<id> to
+// sessions/<id> + my/session/<id>. It is idempotent and skips ambiguous
+// sessions instead of guessing.
+func Migrate(root string) (MigrationReport, error) {
+	sessions, err := List(root)
+	if err != nil {
+		return MigrationReport{}, err
+	}
+	report := MigrationReport{}
+	for _, session := range sessions {
+		if session.Status != StatusActive || !sessionHasLegacyLayout(root, session) {
+			continue
+		}
+		report.Sessions = append(report.Sessions, migrateSession(root, session, execRunner))
+	}
+	orphans, err := legacyOrphanDirs(root, sessions)
+	if err != nil {
+		return report, err
+	}
+	report.Orphans = orphans
+	_ = removeDirIfEmpty(filepath.Join(root, LegacyWorkDirName))
+	return report, nil
+}
+
+type mountMigrationPlan struct {
+	index        int
+	id           string
+	oldPath      string
+	newPath      string
+	oldBranch    string
+	newBranch    string
+	movePath     bool
+	renameBranch bool
+}
+
+func migrateSession(root string, session Session, runner Runner) MigrationSessionResult {
+	oldPath := legacySessionPath(root, session)
+	newPath := sessionPath(root, session.ID)
+	result := MigrationSessionResult{
+		ID:     session.ID,
+		Status: "fixed",
+		From:   oldPath,
+		To:     newPath,
+	}
+	plans := make([]mountMigrationPlan, 0, len(session.Mounts))
+	for i, mount := range session.Mounts {
+		plan, mountResult, err := planMountMigration(root, session, i, mount, runner)
+		result.Mounts = append(result.Mounts, mountResult)
+		if err != nil {
+			result.Status = "skipped"
+			result.Message = err.Error()
+			return result
+		}
+		plans = append(plans, plan)
+	}
+	if err := preflightSessionSidecars(oldPath, newPath); err != nil {
+		result.Status = "skipped"
+		result.Message = err.Error()
+		return result
+	}
+	if err := os.MkdirAll(newPath, 0o755); err != nil {
+		result.Status = "skipped"
+		result.Message = "create target session dir: " + err.Error()
+		return result
+	}
+	for _, plan := range plans {
+		mountResult := &result.Mounts[plan.index]
+		if plan.renameBranch {
+			if out, err := runner("git", "-C", session.Mounts[plan.index].RepoPath, "branch", "-m", plan.oldBranch, plan.newBranch); err != nil {
+				mountResult.Status = "skipped"
+				mountResult.Message = "rename branch: " + commandMessage(out, err)
+				result.Status = "skipped"
+				result.Message = "session partially migrated; rerun after resolving mount " + plan.id
+				return result
+			}
+		}
+		if plan.movePath {
+			if out, err := runner("git", "-C", session.Mounts[plan.index].RepoPath, "worktree", "move", plan.oldPath, plan.newPath); err != nil {
+				mountResult.Status = "skipped"
+				mountResult.Message = "move worktree: " + commandMessage(out, err)
+				result.Status = "skipped"
+				result.Message = "session partially migrated; rerun after resolving mount " + plan.id
+				return result
+			}
+		}
+		session.Mounts[plan.index].Branch = plan.newBranch
+		session.Mounts[plan.index].WorktreePath = plan.newPath
+		mountResult.Status = "fixed"
+	}
+	for _, name := range []string{"SESSION.md", "AGENTS.md", "CLAUDE.md", "scratch"} {
+		if err := moveSessionEntry(oldPath, newPath, name); err != nil {
+			result.Status = "skipped"
+			result.Message = "move " + name + ": " + err.Error()
+			return result
+		}
+	}
+	session.Path = newPath
+	if err := Save(root, session); err != nil {
+		result.Status = "skipped"
+		result.Message = "save migrated session record: " + err.Error()
+		return result
+	}
+	_ = removeDirIfEmpty(oldPath)
+	result.Message = "migrated legacy session layout"
+	migrated := session
+	result.Session = &migrated
+	return result
+}
+
+func planMountMigration(root string, session Session, index int, mount Mount, runner Runner) (mountMigrationPlan, MigrationMountResult, error) {
+	oldBranch := mount.Branch
+	if !strings.HasPrefix(oldBranch, LegacyBranchPrefix) {
+		oldBranch = LegacyBranchPrefix + session.ID
+	}
+	newBranch := BranchPrefix + session.ID
+	oldPath := legacyMountPath(root, session, mount)
+	newPath := filepath.Join(sessionPath(root, session.ID), mount.ID)
+	result := MigrationMountResult{
+		ID:     mount.ID,
+		Status: "pending",
+		From:   oldPath,
+		To:     newPath,
+		Branch: newBranch,
+	}
+	oldBranchExists := branchExists(runner, mount.RepoPath, oldBranch)
+	newBranchExists := branchExists(runner, mount.RepoPath, newBranch)
+	if oldBranchExists && newBranchExists {
+		return mountMigrationPlan{}, result, fmt.Errorf("mount %s has both legacy branch %s and session branch %s", mount.ID, oldBranch, newBranch)
+	}
+	if !oldBranchExists && !newBranchExists {
+		return mountMigrationPlan{}, result, fmt.Errorf("mount %s has neither legacy branch %s nor session branch %s", mount.ID, oldBranch, newBranch)
+	}
+	oldPathExists := pathExists(oldPath)
+	newPathExists := pathExists(newPath)
+	if oldPathExists && newPathExists {
+		return mountMigrationPlan{}, result, fmt.Errorf("mount %s has both legacy worktree %s and session worktree %s", mount.ID, oldPath, newPath)
+	}
+	if !oldPathExists && !newPathExists {
+		return mountMigrationPlan{}, result, fmt.Errorf("mount %s has neither legacy worktree %s nor session worktree %s", mount.ID, oldPath, newPath)
+	}
+	return mountMigrationPlan{
+		index:        index,
+		id:           mount.ID,
+		oldPath:      oldPath,
+		newPath:      newPath,
+		oldBranch:    oldBranch,
+		newBranch:    newBranch,
+		movePath:     oldPathExists,
+		renameBranch: oldBranchExists,
+	}, result, nil
+}
+
+func sessionHasLegacyLayout(root string, session Session) bool {
+	if pathWithinRoot(session.Path, filepath.Join(root, LegacyWorkDirName)) {
+		return true
+	}
+	for _, mount := range session.Mounts {
+		if strings.HasPrefix(mount.Branch, LegacyBranchPrefix) ||
+			pathWithinRoot(mount.WorktreePath, filepath.Join(root, LegacyWorkDirName)) {
+			return true
+		}
+	}
+	return false
+}
+
+func legacySessionPath(root string, session Session) string {
+	if pathWithinRoot(session.Path, filepath.Join(root, LegacyWorkDirName)) {
+		return session.Path
+	}
+	return filepath.Join(root, LegacyWorkDirName, session.ID)
+}
+
+func sessionPath(root, id string) string {
+	return filepath.Join(root, WorkDirName, id)
+}
+
+func legacyMountPath(root string, session Session, mount Mount) string {
+	if pathWithinRoot(mount.WorktreePath, filepath.Join(root, LegacyWorkDirName)) {
+		return mount.WorktreePath
+	}
+	return filepath.Join(legacySessionPath(root, session), mount.ID)
+}
+
+func legacyOrphanDirs(root string, sessions []Session) ([]string, error) {
+	legacyRoot := filepath.Join(root, LegacyWorkDirName)
+	entries, err := os.ReadDir(legacyRoot)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	known := map[string]bool{}
+	for _, session := range sessions {
+		known[session.ID] = true
+		if pathWithinRoot(session.Path, legacyRoot) {
+			known[filepath.Base(session.Path)] = true
+		}
+	}
+	var orphans []string
+	for _, entry := range entries {
+		if !entry.IsDir() || known[entry.Name()] {
+			continue
+		}
+		orphans = append(orphans, filepath.Join(legacyRoot, entry.Name()))
+	}
+	sort.Strings(orphans)
+	return orphans, nil
+}
+
+func preflightSessionSidecars(oldPath, newPath string) error {
+	for _, name := range []string{"SESSION.md", "AGENTS.md", "CLAUDE.md", "scratch"} {
+		oldEntry := filepath.Join(oldPath, name)
+		newEntry := filepath.Join(newPath, name)
+		if pathExists(oldEntry) && pathExists(newEntry) {
+			return fmt.Errorf("both legacy and session %s exist", name)
+		}
+	}
+	return nil
+}
+
+func moveSessionEntry(oldPath, newPath, name string) error {
+	oldEntry := filepath.Join(oldPath, name)
+	if !pathExists(oldEntry) {
+		return nil
+	}
+	newEntry := filepath.Join(newPath, name)
+	if pathExists(newEntry) {
+		return fmt.Errorf("target already exists: %s", newEntry)
+	}
+	return os.Rename(oldEntry, newEntry)
+}
+
+func branchExists(runner Runner, repo, branch string) bool {
+	_, err := gitOutput(runner, repo, "rev-parse", "--verify", "refs/heads/"+branch)
+	return err == nil
+}
+
+func pathExists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
+func removeDirIfEmpty(path string) error {
+	if path == "" {
+		return nil
+	}
+	return os.Remove(path)
+}
+
+func pathWithinRoot(path, root string) bool {
+	if path == "" || root == "" {
+		return false
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
 }
 
 // Inspect reports the live git state of one session's mounts.

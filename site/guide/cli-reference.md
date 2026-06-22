@@ -136,11 +136,14 @@ my mounts remove <mount...> [--home DIR] [--umbrella DIR] [--print] [--force] [-
 my workspaces list [--manifest NAME]
 my workspaces sync <workspace...> | --all [--manifest NAME] [--print]
 
-my work start [--slug SLUG] [--json]
-my work status [--all] [--json]
-my work list [--all] [--json]
-my work resume [session-id] [--json]
-my work finish [session-id] --land|--publish|--discard [--message TEXT] [--verbose] [--json]
+my session start [--slug SLUG] [--json] [--print] [harness] [-- harness args...]
+my session join <session-id> <harness> [-- harness args...]
+my session resume [session-id] [harness] [--json]
+my session status [--all] [--json]
+my session list [--all] [--json]
+my session finish [session-id] --land|--publish|--discard [--message TEXT] [--verbose] [--json]
+
+my work start|status|list|resume|finish ...  # deprecated alias of my session
 ```
 
 With no `--manifest`, commands prefer the manifest recorded by the current
@@ -198,24 +201,27 @@ explicit `--publish` flag always wins. Non-print syncs write
 `.my-cli/last-sync.json`; `my doctor`
 reports that audit, per-checkout Git freshness, active and archived work
 sessions, service health, derived guidance/MCP drift, and legacy global
-org-skill drift. Doctor fetches
+org-skill drift, and legacy `work/<id>` session directories that can be migrated.
+Doctor fetches
 refs before behind/ahead checks unless `--no-fetch` is passed for an offline
 view. `doctor --fix` fast-forwards only clean stale manifest/content checkouts
-and reconciles generated guidance, umbrella `.mcp.json`, and legacy global
-org-skill cleanup. Sync performs the same derived reconcile after manifest
-checkout changes unless `--no-derived` is passed.
+and reconciles generated guidance, umbrella `.mcp.json`, legacy global
+org-skill cleanup, and active legacy session layout migration. Sync performs
+the same derived reconcile after manifest checkout changes unless `--no-derived`
+is passed.
 
 `my root`, `my ai`, and `my setup` run a best-effort, TTL-gated
 refresh for clean manifest/content checkouts before using workspace context.
 They leave dirty, diverged, repo, and remote-unknown checkouts untouched.
 `my ai` also ensures the bundled `my-cli` self-skill exists for the selected
 filesystem harness before launching it. By default it launches from the base
-umbrella, or from the current active session when run inside `work/<id>`. Use
-`--new-session` to create a fresh isolated session, `--session <id>` or
-`-r <id>` to resume a known active session, `-r <harness>` to select the only
-active session or pick one in an interactive terminal, or `--no-session` to
-ignore a current session for base inspection/admin/debug. Repo launches use
-`--repo <id>` and are not included in work sessions yet. Use `--no-refresh` for
+umbrella, or from the current active session when run inside `sessions/<id>`.
+Use `--new-session` to create a fresh isolated session, `--session <id>` or
+`-r <id>` to launch into a known active session, `-r <harness>` to select the
+only active session or pick one in an interactive terminal, or `--no-session`
+to ignore a current session for base inspection/admin/debug. New-session
+launches print the session id/path plus `my session join` and finish hints
+before exec. Repo launches use `--repo <id>` and are not included in sessions yet. Use `--no-refresh` for
 one command, `MYCLI_NO_AUTO_REFRESH=1` globally, or `MYCLI_REFRESH_TTL=30m` to
 tune the default six-hour window.
 

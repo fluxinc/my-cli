@@ -166,11 +166,14 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 		opts.sessionID = sessionID
 	}
 	if opts.printOnly {
-		targetDir, err := a.launchTargetDir(opts, root)
+		target, err := a.launchTarget(opts, root)
 		if err != nil {
 			return a.maybePrintStructuredCommandError(err)
 		}
-		line := shellCommandLine(targetDir, commandName, harnessArgs)
+		if target.Created && target.Session != nil {
+			a.printSessionCreatedHint(a.stderr, *target.Session)
+		}
+		line := shellCommandLine(target.Dir, commandName, harnessArgs)
 		fmt.Fprintln(a.stdout, line)
 		return nil
 	}
@@ -181,15 +184,7 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 	if err != nil {
 		return err
 	}
-	check, err := guidance.Check(root, doc.ref.LocalPath, doc.doc)
-	if err != nil {
-		return err
-	}
-	if check.Status != "ok" {
-		if !opts.onboard {
-			a.printLaunchGuidanceBlock(check)
-			return errAlreadyPrinted
-		}
+	if opts.onboard {
 		if err := a.runSetup(setupArgsForLaunch(opts.home, doc.ref.Name, root, opts.noRefresh, opts.noUpdateCheck)); err != nil {
 			return err
 		}
@@ -197,14 +192,9 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 		if err != nil {
 			return err
 		}
-		check, err = guidance.Check(root, doc.ref.LocalPath, doc.doc)
-		if err != nil {
-			return err
-		}
-		if check.Status != "ok" {
-			a.printLaunchGuidanceBlock(check)
-			return errAlreadyPrinted
-		}
+	}
+	if err := a.ensureLaunchGuidance(root, doc); err != nil {
+		return err
 	}
 
 	if err := a.ensureLaunchSelfSkill(h, opts.home); err != nil {
@@ -214,10 +204,11 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 	createsNewSession := launchCreatesNewSession(opts)
 	var targetDir string
 	if !createsNewSession {
-		targetDir, err = a.launchTargetDir(opts, root)
+		target, err := a.launchTarget(opts, root)
 		if err != nil {
 			return a.maybePrintStructuredCommandError(err)
 		}
+		targetDir = target.Dir
 	}
 	binary, err := a.lookupPath(commandName)
 	if err != nil {
@@ -225,9 +216,14 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 		return errAlreadyPrinted
 	}
 	if createsNewSession {
-		targetDir, err = a.launchTargetDir(opts, root)
+		target, err := a.launchTarget(opts, root)
 		if err != nil {
 			return a.maybePrintStructuredCommandError(err)
+		}
+		targetDir = target.Dir
+		if target.Created && target.Session != nil {
+			a.printSessionCreatedHint(a.stderr, *target.Session)
+			fmt.Fprintf(a.stderr, "launching %s...\n", commandName)
 		}
 	}
 	if err := ensureSessionLaunchGuidance(root, targetDir, doc); err != nil {
@@ -311,7 +307,7 @@ func (a app) maybePrintStructuredCommandError(err error) error {
 
 func (a app) printLaunchMissingHarness(commandName, targetDir string, args []string, newSession bool) {
 	if newSession {
-		fmt.Fprintf(a.stderr, "%s not found on PATH; no work session was created\n", commandName)
+		fmt.Fprintf(a.stderr, "%s not found on PATH; no session was created\n", commandName)
 		fmt.Fprintf(a.stderr, "install %s, then rerun the same my ai command\n", commandName)
 		return
 	}
@@ -330,38 +326,44 @@ func initialPromptArgs(h harness.Harness, prompt string) ([]string, error) {
 	return args, nil
 }
 
-func (a app) launchTargetDir(opts launchCommandOpts, root string) (string, error) {
+type launchTargetResult struct {
+	Dir     string
+	Session *worksession.Session
+	Created bool
+}
+
+func (a app) launchTarget(opts launchCommandOpts, root string) (launchTargetResult, error) {
 	if opts.repoID != "" {
-		return umbrella.RepoPath(root, opts.repoID), nil
+		return launchTargetResult{Dir: umbrella.RepoPath(root, opts.repoID)}, nil
 	}
 	if opts.sessionID != "" {
 		session, err := worksession.Load(root, opts.sessionID)
 		if err != nil {
-			return "", err
+			return launchTargetResult{}, err
 		}
 		if session.Status != worksession.StatusActive {
-			return "", fmt.Errorf("session %s is %s; choose an active session or pass --no-session", session.ID, session.Status)
+			return launchTargetResult{}, fmt.Errorf("session %s is %s; choose an active session or pass --no-session", session.ID, session.Status)
 		}
-		return session.Path, nil
+		return launchTargetResult{Dir: session.Path, Session: &session}, nil
 	}
 	if !opts.noSession && !opts.newSession {
 		session, ok, err := currentActiveSession(root)
 		if err != nil {
-			return "", err
+			return launchTargetResult{}, err
 		}
 		if ok {
-			return session.Path, nil
+			return launchTargetResult{Dir: session.Path, Session: &session}, nil
 		}
 	}
 	if !opts.newSession {
-		return root, nil
+		return launchTargetResult{Dir: root}, nil
 	}
 	specs, err := sessionMountSpecs(opts.home, opts.manifestName, root)
 	if err != nil {
-		return "", err
+		return launchTargetResult{}, err
 	}
 	if len(specs) == 0 {
-		return "", structuredCommandError{
+		return launchTargetResult{}, structuredCommandError{
 			code:        "no_session_mounts",
 			message:     "no synced content mounts eligible for a session worktree under " + root,
 			remediation: "run my setup to clone the manifest's content mounts first, or pass --no-session for a base umbrella launch",
@@ -372,9 +374,9 @@ func (a app) launchTargetDir(opts launchCommandOpts, root string) (string, error
 		Mounts: specs,
 	})
 	if err != nil {
-		return "", err
+		return launchTargetResult{}, err
 	}
-	return session.Path, nil
+	return launchTargetResult{Dir: session.Path, Session: &session, Created: true}, nil
 }
 
 func (a app) ensureLaunchSelfSkill(h harness.Harness, home string) error {
@@ -417,21 +419,71 @@ func (a app) printLaunchSelfSkillBlock(result skills.Result) {
 	fmt.Fprintf(a.stderr, "run: my skills self install %s --force\n", result.Harness)
 }
 
+func (a app) ensureLaunchGuidance(root string, doc registeredDoc) error {
+	selectedRole, err := selectedRoleForRoot(root)
+	if err != nil {
+		return err
+	}
+	role, err := roleByID(doc.doc, selectedRole)
+	if err != nil {
+		return err
+	}
+	guidanceOpts := guidance.Options{RoleGuidancePaths: role.GuidancePaths}
+	check, err := guidance.CheckWithOptions(root, doc.ref.LocalPath, doc.doc, guidanceOpts)
+	if err != nil {
+		return err
+	}
+	if check.Status == "ok" {
+		return nil
+	}
+	if !launchGuidanceAutoRepairable(check.Status) {
+		a.printLaunchGuidanceBlock(check)
+		return errAlreadyPrinted
+	}
+	result, err := guidance.Ensure(root, doc.ref.LocalPath, doc.doc, guidanceOpts)
+	if err != nil {
+		return err
+	}
+	if result.Status == "blocked" {
+		a.printLaunchGuidanceRepairBlock(result)
+		return errAlreadyPrinted
+	}
+	a.printLaunchGuidanceRepaired(result, selectedRole)
+	check, err = guidance.CheckWithOptions(root, doc.ref.LocalPath, doc.doc, guidanceOpts)
+	if err != nil {
+		return err
+	}
+	if check.Status != "ok" {
+		a.printLaunchGuidanceBlock(check)
+		return errAlreadyPrinted
+	}
+	return nil
+}
+
+func launchGuidanceAutoRepairable(status string) bool {
+	switch status {
+	case "missing", "stale", "alias-broken":
+		return true
+	default:
+		return false
+	}
+}
+
 func (a app) printLaunchUsage() {
 	fmt.Fprintln(a.stderr, `Usage of my ai:
   my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 
 Harness defaults to claude-code. By default, harnesses launch from the base
-umbrella, or from the current work session when run inside one. Harness flags go
+umbrella, or from the current session when run inside one. Harness flags go
 after the harness name.
 
 Examples:
   my ai claude-code
   my ai codex --model gpt-5
   my ai --new-session codex
-  my ai --session 2026-06-11-work-ab12 codex
+  my ai --session 2026-06-11-ab12 codex
   my ai -r codex
-  my ai -r 2026-06-11-work-ab12 codex
+  my ai -r 2026-06-11-ab12 codex
   my ai --repo sample-service codex
   my ai --print codex
 
@@ -439,10 +491,10 @@ Options:
   --home DIR        override home directory
   --manifest NAME   use a registered manifest when no umbrella is found
   --umbrella DIR    override umbrella root
-  --new-session     create and launch from a fresh work session
-  --session ID      resume an active work session
-  -r, --resume [ID] resume an active work session, picking the only active session or prompting on a TTY
-  --no-session      ignore any current work session and launch from the base umbrella
+  --new-session     create and launch from a fresh session
+  --session ID      launch from an active session
+  -r, --resume [ID] resume an active session, picking the only active session or prompting on a TTY
+  --no-session      ignore any current session and launch from the base umbrella
   --repo ID         run from repos/<id> under the umbrella
   --skills VALUE    select org skills: all, none, or comma-separated manifest skill ids
   --profile ID      select a named manifest launch profile
@@ -556,7 +608,7 @@ func (a app) selectLaunchResumeSessionID(root string) (string, error) {
 	case 1:
 		return active[0].ID, nil
 	case 0:
-		return "", fmt.Errorf("no active sessions; run my work start")
+		return "", fmt.Errorf("no active sessions; run my session start")
 	}
 	if !a.interactive {
 		return "", multipleActiveSessionsError(active)
@@ -565,7 +617,7 @@ func (a app) selectLaunchResumeSessionID(root string) (string, error) {
 }
 
 func (a app) promptLaunchResumeSession(active []worksession.Session) (string, error) {
-	fmt.Fprintln(a.stderr, "Select a work session:")
+	fmt.Fprintln(a.stderr, "Select a session:")
 	for i, session := range active {
 		fmt.Fprintf(a.stderr, "  %d) %s  created %s\n", i+1, session.ID, session.CreatedAt)
 	}
@@ -604,7 +656,7 @@ func multipleActiveSessionsError(active []worksession.Session) error {
 		fmt.Fprintf(&b, "\n  %s  created %s", session.ID, session.CreatedAt)
 	}
 	if len(active) > 0 {
-		fmt.Fprintf(&b, "\nexamples:\n  my ai -r %s codex\n  my work status", active[0].ID)
+		fmt.Fprintf(&b, "\nexamples:\n  my ai -r %s codex\n  my session status", active[0].ID)
 	}
 	return errors.New(b.String())
 }
@@ -707,6 +759,22 @@ func (a app) printLaunchGuidanceBlock(result guidance.CheckResult) {
 	if result.Message != "" {
 		fmt.Fprintln(a.stderr, result.Message)
 	}
+}
+
+func (a app) printLaunchGuidanceRepairBlock(result guidance.Result) {
+	fmt.Fprintf(a.stderr, "workspace guidance %s at %s\n", result.Status, result.TargetPath)
+	if result.Message != "" {
+		fmt.Fprintln(a.stderr, result.Message)
+	}
+	fmt.Fprintln(a.stderr, "run my setup --force")
+}
+
+func (a app) printLaunchGuidanceRepaired(result guidance.Result, selectedRole string) {
+	fmt.Fprintf(a.stderr, "refreshed workspace guidance at %s", result.TargetPath)
+	if selectedRole != "" {
+		fmt.Fprintf(a.stderr, " for role %s", selectedRole)
+	}
+	fmt.Fprintln(a.stderr)
 }
 
 func shellCommandLine(dir, command string, args []string) string {

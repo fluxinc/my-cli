@@ -97,13 +97,15 @@ my ai codex
 
 That's it: `my ai` verifies generated guidance and launches the harness from
 the base umbrella. For isolated content work, use `my ai --new-session codex`
-or create one with `my work start`; when the work is done,
-`my work finish --land | --publish | --discard` is how it leaves the session.
-Pass `-r <id>` to launch into a known active session, or `-r codex` to select
-the only active session or pick one in an interactive terminal. Use
+or create one with `my session start codex`; use
+`my session join <id> claude-code` to add another harness to the same session.
+When the work is done, `my session finish --land | --publish | --discard` is
+how it leaves the session. Pass `--session <id>` or `-r <id>` to launch into a
+known active session, or `-r codex` to select the only active session or pick
+one in an interactive terminal. Use
 `--no-session` to ignore a current session for base inspection or admin,
 `--print` to see the command without executing it, or `--setup` to reconcile
-the umbrella first. Use `my work status` or `my work list` to inspect active
+the umbrella first. Use `my session status` or `my session list` to inspect active
 sessions; `my doctor` also reports session health.
 
 At startup, `my root`, `my ai`, and `my setup` print stderr-only `notice`

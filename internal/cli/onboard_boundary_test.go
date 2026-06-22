@@ -216,7 +216,7 @@ func TestBundledOnboardingSkillUsesLearnByExampleBasics(t *testing.T) {
 		"After every set, stop",
 		"my ai --new-session <harness>",
 		"my ai -r <session-id> <harness>",
-		"my work finish <session-id> --land",
+		"my session finish <session-id> --land",
 		`cd "$(my root)"`,
 		"my sync --push --print",
 		"file an issue",

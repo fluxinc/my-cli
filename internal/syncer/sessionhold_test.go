@@ -33,7 +33,7 @@ func TestRunHoldsContentWithActiveSessionWork(t *testing.T) {
 	if result.Status != "held back" {
 		t.Fatalf("result = %#v, want held back", result)
 	}
-	for _, want := range []string{"2026-06-11-fix-ab12", "my work finish 2026-06-11-fix-ab12", "my work status"} {
+	for _, want := range []string{"2026-06-11-fix-ab12", "my session finish 2026-06-11-fix-ab12", "my session status"} {
 		if !strings.Contains(result.Message, want) {
 			t.Fatalf("message = %q, want %q", result.Message, want)
 		}

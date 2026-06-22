@@ -32,7 +32,7 @@ The command converges local state. Re-run it when the manifest changes.
 - Git-backed content mounts.
 - Product catalog inspection and mounted customer-record inspection.
 - Customer, meeting-note, support-record, and fleet-registry operations.
-- Opt-in isolated work sessions (`my work`, `my ai --new-session`), with
+- Opt-in isolated sessions (`my session`, `my ai --new-session`), with
   session-aware content commands inside a session.
 - Tool diagnostics and install hints.
 - Best-effort TTL-gated auto-refresh of clean manifest/content checkouts at
