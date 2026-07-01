@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fluxinc/my-cli/internal/syncer"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
@@ -368,6 +369,67 @@ func TestDoctorFixSkipsDirtyAndUnknownMounts(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dirtyPath, "meetings", "remote.md")); !os.IsNotExist(err) {
 		t.Fatalf("dirty mount was pulled despite skip: %v", err)
 	}
+}
+
+func TestDoctorFreshnessCarriesSyncReasonAndNextCommand(t *testing.T) {
+	result := syncer.Result{
+		ID:          "handbook",
+		Role:        "content",
+		LocalPath:   "/tmp/acme/handbook",
+		Status:      "held back",
+		Message:     "unadopted untracked content file meetings/draft.md",
+		ReasonCode:  "unadopted_content",
+		NextCommand: "my record adopt meetings/draft.md",
+	}
+	item := doctorFreshnessItem(result, true, nil)
+	if item.Status != "held back" || !strings.Contains(item.Message, "unadopted untracked content") {
+		t.Fatalf("item = %#v, want held-back freshness item", item)
+	}
+	for _, want := range []string{"reason_code=unadopted_content", "next_command=my record adopt meetings/draft.md"} {
+		if !containsString(item.Details, want) {
+			t.Fatalf("details = %#v, missing %q", item.Details, want)
+		}
+	}
+
+	detail := lastSyncResultDetail(result)
+	for _, want := range []string{"reason_code=unadopted_content", "next_command=my record adopt meetings/draft.md"} {
+		if !strings.Contains(detail, want) {
+			t.Fatalf("last sync detail = %q, missing %q", detail, want)
+		}
+	}
+}
+
+func TestDoctorSuppressesSelfReferentialNextCommand(t *testing.T) {
+	result := syncer.Result{
+		ID:          "handbook",
+		Role:        "content",
+		LocalPath:   "/tmp/acme/handbook",
+		Status:      "held back",
+		Message:     "detached HEAD",
+		ReasonCode:  "detached_head",
+		NextCommand: "my doctor",
+	}
+	item := doctorFreshnessItem(result, true, nil)
+	if containsString(item.Details, "next_command=my doctor") {
+		t.Fatalf("details = %#v, want self-referential next command suppressed", item.Details)
+	}
+
+	detail := lastSyncResultDetail(result)
+	if strings.Contains(detail, "next_command=my doctor") {
+		t.Fatalf("last sync detail = %q, want self-referential next command suppressed", detail)
+	}
+	if !strings.Contains(detail, "reason_code=detached_head") {
+		t.Fatalf("last sync detail = %q, want reason code preserved", detail)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestDoctorFixSkipsStaleProduct(t *testing.T) {

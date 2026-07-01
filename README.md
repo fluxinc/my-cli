@@ -145,7 +145,7 @@ prints the matching follow-up, such as `brew upgrade my`,
 
 ```sh
 my init <org-id> [--name NAME] [--path DIR] # create manifest + content repos locally
-my publish [--manifest NAME] [--print]      # create private remotes, rewrite mount URLs, push
+my publish [--manifest NAME] [--print]      # publish remotes and reviewed manifest control-plane edits
 my manifests add <name> <git-url>          # register an org manifest
 my manifests sync [name...] | --all        # refresh checkout and derived artifacts
 my manifests list                          # list registered manifests
@@ -200,7 +200,8 @@ my admin contract remove <index|"RULE TEXT"> --manifest-dir <checkout>
 
 Manifest `contract` entries are short, binding organization rules rendered
 into generated `AGENTS.md`. Reads stay top-level; edits go through the admin
-review-commit-push flow against a maintainer manifest checkout.
+review flow against a maintainer manifest checkout, then publish through
+`my publish --manifest NAME`.
 
 ### Skills
 
@@ -315,8 +316,16 @@ they are collapsed to one canonical checkout. Gnit is the intended backend for
 real multi-repo Change creation, ordered push, and resume; Pins are reserved for
 intentional recorded workspace states. The My AI backend is a guarded bootstrap
 fallback when a workspace has not been initialized as a Gnit control workspace.
-`--publish direct` can publish existing local commits directly, but dirty
-non-content/admin files are still held back instead of being quietly committed.
+`--publish direct` can publish existing local commits directly. For reviewed
+manifest control-plane edits under `manifest.json`, `catalog/`, `skills/`,
+`guidance/`, and `agent-guidance/`, prefer `my publish --manifest NAME`; the
+equivalent low-level sync form is `my sync --publish direct --scope manifest`.
+Default `--push` remains policy-driven, auto mode is still content-only, and
+unrelated dirty files stay held.
+Held-back rows carry `reason_code` and, when the next step is unambiguous,
+`next_command`; text output prints that as `next=...`. Dirty-behind checkouts
+point first at the local status command, diverged checkouts point at
+`my doctor`, and clean behind checkouts point at `my sync`.
 A manifest can set top-level `sync.publish_policy` to `auto`, `never`, or `pr`
 as the mode for `--push`; an explicit `--publish` flag always wins. Non-print
 syncs write `.my-cli/last-sync.json` so `my doctor` can show the last sync/publish audit.
@@ -329,6 +338,8 @@ unless `--no-derived` is passed.
 ```sh
 my products list [--json]         # the org's product inventory
 my customers list [--json]        # mounted customer identity records
+my customers add  <domain|slug> [--name TEXT] [--domain DOMAIN]
+                     [--domain-confirmed] [--alias TEXT] [--partner ID]
 ```
 
 ### Meeting notes
@@ -478,6 +489,12 @@ rationale.
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
+- **Active — dogfood ergonomics audit.** A reviewed two-agent audit of real
+  operator transcripts has produced small self-healing CLI fixes: clearer
+  held-back sync reasons, publish-path warnings, session dead-end recovery,
+  manifest control-plane publish paths, customer-record creation, and duplicate
+  guidance dedupe. The implementation is awaiting operator decision. Plan:
+  [my-cli footgun audit](docs/plans/2026-06-30-mycli-footgun-audit.md).
 - **Shipped — control/data-plane split (v0.13.x).** A private manifest repo
   (the control plane) separate from workspace content repos (the data plane);
   `my publish` creates the private remotes; auto-publishing is gated on

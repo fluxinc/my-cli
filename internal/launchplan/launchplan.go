@@ -217,7 +217,12 @@ func projectContract(rules []string) []ContractBlock {
 
 func projectGuidance(doc manifest.Document, role manifest.Role, hasRole bool, bindings map[string]DataBinding) []GuidanceRef {
 	var out []GuidanceRef
+	seenPath := map[string]bool{}
 	for _, p := range doc.AgentGuidance.Paths {
+		if seenPath[p] {
+			continue
+		}
+		seenPath[p] = true
 		out = append(out, GuidanceRef{
 			ID:     pathID("agent-guidance", p),
 			Source: "agent_guidance",
@@ -227,6 +232,10 @@ func projectGuidance(doc manifest.Document, role manifest.Role, hasRole bool, bi
 	}
 	if hasRole {
 		for _, p := range role.GuidancePaths {
+			if seenPath[p] {
+				continue
+			}
+			seenPath[p] = true
 			out = append(out, GuidanceRef{
 				ID:     pathID("role-"+role.ID, p),
 				Source: "role:" + role.ID,
@@ -235,6 +244,9 @@ func projectGuidance(doc manifest.Document, role manifest.Role, hasRole bool, bi
 			})
 		}
 	}
+	// Domain guidance is deliberately not deduped against seenPath: a data
+	// binding may legitimately reattach a path already surfaced as agent/role
+	// guidance, this time attributed to its domain. Keep this loop independent.
 	dataTypes := make([]string, 0, len(doc.DataBindings))
 	for dataType := range doc.DataBindings {
 		dataTypes = append(dataTypes, dataType)

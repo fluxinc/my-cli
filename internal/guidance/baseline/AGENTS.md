@@ -9,7 +9,8 @@ Use the `my` CLI before falling back to ad hoc file searches:
   entries, with their linked repos).
 - `my repos list` shows the organization's repositories and their clone
   state; `my repos add <id>` clones one under `repos/<id>`.
-- `my customers list` shows canonical customer IDs and aliases.
+- `my customers list` shows canonical customer IDs and aliases; use
+  `my customers add <domain|slug>` to create a mounted customer record.
 - `my mounts list` shows mounted handbook content and selected repos.
 - `my roles list` / `my roles get <id>` show manifest-declared operating
   roles. `my services list` / `my services get <id>` show declared remote
@@ -75,8 +76,9 @@ Operating orientation:
 - Treat this base umbrella as inspection/admin space. Do not draft, edit, or
   create shared workspace content directly in base mounts unless the operator
   explicitly asks for a base edit. When your current directory is inside a
-  session, record commands such as `my meetings add`, `my support add`, and
-  `my fleet add` write to that session's mount worktree.
+  session, record commands such as `my meetings add`, `my support add`,
+  `my fleet add`, and `my customers add` write to that session's mount
+  worktree.
 - Use `my ai --session <id> <harness>` to resume a known active session, or
   `my ai --no-session <harness>` to ignore a current session for base
   inspection/admin/debug.

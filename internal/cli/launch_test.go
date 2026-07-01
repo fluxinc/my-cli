@@ -470,6 +470,66 @@ func TestLaunchAcceptsSelectedRoleGuidance(t *testing.T) {
 	}
 }
 
+func TestSetupThenLaunchDedupesGlobalRoleGuidance(t *testing.T) {
+	home := t.TempDir()
+	umbrellaRoot := writeRoleSetupManifest(t, home)
+	manifestPath := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme", "manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := strings.Replace(
+		string(data),
+		`"agent_guidance": { "paths": ["guidance/base.md"] }`,
+		`"agent_guidance": { "paths": ["guidance/base.md", "guidance/operator.md"] }`,
+		1,
+	)
+	if updated == string(data) {
+		t.Fatalf("test manifest did not contain expected agent_guidance block")
+	}
+	writeCLITestFile(t, manifestPath, updated)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "setup",
+		"--manifest", "acme",
+		"--home", home,
+		"--role", "operator",
+		"--no-refresh",
+		"--no-update-check",
+	}); err != nil {
+		t.Fatalf("setup --role: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	agents, err := os.ReadFile(filepath.Join(umbrellaRoot, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(agents), "## Manifest Guidance: guidance/operator.md"); got != 1 {
+		t.Fatalf("operator guidance rendered %d times, want 1:\n%s", got, agents)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"my", "ai",
+		"--manifest", "acme",
+		"--home", home,
+		"--no-refresh",
+		"--no-update-check",
+		"--print",
+		"codex",
+	}); err != nil {
+		t.Fatalf("ai --print: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "cd "+umbrellaRoot+" && codex") {
+		t.Fatalf("stdout = %q, want launch command", stdout.String())
+	}
+	if strings.Contains(stderr.String(), "workspace guidance stale") {
+		t.Fatalf("stderr = %q, want deduped setup guidance accepted", stderr.String())
+	}
+}
+
 func TestLaunchOnboardThenExecsWithArgs(t *testing.T) {
 	home, umbrellaRoot := setupCLILaunchFixture(t)
 	var stdout, stderr bytes.Buffer
@@ -979,6 +1039,45 @@ func TestLaunchFromInsideSessionUsesCurrentSession(t *testing.T) {
 	}
 	if gotDir != session.Path {
 		t.Fatalf("gotDir=%q, want current session path %q", gotDir, session.Path)
+	}
+}
+
+func TestLaunchFromInsideFinishedSessionExplainsRecovery(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	umbrellaRoot := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, umbrellaRoot)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "work", "start", "--slug", "finished", "--home", home, "--json"}); err != nil {
+		t.Fatalf("work start: %v", err)
+	}
+	var session worksession.Session
+	if err := json.Unmarshal(stdout.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	session.Status = worksession.StatusFinished
+	if err := worksession.Save(umbrellaRoot, session); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(filepath.Join(session.Path, "scratch"))
+
+	stdout.Reset()
+	stderr.Reset()
+	err := a.run([]string{"my", "ai", "--home", home, "--no-refresh", "--no-update-check", "--print", "codex"})
+	if err == nil {
+		t.Fatal("my ai --print from finished session succeeded")
+	}
+	for _, want := range []string{
+		"finished session " + session.ID,
+		"cd " + umbrellaRoot,
+		"my session status --all",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("err = %q, want %q", err.Error(), want)
+		}
+	}
+	if stdout.String() != "" {
+		t.Fatalf("stdout = %q, want no launch command", stdout.String())
 	}
 }
 

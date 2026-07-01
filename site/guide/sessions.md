@@ -54,8 +54,8 @@ not change the parent shell by itself.
 
 While your current directory is inside `sessions/<id>`:
 
-- record commands (`my meetings add`, `my support add`, `my fleet add`)
-  write to the session's mount worktrees, and
+- record commands (`my customers add`, `my meetings add`, `my support add`,
+  `my fleet add`) write to the session's mount worktrees, and
 - plain `my ai` resumes that session instead of the base umbrella. Use
   `my ai --no-session` to deliberately ignore it for base inspection.
 

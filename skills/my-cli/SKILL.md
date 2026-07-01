@@ -110,7 +110,7 @@ Bootstrap / refresh the workspace:
 my init <org-id> [--name NAME] [--path DIR] [--umbrella DIR]
                                     # create manifest + content repos locally and register them
 my publish [--manifest NAME] [--print]
-                                    # create private remotes, rewrite local mount URLs, push both repos
+                                    # publish remotes and reviewed manifest control-plane edits
 my onboarding [--manifest NAME] [--home DIR] [--umbrella DIR] [--agent|--no-agent] [--harness NAME]
                                     # launch guided onboarding; --no-agent prints the deterministic walkthrough
 my setup [--manifest NAME] [--role ROLE] [--interactive] [--no-refresh] [--no-update-check]
@@ -144,13 +144,14 @@ alias.
 Use `my init` only when the user explicitly wants to create a new
 organization. It creates two local repos — a private manifest repo at the
 registry path and a content repo at `<umbrella>/workspace` — commits and
-registers them, and prints the next `my setup`, `my ai`, and `my publish`
-commands. Everything reports `local-only` until published. Run `my publish`
-only when the user wants the organization shared: it creates private remotes
-(`<org>-manifest`, `<org>-workspace`), rewrites the manifest's local mount
-URLs to the published repos, and pushes both. Never hand-edit mount URLs and
-never push a manifest that still references local paths — `my sync` holds it
-and `my doctor` names the offending mounts.
+registers them, and prints manifest-scoped next commands for setup, launch,
+and publish. Everything reports `local-only` until published. Run
+`my publish --manifest <org-id>` only when the user wants the organization
+shared: it creates private remotes (`<org>-manifest`, `<org>-workspace`),
+rewrites the manifest's local mount URLs to the published repos, and pushes
+both. Never hand-edit mount URLs and never push a manifest that still
+references local paths — `my sync` holds it and `my doctor` names the
+offending mounts.
 
 `root`, `ai`, and `setup` make a best-effort, TTL-gated refresh of clean
 manifest/content checkouts before reading workspace context. They do not touch
@@ -223,13 +224,14 @@ with no harness is a shell helper that prints `cd <path>`.
 If you are running inside a session (the working directory is under
 `<umbrella>/sessions/<id>`), keep all edits in the session's mount worktrees and
 `scratch/`; never edit the base mounts directly. Content record commands
-(`my meetings/support/fleet add`) automatically target the current session's
-mount worktree when run from inside the session. Finish is the only exit:
+(`my meetings add`, `my support add`, `my fleet add`, and `my customers add`)
+automatically target the current session's mount worktree when run from inside
+the session. Finish is the only exit:
 `--land` holds unadopted `??` files and non-content changes instead of
-committing them, so adopt records first (`my meetings/support/fleet add` do
-this automatically). While a session is dirty or unlanded, `my sync` holds
-outbound publish of that mount and names the session — finish or discard the
-session rather than working around the hold.
+committing them, so adopt records first (the record add commands do this
+automatically). While a session is dirty or unlanded, `my sync` holds outbound
+publish of that mount and names the session — finish or discard the session
+rather than working around the hold.
 
 Catalog code repos are not included in work sessions yet. Use
 `my ai --repo <id> <harness>` for a base repo checkout, and land code changes
@@ -273,6 +275,7 @@ my support add     <slug> [--date DATE] [--title TEXT] [--customer ID] [--identi
                      # for others involved; never set --approved-by without explicit
                      # operator approval — it is the human sign-off field
 my customers list  [--json]      # mounted customer IDs, aliases, partners
+my customers add   <domain|slug> [--name TEXT] [--domain DOMAIN] [--domain-confirmed] [--alias TEXT] [--partner ID] [--print] [--json]
 ```
 
 Manage skills on this machine:
@@ -296,9 +299,17 @@ pulls inbound updates and reconciles local guard state; it never publishes local
 changes. Publishing requires an explicit operator action: use `my sync --push`
 to publish eligible local changes according to the manifest policy (or the
 default auto policy when none is set). Auto policy only direct-pushes **private,
-content-only** changes (e.g. new meeting notes or support records);
+content-only** changes (e.g. new customer records, meeting notes, support
+records, or fleet updates);
 manifest/catalog/admin changes, public repos, divergent branches, and unsafe
 duplicate-remote checkouts are held back.
+
+For deliberate manifest control-plane edits, use `my publish --manifest NAME`
+after review. It can commit and push dirty files under `manifest.json`,
+`catalog/`, `skills/`, `guidance/`, and `agent-guidance/`; the equivalent
+low-level sync form is `my sync --publish direct --scope manifest`. Default
+`--push` remains content-only in auto mode, and unrelated dirty files in the
+manifest checkout still hold.
 
 ```sh
 my sync                          # pull/reconcile only; never publishes local changes
@@ -306,17 +317,21 @@ my sync --print                  # plan the pull-only default
 my sync --push --print           # preview explicit publish work
 my sync --push                   # publish eligible local changes per policy
 my sync --scope repos            # limit to catalog repo clones (all|local|content|manifest|repos)
+my sync --publish direct --scope manifest  # publish reviewed manifest control-plane edits
 my sync --no-derived             # skip derived guidance/MCP/skill reconcile after manifest changes
 my sync --publish never          # explicit local-only reconcile
 my sync --publish pr             # currently holds changes and reports PR-mode follow-up
 ```
 
 Plain untracked (`??`) files under declared content paths are held instead of
-being published. Use `my meetings add`, `my support add`, or `my fleet add`
-for new records; those commands mark the created file with Git intent-to-add.
+being published. Use `my customers add`, `my meetings add`, `my support add`,
+or `my fleet add` for new records; those commands mark the created file with
+Git intent-to-add.
 For a manually created file that should publish, run `my record adopt <path>`
 after checking that it belongs in the shared content repo. Explicit `git add`
-also counts as adoption.
+also counts as adoption. Held-back JSON results include `reason_code` and,
+when the remedy is unambiguous, `next_command`; text output shows that command
+as `next=...` on the held-back row.
 
 "Derived" means the artifacts generated from the manifest: root guidance
 (`AGENTS.md` plus the `CLAUDE.md` pointer), umbrella-root `.mcp.json`, and

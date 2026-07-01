@@ -21,11 +21,18 @@ stale, bare `my sync` is the command it means. When local changes should be
 shared, preview with `my sync --push --print`, then run `my sync --push`.
 
 What publishes under the `auto` policy after explicit `--push`:
-committed-or-adopted, content-only changes in private repos — new meeting
-notes, support records, fleet updates. What holds: manifest/catalog/admin
-changes (review-commit-push by hand), public repos, diverged branches, plain
-untracked files that were never adopted (see `my record adopt`), and mounts
-with dirty or unlanded active sessions.
+committed-or-adopted, content-only changes in private repos — new customer
+identity records, meeting notes, support records, and fleet updates. What
+holds: public repos, diverged branches, plain untracked files that were never
+adopted (see `my record adopt`), and mounts with dirty or unlanded active
+sessions. For reviewed manifest/catalog/admin control-plane edits, run
+`my publish --manifest NAME`; the low-level equivalent is
+`my sync --publish direct --scope manifest`.
+
+Held rows include a stable `reason_code` in JSON and, when the remedy is clear,
+`next_command`; text output shows the same command as `next=...`. Clean behind
+checkouts point at `my sync`, dirty-behind checkouts point first at the local
+status command, and diverged checkouts point at `my doctor`.
 
 Scoping and policy:
 

@@ -88,6 +88,9 @@ my admin roles add operator \
   --service docs-search
 ```
 
+After reviewing the local manifest checkout, publish those control-plane edits
+with `my publish --manifest NAME`.
+
 `my admin services edit|remove` and `my admin roles edit|remove` update the
 same declarations. Service removal refuses role-selected services unless
 `--prune-roles` is supplied. Inline connection env values must be exact

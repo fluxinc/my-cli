@@ -181,14 +181,9 @@ func (a app) createInitScaffold(opts initOptions) (initResult, error) {
 		Manifest:         ref,
 		Sync:             syncResults,
 	}
-	result.NextCommands = initNextCommands(opts.home, opts.orgID)
+	result.NextCommands = initNextCommands(opts.orgID)
 	return result, nil
 }
-
-// initMountID names the content mount my init declares: the org workspace,
-// "the actual content" — distinct from the private manifest (control plane).
-// The content repo lives at the umbrella mount path for this id and is
-// published as <org>-workspace.
 
 // initMountID names the content mount my init declares: the org workspace,
 // "the actual content" — distinct from the private manifest (control plane).
@@ -281,7 +276,7 @@ func writeInitContentScaffold(root, orgID, orgName string) error {
 	files := map[string]string{
 		"README.md":                             initContentREADME(orgName),
 		filepath.Join("customers", "README.md"): initSectionREADME("Customers", "Keep customer identity records as one markdown file per customer."),
-		filepath.Join("meetings", "README.md"):  initSectionREADME("Meetings", "Record meeting notes with my meetings add, then publish with my sync."),
+		filepath.Join("meetings", "README.md"):  initSectionREADME("Meetings", "Record meeting notes with my meetings add, then publish with my sync --push."),
 		filepath.Join("support", "README.md"):   initSectionREADME("Support", "Record anonymized problem-to-solution notes with my support add."),
 		filepath.Join("fleet", "README.md"):     initSectionREADME("Fleet", "Track deployed instances or devices with my fleet add and my fleet set."),
 		filepath.Join("decisions", "README.md"): initSectionREADME("Decisions", "Keep durable decisions and their context here."),
@@ -319,17 +314,17 @@ Register this repository, sync it, and onboard:
 `+"```sh"+`
 my manifests add %s <git-url-of-this-repository>
 my manifests sync %s
-my setup
-my ai codex
+my setup --manifest %s
+my ai --manifest %s codex
 `+"```"+`
 
 ## Publish
 
-Run `+"`my publish`"+` from any directory to create the private remotes for
-this manifest and its content repositories, rewrite local mount URLs, and
-push everything. Do not push this repository while mounts still reference
-local paths.
-`, orgName, orgName, orgName, orgID, orgID)
+Run `+"`my publish --manifest %s`"+` from any directory to create the private
+remotes for this manifest and its content repositories, rewrite local mount
+URLs, commit reviewed manifest control-plane changes, and push everything. Do
+not push this repository while mounts still reference local paths.
+`, orgName, orgName, orgName, orgID, orgID, orgID, orgID, orgID)
 }
 
 func initContentREADME(orgName string) string {
@@ -337,8 +332,8 @@ func initContentREADME(orgName string) string {
 
 Workspace content for %s: customer identity records, meetings, support
 records, fleet records, decisions, projects, policy, and people notes. Record
-entries with my commands (my meetings add, my support add, my fleet add)
-and publish with my sync.
+entries with my commands (my customers add, my meetings add, my support add,
+my fleet add) and publish with my sync --push.
 `, orgName, orgName)
 }
 
@@ -361,8 +356,8 @@ description: Use the %s handbook for customer records, meetings, support records
 
 Use this skill when work depends on %s-specific context from the My AI
 workspace. Start with the generated root guidance, then inspect the relevant
-handbook directories or use the `+"`my meetings`"+`, `+"`my support`"+`, and
-`+"`my fleet`"+` commands.
+handbook directories or use the `+"`my customers`"+`, `+"`my meetings`"+`,
+`+"`my support`"+`, and `+"`my fleet`"+` commands.
 `, orgID, orgName, orgName, orgName)
 }
 
@@ -421,17 +416,32 @@ func gitCmdOutput(dir string, args ...string) (string, error) {
 }
 
 func gitDirtyFiles(dir string) ([]string, error) {
-	cmd := exec.Command("git", "-C", dir, "status", "--porcelain")
+	cmd := exec.Command("git", "-C", dir, "status", "--porcelain=v1", "-z", "--untracked-files=all")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("git status: %s", strings.TrimSpace(string(out)))
 	}
 	var files []string
-	// Porcelain lines are "XY path"; do not trim the line first — the
-	// two-character status may start with a significant space.
-	for _, line := range strings.Split(string(out), "\n") {
-		if len(line) > 3 {
-			files = append(files, strings.TrimSpace(line[3:]))
+	parts := strings.Split(string(out), "\x00")
+	for i := 0; i < len(parts); i++ {
+		part := parts[i]
+		if len(part) < 4 {
+			continue
+		}
+		status := part[:2]
+		path := part[3:]
+		if path != "" {
+			files = append(files, filepath.ToSlash(path))
+		}
+		if status[0] == 'R' || status[0] == 'C' || status[1] == 'R' || status[1] == 'C' {
+			i++
+			// Rename records include the old path as a second NUL-delimited field.
+			// Keep both sides so the allowlist can reject cross-boundary renames.
+			if i < len(parts) && (status[0] == 'R' || status[1] == 'R') {
+				if oldPath := parts[i]; oldPath != "" {
+					files = append(files, filepath.ToSlash(oldPath))
+				}
+			}
 		}
 	}
 	return files, nil
@@ -467,7 +477,8 @@ func (a app) runPublish(args []string) error {
 
 Publishes the organization: creates private remotes for content repositories
 and the manifest repository when they have none, rewrites local mount URLs to
-the published remotes, commits that manifest change, and pushes everything.
+the published remotes, commits reviewed manifest control-plane changes, and
+pushes everything.
 Idempotent; existing remotes are adopted and pushed, never recreated.
 
 Options:`)
@@ -519,8 +530,15 @@ func (a app) publishOrg(home string, doc registeredDoc, printOnly bool) (publish
 	}
 	orgID := doc.doc.Organization.ID
 	result := publishResult{Manifest: doc.ref.Name}
+	if step, blocked, err := manifestControlPublishStep(doc.ref.LocalPath, printOnly); blocked || err != nil {
+		if step.Action != "" {
+			result.Steps = append(result.Steps, step)
+		}
+		return result, err
+	}
 	newDoc := doc.doc
 	rewritten := false
+	var plannedControlFiles []string
 	for i := range newDoc.Mounts {
 		mount := newDoc.Mounts[i]
 		if !localMountGitURL(mount.GitURL) {
@@ -541,25 +559,32 @@ func (a app) publishOrg(home string, doc registeredDoc, printOnly bool) (publish
 		if err != nil {
 			return result, err
 		}
-		if !printOnly && url != "" {
-			newDoc.Mounts[i].GitURL = url
+		if url != "" {
+			if !printOnly {
+				newDoc.Mounts[i].GitURL = url
+			} else {
+				plannedControlFiles = append(plannedControlFiles, "manifest.json")
+			}
 			rewritten = true
 		}
 	}
 	if rewritten {
-		if err := manifest.SaveDocument(doc.ref.LocalPath, newDoc); err != nil {
-			return result, err
-		}
-		if err := runGit(doc.ref.LocalPath, "add", "--", "manifest.json"); err != nil {
-			return result, err
-		}
-		// Commit only the URL rewrite so unrelated admin edits stay local.
-		if err := runGit(doc.ref.LocalPath, "commit", "--quiet", "-m", "Point mounts at published repositories", "--", "manifest.json"); err != nil {
-			if identityErr := runGit(doc.ref.LocalPath, "-c", "user.name=My AI", "-c", "user.email=my-cli@example.invalid", "commit", "--quiet", "-m", "Point mounts at published repositories", "--", "manifest.json"); identityErr != nil {
-				return result, identityErr
+		if printOnly {
+			result.Steps = append(result.Steps, publishStep{Target: "manifest", Action: "would rewrite-mounts"})
+		} else {
+			if err := manifest.SaveDocument(doc.ref.LocalPath, newDoc); err != nil {
+				return result, err
 			}
+			result.Steps = append(result.Steps, publishStep{Target: "manifest", Action: "rewrote-mounts"})
 		}
-		result.Steps = append(result.Steps, publishStep{Target: "manifest", Action: "rewrote-mounts"})
+	}
+	if step, blocked, err := commitManifestControlChanges(doc.ref.LocalPath, printOnly, plannedControlFiles); blocked || err != nil {
+		if step.Action != "" {
+			result.Steps = append(result.Steps, step)
+		}
+		return result, err
+	} else if step.Action != "" {
+		result.Steps = append(result.Steps, step)
 	}
 	manifestURL, step, err := a.ensurePublishedRepo(doc.ref.LocalPath, orgID+"-manifest", "manifest", printOnly, runner)
 	result.Steps = append(result.Steps, step)
@@ -580,9 +605,100 @@ func (a app) publishOrg(home string, doc registeredDoc, printOnly bool) (publish
 	return result, nil
 }
 
-// ensurePublishedRepo adopts an existing origin remote (verifying GitHub
-// repositories are private) or creates a private remote for the checkout,
-// then pushes; it never recreates an existing remote.
+func manifestControlPublishStep(root string, printOnly bool) (publishStep, bool, error) {
+	_, blocked, err := manifestControlDirtyFiles(root)
+	if err != nil {
+		return publishStep{Target: "manifest", Action: "failed", Message: err.Error()}, true, err
+	}
+	if len(blocked) == 0 {
+		return publishStep{}, false, nil
+	}
+	step := publishStep{
+		Target:  "manifest",
+		Action:  "held back",
+		Message: "dirty files outside manifest control paths: " + strings.Join(blocked, ", "),
+	}
+	if printOnly {
+		return step, true, nil
+	}
+	return step, true, fmt.Errorf("manifest checkout has dirty files outside manifest control paths: %s", strings.Join(blocked, ", "))
+}
+
+func commitManifestControlChanges(root string, printOnly bool, plannedAllowed []string) (publishStep, bool, error) {
+	allowed, blocked, err := manifestControlDirtyFiles(root)
+	if err != nil {
+		return publishStep{Target: "manifest", Action: "failed", Message: err.Error()}, true, err
+	}
+	allowed = uniqueStrings(append(append([]string{}, plannedAllowed...), allowed...))
+	if len(blocked) != 0 {
+		step := publishStep{
+			Target:  "manifest",
+			Action:  "held back",
+			Message: "dirty files outside manifest control paths: " + strings.Join(blocked, ", "),
+		}
+		if printOnly {
+			return step, true, nil
+		}
+		return step, true, fmt.Errorf("manifest checkout has dirty files outside manifest control paths: %s", strings.Join(blocked, ", "))
+	}
+	if len(allowed) == 0 {
+		return publishStep{}, false, nil
+	}
+	step := publishStep{
+		Target:  "manifest",
+		Action:  "committed",
+		Message: strings.Join(allowed, ", "),
+	}
+	if printOnly {
+		step.Action = "would commit"
+		return step, false, nil
+	}
+	stagePaths := manifestControlStagePaths(allowed)
+	args := append([]string{"add", "-A", "--"}, stagePaths...)
+	if err := runGit(root, args...); err != nil {
+		return publishStep{Target: "manifest", Action: "failed", Message: err.Error()}, true, err
+	}
+	commitArgs := append([]string{"commit", "--quiet", "-m", "Publish manifest control-plane changes", "--"}, stagePaths...)
+	if err := runGit(root, commitArgs...); err != nil {
+		fallbackArgs := append([]string{"-c", "user.name=My AI", "-c", "user.email=my-cli@example.invalid"}, commitArgs...)
+		if identityErr := runGit(root, fallbackArgs...); identityErr != nil {
+			return publishStep{Target: "manifest", Action: "failed", Message: identityErr.Error()}, true, identityErr
+		}
+	}
+	return step, false, nil
+}
+
+func manifestControlDirtyFiles(root string) ([]string, []string, error) {
+	files, err := gitDirtyFiles(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	var allowed []string
+	var blocked []string
+	for _, file := range files {
+		file = filepath.ToSlash(strings.TrimPrefix(file, "./"))
+		if pathsWithinContent([]string{file}, manifestControlPaths()) {
+			allowed = append(allowed, file)
+		} else {
+			blocked = append(blocked, file)
+		}
+	}
+	return allowed, blocked, nil
+}
+
+func manifestControlStagePaths(files []string) []string {
+	var out []string
+	for _, file := range files {
+		file = filepath.ToSlash(strings.TrimPrefix(file, "./"))
+		for _, root := range manifestControlPaths() {
+			if file == root || strings.HasPrefix(file, root+"/") {
+				out = append(out, root)
+				break
+			}
+		}
+	}
+	return uniqueStrings(out)
+}
 
 // ensurePublishedRepo adopts an existing origin remote (verifying GitHub
 // repositories are private) or creates a private remote for the checkout,
@@ -636,22 +752,14 @@ func localMountGitURL(gitURL string) bool {
 	return strings.HasPrefix(gitURL, "./") || strings.HasPrefix(gitURL, "../") || strings.HasPrefix(gitURL, "~/")
 }
 
-func initNextCommands(home, orgID string) []initNextCommand {
-	manifestFlag := ""
-	if initManifestFlagNeeded(home) {
-		manifestFlag = " --manifest " + shellQuote(orgID)
-	}
+func initNextCommands(orgID string) []initNextCommand {
+	manifestFlag := " --manifest " + shellQuote(orgID)
 	return []initNextCommand{
 		{Action: "setup", Command: "my setup" + manifestFlag},
 		{Action: "launch", Command: "my ai" + manifestFlag + " claude"},
 		{Action: "launch", Command: "my ai" + manifestFlag + " codex"},
 		{Action: "publish", Command: "my publish" + manifestFlag},
 	}
-}
-
-func initManifestFlagNeeded(home string) bool {
-	reg, err := manifest.LoadRegistry(home)
-	return err == nil && len(reg.Manifests) > 1
 }
 
 func (a app) printInitResult(result initResult) {

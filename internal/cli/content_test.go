@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +47,242 @@ func TestMeetingsAddMarksCreatedRecordIntentToAdd(t *testing.T) {
 	}
 
 	status := strings.TrimRight(gitCLIOutput(t, workspaceRoot, "status", "--porcelain", "--", "meetings/2026-06-12-sampleco-followup.md"), "\n")
+	if !strings.HasPrefix(status, " A ") {
+		t.Fatalf("git status = %q, want intent-to-add status", status)
+	}
+}
+
+func TestCustomersAddMarksCreatedRecordIntentToAddAndResolvesAlias(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+
+	if err := a.run([]string{
+		"my", "customers", "add", "sampleco.example.com",
+		"--manifest", "acme",
+		"--workspace", "handbook",
+		"--home", home,
+		"--name", "SampleCo",
+		"--alias", "sc",
+		"--partner", "integratorco",
+		"--domain-confirmed",
+	}); err != nil {
+		t.Fatalf("customers add: %v\nstderr: %s", err, stderr.String())
+	}
+
+	recordPath := filepath.Join(workspaceRoot, "customers", "sampleco.example.com.md")
+	if got := strings.TrimSpace(stdout.String()); got != recordPath {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), recordPath)
+	}
+	status := strings.TrimRight(gitCLIOutput(t, workspaceRoot, "status", "--porcelain", "--", "customers/sampleco.example.com.md"), "\n")
+	if !strings.HasPrefix(status, " A ") {
+		t.Fatalf("git status = %q, want intent-to-add status", status)
+	}
+	data, err := os.ReadFile(recordPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"name: SampleCo",
+		"domain: sampleco.example.com",
+		"domain_confirmed: true",
+		`  - "sc"`,
+		`  - "integratorco"`,
+	} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("customer record = %q, want %q", string(data), want)
+		}
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{
+		"my", "meetings", "add", "sampleco-followup",
+		"--manifest", "acme",
+		"--workspace", "handbook",
+		"--home", home,
+		"--date", "2026-06-12",
+		"--customer", "sc",
+		"--print",
+	}); err != nil {
+		t.Fatalf("meetings add: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "customer: sampleco.example.com") {
+		t.Fatalf("meetings add stdout = %q", stdout.String())
+	}
+}
+
+func TestCustomersAddHelpShowsRequiredOperand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+
+	if err := a.run([]string{"my", "customers", "add", "--help"}); err != nil && !errors.Is(err, flag.ErrHelp) {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"my customers add <domain|slug>",
+		"--domain-confirmed",
+		"--alias",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr = %q, missing %q", stderr.String(), want)
+		}
+	}
+	if stdout.String() != "" {
+		t.Fatalf("stdout = %q, want stderr-only usage", stdout.String())
+	}
+}
+
+func TestUnknownCustomerWarningSuggestsCustomersAdd(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	writeCLITestFile(t, filepath.Join(workspaceRoot, "customers", "sampleco.example.com.md"), `---
+id: sampleco.example.com
+name: SampleCo
+aliases:
+  - sampleco
+---
+`)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+
+	if err := a.run([]string{
+		"my", "meetings", "add", "newco-kickoff",
+		"--manifest", "acme",
+		"--workspace", "handbook",
+		"--home", home,
+		"--date", "2026-06-12",
+		"--customer", "newco.example.com",
+		"--print",
+	}); err != nil {
+		t.Fatalf("meetings add: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "customer: newco.example.com") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+	want := fmt.Sprintf("warning: unknown customer \"newco.example.com\"; keeping literal value; run `my customers add newco.example.com --manifest acme --workspace handbook --home %s` if this should be canonical", shellQuote(home))
+	if !strings.Contains(stderr.String(), want) {
+		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+	}
+}
+
+func TestUnknownCustomerWarningSuggestsCustomersAddForEmptyRegistry(t *testing.T) {
+	home, _ := setupCLIRecordWorkspace(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+
+	if err := a.run([]string{
+		"my", "support", "add", "newco-install",
+		"--manifest", "acme",
+		"--workspace", "handbook",
+		"--home", home,
+		"--date", "2026-06-12",
+		"--customer", "newco.example.com",
+		"--print",
+	}); err != nil {
+		t.Fatalf("support add: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "customer: newco.example.com") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+	want := fmt.Sprintf("warning: unknown customer \"newco.example.com\"; keeping literal value; run `my customers add newco.example.com --manifest acme --workspace handbook --home %s` if this should be canonical", shellQuote(home))
+	if !strings.Contains(stderr.String(), want) {
+		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+	}
+}
+
+func TestRecordAddWarnsWhenCreatedFileIsOutsidePublishPaths(t *testing.T) {
+	root := t.TempDir()
+	remote, clone, _ := setupCLIRemoteRepo(t, root, "handbook", map[string]string{
+		"README.md": "seed\n",
+	})
+	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": "`+remote+`",
+      "mode": "required",
+      "include_paths": ["meetings", "support"]
+    }
+  ]
+}`)
+	mountPath := filepath.Join(umbrellaRoot, "handbook")
+	if err := os.MkdirAll(umbrellaRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(clone, mountPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, state, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	} else {
+		state = umbrella.UpsertMount(state, umbrella.MountStatus{
+			ID:        "handbook",
+			Kind:      "handbook",
+			SourceRef: "manifest:acme:handbook",
+			Status:    "synced",
+		})
+		if err := umbrella.SaveState(umbrellaRoot, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "fleet", "add", "example-device-4",
+		"--manifest", "acme",
+		"--workspace", "handbook",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+	}); err != nil {
+		t.Fatalf("fleet add: %v\nstderr: %s", err, stderr.String())
+	}
+	recordPath := filepath.Join(mountPath, "fleet", "example-device-4.md")
+	if got := strings.TrimSpace(stdout.String()); got != recordPath {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), recordPath)
+	}
+	for _, want := range []string{
+		"warning: record fleet/example-device-4.md is outside declared publish paths for mount handbook (meetings, support)",
+		"my sync --push will hold it",
+		`include_paths contains "fleet"`,
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+		}
+	}
+	status := strings.TrimRight(gitCLIOutput(t, mountPath, "status", "--porcelain", "--", "fleet/example-device-4.md"), "\n")
+	if !strings.HasPrefix(status, " A ") {
+		t.Fatalf("git status = %q, want intent-to-add status", status)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"my", "customers", "add", "sampleco.example.com",
+		"--manifest", "acme",
+		"--workspace", "handbook",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+	}); err != nil {
+		t.Fatalf("customers add: %v\nstderr: %s", err, stderr.String())
+	}
+	customerPath := filepath.Join(mountPath, "customers", "sampleco.example.com.md")
+	if got := strings.TrimSpace(stdout.String()); got != customerPath {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), customerPath)
+	}
+	for _, want := range []string{
+		"warning: record customers/sampleco.example.com.md is outside declared publish paths for mount handbook (meetings, support)",
+		"my sync --push will hold it",
+		`include_paths contains "customers"`,
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+		}
+	}
+	status = strings.TrimRight(gitCLIOutput(t, mountPath, "status", "--porcelain", "--", "customers/sampleco.example.com.md"), "\n")
 	if !strings.HasPrefix(status, " A ") {
 		t.Fatalf("git status = %q, want intent-to-add status", status)
 	}
@@ -235,15 +473,15 @@ Promised onboarding review and data cleanup.
 	}
 
 	stdout.Reset()
-	if err := a.run([]string{"my", "meetings", "add", "2026-05-28-sampleco-followup", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--attendees", "Heather (PMH, mammo tech)", "--partner", "Siemens, Healthineers", "--print"}); err != nil {
+	if err := a.run([]string{"my", "meetings", "add", "2026-05-28-sampleco-followup", "--manifest", "acme", "--workspace", "handbook", "--home", home, "--attendees", "Alex Example (site lead, imaging)", "--partner", "PartnerCo, Integration Team", "--print"}); err != nil {
 		t.Fatal(err)
 	}
 	out := stdout.String()
 	for _, want := range []string{
 		"2026-05-28-sampleco-followup",
 		`date: 2026-05-28`,
-		`  - "Heather (PMH, mammo tech)"`,
-		`  - "Siemens, Healthineers"`,
+		`  - "Alex Example (site lead, imaging)"`,
+		`  - "PartnerCo, Integration Team"`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("meetings add stdout = %q, missing %q", out, want)

@@ -188,14 +188,16 @@ func (a app) localMountSyncBlocks(home, manifestName string) ([]syncer.Result, e
 			continue
 		}
 		out = append(out, syncer.Result{
-			Manifest:  doc.ref.Name,
-			ID:        doc.ref.Name,
-			Role:      "manifest",
-			Kind:      "manifest",
-			GitURL:    doc.ref.GitURL,
-			LocalPath: doc.ref.LocalPath,
-			Status:    "held back",
-			Message:   "manifest has local mount URL(s): " + strings.Join(localMounts, ", ") + "; run my publish --manifest " + doc.ref.Name,
+			Manifest:    doc.ref.Name,
+			ID:          doc.ref.Name,
+			Role:        "manifest",
+			Kind:        "manifest",
+			GitURL:      doc.ref.GitURL,
+			LocalPath:   doc.ref.LocalPath,
+			Status:      "held back",
+			Message:     "manifest has local mount URL(s): " + strings.Join(localMounts, ", ") + "; run my publish --manifest " + doc.ref.Name,
+			ReasonCode:  "local_mount_urls",
+			NextCommand: "my publish --manifest " + shellQuote(doc.ref.Name),
 		})
 	}
 	return out, nil
@@ -253,10 +255,12 @@ guarded Git fallback until bootstrap/canonicalization is complete. Bare my sync
 pulls/reconciles only and never publishes local changes. Use --push to publish
 eligible changes with the manifest policy (or auto policy when none is set), or
 --publish to choose an explicit publish mode. Direct mode can push existing
-commits, but dirty non-content changes still require an explicit admin or
-review workflow. Non-print runs write .my-cli/last-sync.json when an umbrella is
-present. When a manifest checkout changes, sync also reconciles generated
-guidance and manifest skills unless --no-derived is passed.`)
+commits; for reviewed dirty manifest control-plane files, prefer
+my publish --manifest NAME or my sync --publish direct --scope manifest.
+Unrelated dirty non-content files are still held for explicit review.
+Non-print runs write .my-cli/last-sync.json when an umbrella is present. When a
+manifest checkout changes, sync also reconciles generated guidance and manifest
+skills unless --no-derived is passed.`)
 }
 
 func syncScopeAllowsDerived(scope string) bool {
@@ -350,12 +354,13 @@ func (a app) collectSyncEntries(home, manifestName, umbrellaRoot, scope string) 
 		contentWanted := scope == "all" || scope == "local" || scope == "content"
 		if manifestWanted {
 			entries = append(entries, syncer.Entry{
-				Manifest:  doc.ref.Name,
-				ID:        doc.ref.Name,
-				Role:      "manifest",
-				Kind:      "manifest",
-				GitURL:    doc.ref.GitURL,
-				LocalPath: doc.ref.LocalPath,
+				Manifest:     doc.ref.Name,
+				ID:           doc.ref.Name,
+				Role:         "manifest",
+				Kind:         "manifest",
+				GitURL:       doc.ref.GitURL,
+				LocalPath:    doc.ref.LocalPath,
+				ContentPaths: manifestControlPaths(),
 			})
 		}
 		if contentWanted {
@@ -428,13 +433,19 @@ func syncContentPaths(entry workspace.Entry) []string {
 	return mountContentPaths(entry.Kind, entry.IncludePaths)
 }
 
+func manifestControlPaths() []string {
+	return []string{"manifest.json", "catalog", "skills", "guidance", "agent-guidance"}
+}
+
 func mountContentPaths(kind string, includePaths []string) []string {
 	if len(includePaths) != 0 {
 		return append([]string(nil), includePaths...)
 	}
 	switch kind {
 	case "handbook":
-		return []string{"meetings", "support", "decisions", "projects", "policy", "people"}
+		return []string{"customers", "meetings", "support", "fleet", "decisions", "projects", "policy", "people"}
+	case "customers":
+		return []string{"customers"}
 	case "meetings":
 		return []string{"meetings"}
 	case "support":
@@ -536,6 +547,9 @@ func (a app) printSyncReport(report syncer.Report, verbose bool, next syncNextCo
 		}
 		if result.Message != "" {
 			line += "\t" + strings.ReplaceAll(result.Message, "\n", " ")
+		}
+		if result.NextCommand != "" {
+			line += "\tnext=" + result.NextCommand
 		}
 		if result.Error != "" {
 			line += "\t" + result.Error

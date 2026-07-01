@@ -19,9 +19,10 @@ import (
 
 // Root is one workspace root that may contain a content directory.
 type Root struct {
-	Manifest  string
-	Workspace string
-	Path      string
+	Manifest     string
+	Workspace    string
+	Path         string
+	ContentPaths []string
 }
 
 // Scan parses every markdown file under dir in each root with parse.

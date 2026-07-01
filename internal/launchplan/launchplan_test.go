@@ -181,6 +181,32 @@ func TestCompileErrorsOnLocalMountURL(t *testing.T) {
 	}
 }
 
+func TestCompileDedupesRoleGuidancePaths(t *testing.T) {
+	doc := baseDocument()
+	doc.AgentGuidance.Paths = []string{"agent-guidance/shared.md", "agent-guidance/shared.md"}
+	doc.Roles = []manifest.Role{{
+		ID:            "operator",
+		Purpose:       "Operate",
+		GuidancePaths: []string{"agent-guidance/shared.md", "agent-guidance/operator.md", "agent-guidance/operator.md"},
+		Mounts:        []string{"handbook"},
+		Skills:        []string{"acme:handbook"},
+	}}
+	projection, err := Compile(doc, Options{Role: "operator"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := map[string]int{}
+	for _, ref := range projection.Guidance {
+		paths[ref.Path]++
+	}
+	if paths["agent-guidance/shared.md"] != 1 {
+		t.Fatalf("shared guidance count = %d, want 1: %#v", paths["agent-guidance/shared.md"], projection.Guidance)
+	}
+	if paths["agent-guidance/operator.md"] != 1 {
+		t.Fatalf("operator guidance count = %d, want 1: %#v", paths["agent-guidance/operator.md"], projection.Guidance)
+	}
+}
+
 func baseDocument() manifest.Document {
 	return manifest.Document{
 		ManifestVersion: 1,

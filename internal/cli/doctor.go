@@ -373,6 +373,12 @@ func doctorFreshnessItem(result syncer.Result, fetch bool, refreshes map[string]
 	if result.FetchError != "" {
 		item.Details = append(item.Details, "fetch_error="+result.FetchError)
 	}
+	if result.ReasonCode != "" {
+		item.Details = append(item.Details, "reason_code="+result.ReasonCode)
+	}
+	if next := doctorNextCommandDetail(result.NextCommand); next != "" {
+		item.Details = append(item.Details, "next_command="+next)
+	}
 	if result.Error != "" {
 		item.Details = append(item.Details, result.Error)
 	}
@@ -881,7 +887,20 @@ func lastSyncResultDetail(result syncer.Result) string {
 	if result.Direction != "" {
 		parts = append(parts, "direction="+result.Direction)
 	}
+	if result.ReasonCode != "" {
+		parts = append(parts, "reason_code="+result.ReasonCode)
+	}
+	if next := doctorNextCommandDetail(result.NextCommand); next != "" {
+		parts = append(parts, "next_command="+next)
+	}
 	return strings.Join(parts, " ")
+}
+
+func doctorNextCommandDetail(command string) string {
+	if command == "my doctor" {
+		return ""
+	}
+	return command
 }
 
 func doctorWorkspaces(home, manifestName string, declared []manifest.Workspace) []doctorItem {

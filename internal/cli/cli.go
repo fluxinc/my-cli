@@ -266,6 +266,7 @@ Usage:
   my work resume [session-id] [harness] [--json]
   my work finish [session-id] --land|--publish|--discard [--message TEXT] [--verbose] [--json]
   my customers list
+  my customers add <domain|slug>
   my products list
   my repos list [--json]
   my repos add <id>

@@ -83,6 +83,80 @@ func TestFindResolvesIDDomainNameAlias(t *testing.T) {
 	}
 }
 
+func TestCleanID(t *testing.T) {
+	tests := map[string]string{
+		"SampleCo.Example.COM": "sampleco.example.com",
+		"Example_Co":           "example-co",
+		" Example Co ":         "example-co",
+		"bad..id":              "",
+	}
+	for input, want := range tests {
+		if got := CleanID(input); got != want {
+			t.Fatalf("CleanID(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestAddScaffoldsCustomerRecord(t *testing.T) {
+	root := Root{Manifest: "acme", Workspace: "handbook", Path: t.TempDir()}
+	customer, content, err := Add(root, "SampleCo.Example.COM", AddOptions{
+		Name:            "SampleCo",
+		DomainConfirmed: true,
+		Aliases:         []string{"sampleco", "sampleco"},
+		Partners:        []string{"integratorco"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPath := filepath.Join(root.Path, "customers", "sampleco.example.com.md")
+	if customer.ID != "sampleco.example.com" || customer.Path != wantPath {
+		t.Fatalf("customer = %#v, want path %q", customer, wantPath)
+	}
+	for _, want := range []string{
+		"id: sampleco.example.com",
+		"name: SampleCo",
+		"domain: sampleco.example.com",
+		"domain_confirmed: true",
+		`  - "sampleco"`,
+		`  - "integratorco"`,
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("content = %q, want %q", content, want)
+		}
+	}
+	data, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != content {
+		t.Fatalf("written content mismatch")
+	}
+	found, err := List([]Root{root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 1 || found[0].ID != "sampleco.example.com" || len(found[0].Aliases) != 1 {
+		t.Fatalf("found = %#v", found)
+	}
+	if _, _, err := Add(root, "sampleco.example.com", AddOptions{}); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("duplicate err = %v", err)
+	}
+}
+
+func TestAddDryRunDoesNotWriteCustomerRecord(t *testing.T) {
+	root := Root{Manifest: "acme", Workspace: "handbook", Path: t.TempDir()}
+	customer, content, err := Add(root, "sampleco", AddOptions{Name: "SampleCo", DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if customer.ID != "sampleco" || !strings.Contains(content, "id: sampleco") {
+		t.Fatalf("customer = %#v content = %q", customer, content)
+	}
+	if _, err := os.Stat(customer.Path); !os.IsNotExist(err) {
+		t.Fatalf("dry run wrote file or stat failed: %v", err)
+	}
+}
+
 func TestValidIDAndInvalidRecordRejected(t *testing.T) {
 	for _, ok := range []string{"sampleco.example.com", "acme-co", "a", "co123"} {
 		if !ValidID(ok) {

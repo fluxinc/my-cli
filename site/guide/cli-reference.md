@@ -47,7 +47,7 @@ my version
 `my init` creates two local repositories — a private manifest repo at the
 registry path (the control plane) and a content repo at
 `<umbrella>/workspace` (`--path` overrides) — commits and registers them, and
-prints the follow-up `my setup`, `my ai`, and `my publish` commands. Both
+prints manifest-scoped follow-up commands for setup, launch, and publish. Both
 repos work offline and report `local-only` until published.
 
 `my onboarding` is the guided first-run path. In an interactive terminal it
@@ -69,8 +69,10 @@ selection. `my onboard` remains a compatibility alias.
 `my publish` takes the organization online idempotently: it creates private
 remotes (`<org>-workspace`, `<org>-manifest`) via `gh`, or adopts existing
 origins and pushes (verifying GitHub remotes are private), rewrites local
-mount URLs to the published repositories in a commit scoped to
-`manifest.json`, updates the registry, and prints the teammate join command.
+mount URLs to the published repositories, commits reviewed manifest
+control-plane edits under `manifest.json`, `catalog/`, `skills/`, `guidance/`,
+and `agent-guidance/`, updates the registry, and prints the teammate join
+command.
 `my sync` refuses to publish a manifest that still references local mount
 paths, and `my doctor` names each such mount with the `my publish`
 remediation.
@@ -112,7 +114,8 @@ my admin contract remove <index|"RULE TEXT"> --manifest-dir DIR [--force] [--jso
 ```
 
 See the [admin guide](./admin.md) for the full flag set and the
-review-commit-push workflow that follows every admin edit.
+review plus `my publish --manifest NAME` workflow that follows every admin
+edit.
 
 ## Manifests, mounts, and workspace
 
@@ -172,6 +175,7 @@ my fleet set <id> KEY=VALUE...
 my record adopt <path>
 
 my customers list                     # mounted customer identity records
+my customers add <domain|slug>        # scaffold a mounted customer record
 my products list
 my repos list [--json]
 my repos add <id> [--print] [--json]
@@ -190,12 +194,17 @@ my compile --role <id> [--manifest NAME] [--home DIR]
 local changes. `--backend auto` prefers Gnit when the umbrella is initialized as
 a Gnit control workspace; My AI keeps the bootstrap, policy, duplicate-remote,
 and PR layers. `my sync --push` publishes eligible local changes per manifest
-policy; `--publish direct` can publish existing local commits directly, but
-dirty non-content/admin files are still held back for explicit admin or review
-handling. Plain untracked (`??`) files under declared content paths are also
-held; create records with `my meetings add`, `my support add`, or
-`my fleet add`, or run `my record adopt <path>` to mark a manually created file
-as intentional publish content. A manifest can set top-level
+policy; `--publish direct` can publish existing local commits directly. For
+reviewed manifest control-plane edits, prefer `my publish --manifest NAME`;
+`my sync --publish direct --scope manifest` is the equivalent low-level sync
+form. Auto `--push` remains content-only, and unrelated dirty files stay held
+for explicit admin or review handling. Plain untracked (`??`) files under
+content mount paths are also held; create records with `my customers add`,
+`my meetings add`, `my support add`, or `my fleet add`, or run
+`my record adopt <path>` to mark a manually created file as intentional publish
+content. Held-back JSON results include `reason_code` and, where the remedy is
+unambiguous, `next_command`; text output shows that command as `next=...` on the
+held-back row. A manifest can set top-level
 `sync.publish_policy` to `auto`, `never`, or `pr` as the mode for `--push`; an
 explicit `--publish` flag always wins. Non-print syncs write
 `.my-cli/last-sync.json`; `my doctor`

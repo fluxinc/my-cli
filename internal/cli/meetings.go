@@ -149,7 +149,7 @@ func (a app) runMeetingsAdd(args []string) error {
 	if len(roots) != 1 {
 		return fmt.Errorf("meetings add requires exactly one workspace; pass --manifest and --workspace")
 	}
-	customer := a.resolveCustomerForWrite(opts.home, opts.manifestName, opts.umbrellaRoot, opts.customer)
+	customer := a.resolveCustomerForWrite(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot, opts.customer)
 	meeting, content, err := meetings.Add(roots[0], rest[0], meetings.AddOptions{
 		Date:      opts.date,
 		Title:     opts.title,
@@ -168,6 +168,7 @@ func (a app) runMeetingsAdd(args []string) error {
 		if err := markRecordIntentToAdd(roots[0], meeting.Path); err != nil {
 			return err
 		}
+		warnRecordOutsidePublishPaths(a.stderr, roots[0], meeting.Path)
 	}
 	if opts.jsonOut {
 		return printJSON(a.stdout, struct {

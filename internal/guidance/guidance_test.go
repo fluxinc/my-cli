@@ -116,6 +116,31 @@ func TestComposeWithOptionsAppendsRoleGuidance(t *testing.T) {
 	}
 }
 
+func TestComposeWithOptionsDedupesRoleGuidancePaths(t *testing.T) {
+	manifestRoot := t.TempDir()
+	writeGuidanceTestFile(t, filepath.Join(manifestRoot, "guidance", "shared.md"), "shared guidance\n")
+	writeGuidanceTestFile(t, filepath.Join(manifestRoot, "guidance", "operator.md"), "operator guidance\n")
+	doc := manifest.Document{
+		AgentGuidance: manifest.AgentGuidance{Paths: []string{"guidance/shared.md"}},
+	}
+	data, err := ComposeWithOptions(manifestRoot, doc, Options{
+		RoleGuidancePaths: []string{"guidance/shared.md", "guidance/operator.md"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if strings.Count(got, "## Manifest Guidance: guidance/shared.md") != 1 {
+		t.Fatalf("shared guidance rendered multiple times:\n%s", got)
+	}
+	if !strings.Contains(got, "operator guidance") {
+		t.Fatalf("role-only guidance missing:\n%s", got)
+	}
+	if strings.Index(got, "shared guidance") > strings.Index(got, "operator guidance") {
+		t.Fatalf("deduped base guidance should keep first position:\n%s", got)
+	}
+}
+
 func TestComposeRendersOrganizationContract(t *testing.T) {
 	manifestRoot := t.TempDir()
 	writeGuidanceTestFile(t, filepath.Join(manifestRoot, "guidance", "base.md"), "base guidance\n")
