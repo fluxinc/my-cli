@@ -99,6 +99,8 @@ type Result struct {
 	Dirty         []string `json:"dirty,omitempty"`
 	Changed       []string `json:"changed,omitempty"`
 	Message       string   `json:"message,omitempty"`
+	ReasonCode    string   `json:"reason_code,omitempty"`
+	NextCommand   string   `json:"next_command,omitempty"`
 	Error         string   `json:"error,omitempty"`
 }
 
@@ -251,7 +253,7 @@ func runGnit(entries []Entry, opts Options) Report {
 			continue
 		}
 		if in.result.Behind > 0 {
-			hold(in, "remote has new commits; pull or rebase before publishing")
+			holdRemoteBehind(in)
 			continue
 		}
 		if opts.Publish == "never" {
@@ -283,14 +285,17 @@ func runGnit(entries []Entry, opts Options) Report {
 			hold(in, "checkout is outside the Gnit workspace; canonicalize or adopt it before Gnit publish")
 			continue
 		}
-		var entryStagePaths []string
-		for _, path := range in.dirty {
+		entryStagePaths := stagePathsWithin(in.dirty, in.entry.ContentPaths)
+		if len(entryStagePaths) == 0 {
+			entryStagePaths = in.dirty
+		}
+		for i, path := range entryStagePaths {
 			rel, err := filepath.Rel(opts.GnitRoot, filepath.Join(in.entry.LocalPath, filepath.FromSlash(path)))
 			if err != nil || strings.HasPrefix(filepath.ToSlash(rel), "../") || filepath.IsAbs(rel) {
 				hold(in, "dirty path is outside the Gnit workspace")
 				continue
 			}
-			entryStagePaths = append(entryStagePaths, filepath.ToSlash(rel))
+			entryStagePaths[i] = filepath.ToSlash(rel)
 		}
 		if in.result.Status == "pending" {
 			stagePaths = append(stagePaths, entryStagePaths...)
@@ -353,8 +358,7 @@ func inspectWithMode(entry Entry, opts Options, runner Runner, mode inspectMode)
 	}
 	in := inspection{entry: entry, result: res, remoteKey: normalizeRemote(entry.GitURL)}
 	if !isGitRepo(entry.LocalPath, runner) {
-		in.result.Status = "held back"
-		in.result.Message = "not cloned; run my mounts sync or my setup first"
+		hold(&in, "not cloned; run my mounts sync or my setup first")
 		return in
 	}
 	if _, err := git(runner, entry.LocalPath, "remote", "get-url", "origin"); err != nil {
@@ -391,8 +395,7 @@ func inspectWithMode(entry Entry, opts Options, runner Runner, mode inspectMode)
 	}
 	in.result.Head = head
 	if branch == "HEAD" {
-		in.result.Status = "held back"
-		in.result.Message = "detached HEAD"
+		hold(&in, "detached HEAD")
 		return in
 	}
 	upstream, _, err := gitTrim(runner, entry.LocalPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
@@ -468,7 +471,7 @@ func reconcile(in *inspection, all []inspection, opts Options, runner Runner) {
 		return
 	}
 	if in.result.Behind > 0 {
-		hold(in, "remote has new commits; pull or rebase before publishing")
+		holdRemoteBehind(in)
 		return
 	}
 	if opts.Publish == "never" {
@@ -518,7 +521,11 @@ func reconcile(in *inspection, all []inspection, opts Options, runner Runner) {
 		return
 	}
 	if len(in.dirty) != 0 {
-		if out, err := gitAdd(runner, in.entry.LocalPath, in.dirty); err != nil {
+		stagePaths := stagePathsWithin(in.dirty, in.entry.ContentPaths)
+		if len(stagePaths) == 0 {
+			stagePaths = in.dirty
+		}
+		if out, err := gitAdd(runner, in.entry.LocalPath, stagePaths); err != nil {
 			in.result.Status = "failed"
 			in.result.Error = commandError(out, err)
 			return
@@ -577,6 +584,103 @@ func reconcileInbound(in *inspection, opts Options, runner Runner) bool {
 func hold(in *inspection, reason string) {
 	in.result.Status = "held back"
 	in.result.Message = reason
+	in.result.ReasonCode = holdReasonCode(reason)
+	in.result.NextCommand = holdNextCommand(*in, in.result.ReasonCode)
+}
+
+func holdRemoteBehind(in *inspection) {
+	if in.result.Ahead != 0 && in.result.Behind != 0 {
+		hold(in, fmt.Sprintf("local and remote both have commits (ahead %d, behind %d); run my doctor and reconcile divergent history before publishing", in.result.Ahead, in.result.Behind))
+		return
+	}
+	if len(in.dirty) != 0 {
+		hold(in, fmt.Sprintf("remote has new commits and checkout has uncommitted files (%s); commit, stash, or discard local files, then run my sync", strings.Join(in.dirty, ", ")))
+		return
+	}
+	hold(in, "remote has new commits; pull or rebase before publishing")
+}
+
+func holdReasonCode(reason string) string {
+	switch {
+	case strings.HasPrefix(reason, "active session "):
+		return "active_session"
+	case strings.HasPrefix(reason, "unadopted untracked content"):
+		return "unadopted_content"
+	case strings.Contains(reason, "same remote"):
+		return "duplicate_remote"
+	case strings.Contains(reason, "outside declared content paths"):
+		return "outside_content_paths"
+	case reason == "auto publish only applies to content mounts":
+		return "auto_non_content"
+	case reason == "not content-only inside declared content paths":
+		return "not_content_only"
+	case reason == "repository privacy is not confirmed private":
+		return "privacy_unconfirmed"
+	case strings.HasPrefix(reason, "local and remote both have commits"):
+		return "diverged"
+	case strings.HasPrefix(reason, "remote has new commits and checkout has uncommitted files"):
+		return "dirty_behind"
+	case reason == "remote has new commits; pull or rebase before publishing":
+		return "remote_ahead"
+	case reason == "publish disabled":
+		return "publish_disabled"
+	case strings.HasPrefix(reason, "PR mode"):
+		return "pr_mode_unimplemented"
+	case reason == "detached HEAD":
+		return "detached_head"
+	case reason == "not cloned; run my mounts sync or my setup first":
+		return "not_cloned"
+	case reason == "not eligible for fast-forward":
+		return "not_fast_forward"
+	case strings.Contains(reason, "Gnit control workspace"):
+		return "gnit_not_control_workspace"
+	case strings.Contains(reason, "outside the Gnit workspace"):
+		return "outside_gnit_workspace"
+	default:
+		return "held_back"
+	}
+}
+
+func holdNextCommand(in inspection, reasonCode string) string {
+	switch reasonCode {
+	case "unadopted_content":
+		paths := unadoptedContentPaths(&in)
+		if len(paths) == 1 {
+			return "my record adopt " + shellArg(paths[0])
+		}
+		return "my record adopt <path>"
+	case "auto_non_content":
+		if in.entry.Role == "manifest" && in.entry.Manifest != "" {
+			return "my publish --manifest " + shellArg(in.entry.Manifest)
+		}
+		return "my sync --publish direct --print"
+	case "publish_disabled":
+		return "my sync --push --print"
+	case "remote_ahead":
+		return "my sync"
+	case "dirty_behind":
+		if in.entry.LocalPath != "" {
+			return "git -C " + shellArg(in.entry.LocalPath) + " status --short"
+		}
+		return "my doctor"
+	case "diverged":
+		return "my doctor"
+	case "not_cloned":
+		return "my setup"
+	case "privacy_unconfirmed":
+		// Steer toward inspecting/confirming the remote is private, not toward
+		// `--publish direct`, which skips the private-repo visibility gate that
+		// only runs under Publish==auto.
+		return "my doctor"
+	case "detached_head", "duplicate_remote", "outside_content_paths", "not_content_only", "not_fast_forward", "outside_gnit_workspace":
+		return "my doctor"
+	case "gnit_not_control_workspace":
+		return "my sync --backend builtin --push --print"
+	case "pr_mode_unimplemented":
+		return "my sync --publish direct --print"
+	default:
+		return ""
+	}
 }
 
 // holdActiveSession holds outbound publish of a repository while an active
@@ -587,13 +691,20 @@ func holdActiveSession(in *inspection, opts Options) bool {
 		if !samePath(sessionHold.RepoPath, in.entry.LocalPath) {
 			continue
 		}
-		hold(in, sessionHoldMessage(sessionHold))
+		hold(in, sessionHoldMessage(sessionHold, in.dirty))
+		in.result.NextCommand = sessionHoldNextCommand(sessionHold, in.entry.LocalPath, in.dirty)
 		return true
 	}
 	return false
 }
 
-func sessionHoldMessage(sessionHold SessionHold) string {
+// sessionHoldMessage explains why an active session holds this mount's publish
+// and what to run next. baseDirty is the base checkout's own uncommitted files
+// (the same files `my session finish --land` and `--publish` refuse on via
+// requireBaseReady); when it is non-empty we sequence the guidance so the
+// operator resolves the base first instead of being bounced into a finish that
+// will refuse (#28).
+func sessionHoldMessage(sessionHold SessionHold, baseDirty []string) string {
 	var pending []string
 	if sessionHold.DirtyCount > 0 {
 		pending = append(pending, fmt.Sprintf("%d dirty file(s)", sessionHold.DirtyCount))
@@ -609,10 +720,26 @@ func sessionHoldMessage(sessionHold SessionHold) string {
 	if sessionHold.SessionPath != "" {
 		location += " (" + sessionHold.SessionPath + ")"
 	}
+	if len(baseDirty) != 0 {
+		return fmt.Sprintf(
+			"active session %s has %s on mount %s, and the base checkout has uncommitted files (%s) that will block --land/--publish; commit, stash, or discard those base files first, then run my session finish %s --land (or --publish). To throw away the session, run my session finish %s --discard; use my session status to inspect",
+			location, detail, sessionHold.MountID, strings.Join(baseDirty, ", "), sessionHold.SessionID, sessionHold.SessionID,
+		)
+	}
 	return fmt.Sprintf(
 		"active session %s has %s on mount %s; run my session finish %s --land|--publish (or --discard), or my session status to inspect",
 		location, detail, sessionHold.MountID, sessionHold.SessionID,
 	)
+}
+
+func sessionHoldNextCommand(sessionHold SessionHold, repoPath string, baseDirty []string) string {
+	if len(baseDirty) != 0 {
+		if repoPath != "" {
+			return "git -C " + shellArg(repoPath) + " status --short"
+		}
+		return "my session status"
+	}
+	return "my session finish " + shellArg(sessionHold.SessionID) + " --land"
 }
 
 func samePath(a, b string) bool {
@@ -625,6 +752,9 @@ func samePath(a, b string) bool {
 }
 
 func holdUnadoptedContent(in *inspection) bool {
+	if in.entry.Role != "content" {
+		return false
+	}
 	paths := unadoptedContentPaths(in)
 	if len(paths) == 0 {
 		return false
@@ -760,17 +890,33 @@ func heldResults(entries []Entry, reason string) []Result {
 	results := make([]Result, 0, len(entries))
 	for _, entry := range entries {
 		results = append(results, Result{
-			Manifest:  entry.Manifest,
-			ID:        entry.ID,
-			Role:      entry.Role,
-			Kind:      entry.Kind,
-			GitURL:    entry.GitURL,
-			LocalPath: entry.LocalPath,
-			Status:    "held back",
-			Message:   reason,
+			Manifest:    entry.Manifest,
+			ID:          entry.ID,
+			Role:        entry.Role,
+			Kind:        entry.Kind,
+			GitURL:      entry.GitURL,
+			LocalPath:   entry.LocalPath,
+			Status:      "held back",
+			Message:     reason,
+			ReasonCode:  holdReasonCode(reason),
+			NextCommand: holdNextCommand(inspection{entry: entry}, holdReasonCode(reason)),
 		})
 	}
 	return results
+}
+
+func shellArg(value string) string {
+	if value == "" {
+		return "''"
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			strings.ContainsRune("_+-./:=@", r) {
+			continue
+		}
+		return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+	}
+	return value
 }
 
 func aheadBehind(repo, upstream string, runner Runner) (int, int, error) {
@@ -830,6 +976,13 @@ func parseStatusFiles(text string) []dirtyFile {
 		}
 		if status[0] == 'R' || status[0] == 'C' || status[1] == 'R' || status[1] == 'C' {
 			i++
+			if i < len(parts) && (status[0] == 'R' || status[1] == 'R') {
+				oldPath := filepath.ToSlash(parts[i])
+				if oldPath != "" && !seen[oldPath] {
+					files = append(files, dirtyFile{status: status, path: oldPath})
+					seen[oldPath] = true
+				}
+			}
 		}
 	}
 	return files
@@ -873,6 +1026,24 @@ func pathsWithin(paths, prefixes []string) bool {
 		}
 	}
 	return true
+}
+
+func stagePathsWithin(paths, prefixes []string) []string {
+	if len(paths) == 0 || len(prefixes) == 0 {
+		return nil
+	}
+	var out []string
+	for _, path := range paths {
+		path = filepath.ToSlash(strings.TrimPrefix(path, "./"))
+		for _, prefix := range prefixes {
+			prefix = strings.Trim(filepath.ToSlash(prefix), "/")
+			if path == prefix || strings.HasPrefix(path, prefix+"/") {
+				out = append(out, prefix)
+				break
+			}
+		}
+	}
+	return unique(out)
 }
 
 func unique(values []string) []string {

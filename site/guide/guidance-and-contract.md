@@ -76,10 +76,11 @@ my admin contract remove "RULE TEXT" --manifest-dir DIR  # by exact text
 ```
 
 Like every admin edit, this writes `manifest.json` locally and prints the
-review-commit-push follow-up; the rule reaches teammates after the manifest
+review/publish follow-up. Publish reviewed control-plane edits with
+`my publish --manifest NAME`; the rule reaches teammates after the manifest
 change is pushed and their workspaces reconcile (`my sync` or
-`my manifests sync`). Validation rejects empty, multiline, and duplicate
-rules, and `add` refuses a rule that already exists.
+`my manifests sync`). Validation rejects empty, multiline, and duplicate rules,
+and `add` refuses a rule that already exists.
 
 In the manifest the contract is a plain list of strings:
 

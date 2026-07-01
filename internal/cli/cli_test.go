@@ -222,6 +222,7 @@ func TestTopLevelHelp(t *testing.T) {
 	if !strings.Contains(stdout.String(), "my setup") ||
 		!strings.Contains(stdout.String(), "my skills install") ||
 		!strings.Contains(stdout.String(), "my admin manifests add|sync|validate") ||
+		!strings.Contains(stdout.String(), "my customers add <domain|slug>") ||
 		!strings.Contains(stdout.String(), "my version") {
 		t.Fatalf("help output = %q", stdout.String())
 	}

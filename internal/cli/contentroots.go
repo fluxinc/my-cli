@@ -38,7 +38,7 @@ func contentRoots(home, manifestName, workspaceID, umbrellaRoot, noun string, ki
 			}
 			return filterRoots(bindingManifest, roots)
 		}
-		roots, err := umbrellaContentRootsForRoot(root, workspaceID, noun, kinds)
+		roots, err := umbrellaContentRootsForRoot(home, manifestName, root, workspaceID, noun, kinds)
 		if err != nil {
 			return nil, err
 		}
@@ -51,7 +51,7 @@ func contentRoots(home, manifestName, workspaceID, umbrellaRoot, noun string, ki
 			}
 			return filterRoots(manifestName, roots)
 		}
-		roots, err := umbrellaContentRootsForRoot(root, workspaceID, noun, kinds)
+		roots, err := umbrellaContentRootsForRoot(home, manifestName, root, workspaceID, noun, kinds)
 		if err != nil {
 			return nil, err
 		}
@@ -76,9 +76,10 @@ func contentRoots(home, manifestName, workspaceID, umbrellaRoot, noun string, ki
 			continue
 		}
 		roots = append(roots, record.Root{
-			Manifest:  entry.Manifest,
-			Workspace: entry.ID,
-			Path:      entry.LocalPath,
+			Manifest:     entry.Manifest,
+			Workspace:    entry.ID,
+			Path:         entry.LocalPath,
+			ContentPaths: mountContentPaths(entry.Kind, entry.IncludePaths),
 		})
 	}
 	if len(roots) == 0 {
@@ -181,7 +182,7 @@ func configuredUmbrellaContentRoots(home, manifestName, workspaceID, noun string
 		}
 	}
 	if len(candidates) == 1 {
-		roots, err := umbrellaContentRoots(home, workspaceID, candidates[0].root, noun, kinds)
+		roots, err := umbrellaContentRoots(home, candidates[0].ref, workspaceID, candidates[0].root, noun, kinds)
 		return roots, true, err
 	}
 	if len(candidates) > 1 {
@@ -196,19 +197,20 @@ func configuredUmbrellaContentRoots(home, manifestName, workspaceID, noun string
 	return nil, false, nil
 }
 
-func umbrellaContentRoots(home, workspaceID, umbrellaRoot, noun string, kinds []string) ([]record.Root, error) {
+func umbrellaContentRoots(home, manifestName, workspaceID, umbrellaRoot, noun string, kinds []string) ([]record.Root, error) {
 	root, err := resolveUmbrellaRoot(home, umbrellaRoot)
 	if err != nil {
 		return nil, err
 	}
-	return umbrellaContentRootsForRoot(root, workspaceID, noun, kinds)
+	return umbrellaContentRootsForRoot(home, manifestName, root, workspaceID, noun, kinds)
 }
 
-func umbrellaContentRootsForRoot(root, workspaceID, noun string, kinds []string) ([]record.Root, error) {
+func umbrellaContentRootsForRoot(home, manifestName, root, workspaceID, noun string, kinds []string) ([]record.Root, error) {
 	state, err := umbrella.LoadState(root)
 	if err != nil {
 		return nil, fmt.Errorf("read umbrella state: %w", err)
 	}
+	manifestMounts := manifestMountEntriesForRoot(home, manifestName, root)
 	var roots []record.Root
 	for _, mount := range state.Mounts {
 		if workspaceID != "" && mount.ID != workspaceID {
@@ -222,10 +224,15 @@ func umbrellaContentRootsForRoot(root, workspaceID, noun string, kinds []string)
 		if !record.ContainsValue(kinds, mount.Kind) {
 			continue
 		}
+		contentPaths := mountContentPaths(mount.Kind, nil)
+		if entry, ok := manifestMounts[mount.ID]; ok {
+			contentPaths = syncContentPaths(entry)
+		}
 		roots = append(roots, record.Root{
-			Manifest:  mount.SourceRef,
-			Workspace: mount.ID,
-			Path:      umbrella.MountPath(root, mount.ID),
+			Manifest:     mount.SourceRef,
+			Workspace:    mount.ID,
+			Path:         umbrella.MountPath(root, mount.ID),
+			ContentPaths: contentPaths,
 		})
 	}
 	if len(roots) == 0 {
@@ -235,6 +242,28 @@ func umbrellaContentRootsForRoot(root, workspaceID, noun string, kinds []string)
 		return nil, fmt.Errorf("no %s mounts synced in umbrella %s", noun, root)
 	}
 	return roots, nil
+}
+
+func manifestMountEntriesForRoot(home, manifestName, root string) map[string]workspace.Entry {
+	out := map[string]workspace.Entry{}
+	if manifestName == "" {
+		if ws, err := umbrella.LoadWorkspace(root); err == nil {
+			manifestName = ws.ManifestRef
+		}
+	}
+	if manifestName == "" {
+		return out
+	}
+	mounts, err := workspace.ListMounts(home, manifestName, root)
+	if err != nil {
+		return out
+	}
+	for _, mount := range mounts {
+		if mount.UmbrellaRoot == root {
+			out[mount.ID] = mount
+		}
+	}
+	return out
 }
 
 func currentSessionContentRoots(root, workspaceID, noun string, kinds []string) ([]record.Root, bool, error) {
@@ -259,9 +288,10 @@ func currentSessionContentRoots(root, workspaceID, noun string, kinds []string) 
 			continue
 		}
 		roots = append(roots, record.Root{
-			Manifest:  sourceRefs[mount.ID],
-			Workspace: mount.ID,
-			Path:      mount.WorktreePath,
+			Manifest:     sourceRefs[mount.ID],
+			Workspace:    mount.ID,
+			Path:         mount.WorktreePath,
+			ContentPaths: sessionContentPaths(mount),
 		})
 	}
 	if len(roots) == 0 {
@@ -271,6 +301,13 @@ func currentSessionContentRoots(root, workspaceID, noun string, kinds []string) 
 		return nil, true, fmt.Errorf("no %s mounts are available in active session %s", noun, session.ID)
 	}
 	return roots, true, nil
+}
+
+func sessionContentPaths(mount worksession.Mount) []string {
+	if len(mount.ContentPaths) != 0 {
+		return append([]string(nil), mount.ContentPaths...)
+	}
+	return mountContentPaths(mount.Kind, nil)
 }
 
 func currentActiveSession(root string) (worksession.Session, bool, error) {
@@ -290,14 +327,52 @@ func activeSessionForPath(root, path string) (worksession.Session, bool, error) 
 		return worksession.Session{}, false, err
 	}
 	for _, session := range sessions {
-		if session.Status == worksession.StatusActive && pathWithinRoot(path, session.Path) {
+		if !pathWithinRoot(path, session.Path) {
+			continue
+		}
+		if session.Status == worksession.StatusActive {
 			return session, true, nil
 		}
+		status := session.Status
+		if status == "" {
+			status = "inactive"
+		}
+		return worksession.Session{}, true, fmt.Errorf("current directory is under %s session %s; cd %s or run my session status --all", status, session.ID, root)
 	}
 	sessionRoot := filepath.Join(root, worksession.WorkDirName)
 	legacyRoot := filepath.Join(root, worksession.LegacyWorkDirName)
 	if pathWithinRoot(path, sessionRoot) || pathWithinRoot(path, legacyRoot) {
-		return worksession.Session{}, true, fmt.Errorf("current directory is under a session directory but no active session matched; run my session status or cd %s", root)
+		if id := sessionDirectoryID(root, path); id != "" {
+			return worksession.Session{}, true, fmt.Errorf("current directory is under unregistered session directory %s; cd %s or run my doctor", id, root)
+		}
+		return worksession.Session{}, true, fmt.Errorf("current directory is under a session directory but no active session matched; cd %s or run my session status --all", root)
 	}
 	return worksession.Session{}, false, nil
+}
+
+func sessionDirectoryID(root, path string) string {
+	for _, name := range []string{worksession.WorkDirName, worksession.LegacyWorkDirName} {
+		base := filepath.Join(root, name)
+		if !pathWithinRoot(path, base) {
+			continue
+		}
+		absBase, err := filepath.Abs(base)
+		if err != nil {
+			return ""
+		}
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return ""
+		}
+		rel, err := filepath.Rel(absBase, absPath)
+		if err != nil || rel == "." {
+			return ""
+		}
+		id := strings.Split(filepath.ToSlash(rel), "/")[0]
+		if id == "." || id == ".." {
+			return ""
+		}
+		return id
+	}
+	return ""
 }

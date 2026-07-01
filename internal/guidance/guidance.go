@@ -167,6 +167,7 @@ func ComposeWithOptions(manifestRoot string, doc manifest.Document, opts Options
 	}
 	paths := append([]string{}, doc.AgentGuidance.Paths...)
 	paths = append(paths, opts.RoleGuidancePaths...)
+	paths = uniqueGuidancePaths(paths)
 	for _, path := range paths {
 		fragmentPath := filepath.Join(manifestRoot, filepath.FromSlash(path))
 		if !pathWithin(fragmentPath, manifestRoot) {
@@ -186,6 +187,19 @@ func ComposeWithOptions(manifestRoot string, doc manifest.Document, opts Options
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+func uniqueGuidancePaths(paths []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, path := range paths {
+		if seen[path] {
+			continue
+		}
+		seen[path] = true
+		out = append(out, path)
+	}
+	return out
 }
 
 // writeDomainNotes renders each data binding's domain-guidance fragments into a

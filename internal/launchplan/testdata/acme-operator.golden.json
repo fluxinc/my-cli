@@ -34,12 +34,6 @@
       "path": "agent-guidance/acme.md"
     },
     {
-      "id": "role-operator-agent-guidance-acme",
-      "source": "role:operator",
-      "mode": "guide",
-      "path": "agent-guidance/acme.md"
-    },
-    {
       "id": "domain-customers-agent-guidance-customers-domain",
       "source": "domain:customers",
       "mode": "reference",

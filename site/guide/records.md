@@ -2,11 +2,12 @@
 
 Workspace content is markdown records with frontmatter, living in mounted
 content repos. Customer identities are read from mounted `customers/*.md`
-records. Meetings, support, and fleet also expose write-oriented record
-commands, with `my sync --push` publishing adopted changes.
+records, and each record domain exposes write-oriented commands. `my sync
+--push` publishes adopted changes.
 
 ```sh
 my customers list [--json]
+my customers add <domain|slug> [--name TEXT] [--domain DOMAIN] [--domain-confirmed] [--alias TEXT] [--partner ID]
 
 my meetings list [--since DATE] [--customer ID] [--partner ID] [--json]
 my meetings search <text>
@@ -31,7 +32,8 @@ retrieval; otherwise a built-in scan applies. Single keywords match best.
 ## Customer records
 
 Customer identities live under `customers/*.md` in a mounted content repo, not
-in the manifest. A minimal record is:
+in the manifest. Use `my customers add <domain|slug>` to scaffold one. A
+minimal record is:
 
 ```md
 ---

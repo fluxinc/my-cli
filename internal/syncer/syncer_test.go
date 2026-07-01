@@ -55,6 +55,12 @@ func TestRunHoldsUnadoptedUntrackedContent(t *testing.T) {
 	if result.Status != "held back" || !strings.Contains(result.Message, "unadopted untracked content") {
 		t.Fatalf("result = %#v, want unadopted content hold", result)
 	}
+	if result.ReasonCode != "unadopted_content" {
+		t.Fatalf("reason code = %q, want unadopted_content", result.ReasonCode)
+	}
+	if result.NextCommand != "my record adopt meetings/2026-06-08-draft.md" {
+		t.Fatalf("next command = %q, want record adopt", result.NextCommand)
+	}
 	if !strings.Contains(result.Message, "meetings/2026-06-08-draft.md") ||
 		!strings.Contains(result.Message, "my record adopt") {
 		t.Fatalf("message = %q, want file name and adopt remediation", result.Message)
@@ -100,8 +106,127 @@ func TestRunAutoHoldsWorkspaceRoleEvenWhenContentIsAdopted(t *testing.T) {
 	if result.Status != "held back" || !strings.Contains(result.Message, "content mounts") {
 		t.Fatalf("result = %#v, want workspace role held", result)
 	}
+	if result.ReasonCode != "auto_non_content" || result.NextCommand != "my sync --publish direct --print" {
+		t.Fatalf("result = %#v, want auto_non_content with direct-print next command", result)
+	}
 	if log := gitOut(t, content, "log", "--oneline", "--all"); strings.Contains(log, "Add meeting note") {
 		t.Fatalf("workspace-role change was committed despite auto hold:\n%s", log)
+	}
+}
+
+func TestRunAutoHoldNextCommandsForPolicyAndContentScope(t *testing.T) {
+	t.Run("not content-only", func(t *testing.T) {
+		remote, content, _ := setupTwoCheckoutRemote(t)
+		writeFile(t, filepath.Join(content, "scratch", "local.txt"), "local\n")
+
+		report := Run([]Entry{
+			{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
+		}, Options{
+			Publish:    "auto",
+			Message:    "Add local file",
+			Visibility: privateVisibility,
+		})
+
+		result := findResult(t, report, "handbook")
+		if result.Status != "held back" || result.ReasonCode != "not_content_only" {
+			t.Fatalf("result = %#v, want not_content_only hold", result)
+		}
+		if result.NextCommand != "my doctor" {
+			t.Fatalf("next command = %q, want my doctor", result.NextCommand)
+		}
+	})
+
+	t.Run("privacy unconfirmed", func(t *testing.T) {
+		remote, content, _ := setupTwoCheckoutRemote(t)
+		writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
+		adoptFile(t, content, "meetings/2026-06-08-sync.md")
+
+		report := Run([]Entry{
+			{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
+		}, Options{
+			Publish: "auto",
+			Message: "Add meeting note",
+		})
+
+		result := findResult(t, report, "handbook")
+		if result.Status != "held back" || result.ReasonCode != "privacy_unconfirmed" {
+			t.Fatalf("result = %#v, want privacy_unconfirmed hold", result)
+		}
+		if result.NextCommand != "my doctor" {
+			t.Fatalf("next command = %q, want my doctor (must not steer toward the gate-bypassing direct publish)", result.NextCommand)
+		}
+	})
+}
+
+func TestRunHoldsDirtyBehindCheckoutWithBaseFirstNextCommand(t *testing.T) {
+	remote, content, writer := setupTwoCheckoutRemote(t)
+	writeFile(t, filepath.Join(writer, "meetings", "2026-06-08-remote.md"), "remote\n")
+	runGit(t, writer, "add", ".")
+	runGit(t, writer, "commit", "-q", "-m", "remote meeting")
+	runGit(t, writer, "push", "-q", "origin", "HEAD:master")
+	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-local.md"), "local\n")
+	adoptFile(t, content, "meetings/2026-06-08-local.md")
+
+	report := Run([]Entry{
+		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
+	}, Options{
+		Publish:    "auto",
+		Message:    "Add local meeting",
+		Visibility: privateVisibility,
+	})
+
+	result := findResult(t, report, "handbook")
+	if result.Status != "held back" || result.ReasonCode != "dirty_behind" {
+		t.Fatalf("result = %#v, want dirty_behind hold", result)
+	}
+	wantNext := "git -C " + shellArg(content) + " status --short"
+	if result.NextCommand != wantNext {
+		t.Fatalf("next command = %q, want %q", result.NextCommand, wantNext)
+	}
+	for _, want := range []string{
+		"remote has new commits and checkout has uncommitted files",
+		"commit, stash, or discard local files",
+		"then run my sync",
+	} {
+		if !strings.Contains(result.Message, want) {
+			t.Fatalf("message = %q, want substring %q", result.Message, want)
+		}
+	}
+}
+
+func TestRunHoldsDivergedCheckoutWithDoctorNextCommand(t *testing.T) {
+	remote, content, writer := setupTwoCheckoutRemote(t)
+	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-local.md"), "local\n")
+	runGit(t, content, "add", ".")
+	runGit(t, content, "commit", "-q", "-m", "local meeting")
+	writeFile(t, filepath.Join(writer, "meetings", "2026-06-08-remote.md"), "remote\n")
+	runGit(t, writer, "add", ".")
+	runGit(t, writer, "commit", "-q", "-m", "remote meeting")
+	runGit(t, writer, "push", "-q", "origin", "HEAD:master")
+
+	report := Run([]Entry{
+		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
+	}, Options{
+		Publish:    "auto",
+		Message:    "Add local meeting",
+		Visibility: privateVisibility,
+	})
+
+	result := findResult(t, report, "handbook")
+	if result.Status != "held back" || result.ReasonCode != "diverged" {
+		t.Fatalf("result = %#v, want diverged hold", result)
+	}
+	if result.NextCommand != "my doctor" {
+		t.Fatalf("next command = %q, want my doctor", result.NextCommand)
+	}
+	for _, want := range []string{
+		"local and remote both have commits",
+		"ahead 1, behind 1",
+		"reconcile divergent history",
+	} {
+		if !strings.Contains(result.Message, want) {
+			t.Fatalf("message = %q, want substring %q", result.Message, want)
+		}
 	}
 }
 
@@ -152,6 +277,42 @@ func TestRunReportsLocalOnlyRepoWithoutOrigin(t *testing.T) {
 	if !strings.Contains(result.Message, "no origin remote") {
 		t.Fatalf("message = %q, want no-origin explanation", result.Message)
 	}
+}
+
+func TestRunHeldBackReasonCodesForInspectHolds(t *testing.T) {
+	t.Run("not cloned", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "missing")
+		report := Run([]Entry{
+			{ID: "handbook", Role: "content", Kind: "handbook", GitURL: "https://github.com/acme/handbook.git", LocalPath: missing},
+		}, Options{Publish: "auto"})
+
+		result := findResult(t, report, "handbook")
+		if result.Status != "held back" || result.ReasonCode != "not_cloned" {
+			t.Fatalf("result = %#v, want not_cloned hold", result)
+		}
+		if result.NextCommand != "my setup" {
+			t.Fatalf("next command = %q, want my setup", result.NextCommand)
+		}
+	})
+
+	t.Run("detached head", func(t *testing.T) {
+		remote, content, _ := setupTwoCheckoutRemote(t)
+		runGit(t, content, "checkout", "-q", "--detach")
+		report := Run([]Entry{
+			{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
+		}, Options{
+			Publish:    "auto",
+			Visibility: privateVisibility,
+		})
+
+		result := findResult(t, report, "handbook")
+		if result.Status != "held back" || result.ReasonCode != "detached_head" {
+			t.Fatalf("result = %#v, want detached_head hold", result)
+		}
+		if result.NextCommand != "my doctor" {
+			t.Fatalf("next command = %q, want my doctor", result.NextCommand)
+		}
+	})
 }
 
 func TestRunGnitDryRunPlansApprovedContentThroughGnit(t *testing.T) {
@@ -224,6 +385,44 @@ func TestRunGnitPublishesWithWorkspaceRelativePathsAndCommit(t *testing.T) {
 	}
 }
 
+func TestRunGnitStagesApprovedRootsForRenames(t *testing.T) {
+	remote, gnitRoot, content, _ := setupGnitWorkspaceWithDuplicateRemote(t)
+	writeFile(t, filepath.Join(content, "meetings", "old.md"), "old\n")
+	runGit(t, content, "add", "meetings/old.md")
+	runGit(t, content, "commit", "-q", "-m", "seed old meeting")
+	runGit(t, content, "push", "-q", "origin", "HEAD:master")
+	runGit(t, content, "mv", "meetings/old.md", "meetings/new.md")
+	var calls []string
+
+	report := Run([]Entry{
+		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
+	}, Options{
+		Backend:    "gnit",
+		GnitRoot:   gnitRoot,
+		Publish:    "auto",
+		Message:    "Rename meeting note",
+		Visibility: privateVisibility,
+		DirRunner: func(dir, name string, args ...string) ([]byte, error) {
+			calls = append(calls, dir+" "+name+" "+strings.Join(args, " "))
+			return []byte("ok\n"), nil
+		},
+	})
+
+	result := findResult(t, report, "handbook")
+	if result.Status != "pushed" {
+		t.Fatalf("result = %#v, want pushed", result)
+	}
+	if len(calls) == 0 {
+		t.Fatalf("calls = %#v, want gnit add call", calls)
+	}
+	if !strings.Contains(calls[0], " gnit add handbook/meetings") {
+		t.Fatalf("add call = %q, want approved root staging for rename", calls[0])
+	}
+	if strings.Contains(calls[0], "handbook/meetings/new.md") || strings.Contains(calls[0], "handbook/meetings/old.md") {
+		t.Fatalf("add call = %q, want root staging instead of individual rename paths", calls[0])
+	}
+}
+
 func TestRunGnitDirectHoldsDirtyNonContent(t *testing.T) {
 	remote, content, _ := setupTwoCheckoutRemote(t)
 	gnitRoot := filepath.Dir(content)
@@ -243,6 +442,12 @@ func TestRunGnitDirectHoldsDirtyNonContent(t *testing.T) {
 	if result.Status != "held back" || !strings.Contains(result.Message, "dirty changes are outside declared content paths") {
 		t.Fatalf("result = %#v, want dirty non-content hold", result)
 	}
+	if result.ReasonCode != "outside_content_paths" {
+		t.Fatalf("reason code = %q, want outside_content_paths", result.ReasonCode)
+	}
+	if result.NextCommand != "my doctor" {
+		t.Fatalf("next command = %q, want my doctor", result.NextCommand)
+	}
 }
 
 func TestRunGnitHoldsWhenWorkspaceIsNotInitialized(t *testing.T) {
@@ -256,6 +461,37 @@ func TestRunGnitHoldsWhenWorkspaceIsNotInitialized(t *testing.T) {
 	result := findResult(t, report, "handbook")
 	if result.Status != "held back" || !strings.Contains(result.Message, "not a Gnit control workspace") {
 		t.Fatalf("result = %#v, want held back", result)
+	}
+	if result.ReasonCode != "gnit_not_control_workspace" {
+		t.Fatalf("reason code = %q, want gnit_not_control_workspace", result.ReasonCode)
+	}
+	if result.NextCommand != "my sync --backend builtin --push --print" {
+		t.Fatalf("next command = %q, want built-in sync dry-run", result.NextCommand)
+	}
+}
+
+func TestRunGnitHoldsCheckoutOutsideWorkspaceWithNextCommand(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	gnitRoot := filepath.Join(t.TempDir(), "umbrella")
+	writeFile(t, filepath.Join(gnitRoot, ".gnit", "roster.yaml"), "version: 1\nmode: shared\nmembers:\n- id: handbook\n  path: handbook\n")
+	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
+	adoptFile(t, content, "meetings/2026-06-08-sync.md")
+
+	report := Run([]Entry{
+		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
+	}, Options{
+		Backend:    "gnit",
+		GnitRoot:   gnitRoot,
+		Publish:    "auto",
+		Visibility: privateVisibility,
+	})
+
+	result := findResult(t, report, "handbook")
+	if result.Status != "held back" || result.ReasonCode != "outside_gnit_workspace" {
+		t.Fatalf("result = %#v, want outside_gnit_workspace hold", result)
+	}
+	if result.NextCommand != "my doctor" {
+		t.Fatalf("next command = %q, want my doctor", result.NextCommand)
 	}
 }
 
@@ -338,6 +574,47 @@ func TestRunGnitPullsCleanBehindRepo(t *testing.T) {
 	}
 	if got := gitOut(t, content, "rev-parse", "HEAD"); got != gitOut(t, writer, "rev-parse", "HEAD") {
 		t.Fatalf("content did not fast-forward: content %s writer %s", got, gitOut(t, writer, "rev-parse", "HEAD"))
+	}
+}
+
+func TestRunGnitHoldsDivergedCheckoutWithDoctorNextCommand(t *testing.T) {
+	remote, gnitRoot, content, writer := setupGnitWorkspaceWithDuplicateRemote(t)
+	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-local.md"), "local\n")
+	runGit(t, content, "add", ".")
+	runGit(t, content, "commit", "-q", "-m", "local meeting")
+	writeFile(t, filepath.Join(writer, "meetings", "2026-06-08-remote.md"), "remote\n")
+	runGit(t, writer, "add", ".")
+	runGit(t, writer, "commit", "-q", "-m", "remote meeting")
+	runGit(t, writer, "push", "-q", "origin", "HEAD:master")
+
+	report := Run([]Entry{
+		{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}},
+	}, Options{
+		Backend:    "gnit",
+		GnitRoot:   gnitRoot,
+		Publish:    "auto",
+		Visibility: privateVisibility,
+	})
+
+	result := findResult(t, report, "handbook")
+	if result.Status != "held back" || result.ReasonCode != "diverged" {
+		t.Fatalf("result = %#v, want diverged hold", result)
+	}
+	if result.NextCommand != "my doctor" {
+		t.Fatalf("next command = %q, want my doctor", result.NextCommand)
+	}
+}
+
+func TestFastForwardHeldBackCarriesNextCommand(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	writeFile(t, filepath.Join(content, "meetings", "local.md"), "local\n")
+
+	result := FastForward(Entry{ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote, LocalPath: content}, FastForwardOptions{})
+	if result.Status != "held back" || result.ReasonCode != "not_fast_forward" {
+		t.Fatalf("result = %#v, want not_fast_forward hold", result)
+	}
+	if result.NextCommand != "my doctor" {
+		t.Fatalf("next command = %q, want my doctor", result.NextCommand)
 	}
 }
 

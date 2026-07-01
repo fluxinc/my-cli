@@ -143,6 +143,57 @@ func TestWorkStartSessionGuidanceIncludesConcreteContextAndContract(t *testing.T
 	}
 }
 
+func TestActiveSessionForPathExplainsFinishedSession(t *testing.T) {
+	root := t.TempDir()
+	sessionPath := filepath.Join(root, worksession.WorkDirName, "2026-06-18-example-7426")
+	if err := os.MkdirAll(filepath.Join(sessionPath, "scratch"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := worksession.Save(root, worksession.Session{
+		ID:     "2026-06-18-example-7426",
+		Status: worksession.StatusFinished,
+		Path:   sessionPath,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, ok, err := activeSessionForPath(root, filepath.Join(sessionPath, "scratch"))
+	if !ok || err == nil {
+		t.Fatalf("activeSessionForPath ok=%v err=%v, want inactive-session error", ok, err)
+	}
+	for _, want := range []string{
+		"finished session 2026-06-18-example-7426",
+		"cd " + root,
+		"my session status --all",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("err = %q, want %q", err.Error(), want)
+		}
+	}
+}
+
+func TestActiveSessionForPathExplainsUnregisteredSessionDirectory(t *testing.T) {
+	root := t.TempDir()
+	sessionPath := filepath.Join(root, worksession.WorkDirName, "2026-06-18-orphan-7426")
+	if err := os.MkdirAll(filepath.Join(sessionPath, "scratch"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, ok, err := activeSessionForPath(root, filepath.Join(sessionPath, "scratch"))
+	if !ok || err == nil {
+		t.Fatalf("activeSessionForPath ok=%v err=%v, want orphan-session error", ok, err)
+	}
+	for _, want := range []string{
+		"unregistered session directory 2026-06-18-orphan-7426",
+		"cd " + root,
+		"my doctor",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("err = %q, want %q", err.Error(), want)
+		}
+	}
+}
+
 func TestWorkStartHumanOutputIncludesSessionFinishCommand(t *testing.T) {
 	home, _ := setupCLIRecordWorkspace(t)
 	var stdout, stderr bytes.Buffer

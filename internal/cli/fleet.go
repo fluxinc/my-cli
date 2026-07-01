@@ -224,7 +224,7 @@ func (a app) runFleetAdd(args []string) error {
 	if len(roots) != 1 {
 		return fmt.Errorf("fleet add requires exactly one workspace; pass --manifest and --workspace")
 	}
-	customer := a.resolveCustomerForWrite(opts.home, opts.manifestName, opts.umbrellaRoot, opts.customer)
+	customer := a.resolveCustomerForWrite(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot, opts.customer)
 	rec, content, err := fleet.Add(roots[0], rest[0], fleet.AddOptions{
 		Customer:     customer,
 		Partner:      opts.partner,
@@ -247,6 +247,7 @@ func (a app) runFleetAdd(args []string) error {
 		if err := markRecordIntentToAdd(roots[0], rec.Path); err != nil {
 			return err
 		}
+		warnRecordOutsidePublishPaths(a.stderr, roots[0], rec.Path)
 	}
 	if opts.jsonOut {
 		return printJSON(a.stdout, struct {

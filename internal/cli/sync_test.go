@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"flag"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,11 +12,32 @@ import (
 	"testing"
 
 	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/syncer"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 	"github.com/fluxinc/my-cli/internal/workspace"
 )
 
-func TestSyncContentPathsIncludesSupport(t *testing.T) {
+func TestSyncHelpMentionsManifestControlPublishPath(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "sync", "--help"}); err != nil && !errors.Is(err, flag.ErrHelp) {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"my publish --manifest NAME",
+		"my sync --publish direct --scope manifest",
+		"Unrelated dirty non-content files are still held",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("sync help stderr = %q, missing %q", stderr.String(), want)
+		}
+	}
+	if stdout.String() != "" {
+		t.Fatalf("sync help stdout = %q, want stderr-only usage", stdout.String())
+	}
+}
+
+func TestSyncContentPathsIncludesRecordDefaults(t *testing.T) {
 	tests := []struct {
 		name  string
 		entry workspace.Entry
@@ -23,12 +46,17 @@ func TestSyncContentPathsIncludesSupport(t *testing.T) {
 		{
 			name:  "handbook default",
 			entry: workspace.Entry{Kind: "handbook"},
-			want:  []string{"meetings", "support", "decisions", "projects", "policy", "people"},
+			want:  []string{"customers", "meetings", "support", "fleet", "decisions", "projects", "policy", "people"},
 		},
 		{
 			name:  "support default",
 			entry: workspace.Entry{Kind: "support"},
 			want:  []string{"support"},
+		},
+		{
+			name:  "customers default",
+			entry: workspace.Entry{Kind: "customers"},
+			want:  []string{"customers"},
 		},
 		{
 			name:  "fleet default",
@@ -48,6 +76,242 @@ func TestSyncContentPathsIncludesSupport(t *testing.T) {
 				t.Fatalf("syncContentPaths() = %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+func setupCLISyncContentMount(t *testing.T, name string) (home, umbrellaRoot, mountPath, remote, writer string) {
+	t.Helper()
+	root := t.TempDir()
+	remote, clone, writer := setupCLIRemoteRepo(t, root, name, map[string]string{
+		"README.md": "seed\n",
+	})
+	home, umbrellaRoot, _, _, _ = setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": "`+remote+`", "mode": "required" }
+  ]
+}`)
+	mountPath = filepath.Join(umbrellaRoot, "handbook")
+	if err := os.MkdirAll(umbrellaRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(clone, mountPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, state, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	} else {
+		state = umbrella.UpsertMount(state, umbrella.MountStatus{
+			ID:        "handbook",
+			Kind:      "handbook",
+			SourceRef: "manifest:acme:handbook",
+			Status:    "synced",
+		})
+		if err := umbrella.SaveState(umbrellaRoot, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return home, umbrellaRoot, mountPath, remote, writer
+}
+
+func TestSyncDirectPublishesFleetFromHandbookDefault(t *testing.T) {
+	root := t.TempDir()
+	remote, clone, _ := setupCLIRemoteRepo(t, root, "handbook", map[string]string{
+		"README.md": "seed\n",
+	})
+	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": "`+remote+`", "mode": "required" }
+  ]
+}`)
+	mountPath := filepath.Join(umbrellaRoot, "handbook")
+	if err := os.MkdirAll(umbrellaRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(clone, mountPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, state, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	} else {
+		state = umbrella.UpsertMount(state, umbrella.MountStatus{
+			ID:        "handbook",
+			Kind:      "handbook",
+			SourceRef: "manifest:acme:handbook",
+			Status:    "synced",
+		})
+		if err := umbrella.SaveState(umbrellaRoot, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeCLITestFile(t, filepath.Join(mountPath, "fleet", "example-device-4.md"), "fleet\n")
+	runCLIGit(t, mountPath, "add", "-N", "fleet/example-device-4.md")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--publish", "direct",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+		"--json",
+	}); err != nil {
+		t.Fatalf("sync --publish direct: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"status": "pushed"`) {
+		t.Fatalf("sync --publish direct stdout = %q, want direct push", stdout.String())
+	}
+	if got := strings.TrimSpace(gitCLIOutput(t, remote, "show", "master:fleet/example-device-4.md")); got != "fleet" {
+		t.Fatalf("remote fleet/example-device-4.md = %q", got)
+	}
+}
+
+func TestSyncDirectPublishesCustomerFromHandbookDefault(t *testing.T) {
+	root := t.TempDir()
+	remote, clone, _ := setupCLIRemoteRepo(t, root, "handbook", map[string]string{
+		"README.md": "seed\n",
+	})
+	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": "`+remote+`", "mode": "required" }
+  ]
+}`)
+	mountPath := filepath.Join(umbrellaRoot, "handbook")
+	if err := os.MkdirAll(umbrellaRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(clone, mountPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, state, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	} else {
+		state = umbrella.UpsertMount(state, umbrella.MountStatus{
+			ID:        "handbook",
+			Kind:      "handbook",
+			SourceRef: "manifest:acme:handbook",
+			Status:    "synced",
+		})
+		if err := umbrella.SaveState(umbrellaRoot, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "customers", "add", "sampleco.example.com",
+		"--manifest", "acme",
+		"--workspace", "handbook",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+		"--name", "SampleCo",
+	}); err != nil {
+		t.Fatalf("customers add: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stderr.String(), "outside declared publish paths") {
+		t.Fatalf("customers add stderr = %q, want no publish-path warning", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--publish", "direct",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+		"--json",
+	}); err != nil {
+		t.Fatalf("sync --publish direct: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"status": "pushed"`) {
+		t.Fatalf("sync --publish direct stdout = %q, want direct push", stdout.String())
+	}
+	if got := gitCLIOutput(t, remote, "show", "master:customers/sampleco.example.com.md"); !strings.Contains(got, "name: SampleCo") {
+		t.Fatalf("remote customer record = %q", got)
+	}
+}
+
+func TestSyncDirectPublishesCustomerFromCustomersDefault(t *testing.T) {
+	root := t.TempDir()
+	remote, clone, _ := setupCLIRemoteRepo(t, root, "customers", map[string]string{
+		"README.md": "seed\n",
+	})
+	home, umbrellaRoot, _, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "customers", "kind": "customers", "git_url": "`+remote+`", "mode": "required" }
+  ]
+}`)
+	mountPath := filepath.Join(umbrellaRoot, "customers")
+	if err := os.MkdirAll(umbrellaRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(clone, mountPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, state, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	} else {
+		state = umbrella.UpsertMount(state, umbrella.MountStatus{
+			ID:        "customers",
+			Kind:      "customers",
+			SourceRef: "manifest:acme:customers",
+			Status:    "synced",
+		})
+		if err := umbrella.SaveState(umbrellaRoot, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "customers", "add", "sampleco.example.com",
+		"--manifest", "acme",
+		"--workspace", "customers",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+		"--name", "SampleCo",
+	}); err != nil {
+		t.Fatalf("customers add: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stderr.String(), "outside declared publish paths") {
+		t.Fatalf("customers add stderr = %q, want no publish-path warning", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--publish", "direct",
+		"--manifest", "acme",
+		"--home", home,
+		"--umbrella", umbrellaRoot,
+		"--json",
+	}); err != nil {
+		t.Fatalf("sync --publish direct: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"status": "pushed"`) {
+		t.Fatalf("sync --publish direct stdout = %q, want direct push", stdout.String())
+	}
+	if got := gitCLIOutput(t, remote, "show", "master:customers/sampleco.example.com.md"); !strings.Contains(got, "name: SampleCo") {
+		t.Fatalf("remote customer record = %q", got)
 	}
 }
 
@@ -83,14 +347,268 @@ func TestSyncHoldsManifestWithLocalMountURL(t *testing.T) {
 		t.Fatalf("sync: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
 	out := stdout.String()
-	for _, want := range []string{"manifest\theld back", "local mount URL", "run my publish --manifest acme"} {
+	for _, want := range []string{"manifest\theld back", "local mount URL", "run my publish --manifest acme", "next=my publish --manifest acme"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("sync stdout = %q, missing %q", out, want)
 		}
 	}
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--publish", "direct",
+		"--scope", "manifest",
+		"--manifest", "acme",
+		"--home", home,
+		"--json",
+	}); err != nil {
+		t.Fatalf("sync json: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"reason_code": "local_mount_urls"`) {
+		t.Fatalf("sync json stdout = %q, want local_mount_urls reason_code", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"next_command": "my publish --manifest acme"`) {
+		t.Fatalf("sync json stdout = %q, want local mount next_command", stdout.String())
+	}
 	remoteHead := strings.TrimSpace(gitCLIOutput(t, manifestRepo, "rev-parse", "origin/master"))
 	if remoteHead == localHead {
 		t.Fatalf("sync pushed manifest despite local mount URL guard")
+	}
+}
+
+func TestSyncPushHoldsManifestControlChangesInAutoMode(t *testing.T) {
+	home, _, manifestCache, remote, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "products.json"), `[
+  { "id": "demo", "name": "Demo", "description": "Demo product" }
+]
+`)
+	commitAndPushCLIGit(t, manifestCache, "Seed product catalog")
+	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "products.json"), `[
+  { "id": "demo", "name": "Demo", "description": "Updated demo product" }
+]
+`)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--push",
+		"--scope", "manifest",
+		"--manifest", "acme",
+		"--home", home,
+		"--json",
+	}); err != nil {
+		t.Fatalf("sync --push: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{`"role": "manifest"`, `"status": "held back"`, `"reason_code": "auto_non_content"`, `"next_command": "my publish --manifest acme"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("sync --push stdout = %q, missing %q", out, want)
+		}
+	}
+	if got := gitCLIOutput(t, remote, "show", "master:catalog/products.json"); strings.Contains(got, "Updated demo product") {
+		t.Fatalf("sync --push updated remote catalog in auto mode: %q", got)
+	}
+}
+
+func TestSyncDirectPublishesManifestControlChanges(t *testing.T) {
+	home, _, manifestCache, remote, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "products.json"), `[
+  { "id": "demo", "name": "Demo", "description": "Demo product" }
+]
+`)
+	commitAndPushCLIGit(t, manifestCache, "Seed product catalog")
+	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "products.json"), `[
+  { "id": "demo", "name": "Demo", "description": "Updated demo product" }
+]
+`)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--publish", "direct",
+		"--scope", "manifest",
+		"--manifest", "acme",
+		"--home", home,
+		"--json",
+	}); err != nil {
+		t.Fatalf("sync --publish direct: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{`"role": "manifest"`, `"status": "pushed"`, `"direction": "outbound"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("sync --publish direct stdout = %q, missing %q", out, want)
+		}
+	}
+	if got := gitCLIOutput(t, remote, "show", "master:catalog/products.json"); !strings.Contains(got, "Updated demo product") {
+		t.Fatalf("remote catalog = %q, want published update", got)
+	}
+}
+
+func TestSyncDirectPublishesUntrackedManifestControlChanges(t *testing.T) {
+	home, _, manifestCache, remote, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "products.json"), `[
+  { "id": "demo", "name": "Demo", "description": "Demo product" }
+]
+`)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--publish", "direct",
+		"--scope", "manifest",
+		"--manifest", "acme",
+		"--home", home,
+		"--json",
+	}); err != nil {
+		t.Fatalf("sync --publish direct: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{`"role": "manifest"`, `"status": "pushed"`, `"direction": "outbound"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("sync --publish direct stdout = %q, missing %q", out, want)
+		}
+	}
+	if got := gitCLIOutput(t, remote, "show", "master:catalog/products.json"); !strings.Contains(got, "Demo product") {
+		t.Fatalf("remote catalog = %q, want published new catalog", got)
+	}
+}
+
+func TestSyncDirectPublishesManifestControlRename(t *testing.T) {
+	home, _, manifestCache, remote, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "catalog", "old.json"), `{
+  "id": "old",
+  "description": "Old catalog entry"
+}
+`)
+	commitAndPushCLIGit(t, manifestCache, "Seed old catalog entry")
+	runCLIGit(t, manifestCache, "mv", "catalog/old.json", "catalog/new.json")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--publish", "direct",
+		"--scope", "manifest",
+		"--manifest", "acme",
+		"--home", home,
+		"--json",
+	}); err != nil {
+		t.Fatalf("sync --publish direct: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{`"role": "manifest"`, `"status": "pushed"`, `"direction": "outbound"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("sync --publish direct stdout = %q, missing %q", out, want)
+		}
+	}
+	if got := gitCLIOutput(t, remote, "show", "master:catalog/new.json"); !strings.Contains(got, "Old catalog entry") {
+		t.Fatalf("remote renamed catalog = %q, want published rename", got)
+	}
+	cmd := exec.Command("git", "-C", remote, "cat-file", "-e", "master:catalog/old.json")
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("remote still has old catalog path after rename\n%s", out)
+	}
+	if status := gitCLIOutput(t, manifestCache, "status", "--short"); strings.TrimSpace(status) != "" {
+		t.Fatalf("manifest checkout dirty after sync direct rename:\n%s", status)
+	}
+}
+
+func TestSyncDirectHoldsManifestRenameFromOutsideControlPaths(t *testing.T) {
+	home, _, manifestCache, remote, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "README.md"), "seed readme\n")
+	commitAndPushCLIGit(t, manifestCache, "Seed manifest readme")
+	if err := os.MkdirAll(filepath.Join(manifestCache, "catalog"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runCLIGit(t, manifestCache, "mv", "README.md", "catalog/readme.md")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--publish", "direct",
+		"--scope", "manifest",
+		"--manifest", "acme",
+		"--home", home,
+		"--json",
+	}); err != nil {
+		t.Fatalf("sync --publish direct: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{`"role": "manifest"`, `"status": "held back"`, `"reason_code": "outside_content_paths"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("sync --publish direct stdout = %q, missing %q", out, want)
+		}
+	}
+	if got := gitCLIOutput(t, remote, "show", "master:README.md"); !strings.Contains(got, "seed readme") {
+		t.Fatalf("remote README = %q, want original file preserved", got)
+	}
+	cmd := exec.Command("git", "-C", remote, "cat-file", "-e", "master:catalog/readme.md")
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("sync --publish direct pushed cross-boundary rename\n%s", out)
+	}
+}
+
+func TestSyncDirectHoldsManifestFilesOutsideControlPaths(t *testing.T) {
+	home, _, manifestCache, remote, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" }
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "README.md"), "seed\n")
+	commitAndPushCLIGit(t, manifestCache, "Seed manifest readme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "README.md"), "local scratch\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "sync",
+		"--backend", "builtin",
+		"--publish", "direct",
+		"--scope", "manifest",
+		"--manifest", "acme",
+		"--home", home,
+		"--json",
+	}); err != nil {
+		t.Fatalf("sync --publish direct: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{`"role": "manifest"`, `"status": "held back"`, `"reason_code": "outside_content_paths"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("sync --publish direct stdout = %q, missing %q", out, want)
+		}
+	}
+	if got := gitCLIOutput(t, remote, "show", "master:README.md"); strings.Contains(got, "local scratch") {
+		t.Fatalf("sync --publish direct pushed README outside manifest control paths: %q", got)
 	}
 }
 
@@ -251,6 +769,105 @@ func TestSyncBareDefaultPullOnlyAndExplicitPublish(t *testing.T) {
 	if got := strings.TrimSpace(gitCLIOutput(t, remote, "show", "master:meetings/publish.md")); got != "publish" {
 		t.Fatalf("remote publish.md = %q", got)
 	}
+}
+
+func TestSyncReportsDirtyBehindAndDivergedNextCommands(t *testing.T) {
+	t.Run("dirty behind text and JSON", func(t *testing.T) {
+		home, umbrellaRoot, mountPath, _, writer := setupCLISyncContentMount(t, "dirty-behind")
+		writeCLITestFile(t, filepath.Join(writer, "meetings", "remote.md"), "remote\n")
+		commitAndPushCLIGit(t, writer, "remote meeting")
+		writeCLITestFile(t, filepath.Join(mountPath, "meetings", "local.md"), "local\n")
+		runCLIGit(t, mountPath, "add", "-N", "meetings/local.md")
+
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		if err := a.run([]string{
+			"my", "sync",
+			"--backend", "builtin",
+			"--publish", "direct",
+			"--manifest", "acme",
+			"--home", home,
+			"--umbrella", umbrellaRoot,
+		}); err != nil {
+			t.Fatalf("sync dirty-behind: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+		}
+		wantNext := "next=git -C " + shellQuote(mountPath) + " status --short"
+		for _, want := range []string{"remote has new commits and checkout has uncommitted files", wantNext} {
+			if !strings.Contains(stdout.String(), want) {
+				t.Fatalf("sync stdout = %q, missing %q", stdout.String(), want)
+			}
+		}
+
+		stdout.Reset()
+		stderr.Reset()
+		if err := a.run([]string{
+			"my", "sync",
+			"--backend", "builtin",
+			"--publish", "direct",
+			"--manifest", "acme",
+			"--home", home,
+			"--umbrella", umbrellaRoot,
+			"--json",
+		}); err != nil {
+			t.Fatalf("sync dirty-behind json: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+		}
+		var report syncCommandReport
+		if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+			t.Fatalf("decode sync JSON: %v\n%s", err, stdout.String())
+		}
+		result := syncResultByID(t, report, "handbook")
+		if result.ReasonCode != "dirty_behind" {
+			t.Fatalf("reason code = %q, want dirty_behind; result=%#v", result.ReasonCode, result)
+		}
+		wantCommand := "git -C " + shellQuote(mountPath) + " status --short"
+		if result.NextCommand != wantCommand {
+			t.Fatalf("next command = %q, want %q", result.NextCommand, wantCommand)
+		}
+	})
+
+	t.Run("diverged JSON", func(t *testing.T) {
+		home, umbrellaRoot, mountPath, _, writer := setupCLISyncContentMount(t, "diverged")
+		writeCLITestFile(t, filepath.Join(mountPath, "meetings", "local.md"), "local\n")
+		commitCLIGit(t, mountPath, "local meeting")
+		writeCLITestFile(t, filepath.Join(writer, "meetings", "remote.md"), "remote\n")
+		commitAndPushCLIGit(t, writer, "remote meeting")
+
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr}
+		if err := a.run([]string{
+			"my", "sync",
+			"--backend", "builtin",
+			"--publish", "direct",
+			"--manifest", "acme",
+			"--home", home,
+			"--umbrella", umbrellaRoot,
+			"--json",
+		}); err != nil {
+			t.Fatalf("sync diverged json: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+		}
+		var report syncCommandReport
+		if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+			t.Fatalf("decode sync JSON: %v\n%s", err, stdout.String())
+		}
+		result := syncResultByID(t, report, "handbook")
+		if result.ReasonCode != "diverged" {
+			t.Fatalf("reason code = %q, want diverged; result=%#v", result.ReasonCode, result)
+		}
+		if result.NextCommand != "my doctor" {
+			t.Fatalf("next command = %q, want my doctor", result.NextCommand)
+		}
+	})
+}
+
+func syncResultByID(t *testing.T, report syncCommandReport, id string) syncer.Result {
+	t.Helper()
+	for _, result := range report.Results {
+		if result.ID == id {
+			return result
+		}
+	}
+	t.Fatalf("missing sync result %q in %#v", id, report.Results)
+	return syncer.Result{}
 }
 
 func TestSyncEmitsSeparateManifestAndContentEntries(t *testing.T) {

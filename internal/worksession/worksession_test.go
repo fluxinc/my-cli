@@ -445,6 +445,43 @@ func TestLandCommitsDirtyContentMergesAndMarksFinished(t *testing.T) {
 	if loaded.Status != StatusFinished || loaded.Outcome != OutcomeLanded {
 		t.Fatalf("registry session = %#v", loaded)
 	}
+	agents := readFile(t, filepath.Join(session.Path, "AGENTS.md"))
+	for _, want := range []string{
+		"Finished Work Session " + session.ID,
+		"This My AI session is finished",
+		"- Outcome: landed",
+		"- Umbrella root: " + root,
+		"cd " + root,
+		"my session status --all",
+	} {
+		if !strings.Contains(agents, want) {
+			t.Fatalf("closed AGENTS.md missing %q:\n%s", want, agents)
+		}
+	}
+	if strings.Contains(agents, "my session join") || strings.Contains(agents, "my session finish") {
+		t.Fatalf("closed AGENTS.md still contains active-session commands:\n%s", agents)
+	}
+	if got := readFile(t, filepath.Join(session.Path, "CLAUDE.md")); got != agents {
+		t.Fatalf("CLAUDE.md does not match closed AGENTS.md")
+	}
+
+	published, err := MarkOutcome(root, session.ID, OutcomePublished, time.Date(2026, 6, 11, 3, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if published.Outcome != OutcomePublished {
+		t.Fatalf("published session = %#v", published)
+	}
+	agents = readFile(t, filepath.Join(session.Path, "AGENTS.md"))
+	if !strings.Contains(agents, "- Outcome: published") {
+		t.Fatalf("closed AGENTS.md did not update outcome after publish:\n%s", agents)
+	}
+	if err := os.RemoveAll(session.Path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MarkOutcome(root, session.ID, OutcomePublished, time.Date(2026, 6, 11, 4, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("MarkOutcome with missing session directory: %v", err)
+	}
 }
 
 func TestLandHoldsUnadoptedUntrackedContent(t *testing.T) {

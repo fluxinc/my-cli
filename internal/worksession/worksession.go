@@ -421,6 +421,67 @@ func writeSessionGuidance(session Session, guidance GuidanceContext) error {
 	return nil
 }
 
+func writeClosedSessionGuidance(root string, session Session) error {
+	if session.Path == "" {
+		return nil
+	}
+	if _, err := os.Stat(session.Path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Finished Work Session %s\n\n", session.ID)
+	b.WriteString("This My AI session is finished. Do not keep working from this directory.\n\n")
+	b.WriteString("## Session Context\n\n")
+	fmt.Fprintf(&b, "- Session id: %s\n", session.ID)
+	if session.Status != "" {
+		fmt.Fprintf(&b, "- Status: %s\n", session.Status)
+	}
+	if session.Outcome != "" {
+		fmt.Fprintf(&b, "- Outcome: %s\n", session.Outcome)
+	}
+	if session.FinishedAt != "" {
+		fmt.Fprintf(&b, "- Finished: %s\n", session.FinishedAt)
+	}
+	if root != "" {
+		fmt.Fprintf(&b, "- Umbrella root: %s\n", root)
+	}
+	b.WriteString("\nReturn to the umbrella root before launching another harness or doing more work:\n\n")
+	b.WriteString("```sh\n")
+	if root != "" {
+		fmt.Fprintf(&b, "cd %s\n", shellQuote(root))
+	}
+	b.WriteString("my session status --all\n")
+	b.WriteString("```\n")
+	content := []byte(b.String())
+	agentsPath := filepath.Join(session.Path, "AGENTS.md")
+	if err := os.WriteFile(agentsPath, content, 0o644); err != nil {
+		return err
+	}
+	claudePath := filepath.Join(session.Path, "CLAUDE.md")
+	_ = os.Remove(claudePath)
+	if err := os.Symlink("AGENTS.md", claudePath); err != nil {
+		return os.WriteFile(claudePath, content, 0o644)
+	}
+	return nil
+}
+
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			strings.ContainsRune("_+-./:=@", r) {
+			continue
+		}
+		return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+	}
+	return value
+}
+
 func shortHead(head string) string {
 	if len(head) > 12 {
 		return head[:12]
@@ -852,6 +913,9 @@ func Land(opts LandOptions) (FinishResult, error) {
 	if err := Save(opts.Root, session); err != nil {
 		return result, err
 	}
+	if err := writeClosedSessionGuidance(opts.Root, session); err != nil {
+		return result, err
+	}
 	result.Session = session
 	return result, nil
 }
@@ -923,6 +987,9 @@ func MarkOutcome(root, id, outcome string, now time.Time) (Session, error) {
 		session.FinishedAt = finishTime(now)
 	}
 	if err := Save(root, session); err != nil {
+		return Session{}, err
+	}
+	if err := writeClosedSessionGuidance(root, session); err != nil {
 		return Session{}, err
 	}
 	return session, nil
@@ -1150,7 +1217,7 @@ func contentPathsForMount(mount Mount) []string {
 	}
 	switch mount.Kind {
 	case "handbook":
-		return []string{"meetings", "support", "decisions", "projects", "policy", "people"}
+		return []string{"customers", "meetings", "support", "fleet", "decisions", "projects", "policy", "people"}
 	case "meetings":
 		return []string{"meetings"}
 	case "support":

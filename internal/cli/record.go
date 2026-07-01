@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -136,6 +137,32 @@ func (a app) collectAdoptEntries(home, manifestName, umbrellaRoot string) ([]syn
 
 func markRecordIntentToAdd(root record.Root, path string) error {
 	return gitIntentToAdd(root.Path, path, false)
+}
+
+func warnRecordOutsidePublishPaths(w io.Writer, root record.Root, path string) {
+	if w == nil || len(root.ContentPaths) == 0 {
+		return
+	}
+	rel, ok := relativePathUnder(root.Path, path)
+	if !ok {
+		return
+	}
+	rel = filepath.ToSlash(rel)
+	if pathsWithinContent([]string{rel}, root.ContentPaths) {
+		return
+	}
+	dir := strings.Trim(strings.Split(rel, "/")[0], "/")
+	if dir == "" || dir == "." {
+		dir = rel
+	}
+	fmt.Fprintf(
+		w,
+		"warning: record %s is outside declared publish paths for mount %s (%s); my sync --push will hold it until that mount's include_paths contains %q or the file moves under a declared path\n",
+		rel,
+		root.Workspace,
+		strings.Join(root.ContentPaths, ", "),
+		dir,
+	)
 }
 
 func gitIntentToAdd(repo, path string, requireGit bool) error {
