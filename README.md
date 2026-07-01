@@ -489,11 +489,11 @@ rationale.
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
-- **Active — dogfood ergonomics audit.** A reviewed two-agent audit of real
-  operator transcripts has produced small self-healing CLI fixes: clearer
+- **Shipped (v0.35.0) — dogfood ergonomics audit.** A reviewed two-agent audit
+  of real operator transcripts produced small self-healing CLI fixes: clearer
   held-back sync reasons, publish-path warnings, session dead-end recovery,
   manifest control-plane publish paths, customer-record creation, and duplicate
-  guidance dedupe. The implementation is awaiting operator decision. Plan:
+  guidance dedupe. Plan:
   [my-cli footgun audit](docs/plans/2026-06-30-mycli-footgun-audit.md).
 - **Shipped — control/data-plane split (v0.13.x).** A private manifest repo
   (the control plane) separate from workspace content repos (the data plane);

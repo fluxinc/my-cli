@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.35.0 - 2026-07-01
+
+### Added
+
+- `my publish --manifest NAME` is the deliberate control-plane publish path: it
+  commits and pushes dirty manifest/catalog control files (`manifest.json`,
+  `catalog/`, `skills/`, `guidance/`, `agent-guidance/`), ending the
+  permanently-dirty manifest checkout without routing the control plane through
+  content auto-publish. The low-level form is
+  `my sync --publish direct --scope manifest`; dirty files outside the
+  control-plane paths still hold.
+- `my customers add <domain|slug>` scaffolds a mounted `customers/<id>.md`
+  record (`--name`, `--domain`, `--domain-confirmed`, repeatable `--alias` and
+  `--partner`); "unknown customer" warnings now point at it instead of keeping a
+  literal slug.
+- Held-back `my sync` results carry a stable `reason_code` and, where
+  actionable, a `next_command` (both surfaced by `my doctor`), including a real
+  first recovery step for dirty-behind and diverged mounts.
+
+### Changed
+
+- Handbook mounts default `customers/` and `fleet/` into their publish paths,
+  and record writes warn at creation time when the new file lands outside the
+  mount's declared publish paths, so records no longer sit unpublished silently.
+- Duplicate role/global guidance is de-duplicated in generated guidance and the
+  launch projection.
+
+### Fixed
+
+- `my sync`'s active-session hold no longer bounces you toward
+  `my session finish --land` when the base checkout is dirty (which
+  `requireBaseReady` would refuse): it now names the dirty base files and tells
+  you to resolve them first.
+- Finished or migrated sessions replace their local `AGENTS.md`/`CLAUDE.md` with
+  a finished-session stub and surface concrete stale/inactive-session
+  diagnostics, so a shell left inside a landed session no longer dead-ends on
+  stale `my work` guidance.
+
 ## 0.34.0 - 2026-06-22
 
 ### Added
