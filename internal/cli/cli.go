@@ -175,6 +175,8 @@ func (a app) run(args []string) error {
 		return a.runAccess(args[2:])
 	case "policy":
 		return a.runPolicy(args[2:])
+	case "governance":
+		return a.runGovernance(args[2:])
 	case "meetings":
 		return a.runMeetings(args[2:])
 	case "support":
@@ -294,6 +296,7 @@ Usage:
   my access status [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my access monitor install|uninstall|run [--manifest NAME] [--home DIR] [--umbrella DIR]
   my policy list|show|status|accept [ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my governance check --repo DIR --repository OWNER/REPO --base REF --head REF --manifest-repo DIR --manifest-base REF --mount ID|@manifest --actor-id ID --actor-login LOGIN [--json]
   my version`)
 }
 
