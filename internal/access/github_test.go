@@ -78,6 +78,46 @@ func TestResolveGitHubClassifiesAmbiguousAndCredentialFailures(t *testing.T) {
 	}
 }
 
+func TestResolveGitHubKnownTreatsRenameAsAllowedByImmutableID(t *testing.T) {
+	var calls []string
+	decision := ResolveGitHubKnown("example/old-name", Repository{ID: 29, NodeID: "R_repo", FullName: "example/old-name"}, func(name string, args ...string) ([]byte, error) {
+		joined := strings.Join(args, " ")
+		calls = append(calls, joined)
+		switch joined {
+		case "api user":
+			return []byte(`{"id":17,"node_id":"U_actor","login":"operator"}`), nil
+		case "api -i repos/example/old-name":
+			return githubResponse(404, "X-OAuth-Scopes: repo\n", `{"message":"Not Found"}`), errors.New("exit 1")
+		case "api -i repositories/29":
+			return githubResponse(200, "", `{"id":29,"node_id":"R_repo","full_name":"example/new-name","private":true,"permissions":{"pull":true}}`), nil
+		default:
+			return nil, fmt.Errorf("unexpected call %s", joined)
+		}
+	})
+	if !decision.Allows(PermissionRead) || decision.Repository.FullName != "example/new-name" || decision.Repository.NodeID != "R_repo" {
+		t.Fatalf("decision = %#v", decision)
+	}
+	if len(calls) != 3 {
+		t.Fatalf("calls = %#v", calls)
+	}
+}
+
+func TestResolveGitHubKnownRequiresRepeatedEvidenceOnlyAfterImmutableIDAlsoDisappears(t *testing.T) {
+	decision := ResolveGitHubKnown("example/old-name", Repository{ID: 29, NodeID: "R_repo"}, func(name string, args ...string) ([]byte, error) {
+		switch strings.Join(args, " ") {
+		case "api user":
+			return []byte(`{"id":17,"node_id":"U_actor","login":"operator"}`), nil
+		case "api -i repos/example/old-name", "api -i repositories/29":
+			return githubResponse(404, "X-OAuth-Scopes: repo\n", `{"message":"Not Found"}`), errors.New("exit 1")
+		default:
+			return nil, fmt.Errorf("unexpected call")
+		}
+	})
+	if decision.State != StateDenied || decision.ReasonCode != "known_repository_not_found" {
+		t.Fatalf("decision = %#v", decision)
+	}
+}
+
 func TestRequireReportsInsufficientPermission(t *testing.T) {
 	decision := Decision{
 		State:      StateAllowed,

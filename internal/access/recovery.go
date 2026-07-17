@@ -228,6 +228,23 @@ func VerifyRecoveryCapsule(capsuleDir string) error {
 	return nil
 }
 
+// VerifyQuarantinedCheckout compares a moved checkout with the exact
+// working-tree inventory recorded before the move.
+func VerifyQuarantinedCheckout(capsuleDir, checkout string) error {
+	capsule, err := loadRecoveryCapsule(capsuleDir)
+	if err != nil {
+		return err
+	}
+	actual, err := workingTreeInventory(checkout)
+	if err != nil {
+		return err
+	}
+	if !equalRecoveredFiles(capsule.Inventory, actual) {
+		return fmt.Errorf("quarantined checkout does not match recorded byte inventory")
+	}
+	return nil
+}
+
 func loadRecoveryCapsule(dir string) (RecoveryCapsule, error) {
 	if _, err := os.Stat(filepath.Join(dir, "INCOMPLETE")); err == nil {
 		return RecoveryCapsule{}, fmt.Errorf("recovery capsule is marked incomplete")

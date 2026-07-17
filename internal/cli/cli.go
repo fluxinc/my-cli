@@ -283,6 +283,8 @@ Usage:
   my contract list [--manifest NAME] [--json]
   my doctor [--no-fetch] [--fix] [--json]
   my access check --dry-run [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my access activate --yes [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my access enforce [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my version`)
 }
 

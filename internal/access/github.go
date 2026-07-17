@@ -152,6 +152,45 @@ func ResolveGitHub(repository string, runner Runner) Decision {
 		return decision
 	}
 
+	return repositoryDecision(actor, status, body)
+}
+
+// ResolveGitHubKnown retries a name-based 404 through the immutable numeric
+// repository id from a positive baseline. This prevents a rename or transfer
+// from being misclassified as revocation merely because the old name stopped
+// resolving.
+func ResolveGitHubKnown(repository string, known Repository, runner Runner) Decision {
+	decision := ResolveGitHub(repository, runner)
+	if decision.State != StateDenied || decision.ReasonCode != "repository_not_found" || known.ID == 0 || known.NodeID == "" {
+		return decision
+	}
+	if runner == nil {
+		runner = execCommand
+	}
+	out, callErr := runner("gh", "api", "-i", "repositories/"+strconv.FormatInt(known.ID, 10))
+	status, headers, body := parseHTTPResponse(out)
+	if callErr != nil || (status != 0 && status != http.StatusOK) {
+		resolved := classifyRepositoryFailure(status, headers, body, callErr)
+		resolved.Actor = decision.Actor
+		resolved.HTTPStatus = status
+		if resolved.State == StateDenied {
+			resolved.ReasonCode = "known_repository_not_found"
+			resolved.Message = "the immutable repository id is no longer visible to the authenticated actor"
+		}
+		return resolved
+	}
+	resolved := repositoryDecision(decision.Actor, status, body)
+	if resolved.Repository.NodeID != "" && resolved.Repository.NodeID != known.NodeID {
+		return Decision{
+			State: StateUnknown, ReasonCode: "repository_identity_mismatch",
+			Message: "GitHub returned a different immutable repository identity for the cached numeric id",
+			Actor:   decision.Actor, HTTPStatus: status,
+		}
+	}
+	return resolved
+}
+
+func repositoryDecision(actor Actor, status int, body []byte) Decision {
 	var payload struct {
 		ID          int64  `json:"id"`
 		NodeID      string `json:"node_id"`
@@ -174,15 +213,12 @@ func ResolveGitHub(repository string, runner Runner) Decision {
 		permission = PermissionAdmin
 	case payload.Permissions.Maintain || payload.Permissions.Push:
 		permission = PermissionWrite
-	case payload.Permissions.Triage || payload.Permissions.Pull:
+	case payload.Permissions.Triage || payload.Permissions.Pull || !payload.Private:
 		permission = PermissionRead
 	}
 	repositoryResult := Repository{
-		ID:         payload.ID,
-		NodeID:     payload.NodeID,
-		FullName:   payload.FullName,
-		Private:    payload.Private,
-		Permission: permission,
+		ID: payload.ID, NodeID: payload.NodeID, FullName: payload.FullName,
+		Private: payload.Private, Permission: permission,
 	}
 	if permission == PermissionNone {
 		return Decision{State: StateDenied, ReasonCode: "permission_denied", Message: "authenticated actor has no repository permission", Actor: actor, Repository: repositoryResult, HTTPStatus: status}

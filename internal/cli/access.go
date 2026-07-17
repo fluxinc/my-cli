@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/fluxinc/my-cli/internal/access"
 	"github.com/fluxinc/my-cli/internal/manifest"
@@ -30,6 +32,8 @@ type accessTargetReport struct {
 	Decision         access.Decision `json:"decision"`
 	PositiveBaseline bool            `json:"positive_baseline"`
 	FutureAction     string          `json:"future_action"`
+	JournalPath      string          `json:"journal_path,omitempty"`
+	Error            string          `json:"error,omitempty"`
 }
 
 type accessTarget struct {
@@ -39,6 +43,8 @@ type accessTarget struct {
 	Kind         string
 	Repository   string
 	Path         string
+	AllowedRoot  string
+	Umbrella     string
 }
 
 func (a app) runAccess(args []string) error {
@@ -48,6 +54,10 @@ func (a app) runAccess(args []string) error {
 	switch args[0] {
 	case "check":
 		return a.runAccessCheck(args[1:])
+	case "activate":
+		return a.runAccessActivate(args[1:])
+	case "enforce":
+		return a.runAccessEnforce(args[1:])
 	case "-h", "--help", "help":
 		a.printAccessUsage()
 		return nil
@@ -59,9 +69,14 @@ func (a app) runAccess(args []string) error {
 func (a app) printAccessUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
   my access check --dry-run [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+	my access activate --yes [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+	my access enforce [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
 
 The dry run performs live provider checks and prints future block/quarantine
-eligibility. It never writes baselines, inventory, workspace state, or files.`)
+eligibility. It never writes baselines, inventory, workspace state, or files.
+Activation records positive per-repository baselines only after every mounted
+target passes a live check. Enforcement persists observations and atomically
+quarantines only confirmed revocations.`)
 }
 
 func (a app) runAccessCheck(args []string) error {
@@ -106,7 +121,7 @@ func (a app) runAccessCheck(args []string) error {
 	}
 	report := accessCheckReport{DryRun: true, Writes: false}
 	for _, target := range targets {
-		decision := access.ResolveGitHub(target.Repository, a.accessRunner)
+		decision := resolveAccessTarget(target, inventory, a.accessRunner)
 		mounted := pathExists(target.Path)
 		baseline := hasPositiveBaseline(inventory, target.Path, decision)
 		future := "none"
@@ -137,6 +152,233 @@ func (a app) runAccessCheck(args []string) error {
 	return nil
 }
 
+func (a app) runAccessActivate(args []string) error {
+	home, manifestName, umbrellaRoot, jsonOut, yes, err := parseAccessMutationFlags("my access activate", a.stderr, args, true)
+	if err != nil {
+		return err
+	}
+	if !yes {
+		return fmt.Errorf("access activation requires --yes after reviewing `my access check --dry-run`")
+	}
+	manifestName, err = defaultManifestName(home, manifestName, umbrellaRoot)
+	if err != nil {
+		return err
+	}
+	doc, err := loadSingleRegisteredDoc(home, manifestName)
+	if err != nil {
+		return err
+	}
+	targets, err := collectAccessTargets(home, doc, umbrellaRoot)
+	if err != nil {
+		return err
+	}
+	inventory, err := access.LoadInventory(home)
+	if err != nil {
+		return err
+	}
+	type checkedTarget struct {
+		target   accessTarget
+		decision access.Decision
+	}
+	var checked []checkedTarget
+	report := accessCheckReport{Writes: true}
+	for _, target := range targets {
+		mounted := pathExists(target.Path)
+		if !mounted {
+			report.Targets = append(report.Targets, accessTargetReport{
+				Manifest: target.Manifest, Organization: target.Organization, SourceRef: target.SourceRef,
+				Kind: target.Kind, Repository: target.Repository, Path: target.Path,
+				Mounted: false, FutureAction: "not-mounted-no-baseline",
+			})
+			continue
+		}
+		decision := resolveAccessTarget(target, inventory, a.accessRunner)
+		if !decision.Allows(access.PermissionRead) {
+			return fmt.Errorf("activation made no changes: %s is not positively readable (%s)", target.Repository, decision.ReasonCode)
+		}
+		checked = append(checked, checkedTarget{target: target, decision: decision})
+		report.Targets = append(report.Targets, accessTargetReport{
+			Manifest: target.Manifest, Organization: target.Organization, SourceRef: target.SourceRef,
+			Kind: target.Kind, Repository: target.Repository, Path: target.Path, Mounted: true,
+			Decision: decision, PositiveBaseline: true, FutureAction: "positive-baseline-recorded",
+		})
+	}
+	inputs := make([]access.RecordInput, 0, len(checked))
+	for _, item := range checked {
+		inputs = append(inputs, access.RecordInput{
+			Home: home, Path: item.target.Path, AllowedRoot: item.target.AllowedRoot,
+			Organization: item.target.Organization, Manifest: item.target.Manifest,
+			Umbrella: item.target.Umbrella, SourceRef: item.target.SourceRef,
+			Kind: item.target.Kind, Decision: item.decision, CheckedAt: time.Now(),
+		})
+	}
+	if len(inputs) != 0 {
+		if _, err := access.RecordPositiveBatch(inputs); err != nil {
+			return err
+		}
+	}
+	if jsonOut {
+		return printJSON(a.stdout, report)
+	}
+	for _, target := range report.Targets {
+		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\n", target.Kind, target.Repository, target.FutureAction, target.Path)
+	}
+	return nil
+}
+
+func (a app) runAccessEnforce(args []string) error {
+	home, manifestName, umbrellaRoot, jsonOut, _, err := parseAccessMutationFlags("my access enforce", a.stderr, args, false)
+	if err != nil {
+		return err
+	}
+	manifestName, err = defaultManifestName(home, manifestName, umbrellaRoot)
+	if err != nil {
+		return err
+	}
+	doc, err := loadSingleRegisteredDoc(home, manifestName)
+	if err != nil {
+		return err
+	}
+	confirmations, interval, err := accessRevocationPolicy(doc.doc.Governance.Access)
+	if err != nil {
+		return err
+	}
+	targets, err := collectAccessTargets(home, doc, umbrellaRoot)
+	if err != nil {
+		return err
+	}
+	report := accessCheckReport{Writes: true}
+	var enforcementErrors []string
+	for _, target := range targets {
+		mounted := pathExists(target.Path)
+		inventory, loadErr := access.LoadInventory(home)
+		if loadErr != nil {
+			return loadErr
+		}
+		decision := resolveAccessTarget(target, inventory, a.accessRunner)
+		baseline := hasPositiveBaseline(inventory, target.Path, decision)
+		action := "not-mounted"
+		journalPath := ""
+		targetError := ""
+		if mounted {
+			switch {
+			case !baseline:
+				action = "blocked-activation-required"
+			case decision.Actor.ID == 0:
+				action = "blocked-identity-unknown"
+			default:
+				observation, observeErr := access.RecordObservation(access.ObservationInput{
+					Home: home, Path: target.Path, Decision: decision, CheckedAt: time.Now(),
+					RequiredConfirmations: confirmations, ConfirmationInterval: interval,
+				})
+				if observeErr != nil {
+					return observeErr
+				}
+				switch {
+				case observation.CleanupEligible:
+					quarantined, quarantineErr := access.QuarantineConfirmed(access.QuarantineInput{
+						Home: home, Path: target.Path, ActorID: decision.Actor.ID, Now: time.Now(),
+					})
+					if quarantineErr != nil {
+						action = "blocked-quarantine-failed"
+						journalPath = quarantined.JournalPath
+						targetError = quarantineErr.Error()
+						enforcementErrors = append(enforcementErrors, target.Repository+": "+quarantineErr.Error())
+					} else {
+						action = "quarantined"
+						journalPath = quarantined.JournalPath
+					}
+				case decision.State == access.StateAllowed:
+					action = "keep-mounted"
+				case decision.State == access.StateDenied:
+					action = "blocked-revocation-pending"
+				default:
+					action = "blocked-while-unknown"
+				}
+			}
+		}
+		report.Targets = append(report.Targets, accessTargetReport{
+			Manifest: target.Manifest, Organization: target.Organization, SourceRef: target.SourceRef,
+			Kind: target.Kind, Repository: target.Repository, Path: target.Path, Mounted: mounted,
+			Decision: decision, PositiveBaseline: baseline, FutureAction: action, JournalPath: journalPath,
+			Error: targetError,
+		})
+	}
+	if jsonOut {
+		if err := printJSON(a.stdout, report); err != nil {
+			return err
+		}
+	} else {
+		for _, target := range report.Targets {
+			fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\n", target.Kind, target.Repository, target.FutureAction, target.Path)
+		}
+	}
+	if len(enforcementErrors) != 0 {
+		return fmt.Errorf("one or more confirmed revocations could not be quarantined: %s", strings.Join(enforcementErrors, "; "))
+	}
+	return nil
+}
+
+func parseAccessMutationFlags(name string, stderr interface{ Write([]byte) (int, error) }, args []string, includeYes bool) (string, string, string, bool, bool, error) {
+	var home, manifestName, umbrellaRoot string
+	var jsonOut, yes bool
+	fs := newFlagSet(name, stderr)
+	fs.StringVar(&home, "home", "", "override home directory")
+	fs.StringVar(&manifestName, "manifest", "", "limit to one registered manifest")
+	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	if includeYes {
+		fs.BoolVar(&yes, "yes", false, "record live positive baselines")
+	}
+	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true, "manifest": true, "umbrella": true})
+	if err != nil {
+		return "", "", "", false, false, err
+	}
+	if len(rest) != 0 {
+		return "", "", "", false, false, fmt.Errorf("%s does not accept positional arguments", name)
+	}
+	return home, manifestName, umbrellaRoot, jsonOut, yes, nil
+}
+
+func accessRevocationPolicy(config manifest.GovernanceAccess) (int, time.Duration, error) {
+	confirmations := config.RevocationConfirmations
+	if confirmations == 0 {
+		confirmations = 2
+	}
+	interval := 15 * time.Minute
+	if strings.TrimSpace(config.ConfirmationInterval) != "" {
+		parsed, err := time.ParseDuration(config.ConfirmationInterval)
+		if err != nil {
+			return 0, 0, err
+		}
+		interval = parsed
+	}
+	return confirmations, interval, nil
+}
+
+func resolveAccessTarget(target accessTarget, inventory access.Inventory, runner access.Runner) access.Decision {
+	if entry, ok := managedInventoryEntry(inventory, target.Path); ok {
+		return access.ResolveGitHubKnown(target.Repository, entry.Repository, runner)
+	}
+	return access.ResolveGitHub(target.Repository, runner)
+}
+
+func managedInventoryEntry(inventory access.Inventory, targetPath string) (access.ManagedRepository, bool) {
+	abs, err := filepath.Abs(targetPath)
+	if err != nil {
+		return access.ManagedRepository{}, false
+	}
+	if real, evalErr := filepath.EvalSymlinks(abs); evalErr == nil {
+		abs = real
+	}
+	for _, entry := range inventory.Repositories {
+		if entry.CanonicalPath == abs {
+			return entry, true
+		}
+	}
+	return access.ManagedRepository{}, false
+}
+
 func collectAccessTargets(home string, doc registeredDoc, explicitRoot string) ([]accessTarget, error) {
 	controlRepository := doc.ref.GitURL
 	if manifest.GovernanceConfigured(doc.doc.Governance) {
@@ -145,6 +387,7 @@ func collectAccessTargets(home string, doc registeredDoc, explicitRoot string) (
 	targets := []accessTarget{{
 		Manifest: doc.ref.Name, Organization: doc.doc.Organization.ID, SourceRef: "manifest:" + doc.ref.Name,
 		Kind: "manifest", Repository: controlRepository, Path: doc.ref.LocalPath,
+		AllowedRoot: filepath.Dir(doc.ref.LocalPath),
 	}}
 	root, err := umbrella.ResolveRoot(home, "", explicitRoot, doc.doc)
 	if err != nil {
@@ -161,6 +404,7 @@ func collectAccessTargets(home string, doc registeredDoc, explicitRoot string) (
 		targets = append(targets, accessTarget{
 			Manifest: doc.ref.Name, Organization: doc.doc.Organization.ID, SourceRef: mount.SourceRef,
 			Kind: mount.Kind, Repository: mount.GitURL, Path: mount.LocalPath,
+			AllowedRoot: root, Umbrella: root,
 		})
 	}
 	state, stateErr := umbrella.LoadState(root)
@@ -179,6 +423,7 @@ func collectAccessTargets(home string, doc registeredDoc, explicitRoot string) (
 			targets = append(targets, accessTarget{
 				Manifest: doc.ref.Name, Organization: doc.doc.Organization.ID, SourceRef: "manifest:" + doc.ref.Name + ":repo:" + id,
 				Kind: "repo", Repository: repo.GitURL, Path: umbrella.RepoPath(root, id),
+				AllowedRoot: root, Umbrella: root,
 			})
 		}
 	} else if !errors.Is(stateErr, os.ErrNotExist) {

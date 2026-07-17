@@ -16,14 +16,41 @@ const inventorySchemaVersion = 1
 type Inventory struct {
 	SchemaVersion int                 `json:"schema_version"`
 	Repositories  []ManagedRepository `json:"repositories"`
+	Quarantines   []QuarantineRecord  `json:"quarantines,omitempty"`
+}
+
+type QuarantineRecord struct {
+	JournalPath      string             `json:"journal_path"`
+	Repository       Repository         `json:"repository"`
+	Actor            Actor              `json:"actor"`
+	ReasonCode       string             `json:"reason_code"`
+	QuarantinedAt    string             `json:"quarantined_at"`
+	Sources          []QuarantineSource `json:"sources"`
+	PurgeEligible    bool               `json:"purge_eligible"`
+	RetentionReasons []string           `json:"retention_reasons"`
 }
 
 type ManagedRepository struct {
-	CanonicalPath string             `json:"canonical_path"`
-	AllowedRoot   string             `json:"allowed_root"`
-	Repository    Repository         `json:"repository"`
-	References    []ManagedReference `json:"references"`
-	Baselines     []PositiveBaseline `json:"positive_baselines"`
+	CanonicalPath string               `json:"canonical_path"`
+	AllowedRoot   string               `json:"allowed_root"`
+	Repository    Repository           `json:"repository"`
+	References    []ManagedReference   `json:"references"`
+	Baselines     []PositiveBaseline   `json:"positive_baselines"`
+	Revocations   []RevocationProgress `json:"revocations,omitempty"`
+}
+
+// RevocationProgress is machine-local evidence for one immutable actor and
+// managed repository. Unknown observations break a denial sequence but can
+// never advance it.
+type RevocationProgress struct {
+	Actor              Actor  `json:"actor"`
+	LastState          State  `json:"last_state"`
+	ReasonCode         string `json:"reason_code,omitempty"`
+	ConsecutiveDenials int    `json:"consecutive_denials"`
+	FirstDeniedAt      string `json:"first_denied_at,omitempty"`
+	LastQualifyingAt   string `json:"last_qualifying_at,omitempty"`
+	LastCheckedAt      string `json:"last_checked_at"`
+	ConfirmedAt        string `json:"confirmed_at,omitempty"`
 }
 
 type ManagedReference struct {
@@ -89,25 +116,73 @@ func LoadInventory(home string) (Inventory, error) {
 // positively identified both the actor and repository with at least read
 // permission.
 func RecordPositive(input RecordInput) (ManagedRepository, error) {
-	if !input.Decision.Allows(PermissionRead) || input.Decision.Actor.ID == 0 || input.Decision.Repository.NodeID == "" {
-		return ManagedRepository{}, fmt.Errorf("managed repository inventory requires a positive provider decision")
-	}
-	canonicalPath, canonicalRoot, err := canonicalManagedPath(input.Path, input.AllowedRoot)
+	entries, err := RecordPositiveBatch([]RecordInput{input})
 	if err != nil {
 		return ManagedRepository{}, err
 	}
+	return entries[0], nil
+}
+
+// RecordPositiveBatch validates every provider decision and path binding in
+// memory, then commits the inventory once. A failure cannot leave a subset of
+// an activation persisted.
+func RecordPositiveBatch(inputs []RecordInput) ([]ManagedRepository, error) {
+	if len(inputs) == 0 {
+		return nil, fmt.Errorf("positive baseline batch is empty")
+	}
+	home := inputs[0].Home
+	inventory, err := LoadInventory(home)
+	if err != nil {
+		return nil, err
+	}
+	canonicalPaths := make([]string, 0, len(inputs))
+	for _, input := range inputs {
+		if input.Home != home {
+			return nil, fmt.Errorf("positive baseline batch must use one home directory")
+		}
+		canonicalPath, err := applyPositiveInput(&inventory, input)
+		if err != nil {
+			return nil, err
+		}
+		canonicalPaths = append(canonicalPaths, canonicalPath)
+	}
+	sortInventory(&inventory)
+	if err := saveInventory(home, inventory); err != nil {
+		return nil, err
+	}
+	result := make([]ManagedRepository, 0, len(canonicalPaths))
+	for _, canonicalPath := range canonicalPaths {
+		found := false
+		for _, saved := range inventory.Repositories {
+			if saved.CanonicalPath == canonicalPath {
+				result = append(result, saved)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("recorded managed repository disappeared from inventory")
+		}
+	}
+	return result, nil
+}
+
+func applyPositiveInput(inventory *Inventory, input RecordInput) (string, error) {
+	if !input.Decision.Allows(PermissionRead) || input.Decision.Actor.ID == 0 || input.Decision.Repository.NodeID == "" {
+		return "", fmt.Errorf("managed repository inventory requires a positive provider decision")
+	}
+	canonicalPath, canonicalRoot, err := canonicalManagedPath(input.Path, input.AllowedRoot)
+	if err != nil {
+		return "", err
+	}
 	if input.Organization == "" || input.Manifest == "" || input.SourceRef == "" || input.Kind == "" {
-		return ManagedRepository{}, fmt.Errorf("managed repository reference requires organization, manifest, source_ref, and kind")
+		return "", fmt.Errorf("managed repository reference requires organization, manifest, source_ref, and kind")
 	}
 	checkedAt := input.CheckedAt.UTC()
 	if checkedAt.IsZero() {
 		checkedAt = time.Now().UTC()
 	}
 
-	inventory, err := LoadInventory(input.Home)
-	if err != nil {
-		return ManagedRepository{}, err
-	}
 	index := -1
 	for i := range inventory.Repositories {
 		if inventory.Repositories[i].CanonicalPath == canonicalPath {
@@ -125,10 +200,10 @@ func RecordPositive(input RecordInput) (ManagedRepository, error) {
 	}
 	entry := &inventory.Repositories[index]
 	if entry.Repository.NodeID != "" && entry.Repository.NodeID != input.Decision.Repository.NodeID {
-		return ManagedRepository{}, fmt.Errorf("managed path %s was positively bound to repository %s and cannot be repointed to %s", canonicalPath, entry.Repository.NodeID, input.Decision.Repository.NodeID)
+		return "", fmt.Errorf("managed path %s was positively bound to repository %s and cannot be repointed to %s", canonicalPath, entry.Repository.NodeID, input.Decision.Repository.NodeID)
 	}
 	if entry.AllowedRoot != canonicalRoot {
-		return ManagedRepository{}, fmt.Errorf("managed path %s changed allowed root from %s to %s", canonicalPath, entry.AllowedRoot, canonicalRoot)
+		return "", fmt.Errorf("managed path %s changed allowed root from %s to %s", canonicalPath, entry.AllowedRoot, canonicalRoot)
 	}
 	entry.Repository = input.Decision.Repository
 	reference := ManagedReference{
@@ -144,16 +219,7 @@ func RecordPositive(input RecordInput) (ManagedRepository, error) {
 		Permission: input.Decision.Repository.Permission,
 		CheckedAt:  checkedAt.Format(time.RFC3339Nano),
 	})
-	sortInventory(&inventory)
-	if err := saveInventory(input.Home, inventory); err != nil {
-		return ManagedRepository{}, err
-	}
-	for _, saved := range inventory.Repositories {
-		if saved.CanonicalPath == canonicalPath {
-			return saved, nil
-		}
-	}
-	return ManagedRepository{}, fmt.Errorf("recorded managed repository disappeared from inventory")
+	return canonicalPath, nil
 }
 
 func canonicalManagedPath(target, allowedRoot string) (string, string, error) {
@@ -219,9 +285,15 @@ func sortInventory(inventory *Inventory) {
 		sort.Slice(inventory.Repositories[i].Baselines, func(a, b int) bool {
 			return inventory.Repositories[i].Baselines[a].Actor.ID < inventory.Repositories[i].Baselines[b].Actor.ID
 		})
+		sort.Slice(inventory.Repositories[i].Revocations, func(a, b int) bool {
+			return inventory.Repositories[i].Revocations[a].Actor.ID < inventory.Repositories[i].Revocations[b].Actor.ID
+		})
 	}
 	sort.Slice(inventory.Repositories, func(i, j int) bool {
 		return inventory.Repositories[i].CanonicalPath < inventory.Repositories[j].CanonicalPath
+	})
+	sort.Slice(inventory.Quarantines, func(i, j int) bool {
+		return inventory.Quarantines[i].JournalPath < inventory.Quarantines[j].JournalPath
 	})
 }
 

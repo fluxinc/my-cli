@@ -109,6 +109,38 @@ func TestRecordPositiveRefusesRepositoryRepoint(t *testing.T) {
 	}
 }
 
+func TestRecordPositiveBatchDoesNotPersistPartialActivation(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "umbrella")
+	valid := filepath.Join(root, "repos", "valid")
+	outside := filepath.Join(home, "outside")
+	if err := os.MkdirAll(valid, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	base := RecordInput{
+		Home: home, AllowedRoot: root, Organization: "acme", Manifest: "acme",
+		SourceRef: "manifest:acme:repo:valid", Kind: "repo", Decision: positiveDecision("R_valid"),
+	}
+	invalid := base
+	invalid.Path = outside
+	invalid.SourceRef = "manifest:acme:repo:outside"
+	invalid.Decision = positiveDecision("R_outside")
+	base.Path = valid
+	if _, err := RecordPositiveBatch([]RecordInput{base, invalid}); err == nil || !strings.Contains(err.Error(), "outside allowed root") {
+		t.Fatalf("batch error = %v", err)
+	}
+	path, err := InventoryPath(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("failed batch persisted partial inventory: %v", err)
+	}
+}
+
 func positiveDecision(nodeID string) Decision {
 	return Decision{
 		State: StateAllowed,
