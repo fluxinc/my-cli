@@ -93,6 +93,57 @@ and owning umbrella. A later manifest edit cannot redirect cleanup at an
 arbitrary path. Shared checkouts carry owner references and are removed only
 when no still-authorized organization references them.
 
+### Domain routing and publication
+
+Governed organizations may opt in to manifest-declared record domains. Each
+domain maps a record kind (for example support work, customer-asset
+investigation, decision, bug report, or software change) to one existing mount
+and path, a retention rule, a required review class, and a publish rule. This
+extends the current mount model; it does not replace mounts or change
+ungoverned behavior. Domains sharing readers normally remain path scopes in one
+records repository. A separate repository is used only when readership or
+confidentiality differs.
+
+Governed automatic publication is pull-request-backed. The operator's own
+provider identity creates one batched PR per sync; the required governance
+check classifies the complete base-to-head tree diff and auto-merges routine
+additive changes when green. Domains requiring an administrator add the
+declared admin review. A shared bot must not author these PRs because that would
+launder the human identity used by policy and authorization checks. `auto` must
+never silently fall back to direct push. Existing ungoverned direct publication
+remains backward compatible.
+
+Automatic publication uses a durable local outbox. A successful record command
+first commits its canonical local record and outbox entry, then attempts the
+declared publication. Network or provider failure leaves an explicit pending
+item for the access monitor or a later CLI invocation. It does not discard the
+record or claim that it was synchronized. Additive versus mutation is always a
+tree-diff property, never inferred from the CLI verb that produced the change.
+Mixed cross-domain commits are held with split/remediation guidance. CI can
+require a linked record for governed source changes, since My AI cannot observe
+or constrain Git operations performed outside the CLI.
+
+Mounts remain independent Git repositories. GitHub repository permissions,
+rulesets, required checks, and review requirements provide authorization.
+Gnit may pin and order a multi-repository publication, but it does not grant
+rights. Git submodules are not used in staff umbrellas: they add detached-HEAD,
+nested-auth, worktree, and sparse-checkout failure modes without improving the
+provider authorization boundary. An administrative control repository may use
+submodules when its operators accept that complexity. A control workspace may
+represent mounts as Gnit dependencies when atomic coordination is useful,
+while the manifest remains the portable source of the intended graph.
+
+Administrative and staff planes are separate organizations and manifests. An
+executive-only administrative mount is never inherited merely because a staff
+manifest references the same company. Every downward-visible mount must be
+declared explicitly in the staff manifest and pass the current user's provider
+access check before it is materialized. Generated guidance and skills retain
+source provenance and may include only manifest-approved external namespaces;
+this prevents an administrator-only source from being copied into a staff
+artifact by generation. Manifest roles are UX projections, not grants. The
+governance audit compares declared role/team mappings with live repository
+permissions and reports drift across every domain repository.
+
 ## Manifest model
 
 The existing `contract: []string` remains the simplest way to append binding
@@ -264,32 +315,70 @@ depend on network latency or API rate limits. Once that TTL expires,
 `revocation-pending`, `revoked`, and `unknown` block mount use and harness
 launch. Only `revoked` removes local material.
 
+Existing umbrellas enter enforcement through `my access check --dry-run`, a
+permanent zero-write live-rights command. It resolves every managed repository
+through the provider API and prints its immutable identity, current
+authorization, exact active paths, derived session worktrees, and the future
+quarantine plan. A successful activation records a positive baseline per
+repository outside the manifest. A mount added later requires its own positive
+baseline; cleanup is forbidden for a repository that has never had one on that
+machine.
+
 On confirmed revocation, cleanup runs without a prompt even when the checkout
 is dirty. This is an explicit confidentiality invariant. Active removal is an
-atomic move into a restrictive, non-mounted quarantine when the filesystem
-allows it, followed by scheduled purge. If an atomic move is unavailable, the
-checkout is deleted in place. Quarantine preserves recoverability without
-leaving the repository mounted or usable by My AI. Cleanup:
+atomic move into a restrictive, non-mounted quarantine. If the filesystem
+cannot perform a verified lossless move, cleanup blocks use and reports an
+error; it never falls back to recursive deletion. Quarantine preserves local
+work without leaving the repository mounted or usable by My AI. Cleanup:
 
 1. resolves and validates the exact registered checkout path;
 2. refuses to follow symlinks or remove a path outside its manifest cache or
    umbrella-owned mount/repo directories;
-3. removes the checkout from its active path immediately, using quarantine or
-   recursive deletion (including a Windows read-only-attribute retry);
-4. removes its local state entry; and
-5. removes derived organization guidance, MCP configuration, and managed skill
+3. inventories branch, HEAD, upstream reachability, tracked changes, untracked
+   files, worktrees, size, and file hashes;
+4. writes and verifies a mode-0600 recovery capsule containing a binary full-
+   index working-tree patch, a Git bundle for local-only commits, an archive of
+   untracked files, metadata, and exact restore commands;
+5. round-trip verifies the recovery capsule against a pristine base, including
+   every branch, tag, stash, ignored file, and untracked file;
+6. moves the complete checkout and related session worktrees into mode-0700
+   quarantine under the owning umbrella on the same volume and verifies the
+   inventory before clearing the active path;
+7. removes its local state entry; and
+8. removes derived organization guidance, MCP configuration, and managed skill
    materializations that depended on the revoked source.
+
+Any inventory, capsule, or verification failure blocks the checkout in place
+and makes it unusable to My AI; it never authorizes byte removal. Cleanup uses a
+crash-safe intent/move/complete journal. Windows open-handle failures leave the
+same blocking marker and retry the move later. A copy-and-hash-verify fallback
+may be used across filesystems only when every byte is verified before the
+source is removed; the normal quarantine location is selected to avoid that
+case.
 
 Cleanup holds a per-umbrella single-instance lock and writes state atomically.
 It removes or invalidates session worktrees derived from the revoked mount,
 prunes the source repository's Git worktree metadata, and observes shared
 checkout reference counts before removing common material.
 
+Purge eligibility is computed and recorded in the quarantine manifest at move
+time, while positive remote evidence is still available. Scheduled purge is
+permitted only for a clean checkout whose branches, tags, stashes, and all local
+refs are provably reachable from the last positively verified remote. Dirty,
+untracked, ignored-but-present, unpushed, unverifiable, or interrupted
+quarantines are never purged automatically. `my access status` and `my doctor`
+list their age and retention reason so they cannot grow silently. Recovery
+capsules are checksummed and retained inside the quarantine because the capsule
+is itself sensitive data. This treats automatic removal as an access-path
+operation, never as authorization to discard a person's local work. A QMS-
+controlled record is purge-eligible only after its authoritative remote copy is
+positively established; quarantine must never contain the sole quality record.
+
 If access to the manifest repository itself is revoked, the CLI first snapshots
-the managed-path inventory in memory, then removes the manifest cache and every
-mount/repository derived solely from that organization. Personal scratch and
-unmanaged repositories are left alone. The umbrella is marked inaccessible so
-stale guidance cannot be launched.
+the managed-path inventory in memory, then applies the same verified quarantine
+workflow to the manifest cache and every mount/repository derived solely from
+that organization. Personal scratch and unmanaged repositories are left alone.
+The umbrella is marked inaccessible so stale guidance cannot be launched.
 
 Every automatic removal writes a local security event containing timestamp,
 organization, repository identifier, provider, actor, reason, and removed path.
@@ -402,17 +491,22 @@ replace them.
 ## Implementation slices
 
 1. Manifest types, validation, public fixture, and backward-compatible load.
-2. GitHub identity/permission resolver, managed-path inventory, fail-closed
+2. Hermetic test infrastructure: isolate home and umbrella discovery in every
+   filesystem-mutating test, and reject destructive test paths outside the
+   declared temporary root.
+3. GitHub identity/permission resolver, managed-path inventory, fail-closed
    admin authoring guard, and automatic revocation cleanup.
-3. Cross-platform access monitor installation, synchronous startup checks, and
+4. Cross-platform access monitor installation, synchronous startup checks, and
    `my access status`/doctor reporting.
-4. Policy list/show/status/accept and canonical attestation storage.
-5. Onboarding and launch acceptance gates.
-6. Working PR publish mode for governed content repositories.
-7. Protected-path diff validator integrated with sync and exposed as
+5. Policy list/show/status/accept and canonical attestation storage.
+6. Onboarding and launch acceptance gates.
+7. Working PR publish mode for governed content repositories.
+8. Manifest-declared domain routing, durable publication outbox, and additive
+   record/change linkage without changing legacy record commands.
+9. Protected-path diff validator integrated with sync and exposed as
    `my governance check` for CI.
-8. GitHub governance audit, workflow example, documentation, and self-skill.
-9. Full tests, destructive-path safety tests, threat-model review,
+10. GitHub governance audit, workflow example, documentation, and self-skill.
+11. Full tests, destructive-path safety tests, threat-model review,
    public-data scan, and release readiness.
 
 The feature is complete only when local bypass attempts and direct-Git pull
@@ -421,7 +515,7 @@ sufficient evidence of repository-level enforcement.
 
 ## Design-review dispositions
 
-The first Claude security review produced eight findings. All are incorporated:
+The first Claude security review produced nine findings. All are incorporated:
 
 - F1: CI trusts the base-ref governance document and protects the workflow.
 - F2: 404 is ambiguous; scope and SSO failures are unknown; destructive cleanup
@@ -437,3 +531,5 @@ The first Claude security review produced eight findings. All are incorporated:
 - F7: functional pull-request publishing is a prerequisite for protected
   content repositories.
 - F8: access checks use the provider API regardless of Git transport.
+- F9: filesystem-mutating tests must isolate both home and umbrella discovery;
+  destructive operations additionally require an explicit test-root guard.

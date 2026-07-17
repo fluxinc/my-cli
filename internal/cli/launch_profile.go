@@ -12,6 +12,7 @@ import (
 	"github.com/fluxinc/my-cli/internal/bundle"
 	"github.com/fluxinc/my-cli/internal/harness"
 	"github.com/fluxinc/my-cli/internal/launchprofile"
+	"github.com/fluxinc/my-cli/internal/safefs"
 	"github.com/fluxinc/my-cli/internal/skills"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 )
@@ -289,7 +290,7 @@ func removeLaunchSkill(target string, info fs.FileInfo) error {
 	if info.Mode()&os.ModeSymlink != 0 {
 		return os.Remove(target)
 	}
-	return os.RemoveAll(target)
+	return safefs.RemoveAll(target)
 }
 
 func writeLaunchManagedMarker(dir string, skill skills.Skill) error {

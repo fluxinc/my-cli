@@ -70,7 +70,12 @@ func ResolveRoot(home, cwd, explicit string, doc manifest.Document) (string, err
 		return expandPath(homeDir, explicit)
 	}
 	if found, ok := FindRoot(cwd); ok {
-		return found, nil
+		// Walk-up discovery must never redirect an explicitly loaded
+		// organization's mounts into an unrelated umbrella merely because the
+		// command was launched from beneath it.
+		if ws, loadErr := LoadWorkspace(found); loadErr == nil && ws.Organization == doc.Organization.ID {
+			return found, nil
+		}
 	}
 	if doc.Umbrella.RecommendedPath != "" {
 		return expandPath(homeDir, doc.Umbrella.RecommendedPath)

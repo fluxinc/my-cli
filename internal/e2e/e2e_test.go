@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -292,10 +293,11 @@ func isolatedPathWithGit(t *testing.T, home string) string {
 
 func repoRoot(t *testing.T) string {
 	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve e2e test source path")
 	}
+	dir := filepath.Dir(source)
 	for {
 		if data, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil && strings.Contains(string(data), "module github.com/fluxinc/my-cli") {
 			return dir

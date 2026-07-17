@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/safefs"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 	"github.com/fluxinc/my-cli/internal/workspace"
 )
@@ -728,7 +729,7 @@ func (a app) runMountRemove(args []string) error {
 		result := removeResult{Mount: id, TargetPath: target}
 		if printOnly {
 			result.Status = "dry-run"
-		} else if err := os.RemoveAll(target); err != nil {
+		} else if err := safefs.RemoveAll(target); err != nil {
 			result.Status = "failed"
 		} else {
 			result.Status = "removed"

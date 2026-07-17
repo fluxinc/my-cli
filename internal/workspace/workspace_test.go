@@ -279,6 +279,8 @@ func TestSyncMountsFiltersModes(t *testing.T) {
 
 func TestSyncMountsUsesSparseCheckoutIncludePaths(t *testing.T) {
 	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	source := filepath.Join(home, "workspace-source")
 	writeFile(t, filepath.Join(source, "meetings", ".gitkeep"), "")
 	writeFile(t, filepath.Join(source, "decisions", ".gitkeep"), "")

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fluxinc/my-cli/internal/safefs"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
@@ -258,7 +259,7 @@ func Start(opts StartOptions) (Session, error) {
 			_, _ = runner("git", "-C", m.RepoPath, "worktree", "remove", "--force", m.WorktreePath)
 			_, _ = runner("git", "-C", m.RepoPath, "branch", "-D", m.Branch)
 		}
-		_ = os.RemoveAll(sessionPath)
+		_ = safefs.RemoveAll(sessionPath)
 	}
 
 	if err := os.MkdirAll(filepath.Join(sessionPath, "scratch"), 0o755); err != nil {
@@ -959,7 +960,7 @@ func Discard(opts DiscardOptions) (FinishResult, error) {
 		}
 		result.Mounts = append(result.Mounts, mountResult)
 	}
-	if err := os.RemoveAll(session.Path); err != nil {
+	if err := safefs.RemoveAll(session.Path); err != nil {
 		return result, err
 	}
 	session.Status = StatusDiscarded

@@ -22,6 +22,30 @@ func TestResolveRootUsesManifestRecommendation(t *testing.T) {
 	}
 }
 
+func TestResolveRootIgnoresUnrelatedDiscoveredUmbrella(t *testing.T) {
+	home := t.TempDir()
+	other := filepath.Join(home, "other")
+	if _, _, err := Ensure(other, "other", "other"); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(other, "repos", "sample")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	doc := manifest.Document{
+		Organization: manifest.Organization{ID: "acme"},
+		Umbrella:     manifest.Umbrella{RecommendedPath: "~/acme"},
+	}
+	got, err := ResolveRoot(home, nested, "", doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(home, "acme")
+	if got != want {
+		t.Fatalf("ResolveRoot = %q, want unrelated umbrella ignored in favor of %q", got, want)
+	}
+}
+
 func TestEnsureWritesWorkspaceAndState(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "my")
 	ws, state, err := Ensure(root, "my", "acme")

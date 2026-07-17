@@ -17,6 +17,7 @@ import (
 
 	"github.com/fluxinc/my-cli/internal/bundle"
 	"github.com/fluxinc/my-cli/internal/harness"
+	"github.com/fluxinc/my-cli/internal/safefs"
 )
 
 type Skill struct {
@@ -743,7 +744,7 @@ func removePath(target string, info fs.FileInfo) error {
 	if info.Mode()&os.ModeSymlink != 0 {
 		return os.Remove(target)
 	}
-	return os.RemoveAll(target)
+	return safefs.RemoveAll(target)
 }
 
 // CopyDir copies a skill directory tree.

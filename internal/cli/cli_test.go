@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -25,6 +26,21 @@ func initCommitAuthor(t *testing.T, repo string) string {
 		t.Fatalf("git log: %v", err)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func isolateCLITestHome(t *testing.T, home string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+}
+
+func cliRepositoryRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve CLI test source path")
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
 }
 
 func fakeGH(t *testing.T, remotesDir string, calls *[]string) manifest.Runner {
@@ -367,6 +383,7 @@ func ensureCLIGuidance(t *testing.T, home, umbrellaRoot string) {
 func setupCLILaunchFixture(t *testing.T) (string, string) {
 	t.Helper()
 	home := t.TempDir()
+	isolateCLITestHome(t, home)
 	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,
@@ -388,6 +405,7 @@ func setupCLILaunchFixture(t *testing.T) (string, string) {
 func setupCLIRecordWorkspace(t *testing.T) (string, string) {
 	t.Helper()
 	home := t.TempDir()
+	isolateCLITestHome(t, home)
 	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	umbrellaRoot := filepath.Join(home, "acme")
 	workspaceRoot := filepath.Join(umbrellaRoot, "handbook")
@@ -444,6 +462,7 @@ func setupCLITrackedManifest(t *testing.T) (string, string, string, string) {
 func setupCLITrackedManifestBody(t *testing.T, body string) (string, string, string, string, string) {
 	t.Helper()
 	home := t.TempDir()
+	isolateCLITestHome(t, home)
 	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), body)
 	initCLIGitRepo(t, manifestCache)
@@ -599,6 +618,7 @@ Test skill.
 
 func writeRoleSetupManifest(t *testing.T, home string) string {
 	t.Helper()
+	isolateCLITestHome(t, home)
 	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
 	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
   "manifest_version": 1,

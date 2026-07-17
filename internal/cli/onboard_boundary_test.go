@@ -195,7 +195,7 @@ func TestOnboardingInteractiveDefaultExecsHarness(t *testing.T) {
 }
 
 func TestBundledOnboardingSkillUsesLearnByExampleBasics(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "skills", "my-cli", "SKILL.md"))
+	data, err := os.ReadFile(filepath.Join(cliRepositoryRoot(t), "skills", "my-cli", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

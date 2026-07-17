@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/safefs"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
@@ -169,7 +170,7 @@ func (a app) runReposRemove(args []string) error {
 	path := umbrella.RepoPath(root, id)
 	removed := false
 	if force {
-		if err := os.RemoveAll(path); err != nil {
+		if err := safefs.RemoveAll(path); err != nil {
 			return a.maybeJSONError(opts.jsonOut, err)
 		}
 		removed = true

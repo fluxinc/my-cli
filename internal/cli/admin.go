@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/safefs"
 	"github.com/fluxinc/my-cli/internal/skills"
 )
 
@@ -632,7 +633,7 @@ func (a app) adminSkillsAdd(skillDir, id, installSlug, manifestDir string, keepO
 			if !force {
 				return adminSkillResult{}, fmt.Errorf("manifest skill source %s already exists; re-run with --force to replace it", target)
 			}
-			if err := os.RemoveAll(target); err != nil {
+			if err := safefs.RemoveAll(target); err != nil {
 				return adminSkillResult{}, err
 			}
 		} else if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -650,7 +651,7 @@ func (a app) adminSkillsAdd(skillDir, id, installSlug, manifestDir string, keepO
 		if samePath(source, target) {
 			return adminSkillResult{}, fmt.Errorf("--remove-original would delete the imported manifest source")
 		}
-		if err := os.RemoveAll(source); err != nil {
+		if err := safefs.RemoveAll(source); err != nil {
 			return adminSkillResult{}, err
 		}
 		removedOriginal = true
@@ -789,7 +790,7 @@ func (a app) adminSkillsRemove(ref, manifestDir string, deleteSource, pruneRelat
 	}
 	deletedSource := false
 	if deleteSource {
-		if err := os.RemoveAll(sourcePath); err != nil {
+		if err := safefs.RemoveAll(sourcePath); err != nil {
 			return adminSkillResult{}, err
 		}
 		deletedSource = true

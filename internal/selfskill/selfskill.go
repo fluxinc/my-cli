@@ -11,6 +11,7 @@ import (
 
 	"github.com/fluxinc/my-cli/internal/bundle"
 	"github.com/fluxinc/my-cli/internal/harness"
+	"github.com/fluxinc/my-cli/internal/safefs"
 	"github.com/fluxinc/my-cli/internal/skills"
 )
 
@@ -480,7 +481,7 @@ func removePath(target string, info fs.FileInfo) error {
 	if info.Mode()&os.ModeSymlink != 0 {
 		return os.Remove(target)
 	}
-	return os.RemoveAll(target)
+	return safefs.RemoveAll(target)
 }
 
 func installOptions(opts Options, sourceRoot string) skills.InstallOpts {
