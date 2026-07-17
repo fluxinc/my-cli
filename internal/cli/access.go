@@ -16,9 +16,10 @@ import (
 )
 
 type accessCheckReport struct {
-	DryRun  bool                 `json:"dry_run"`
-	Writes  bool                 `json:"writes"`
-	Targets []accessTargetReport `json:"targets"`
+	DryRun      bool                 `json:"dry_run"`
+	Writes      bool                 `json:"writes"`
+	Targets     []accessTargetReport `json:"targets"`
+	NextCommand string               `json:"next_command,omitempty"`
 }
 
 type accessTargetReport struct {
@@ -58,6 +59,10 @@ func (a app) runAccess(args []string) error {
 		return a.runAccessActivate(args[1:])
 	case "enforce":
 		return a.runAccessEnforce(args[1:])
+	case "status":
+		return a.runAccessStatus(args[1:])
+	case "monitor":
+		return a.runAccessMonitor(args[1:])
 	case "-h", "--help", "help":
 		a.printAccessUsage()
 		return nil
@@ -71,6 +76,8 @@ func (a app) printAccessUsage() {
   my access check --dry-run [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
 	my access activate --yes [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
 	my access enforce [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+	my access status [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+	my access monitor install|uninstall|run [--manifest NAME] [--home DIR] [--umbrella DIR]
 
 The dry run performs live provider checks and prints future block/quarantine
 eligibility. It never writes baselines, inventory, workspace state, or files.
@@ -119,7 +126,7 @@ func (a app) runAccessCheck(args []string) error {
 	if err != nil {
 		return err
 	}
-	report := accessCheckReport{DryRun: true, Writes: false}
+	report := accessCheckReport{DryRun: true, Writes: false, NextCommand: "my access activate --yes --manifest " + manifestName}
 	for _, target := range targets {
 		decision := resolveAccessTarget(target, inventory, a.accessRunner)
 		mounted := pathExists(target.Path)
@@ -149,6 +156,7 @@ func (a app) runAccessCheck(args []string) error {
 	for _, target := range report.Targets {
 		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\t%s\n", target.Kind, target.Repository, target.Decision.State, target.FutureAction, target.Path)
 	}
+	fmt.Fprintf(a.stdout, "next\t%s\n", report.NextCommand)
 	return nil
 }
 
@@ -181,7 +189,7 @@ func (a app) runAccessActivate(args []string) error {
 		decision access.Decision
 	}
 	var checked []checkedTarget
-	report := accessCheckReport{Writes: true}
+	report := accessCheckReport{Writes: true, NextCommand: "my access monitor install --manifest " + manifestName}
 	for _, target := range targets {
 		mounted := pathExists(target.Path)
 		if !mounted {
@@ -217,12 +225,24 @@ func (a app) runAccessActivate(args []string) error {
 			return err
 		}
 	}
+	monitorInterval := 5 * time.Minute
+	if value := strings.TrimSpace(doc.doc.Governance.Access.CheckInterval); value != "" {
+		monitorInterval, err = time.ParseDuration(value)
+		if err != nil {
+			return err
+		}
+	}
+	if _, err := a.installAccessMonitor(home, manifestName, umbrellaRoot, monitorInterval); err != nil {
+		return fmt.Errorf("positive baselines were recorded, but proactive access monitor installation failed: %w; retry `my access monitor install --manifest %s`", err, manifestName)
+	}
+	report.NextCommand = "my access status --manifest " + manifestName
 	if jsonOut {
 		return printJSON(a.stdout, report)
 	}
 	for _, target := range report.Targets {
 		fmt.Fprintf(a.stdout, "%s\t%s\t%s\t%s\n", target.Kind, target.Repository, target.FutureAction, target.Path)
 	}
+	fmt.Fprintf(a.stdout, "next\t%s\n", report.NextCommand)
 	return nil
 }
 
@@ -354,6 +374,112 @@ func accessRevocationPolicy(config manifest.GovernanceAccess) (int, time.Duratio
 		interval = parsed
 	}
 	return confirmations, interval, nil
+}
+
+func accessPositiveTTL(config manifest.GovernanceAccess) (time.Duration, error) {
+	if strings.TrimSpace(config.PositiveTTL) == "" {
+		return 15 * time.Minute, nil
+	}
+	return time.ParseDuration(config.PositiveTTL)
+}
+
+func (a app) requireGovernedLaunchAccess(home string, doc registeredDoc, root string) error {
+	if !manifest.GovernanceConfigured(doc.doc.Governance) {
+		return nil
+	}
+	ttl, err := accessPositiveTTL(doc.doc.Governance.Access)
+	if err != nil {
+		return err
+	}
+	confirmations, interval, err := accessRevocationPolicy(doc.doc.Governance.Access)
+	if err != nil {
+		return err
+	}
+	targets, err := collectAccessTargets(home, doc, root)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, target := range targets {
+		if !pathExists(target.Path) {
+			continue
+		}
+		inventory, err := access.LoadInventory(home)
+		if err != nil {
+			return err
+		}
+		entry, ok := managedInventoryEntry(inventory, target.Path)
+		if !ok {
+			return fmt.Errorf("governed launch blocked: %s has no positive access baseline; run `my access check --dry-run` then `my access activate --yes`", target.Repository)
+		}
+		baseline, ok := newestPositiveBaseline(entry.Baselines)
+		if !ok {
+			return fmt.Errorf("governed launch blocked: %s has no positive access baseline; run `my access activate --yes`", target.Repository)
+		}
+		checkedAt, err := time.Parse(time.RFC3339Nano, baseline.CheckedAt)
+		if err != nil {
+			return fmt.Errorf("governed launch blocked: invalid positive baseline for %s", target.Repository)
+		}
+		if progressBlocksCachedAccess(entry.Revocations, baseline, checkedAt) {
+			return fmt.Errorf("governed launch blocked: %s has a newer non-allowed access observation; run `my access enforce`", target.Repository)
+		}
+		if !now.Before(checkedAt.Add(ttl)) {
+			decision := access.ResolveGitHubKnown(target.Repository, entry.Repository, a.accessRunner)
+			if !hasPositiveBaseline(inventory, target.Path, decision) {
+				return fmt.Errorf("governed launch blocked: current GitHub actor has no positive baseline for %s", target.Repository)
+			}
+			if decision.Actor.ID == 0 {
+				return fmt.Errorf("governed launch blocked: access to %s is unknown (%s)", target.Repository, decision.ReasonCode)
+			}
+			observation, err := access.RecordObservation(access.ObservationInput{
+				Home: home, Path: target.Path, Decision: decision, CheckedAt: now,
+				RequiredConfirmations: confirmations, ConfirmationInterval: interval,
+			})
+			if err != nil {
+				return err
+			}
+			if observation.CleanupEligible {
+				if _, err := access.QuarantineConfirmed(access.QuarantineInput{
+					Home: home, Path: target.Path, ActorID: decision.Actor.ID, Now: now,
+				}); err != nil {
+					return fmt.Errorf("governed launch blocked and quarantine failed for %s: %w", target.Repository, err)
+				}
+				return fmt.Errorf("governed launch blocked: confirmed revocation quarantined %s", target.Repository)
+			}
+			if decision.State != access.StateAllowed {
+				return fmt.Errorf("governed launch blocked: access to %s is %s (%s)", target.Repository, decision.State, decision.ReasonCode)
+			}
+		}
+	}
+	return nil
+}
+
+func newestPositiveBaseline(baselines []access.PositiveBaseline) (access.PositiveBaseline, bool) {
+	var newest access.PositiveBaseline
+	var newestAt time.Time
+	for _, baseline := range baselines {
+		checkedAt, err := time.Parse(time.RFC3339Nano, baseline.CheckedAt)
+		if err != nil {
+			continue
+		}
+		if newestAt.IsZero() || checkedAt.After(newestAt) {
+			newest, newestAt = baseline, checkedAt
+		}
+	}
+	return newest, !newestAt.IsZero()
+}
+
+func progressBlocksCachedAccess(progresses []access.RevocationProgress, baseline access.PositiveBaseline, baselineAt time.Time) bool {
+	for _, progress := range progresses {
+		if progress.Actor.ID != baseline.Actor.ID || progress.LastState == access.StateAllowed {
+			continue
+		}
+		checkedAt, err := time.Parse(time.RFC3339Nano, progress.LastCheckedAt)
+		if err == nil && checkedAt.After(baselineAt) {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveAccessTarget(target accessTarget, inventory access.Inventory, runner access.Runner) access.Decision {

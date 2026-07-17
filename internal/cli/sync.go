@@ -79,6 +79,13 @@ func (a app) runSync(args []string) error {
 	if err != nil {
 		return a.maybeJSONError(jsonOut, err)
 	}
+	if doc, loadErr := loadSingleRegisteredDoc(home, manifestName); loadErr != nil {
+		return a.maybeJSONError(jsonOut, loadErr)
+	} else if root, rootErr := resolveMyRoot(home, manifestName, umbrellaRoot); rootErr != nil {
+		return a.maybeJSONError(jsonOut, rootErr)
+	} else if accessErr := a.requireGovernedLaunchAccess(home, doc, root); accessErr != nil {
+		return a.maybeJSONError(jsonOut, accessErr)
+	}
 	if push {
 		publish, err = a.syncPushPublish(home, manifestName)
 		if err != nil {

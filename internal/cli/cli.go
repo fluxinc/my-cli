@@ -70,6 +70,10 @@ type app struct {
 	publishRunner manifest.Runner
 	// accessRunner overrides GitHub API calls during authorization checks.
 	accessRunner access.Runner
+	// accessMonitorRunner overrides launchd/systemd/schtasks calls in tests.
+	accessMonitorRunner access.Runner
+	accessPlatform      string
+	accessExecutable    string
 }
 
 func (a app) runStartupMaintenance(args []string) {
@@ -285,6 +289,8 @@ Usage:
   my access check --dry-run [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my access activate --yes [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my access enforce [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my access status [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my access monitor install|uninstall|run [--manifest NAME] [--home DIR] [--umbrella DIR]
   my version`)
 }
 

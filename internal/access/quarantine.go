@@ -84,12 +84,18 @@ func QuarantineConfirmed(input QuarantineInput) (QuarantineResult, error) {
 	if err := os.Chmod(root, 0o700); err != nil {
 		return QuarantineResult{}, err
 	}
+	if err := secureQuarantineDirectory(root); err != nil {
+		return QuarantineResult{}, err
+	}
 	prefix := now.Format("20060102T150405Z") + "-" + safeQuarantineName(entry.Repository.NodeID) + "-"
 	transactionDir, err := os.MkdirTemp(root, prefix)
 	if err != nil {
 		return QuarantineResult{}, err
 	}
 	if err := os.Chmod(transactionDir, 0o700); err != nil {
+		return QuarantineResult{}, err
+	}
+	if err := secureQuarantineDirectory(transactionDir); err != nil {
 		return QuarantineResult{}, err
 	}
 	journalPath := filepath.Join(transactionDir, "journal.json")

@@ -49,7 +49,7 @@ func TestAccessCheckDryRunUsesLiveRightsAndWritesNothing(t *testing.T) {
 		return []byte("HTTP/2.0 200 Status\n\n" + body), nil
 	}
 	var stdout, stderr bytes.Buffer
-	a := app{stdout: &stdout, stderr: &stderr, accessRunner: runner}
+	a := testAccessMonitorApp(app{stdout: &stdout, stderr: &stderr, accessRunner: runner}, home)
 	homeBefore := snapshotAccessTestTree(t, home)
 	if err := a.run([]string{"my", "access", "check", "--dry-run", "--manifest", "acme", "--home", home, "--json"}); err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestAccessActivationPreflightsAllTargetsAndRecordsPerRepositoryBaselines(t 
 	targets := materializeAccessTargetsForTest(t, home)
 	runner := governedAccessRunner(false)
 	var stdout, stderr bytes.Buffer
-	a := app{stdout: &stdout, stderr: &stderr, accessRunner: runner}
+	a := testAccessMonitorApp(app{stdout: &stdout, stderr: &stderr, accessRunner: runner}, home)
 	if err := a.run([]string{"my", "access", "activate", "--yes", "--manifest", "acme", "--home", home, "--json"}); err != nil {
 		t.Fatal(err)
 	}
@@ -107,6 +107,9 @@ func TestAccessActivationPreflightsAllTargetsAndRecordsPerRepositoryBaselines(t 
 		if len(entry.Baselines) != 1 || entry.Baselines[0].Actor.ID != 17 || entry.Repository.NodeID == "" {
 			t.Fatalf("entry = %#v", entry)
 		}
+	}
+	if _, err := loadAccessMonitorDescriptor(home, "acme"); err != nil {
+		t.Fatalf("activation did not install proactive monitor: %v", err)
 	}
 }
 
@@ -123,7 +126,7 @@ func TestAccessActivationFailureWritesNoPartialBaselines(t *testing.T) {
 		}
 		return accessGitHubResponse(503, `{"message":"provider unavailable"}`), fmt.Errorf("exit 1")
 	}
-	a := app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, accessRunner: runner}
+	a := testAccessMonitorApp(app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, accessRunner: runner}, home)
 	if err := a.run([]string{"my", "access", "activate", "--yes", "--manifest", "acme", "--home", home}); err == nil || !strings.Contains(err.Error(), "made no changes") {
 		t.Fatalf("activation error = %v", err)
 	}
@@ -139,7 +142,7 @@ func TestAccessActivationFailureWritesNoPartialBaselines(t *testing.T) {
 func TestAccessEnforceQuarantinesOnlyOnSecondPersistedDenial(t *testing.T) {
 	home, _, _, _, _ := setupCLITrackedManifestBody(t, governedAccessTestManifest())
 	targets := materializeAccessTargetsForTest(t, home)
-	a := app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, accessRunner: governedAccessRunner(false)}
+	a := testAccessMonitorApp(app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, accessRunner: governedAccessRunner(false)}, home)
 	if err := a.run([]string{"my", "access", "activate", "--yes", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
@@ -178,6 +181,98 @@ func TestAccessEnforceQuarantinesOnlyOnSecondPersistedDenial(t *testing.T) {
 	}
 	if len(inventory.Repositories) != 0 || len(inventory.Quarantines) != len(targets) {
 		t.Fatalf("inventory = %#v", inventory)
+	}
+	var statusOut bytes.Buffer
+	a.stdout = &statusOut
+	if err := a.run([]string{"my", "access", "status", "--manifest", "acme", "--home", home, "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	var status accessStatusReport
+	if err := json.Unmarshal(statusOut.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Error == "" || len(status.Quarantines) != len(targets) {
+		t.Fatalf("post-quarantine status = %#v", status)
+	}
+}
+
+func TestGovernedLaunchUsesFreshPositiveTTLWhenProviderIsOffline(t *testing.T) {
+	body := strings.Replace(governedAccessTestManifest(), `"access": {`, `"access": { "positive_ttl": "1h",`, 1)
+	home, root, _, _, _ := setupCLITrackedManifestBody(t, body)
+	materializeAccessTargetsForTest(t, home)
+	a := testAccessMonitorApp(app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, accessRunner: governedAccessRunner(false)}, home)
+	if err := a.run([]string{"my", "access", "activate", "--yes", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := loadSingleRegisteredDoc(home, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	a.accessRunner = func(name string, args ...string) ([]byte, error) {
+		calls++
+		return nil, fmt.Errorf("network unavailable")
+	}
+	if err := a.requireGovernedLaunchAccess(home, doc, root); err != nil {
+		t.Fatalf("fresh positive TTL did not permit offline launch: %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("fresh positive TTL made %d provider calls, want 0", calls)
+	}
+}
+
+func TestGovernedLaunchBlocksUnknownAfterPositiveTTLExpires(t *testing.T) {
+	body := strings.Replace(governedAccessTestManifest(), `"access": {`, `"access": { "positive_ttl": "1ns",`, 1)
+	home, root, _, _, _ := setupCLITrackedManifestBody(t, body)
+	materializeAccessTargetsForTest(t, home)
+	a := testAccessMonitorApp(app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, accessRunner: governedAccessRunner(false)}, home)
+	if err := a.run([]string{"my", "access", "activate", "--yes", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+	doc, err := loadSingleRegisteredDoc(home, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.accessRunner = func(name string, args ...string) ([]byte, error) {
+		return nil, fmt.Errorf("network unavailable")
+	}
+	if err := a.requireGovernedLaunchAccess(home, doc, root); err == nil || !strings.Contains(err.Error(), "governed launch blocked") {
+		t.Fatalf("expired TTL offline gate error = %v", err)
+	}
+}
+
+func TestGovernedLaunchBlocksNewerUnknownEvenWithinPositiveTTL(t *testing.T) {
+	body := strings.Replace(governedAccessTestManifest(), `"access": {`, `"access": { "positive_ttl": "1h",`, 1)
+	home, root, _, _, _ := setupCLITrackedManifestBody(t, body)
+	targets := materializeAccessTargetsForTest(t, home)
+	a := testAccessMonitorApp(app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, accessRunner: governedAccessRunner(false)}, home)
+	if err := a.run([]string{"my", "access", "activate", "--yes", "--manifest", "acme", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := access.LoadInventory(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := managedInventoryEntry(inventory, targets[0].Path)
+	if !ok {
+		t.Fatal("activated target missing from inventory")
+	}
+	unknown := access.Decision{
+		State: access.StateUnknown, ReasonCode: "network_unavailable", Actor: entry.Baselines[0].Actor,
+	}
+	if _, err := access.RecordObservation(access.ObservationInput{
+		Home: home, Path: targets[0].Path, Decision: unknown, CheckedAt: time.Now().Add(time.Second),
+		RequiredConfirmations: 2, ConfirmationInterval: time.Nanosecond,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := loadSingleRegisteredDoc(home, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.requireGovernedLaunchAccess(home, doc, root); err == nil || !strings.Contains(err.Error(), "newer non-allowed") {
+		t.Fatalf("newer unknown gate error = %v", err)
 	}
 }
 
@@ -291,4 +386,11 @@ func snapshotAccessTestTree(t *testing.T, root string) map[string]string {
 		t.Fatal(err)
 	}
 	return snapshot
+}
+
+func testAccessMonitorApp(a app, home string) app {
+	a.accessPlatform = "linux"
+	a.accessExecutable = filepath.Join(home, "bin", "my")
+	a.accessMonitorRunner = func(name string, args ...string) ([]byte, error) { return []byte("active"), nil }
+	return a
 }

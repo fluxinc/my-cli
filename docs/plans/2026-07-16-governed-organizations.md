@@ -387,15 +387,28 @@ restrictive permissions. Provider audit logs remain the authoritative external
 record.
 
 To make revocation proactive rather than dependent on the next manual command,
-setup installs a small per-user access monitor using the operating system's
-service mechanism (launchd on macOS, systemd user units on Linux, Task Scheduler
-on Windows). It periodically runs the same resolver and cleanup logic. Every
-CLI invocation also performs the check synchronously, so a stopped monitor
-cannot permit use. `my access status` reports monitor health and last checks;
-`my doctor` treats a missing or stale monitor as a governed-workspace failure.
-Doctor reports the platform's actual availability boundary: launchd agents run
-only in a login session; systemd user monitoring after logout requires linger;
-Windows scheduling depends on the configured user task.
+`my access activate --yes` records the per-repository positive baselines and
+installs a small per-user access monitor using the operating system's service
+mechanism (launchd on macOS, systemd user units on Linux, Task Scheduler on
+Windows). `my access monitor install|uninstall|run` exposes the same lifecycle
+explicitly. The monitor periodically runs the same resolver and cleanup logic.
+Launch, root, and sync operations also apply the access gate synchronously, so
+a stopped monitor cannot turn a stale or negative result into permission.
+Within the manifest's short positive TTL, the last positive result may be used
+while the provider is offline; after expiry, an unknown result blocks use.
+`my access status` reports monitor health, last checks, blocked targets, and
+retained quarantines; `my doctor` treats a missing or stale monitor as a
+governed-workspace failure. Doctor reports the platform's actual availability
+boundary: launchd agents run only in a login session; systemd user monitoring
+after logout requires linger; Windows scheduling depends on the configured
+user task.
+
+The current Windows build deliberately blocks the physical quarantine move
+until it can verify an explicit per-user DACL on the quarantine directory.
+Confirmed revocation remains a synchronous launch/use block and the checkout
+stays in place; the implementation does not treat inherited profile ACLs or
+POSIX mode bits as proof of Windows confidentiality. This is a fail-closed
+platform gap, not a delete or copy fallback.
 
 ## Retention enforcement
 

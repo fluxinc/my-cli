@@ -60,6 +60,15 @@ func (a app) runRoot(args []string) error {
 	} else if ok {
 		manifestName = name
 	}
+	if manifestName != "" {
+		doc, err := loadSingleRegisteredDoc(home, manifestName)
+		if err != nil {
+			return err
+		}
+		if err := a.requireGovernedLaunchAccess(home, doc, root); err != nil {
+			return err
+		}
+	}
 	a.maybeAutoRefresh(home, manifestName, root, root, noRefresh)
 	a.maybeUpdateNotice(home, noUpdateCheck)
 	target := root
@@ -177,10 +186,18 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 		fmt.Fprintln(a.stdout, line)
 		return nil
 	}
+	doc, err := launchGuidanceDoc(opts.home, opts.manifestName, root)
+	if err != nil {
+		return err
+	}
+	if !opts.onboard {
+		if err := a.requireGovernedLaunchAccess(opts.home, doc, root); err != nil {
+			return err
+		}
+	}
 	a.maybeAutoRefresh(opts.home, opts.manifestName, root, root, opts.noRefresh)
 	a.maybeUpdateNotice(opts.home, opts.noUpdateCheck)
-
-	doc, err := launchGuidanceDoc(opts.home, opts.manifestName, root)
+	doc, err = loadSingleRegisteredDoc(opts.home, doc.ref.Name)
 	if err != nil {
 		return err
 	}
@@ -190,6 +207,9 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 		}
 		doc, err = loadSingleRegisteredDoc(opts.home, doc.ref.Name)
 		if err != nil {
+			return err
+		}
+		if err := a.requireGovernedLaunchAccess(opts.home, doc, root); err != nil {
 			return err
 		}
 	}

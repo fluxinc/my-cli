@@ -81,6 +81,7 @@ type doctorReport struct {
 	Workspaces []doctorItem `json:"workspaces"`
 	Tools      []doctorItem `json:"tools"`
 	Services   []doctorItem `json:"services,omitempty"`
+	Access     []doctorItem `json:"access,omitempty"`
 }
 
 type doctorItem struct {
@@ -145,6 +146,14 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 		report.Workspaces = append(report.Workspaces, doctorWorkspaces(home, ref.Name, doc.Workspaces)...)
 		report.Tools = append(report.Tools, doctorTools(ref.Name, doc.Tools)...)
 		report.Services = append(report.Services, doctorServices(ref.Name, ref.LocalPath, doc.Services)...)
+		if manifest.GovernanceConfigured(doc.Governance) {
+			status, statusErr := a.currentAccessMonitorStatus(home, ref.Name)
+			item := doctorItem{Name: ref.Name + ":access-monitor", Status: "error", Path: status.Descriptor, Message: status.Message}
+			if statusErr == nil && status.Installed && status.Active {
+				item.Status = "ok"
+			}
+			report.Access = append(report.Access, item)
+		}
 	}
 	report.Freshness = append(report.Freshness, a.doctorFreshness(home, manifestName, umbrellaRoot, !opts.NoFetch, root)...)
 	report.Derived = append(report.Derived, a.doctorDerived(home, manifestName, root)...)
@@ -1077,6 +1086,7 @@ func (a app) printDoctorReport(report doctorReport) {
 	printItems("workspace", report.Workspaces)
 	printItems("tool", report.Tools)
 	printItems("service", report.Services)
+	printItems("access", report.Access)
 	if fixable > 0 {
 		fmt.Fprintf(a.stdout, "fixable\t%d\trun `my doctor --fix` to apply\n", fixable)
 	}
