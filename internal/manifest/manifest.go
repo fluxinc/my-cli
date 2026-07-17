@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/fluxinc/my-cli/internal/ghauth"
 )
@@ -71,6 +72,65 @@ type Document struct {
 	Roles                     []Role                 `json:"roles,omitempty"`
 	Profiles                  []Profile              `json:"profiles,omitempty"`
 	Contract                  []string               `json:"contract,omitempty"`
+	Governance                Governance             `json:"governance,omitzero"`
+}
+
+// Governance declares machine-enforced organization policy. Contract remains
+// the lightweight list of agent obligations; Governance binds versioned policy
+// documents, provider-backed administrator authority, acceptance evidence, and
+// protected content paths.
+type Governance struct {
+	Authorization GovernanceAuthorization `json:"authorization,omitzero"`
+	Access        GovernanceAccess        `json:"access,omitzero"`
+	Policies      []Policy                `json:"policies,omitempty"`
+	Attestations  AttestationStore        `json:"attestations,omitzero"`
+	Protections   []Protection            `json:"protections,omitempty"`
+}
+
+// GovernanceAuthorization names the external authority used for administrator
+// decisions. The first implementation supports GitHub repository permissions.
+type GovernanceAuthorization struct {
+	Provider           string `json:"provider,omitempty"`
+	ManifestRepository string `json:"manifest_repository,omitempty"`
+	AdminPermission    string `json:"admin_permission,omitempty"`
+}
+
+// GovernanceAccess controls freshness and revocation monitoring. Durations use
+// Go duration syntax (for example 15m or 24h).
+type GovernanceAccess struct {
+	PositiveTTL             string `json:"positive_ttl,omitempty"`
+	CheckInterval           string `json:"check_interval,omitempty"`
+	RevocationConfirmations int    `json:"revocation_confirmations,omitempty"`
+	ConfirmationInterval    string `json:"confirmation_interval,omitempty"`
+	QuarantineRetention     string `json:"quarantine_retention,omitempty"`
+}
+
+// Policy is one versioned human-readable policy document. SHA256 binds an
+// acceptance to the exact bytes the operator reviewed.
+type Policy struct {
+	ID         string   `json:"id"`
+	Title      string   `json:"title"`
+	Mount      string   `json:"mount"`
+	Path       string   `json:"path"`
+	Version    string   `json:"version"`
+	SHA256     string   `json:"sha256"`
+	Acceptance string   `json:"acceptance"`
+	Roles      []string `json:"roles,omitempty"`
+}
+
+// AttestationStore identifies the append-only policy acceptance ledger.
+type AttestationStore struct {
+	Mount    string `json:"mount,omitempty"`
+	Path     string `json:"path,omitempty"`
+	Identity string `json:"identity,omitempty"`
+}
+
+// Protection applies a retention invariant to paths in one mount.
+type Protection struct {
+	Mount         string   `json:"mount"`
+	Paths         []string `json:"paths"`
+	Mode          string   `json:"mode"`
+	AdminOverride bool     `json:"admin_override,omitempty"`
 }
 
 // DataBinding maps one stable business data type to the mount or service that
@@ -829,6 +889,7 @@ func validateOrgManifest(doc Document, result *ValidationResult) {
 	validateRoles(doc.Roles, mountIDs, skillIDs, tools, serviceIDs, result)
 	validateProfiles(doc.Profiles, skillIDs, result)
 	validateContract(doc.Contract, result)
+	validateGovernance(doc.Governance, mountIDs, doc.Roles, result)
 }
 
 func validateDataBindings(bindings map[string]DataBinding, mountIDs, serviceIDs map[string]bool, result *ValidationResult) {
@@ -921,6 +982,183 @@ func validateContract(rules []string, result *ValidationResult) {
 		}
 		seen[trimmed] = true
 	}
+}
+
+func validateGovernance(g Governance, mountIDs map[string]bool, roles []Role, result *ValidationResult) {
+	if !governanceConfigured(g) {
+		return
+	}
+	if g.Authorization.Provider != "github" {
+		result.Errors = append(result.Errors, "governance.authorization.provider must be github")
+	}
+	if !validGitHubRepository(g.Authorization.ManifestRepository) {
+		result.Errors = append(result.Errors, "governance.authorization.manifest_repository must be owner/repository")
+	}
+	if g.Authorization.AdminPermission != "admin" {
+		result.Errors = append(result.Errors, "governance.authorization.admin_permission must be admin")
+	}
+	validateGovernanceAccess(g.Access, result)
+
+	roleIDs := map[string]bool{}
+	for _, role := range roles {
+		roleIDs[role.ID] = true
+	}
+	seenPolicies := map[string]bool{}
+	requiresAcceptance := false
+	for i, policy := range g.Policies {
+		prefix := fmt.Sprintf("governance.policies[%d]", i)
+		if !portableID(policy.ID) {
+			result.Errors = append(result.Errors, prefix+".id must be lowercase kebab-case")
+		} else if seenPolicies[policy.ID] {
+			result.Errors = append(result.Errors, fmt.Sprintf("duplicate governance policy id %q", policy.ID))
+		}
+		seenPolicies[policy.ID] = true
+		if strings.TrimSpace(policy.Title) == "" {
+			result.Errors = append(result.Errors, prefix+".title is required")
+		}
+		if !mountIDs[policy.Mount] {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s.mount references unknown mount %q", prefix, policy.Mount))
+		}
+		if !portableIncludePath(policy.Path) {
+			result.Errors = append(result.Errors, prefix+".path must be a relative path that stays inside the mount")
+		}
+		if strings.TrimSpace(policy.Version) == "" || strings.TrimSpace(policy.Version) != policy.Version {
+			result.Errors = append(result.Errors, prefix+".version is required and must not have surrounding whitespace")
+		}
+		if !validSHA256(policy.SHA256) {
+			result.Errors = append(result.Errors, prefix+".sha256 must be sha256: followed by 64 lowercase hexadecimal characters")
+		}
+		if policy.Acceptance != "required" && policy.Acceptance != "optional" {
+			result.Errors = append(result.Errors, prefix+".acceptance must be required or optional")
+		}
+		if policy.Acceptance == "required" {
+			requiresAcceptance = true
+		}
+		seenRoles := map[string]bool{}
+		for _, roleID := range policy.Roles {
+			if seenRoles[roleID] {
+				result.Errors = append(result.Errors, fmt.Sprintf("%s.roles duplicates %q", prefix, roleID))
+				continue
+			}
+			seenRoles[roleID] = true
+			if !roleIDs[roleID] {
+				result.Errors = append(result.Errors, fmt.Sprintf("%s.roles references unknown role %q", prefix, roleID))
+			}
+		}
+	}
+
+	if g.Attestations.Mount != "" || g.Attestations.Path != "" || g.Attestations.Identity != "" || requiresAcceptance {
+		if !mountIDs[g.Attestations.Mount] {
+			result.Errors = append(result.Errors, fmt.Sprintf("governance.attestations.mount references unknown mount %q", g.Attestations.Mount))
+		}
+		if !portableIncludePath(g.Attestations.Path) {
+			result.Errors = append(result.Errors, "governance.attestations.path must be a relative path that stays inside the mount")
+		}
+		if g.Attestations.Identity != "github" {
+			result.Errors = append(result.Errors, "governance.attestations.identity must be github")
+		}
+	}
+
+	seenProtections := map[string]bool{}
+	attestationsAppendOnly := false
+	for i, protection := range g.Protections {
+		prefix := fmt.Sprintf("governance.protections[%d]", i)
+		if !mountIDs[protection.Mount] {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s.mount references unknown mount %q", prefix, protection.Mount))
+		}
+		if protection.Mode != "no-delete" && protection.Mode != "append-only" {
+			result.Errors = append(result.Errors, prefix+".mode must be no-delete or append-only")
+		}
+		if len(protection.Paths) == 0 {
+			result.Errors = append(result.Errors, prefix+".paths must contain at least one path")
+		}
+		for _, protectedPath := range protection.Paths {
+			if !portableIncludePath(protectedPath) {
+				result.Errors = append(result.Errors, fmt.Sprintf("%s.paths entry %q must be a relative path that stays inside the mount", prefix, protectedPath))
+				continue
+			}
+			key := protection.Mount + "\x00" + protectedPath
+			if seenProtections[key] {
+				result.Errors = append(result.Errors, fmt.Sprintf("duplicate governance protection for mount %q path %q", protection.Mount, protectedPath))
+			}
+			seenProtections[key] = true
+			if protection.Mount == g.Attestations.Mount && protection.Mode == "append-only" && !protection.AdminOverride && pathIncludes(protectedPath, g.Attestations.Path) {
+				attestationsAppendOnly = true
+			}
+		}
+	}
+	if requiresAcceptance && !attestationsAppendOnly {
+		result.Errors = append(result.Errors, "required governance policies need an append-only protection covering governance.attestations.path with admin_override disabled")
+	}
+}
+
+func governanceConfigured(g Governance) bool {
+	return g.Authorization.Provider != "" ||
+		g.Authorization.ManifestRepository != "" ||
+		g.Authorization.AdminPermission != "" ||
+		g.Access.PositiveTTL != "" ||
+		g.Access.CheckInterval != "" ||
+		g.Access.RevocationConfirmations != 0 ||
+		g.Access.ConfirmationInterval != "" ||
+		g.Access.QuarantineRetention != "" ||
+		len(g.Policies) != 0 ||
+		g.Attestations.Mount != "" ||
+		g.Attestations.Path != "" ||
+		g.Attestations.Identity != "" ||
+		len(g.Protections) != 0
+}
+
+func validateGovernanceAccess(access GovernanceAccess, result *ValidationResult) {
+	for name, value := range map[string]string{
+		"positive_ttl":          access.PositiveTTL,
+		"check_interval":        access.CheckInterval,
+		"confirmation_interval": access.ConfirmationInterval,
+		"quarantine_retention":  access.QuarantineRetention,
+	} {
+		if value == "" {
+			continue
+		}
+		duration, err := time.ParseDuration(value)
+		if err != nil || duration <= 0 {
+			result.Errors = append(result.Errors, fmt.Sprintf("governance.access.%s must be a positive duration", name))
+		}
+	}
+	if access.RevocationConfirmations != 0 && access.RevocationConfirmations < 2 {
+		result.Errors = append(result.Errors, "governance.access.revocation_confirmations must be at least 2 when set")
+	}
+}
+
+func validGitHubRepository(value string) bool {
+	if strings.TrimSpace(value) != value || strings.HasSuffix(value, ".git") {
+		return false
+	}
+	parts := strings.Split(value, "/")
+	if len(parts) != 2 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." || strings.ContainsAny(part, " \\") {
+			return false
+		}
+	}
+	return true
+}
+
+func validSHA256(value string) bool {
+	if !strings.HasPrefix(value, "sha256:") || len(value) != len("sha256:")+64 {
+		return false
+	}
+	for _, r := range strings.TrimPrefix(value, "sha256:") {
+		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func pathIncludes(parent, child string) bool {
+	return parent == child || strings.HasPrefix(child, parent+"/")
 }
 
 func validateSyncPolicy(policy SyncPolicy, result *ValidationResult) {

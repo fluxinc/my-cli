@@ -595,6 +595,163 @@ func TestValidateManifestCatchesInvalidContractRules(t *testing.T) {
 	}
 }
 
+func TestValidateManifestAllowsGovernance(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": "https://github.com/example/acme-handbook.git",
+      "mode": "required"
+    }
+  ],
+  "roles": [
+    { "id": "operator", "purpose": "Operate the example workspace", "mounts": ["handbook"] }
+  ],
+  "governance": {
+    "authorization": {
+      "provider": "github",
+      "manifest_repository": "example/acme-manifest",
+      "admin_permission": "admin"
+    },
+    "access": {
+      "positive_ttl": "15m",
+      "check_interval": "5m",
+      "revocation_confirmations": 2,
+      "confirmation_interval": "15m",
+      "quarantine_retention": "168h"
+    },
+    "policies": [
+      {
+        "id": "release-policy",
+        "title": "Release policy",
+        "mount": "handbook",
+        "path": "policy/release.md",
+        "version": "2026-01",
+        "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "acceptance": "required",
+        "roles": ["operator"]
+      }
+    ],
+    "attestations": {
+      "mount": "handbook",
+      "path": "policy/attestations",
+      "identity": "github"
+    },
+    "protections": [
+      {
+        "mount": "handbook",
+        "paths": ["fleet", "support"],
+        "mode": "no-delete",
+        "admin_override": true
+      },
+      {
+        "mount": "handbook",
+        "paths": ["policy/attestations"],
+        "mode": "append-only"
+      }
+    ]
+  }
+}`)
+	result := ValidateFile(dir)
+	if len(result.Errors) != 0 {
+		t.Fatalf("governance errors = %#v", result.Errors)
+	}
+	doc, _, err := LoadDocument(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Governance.Policies) != 1 || doc.Governance.Policies[0].ID != "release-policy" {
+		t.Fatalf("governance = %#v", doc.Governance)
+	}
+}
+
+func TestValidateManifestRejectsUnsafeGovernance(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "mounts": [
+    {
+      "id": "handbook",
+      "kind": "handbook",
+      "git_url": "https://github.com/example/acme-handbook.git",
+      "mode": "required"
+    }
+  ],
+  "roles": [
+    { "id": "operator", "purpose": "Operate the example workspace", "mounts": ["handbook"] }
+  ],
+  "governance": {
+    "authorization": {
+      "provider": "local",
+      "manifest_repository": "attacker/repo.git",
+      "admin_permission": "read"
+    },
+    "access": {
+      "positive_ttl": "forever",
+      "revocation_confirmations": 1
+    },
+    "policies": [
+      {
+        "id": "Bad Policy",
+        "title": "",
+        "mount": "missing",
+        "path": "../policy.md",
+        "version": " ",
+        "sha256": "sha256:ABC",
+        "acceptance": "yes",
+        "roles": ["missing"]
+      },
+      {
+        "id": "release-policy",
+        "title": "Release policy",
+        "mount": "handbook",
+        "path": "policy/release.md",
+        "version": "1",
+        "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "acceptance": "required",
+        "roles": ["operator", "operator"]
+      }
+    ],
+    "attestations": {
+      "mount": "missing",
+      "path": "/tmp/attestations",
+      "identity": "local"
+    },
+    "protections": [
+      {
+        "mount": "missing",
+        "paths": [],
+        "mode": "rewrite"
+      }
+    ]
+  }
+}`)
+	result := ValidateFile(dir)
+	for _, want := range []string{
+		"governance.authorization.provider must be github",
+		"governance.authorization.manifest_repository must be owner/repository",
+		"governance.authorization.admin_permission must be admin",
+		"governance.access.positive_ttl must be a positive duration",
+		"governance.access.revocation_confirmations must be at least 2",
+		"governance.policies[0].id must be lowercase kebab-case",
+		"governance.policies[0].mount references unknown mount",
+		"governance.policies[0].sha256",
+		"governance.policies[1].roles duplicates",
+		"governance.attestations.identity must be github",
+		"governance.protections[0].mode must be no-delete or append-only",
+		"required governance policies need an append-only protection",
+	} {
+		if !containsValidationError(result.Errors, want) {
+			t.Fatalf("governance errors = %#v, missing %q", result.Errors, want)
+		}
+	}
+}
+
 func TestExampleWorkspaceManifestValidates(t *testing.T) {
 	dir := filepath.Join("..", "..", "examples", "acme-workspace", "manifest")
 	result := ValidateFile(dir)

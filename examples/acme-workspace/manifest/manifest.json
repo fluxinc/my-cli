@@ -123,5 +123,56 @@
   ],
   "contract": [
     "Continue an existing relevant support record or create a new dated record when working on any fleet member."
-  ]
+  ],
+  "governance": {
+    "authorization": {
+      "provider": "github",
+      "manifest_repository": "example/acme-workspace-manifest",
+      "admin_permission": "admin"
+    },
+    "access": {
+      "positive_ttl": "15m",
+      "check_interval": "5m",
+      "revocation_confirmations": 2,
+      "confirmation_interval": "15m",
+      "quarantine_retention": "168h"
+    },
+    "policies": [
+      {
+        "id": "release-policy",
+        "title": "Release policy",
+        "mount": "handbook",
+        "path": "policy/release.md",
+        "version": "2026-01",
+        "sha256": "sha256:d540eb677d59ed9c722592bcaf3b22d593f763c13a72854c7d4256d376716235",
+        "acceptance": "required",
+        "roles": [
+          "operator"
+        ]
+      }
+    ],
+    "attestations": {
+      "mount": "handbook",
+      "path": "policy/attestations",
+      "identity": "github"
+    },
+    "protections": [
+      {
+        "mount": "handbook",
+        "paths": [
+          "fleet",
+          "support"
+        ],
+        "mode": "no-delete",
+        "admin_override": true
+      },
+      {
+        "mount": "handbook",
+        "paths": [
+          "policy/attestations"
+        ],
+        "mode": "append-only"
+      }
+    ]
+  }
 }
