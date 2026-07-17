@@ -158,7 +158,7 @@ func parseAdminContractOpts(name string, stderr io.Writer, args []string) (manif
 }
 
 func (a app) adminContractAdd(rule, manifestDir string, force bool) (adminContractResult, error) {
-	doc, manifestPath, root, err := loadAdminManifestCheckout(manifestDir)
+	doc, manifestPath, root, err := a.loadAuthorizedAdminManifestCheckout(manifestDir)
 	if err != nil {
 		return adminContractResult{}, err
 	}
@@ -189,7 +189,7 @@ func (a app) adminContractAdd(rule, manifestDir string, force bool) (adminContra
 }
 
 func (a app) adminContractRemove(target, manifestDir string, force bool) (adminContractResult, error) {
-	doc, manifestPath, root, err := loadAdminManifestCheckout(manifestDir)
+	doc, manifestPath, root, err := a.loadAuthorizedAdminManifestCheckout(manifestDir)
 	if err != nil {
 		return adminContractResult{}, err
 	}

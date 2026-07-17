@@ -141,11 +141,43 @@ func TestSyncChecksGitHubAuthBeforeClone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if results[0].Status != "failed" || !strings.Contains(results[0].Error, "gh auth login") {
+	if results[0].Status != "failed" || !strings.Contains(results[0].Error, "authentication_failed") {
 		t.Fatalf("results = %#v", results)
 	}
-	if len(commands) != 1 || !strings.HasPrefix(commands[0], "gh auth status") {
+	if len(commands) != 1 || commands[0] != "gh api user" {
 		t.Fatalf("commands = %#v", commands)
+	}
+}
+
+func TestSyncBlocksSSHCloneWhenRepositoryIsNotVisible(t *testing.T) {
+	home := t.TempDir()
+	target := filepath.Join(home, "handbook")
+	gitCalled := false
+	result := SyncEntry(Entry{
+		Manifest: "acme", Organization: "acme", ID: "handbook", Kind: "handbook",
+		GitURL: "git@github.com:example/private-handbook.git", LocalPath: target,
+	}, false, func(name string, args ...string) ([]byte, error) {
+		if name == "git" {
+			gitCalled = true
+			return nil, errors.New("git must not run")
+		}
+		switch strings.Join(args, " ") {
+		case "api user":
+			return []byte(`{"id":17,"node_id":"U_actor","login":"operator"}`), nil
+		case "api -i repos/example/private-handbook":
+			return []byte("HTTP/2.0 404 Not Found\n\n{\"message\":\"Not Found\"}"), errors.New("exit 1")
+		default:
+			return nil, errors.New("unexpected command")
+		}
+	})
+	if result.Status != "failed" || !strings.Contains(result.Error, "repository_not_found") {
+		t.Fatalf("result = %#v", result)
+	}
+	if gitCalled {
+		t.Fatal("git clone ran without a positive read decision")
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("inaccessible repository was mounted: %v", err)
 	}
 }
 

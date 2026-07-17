@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fluxinc/my-cli/internal/ghauth"
+	"github.com/fluxinc/my-cli/internal/access"
 	"github.com/fluxinc/my-cli/internal/manifest"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 )
@@ -306,7 +306,7 @@ func syncOne(entry Entry, dryRun bool, runner Runner) SyncResult {
 			res.Message = "no origin remote configured; nothing to pull until the repository is published"
 			return res
 		}
-		if err := ghauth.CheckGitURL(entry.GitURL, ghauth.Runner(runner)); err != nil {
+		if _, _, err := access.RequireGitHubPermission(entry.GitURL, access.PermissionRead, access.Runner(runner)); err != nil {
 			res.Status = "failed"
 			res.Error = err.Error()
 			return res
@@ -346,7 +346,7 @@ func syncOne(entry Entry, dryRun bool, runner Runner) SyncResult {
 		}
 		return res
 	}
-	if err := ghauth.CheckGitURL(entry.GitURL, ghauth.Runner(runner)); err != nil {
+	if _, _, err := access.RequireGitHubPermission(entry.GitURL, access.PermissionRead, access.Runner(runner)); err != nil {
 		res.Status = "failed"
 		res.Error = err.Error()
 		return res

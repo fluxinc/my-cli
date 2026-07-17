@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fluxinc/my-cli/internal/ghauth"
+	"github.com/fluxinc/my-cli/internal/access"
 )
 
 const (
@@ -780,7 +780,7 @@ func syncOne(ref Ref, dryRun bool, runner Runner) SyncResult {
 			res.Message = "no origin remote configured; nothing to pull until the repository is published"
 			return res
 		}
-		if err := ghauth.CheckGitURL(ref.GitURL, ghauth.Runner(runner)); err != nil {
+		if _, _, err := access.RequireGitHubPermission(ref.GitURL, access.PermissionRead, access.Runner(runner)); err != nil {
 			res.Status = "failed"
 			res.Error = err.Error()
 			return res
@@ -808,7 +808,7 @@ func syncOne(ref Ref, dryRun bool, runner Runner) SyncResult {
 		res.Message = fmt.Sprintf("would run git clone %s %s", ref.GitURL, ref.LocalPath)
 		return res
 	}
-	if err := ghauth.CheckGitURL(ref.GitURL, ghauth.Runner(runner)); err != nil {
+	if _, _, err := access.RequireGitHubPermission(ref.GitURL, access.PermissionRead, access.Runner(runner)); err != nil {
 		res.Status = "failed"
 		res.Error = err.Error()
 		return res
@@ -985,7 +985,7 @@ func validateContract(rules []string, result *ValidationResult) {
 }
 
 func validateGovernance(g Governance, mountIDs map[string]bool, roles []Role, result *ValidationResult) {
-	if !governanceConfigured(g) {
+	if !GovernanceConfigured(g) {
 		return
 	}
 	if g.Authorization.Provider != "github" {
@@ -1092,7 +1092,9 @@ func validateGovernance(g Governance, mountIDs map[string]bool, roles []Role, re
 	}
 }
 
-func governanceConfigured(g Governance) bool {
+// GovernanceConfigured reports whether a manifest has opted in to governed
+// behavior. Zero-value governance preserves all legacy behavior.
+func GovernanceConfigured(g Governance) bool {
 	return g.Authorization.Provider != "" ||
 		g.Authorization.ManifestRepository != "" ||
 		g.Authorization.AdminPermission != "" ||
@@ -1137,7 +1139,13 @@ func validGitHubRepository(value string) bool {
 		return false
 	}
 	for _, part := range parts {
-		if part == "" || part == "." || part == ".." || strings.ContainsAny(part, " \\") {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+		for _, r := range part {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+				continue
+			}
 			return false
 		}
 	}

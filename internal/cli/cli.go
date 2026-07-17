@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fluxinc/my-cli/internal/access"
 	"github.com/fluxinc/my-cli/internal/bundle"
 	"github.com/fluxinc/my-cli/internal/manifest"
 	"github.com/fluxinc/my-cli/internal/selfskill"
@@ -67,6 +68,8 @@ type app struct {
 	updateTargetPath     string
 	// publishRunner overrides external gh invocations during my publish.
 	publishRunner manifest.Runner
+	// accessRunner overrides GitHub API calls during authorization checks.
+	accessRunner access.Runner
 }
 
 func (a app) runStartupMaintenance(args []string) {
@@ -164,6 +167,8 @@ func (a app) run(args []string) error {
 		return a.runTools(args[2:])
 	case "doctor":
 		return a.runDoctor(args[2:])
+	case "access":
+		return a.runAccess(args[2:])
 	case "meetings":
 		return a.runMeetings(args[2:])
 	case "support":
@@ -277,6 +282,7 @@ Usage:
   my roles get <id> [--manifest NAME] [--json]
   my contract list [--manifest NAME] [--json]
   my doctor [--no-fetch] [--fix] [--json]
+  my access check --dry-run [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my version`)
 }
 

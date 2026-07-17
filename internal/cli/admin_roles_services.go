@@ -168,7 +168,7 @@ func parseAdminRoleOpts(name string, stderr io.Writer, args []string) (adminRole
 }
 
 func (a app) adminRolesAdd(id string, opts adminRoleOpts) (adminRoleResult, error) {
-	doc, manifestPath, root, err := loadAdminManifestCheckout(opts.manifestDir)
+	doc, manifestPath, root, err := a.loadAuthorizedAdminManifestCheckout(opts.manifestDir)
 	if err != nil {
 		return adminRoleResult{}, err
 	}
@@ -206,7 +206,7 @@ func (a app) adminRolesAdd(id string, opts adminRoleOpts) (adminRoleResult, erro
 }
 
 func (a app) adminRolesEdit(id string, opts adminRoleOpts) (adminRoleResult, error) {
-	doc, manifestPath, root, err := loadAdminManifestCheckout(opts.manifestDir)
+	doc, manifestPath, root, err := a.loadAuthorizedAdminManifestCheckout(opts.manifestDir)
 	if err != nil {
 		return adminRoleResult{}, err
 	}
@@ -230,7 +230,7 @@ func (a app) adminRolesEdit(id string, opts adminRoleOpts) (adminRoleResult, err
 }
 
 func (a app) adminRolesRemove(id, manifestDir string, force bool) (adminRoleResult, error) {
-	doc, manifestPath, root, err := loadAdminManifestCheckout(manifestDir)
+	doc, manifestPath, root, err := a.loadAuthorizedAdminManifestCheckout(manifestDir)
 	if err != nil {
 		return adminRoleResult{}, err
 	}
@@ -517,7 +517,7 @@ func (o adminServiceOpts) hasConnectionUpdate() bool {
 }
 
 func (a app) adminServicesAdd(id string, opts adminServiceOpts) (adminServiceResult, error) {
-	doc, manifestPath, root, err := loadAdminManifestCheckout(opts.manifestDir)
+	doc, manifestPath, root, err := a.loadAuthorizedAdminManifestCheckout(opts.manifestDir)
 	if err != nil {
 		return adminServiceResult{}, err
 	}
@@ -558,7 +558,7 @@ func (a app) adminServicesAdd(id string, opts adminServiceOpts) (adminServiceRes
 }
 
 func (a app) adminServicesEdit(id string, opts adminServiceOpts) (adminServiceResult, error) {
-	doc, manifestPath, root, err := loadAdminManifestCheckout(opts.manifestDir)
+	doc, manifestPath, root, err := a.loadAuthorizedAdminManifestCheckout(opts.manifestDir)
 	if err != nil {
 		return adminServiceResult{}, err
 	}
@@ -585,7 +585,7 @@ func (a app) adminServicesEdit(id string, opts adminServiceOpts) (adminServiceRe
 }
 
 func (a app) adminServicesRemove(id, manifestDir string, pruneRoles, force bool) (adminServiceResult, error) {
-	doc, manifestPath, root, err := loadAdminManifestCheckout(manifestDir)
+	doc, manifestPath, root, err := a.loadAuthorizedAdminManifestCheckout(manifestDir)
 	if err != nil {
 		return adminServiceResult{}, err
 	}

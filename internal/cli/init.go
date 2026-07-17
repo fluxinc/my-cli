@@ -522,6 +522,13 @@ Options:`)
 }
 
 func (a app) publishOrg(home string, doc registeredDoc, printOnly bool) (publishResult, error) {
+	if !printOnly && manifest.GovernanceConfigured(doc.doc.Governance) {
+		authorized, _, _, err := a.loadAuthorizedAdminManifestCheckout(doc.ref.LocalPath)
+		if err != nil {
+			return publishResult{Manifest: doc.ref.Name}, err
+		}
+		doc.doc = authorized
+	}
 	runner := a.publishRunner
 	if runner == nil {
 		runner = func(name string, args ...string) ([]byte, error) {

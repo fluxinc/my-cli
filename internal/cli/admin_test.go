@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,219 @@ import (
 
 	"github.com/fluxinc/my-cli/internal/manifest"
 )
+
+func TestGovernedAdminAuthoringRequiresLiveAdminPermission(t *testing.T) {
+	manifestDir := t.TempDir()
+	writeAdminManifest(t, manifestDir, `,
+  "governance": {
+    "authorization": {
+      "provider": "github",
+      "manifest_repository": "example/control",
+      "admin_permission": "admin"
+    }
+  }`)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr, accessRunner: governedAdminRunner("write")}
+	err := a.run([]string{"my", "admin", "contract", "add", "Require approval.", "-manifest-dir", manifestDir})
+	if err == nil || !strings.Contains(err.Error(), "governed manifest authoring denied") || !strings.Contains(err.Error(), "admin permission is required") {
+		t.Fatalf("err = %v, want governed admin denial", err)
+	}
+	doc, _, loadErr := manifest.LoadDocument(manifestDir)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if len(doc.Contract) != 0 {
+		t.Fatalf("contract changed after denied authoring: %#v", doc.Contract)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	a.accessRunner = governedAdminRunner("admin")
+	if err := a.run([]string{"my", "admin", "contract", "add", "Require approval.", "--manifest-dir=" + manifestDir}); err != nil {
+		t.Fatal(err)
+	}
+	doc, _, loadErr = manifest.LoadDocument(manifestDir)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if len(doc.Contract) != 1 || doc.Contract[0] != "Require approval." {
+		t.Fatalf("contract = %#v", doc.Contract)
+	}
+}
+
+func TestGovernedAdminAuthoringFailsClosedOnSSOError(t *testing.T) {
+	manifestDir := t.TempDir()
+	writeAdminManifest(t, manifestDir, `,
+  "governance": {
+    "authorization": {
+      "provider": "github",
+      "manifest_repository": "example/control",
+      "admin_permission": "admin"
+    }
+  }`)
+	a := app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, accessRunner: func(name string, args ...string) ([]byte, error) {
+		if strings.Join(args, " ") == "api user" {
+			return []byte(`{"id":17,"node_id":"U_actor","login":"operator"}`), nil
+		}
+		return []byte("HTTP/2.0 403 Status\nX-GitHub-SSO: required\n\n{\"message\":\"Forbidden\"}"), errors.New("exit 1")
+	}}
+	err := a.run([]string{"my", "admin", "contract", "add", "Require approval.", "--manifest-dir", manifestDir})
+	if err == nil || !strings.Contains(err.Error(), "sso") {
+		t.Fatalf("err = %v, want fail-closed SSO denial", err)
+	}
+}
+
+func TestGovernedAdminAuthoringUsesParserSelectedDuplicateManifestDir(t *testing.T) {
+	ungovernedDir := t.TempDir()
+	writeAdminManifest(t, ungovernedDir, "")
+	governedDir := t.TempDir()
+	writeAdminManifest(t, governedDir, `,
+  "governance": {
+    "authorization": {
+      "provider": "github",
+      "manifest_repository": "example/control",
+      "admin_permission": "admin"
+    }
+  }`)
+	a := app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, accessRunner: governedAdminRunner("write")}
+	err := a.run([]string{
+		"my", "admin", "contract", "add", "Bypass attempt.",
+		"--manifest-dir", ungovernedDir,
+		"--manifest-dir", governedDir,
+	})
+	if err == nil || !strings.Contains(err.Error(), "governed manifest authoring denied") {
+		t.Fatalf("err = %v, want authorization against parser-selected governed directory", err)
+	}
+	doc, _, loadErr := manifest.LoadDocument(governedDir)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if len(doc.Contract) != 0 {
+		t.Fatalf("governed manifest changed through duplicate flag bypass: %#v", doc.Contract)
+	}
+}
+
+func TestEveryGovernedManifestAuthoringGroupUsesParsedDirectoryGuardOnce(t *testing.T) {
+	for _, dash := range []string{"--", "-"} {
+		t.Run(dash, func(t *testing.T) {
+			tests := []struct {
+				name string
+				args func(t *testing.T) []string
+			}{
+				{"contract", func(t *testing.T) []string {
+					return []string{"my", "admin", "contract", "add", "Require approval."}
+				}},
+				{"tools", func(t *testing.T) []string {
+					return []string{"my", "admin", "tools", "add", "sample-tool", "--mode", "optional", "--purpose", "Test tool"}
+				}},
+				{"roles", func(t *testing.T) []string {
+					return []string{"my", "admin", "roles", "add", "operator", "--purpose", "Test role"}
+				}},
+				{"services", func(t *testing.T) []string {
+					return []string{"my", "admin", "services", "add", "status-api", "--kind", "http", "--purpose", "Test service", "--auth-ref", "none", "--describe-ref", "https://example.invalid/openapi.json"}
+				}},
+				{"skills", func(t *testing.T) []string {
+					source := makeCLISkill(t, "demo-skill")
+					return []string{"my", "admin", "skills", "add", filepath.Join(source, "demo-skill"), "--id", "acme:demo-skill", "--keep-original"}
+				}},
+			}
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					manifestDir := t.TempDir()
+					writeAdminManifest(t, manifestDir, `,
+  "governance": {
+    "authorization": {
+      "provider": "github",
+      "manifest_repository": "example/control",
+      "admin_permission": "admin"
+    }
+  }`)
+					manifestPath := filepath.Join(manifestDir, "manifest.json")
+					before, err := os.ReadFile(manifestPath)
+					if err != nil {
+						t.Fatal(err)
+					}
+					calls := 0
+					baseRunner := governedAdminRunner("write")
+					a := app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, accessRunner: func(name string, args ...string) ([]byte, error) {
+						calls++
+						return baseRunner(name, args...)
+					}}
+					args := append(tt.args(t), dash+"manifest-dir", manifestDir, "--force")
+					err = a.run(args)
+					if err == nil || !strings.Contains(err.Error(), "governed manifest authoring denied") {
+						t.Fatalf("err = %v, want denied manifest authoring", err)
+					}
+					if calls != 2 {
+						t.Fatalf("provider calls = %d, want one actor and one repository check", calls)
+					}
+					after, err := os.ReadFile(manifestPath)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !bytes.Equal(before, after) {
+						t.Fatal("denied authoring changed manifest bytes")
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestGovernedPublishRequiresAdminBeforeManifestControlMutation(t *testing.T) {
+	home, _, manifestDir, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "governance": {
+    "authorization": {
+      "provider": "github",
+      "manifest_repository": "example/control",
+      "admin_permission": "admin"
+    }
+  }
+}`)
+	manifestPath := filepath.Join(manifestDir, "manifest.json")
+	before, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := app{
+		stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{},
+		accessRunner: governedAdminRunner("write"),
+		publishRunner: func(name string, args ...string) ([]byte, error) {
+			t.Fatal("publish runner called before admin authorization")
+			return nil, nil
+		},
+	}
+	err = a.run([]string{"my", "publish", "--manifest", "acme", "--home", home})
+	if err == nil || !strings.Contains(err.Error(), "governed manifest authoring denied") {
+		t.Fatalf("err = %v, want governed publish denial", err)
+	}
+	after, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("denied publish changed manifest bytes")
+	}
+}
+
+func governedAdminRunner(permission string) func(string, ...string) ([]byte, error) {
+	return func(name string, args ...string) ([]byte, error) {
+		switch strings.Join(args, " ") {
+		case "api user":
+			return []byte(`{"id":17,"node_id":"U_actor","login":"operator"}`), nil
+		case "api -i repos/example/control":
+			admin := permission == "admin"
+			push := admin || permission == "write"
+			body := fmt.Sprintf(`{"id":29,"node_id":"R_repo","full_name":"example/control","private":true,"permissions":{"admin":%t,"push":%t,"pull":true}}`, admin, push)
+			return []byte("HTTP/2.0 200 Status\n\n" + body), nil
+		default:
+			return nil, fmt.Errorf("unexpected command: %s %s", name, strings.Join(args, " "))
+		}
+	}
+}
 
 func TestAdminSkillsAddCopiesAndDeclares(t *testing.T) {
 	manifestDir := t.TempDir()

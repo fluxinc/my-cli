@@ -1,13 +1,41 @@
 package manifest
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+func TestExampleGovernancePolicyDigestMatchesFixture(t *testing.T) {
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve manifest test source path")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(source), "..", ".."))
+	exampleRoot := filepath.Join(repoRoot, "examples", "acme-workspace")
+	doc, _, err := LoadDocument(filepath.Join(exampleRoot, "manifest"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Governance.Policies) != 1 {
+		t.Fatalf("example policies = %#v", doc.Governance.Policies)
+	}
+	policy := doc.Governance.Policies[0]
+	data, err := os.ReadFile(filepath.Join(exampleRoot, "content", "policy", "release.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("sha256:%x", sha256.Sum256(data))
+	if policy.SHA256 != want {
+		t.Fatalf("example policy digest = %q, want %q", policy.SHA256, want)
+	}
+}
 
 func TestAddAndLoadRegistry(t *testing.T) {
 	home := t.TempDir()
@@ -312,10 +340,10 @@ func TestSyncChecksGitHubAuthBeforeClone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if results[0].Status != "failed" || !strings.Contains(results[0].Error, "gh auth login") {
+	if results[0].Status != "failed" || !strings.Contains(results[0].Error, "authentication_failed") {
 		t.Fatalf("results = %#v", results)
 	}
-	if len(commands) != 1 || !strings.HasPrefix(commands[0], "gh auth status") {
+	if len(commands) != 1 || commands[0] != "gh api user" {
 		t.Fatalf("commands = %#v", commands)
 	}
 }

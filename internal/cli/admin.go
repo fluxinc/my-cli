@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/fluxinc/my-cli/internal/access"
 	"github.com/fluxinc/my-cli/internal/manifest"
 	"github.com/fluxinc/my-cli/internal/safefs"
 	"github.com/fluxinc/my-cli/internal/skills"
@@ -21,24 +22,36 @@ func (a app) runAdmin(args []string) error {
 	}
 	switch args[0] {
 	case "skills":
+		// Manifest authoring; the parsed checkout is gated by
+		// loadAuthorizedAdminManifestCheckout before mutation.
 		return a.runAdminSkills(args[1:])
 	case "setup":
 		return a.runSetup(args[1:])
 	case "manifests":
+		// Local registry/cache management only; this does not author the
+		// manifest repository.
 		return a.runAdminManifest(args[1:])
 	case "mounts":
+		// Local umbrella mount/state management only; provider read access is
+		// enforced by the mount sync path.
 		return a.runAdminMount(args[1:])
 	case "meetings":
+		// Operational record authoring; domain publication governance applies at
+		// the record/sync boundary rather than manifest-admin permission.
 		return a.runAdminMeetings(args[1:])
 	case "support":
 		return a.runAdminSupport(args[1:])
 	case "tools":
+		// Manifest authoring; gated in the parsed-checkout loader.
 		return a.runAdminTools(args[1:])
 	case "roles":
+		// Manifest authoring; gated in the parsed-checkout loader.
 		return a.runAdminRoles(args[1:])
 	case "services":
+		// Manifest authoring; gated in the parsed-checkout loader.
 		return a.runAdminServices(args[1:])
 	case "contract":
+		// Manifest authoring; gated in the parsed-checkout loader.
 		return a.runAdminContract(args[1:])
 	case "-h", "--help", "help":
 		a.printAdminUsage()
@@ -351,7 +364,7 @@ func (a app) printAdminToolResult(result adminToolResult, jsonOut bool) error {
 }
 
 func (a app) adminToolsAdd(id string, opts adminToolOpts) (adminToolResult, error) {
-	doc, manifestPath, root, err := loadAdminManifestCheckout(opts.manifestDir)
+	doc, manifestPath, root, err := a.loadAuthorizedAdminManifestCheckout(opts.manifestDir)
 	if err != nil {
 		return adminToolResult{}, err
 	}
@@ -396,7 +409,7 @@ func (a app) adminToolsAdd(id string, opts adminToolOpts) (adminToolResult, erro
 }
 
 func (a app) adminToolsEdit(id string, opts adminToolOpts) (adminToolResult, error) {
-	doc, manifestPath, root, err := loadAdminManifestCheckout(opts.manifestDir)
+	doc, manifestPath, root, err := a.loadAuthorizedAdminManifestCheckout(opts.manifestDir)
 	if err != nil {
 		return adminToolResult{}, err
 	}
@@ -426,7 +439,7 @@ func (a app) adminToolsEdit(id string, opts adminToolOpts) (adminToolResult, err
 }
 
 func (a app) adminToolsRemove(id, manifestDir string, force bool) (adminToolResult, error) {
-	doc, manifestPath, root, err := loadAdminManifestCheckout(manifestDir)
+	doc, manifestPath, root, err := a.loadAuthorizedAdminManifestCheckout(manifestDir)
 	if err != nil {
 		return adminToolResult{}, err
 	}
@@ -576,7 +589,7 @@ func (a app) adminSkillsAdd(skillDir, id, installSlug, manifestDir string, keepO
 	if visible := harnessVisibleSkillSource(source); visible != "" && !keepOriginal && !removeOriginal {
 		return adminSkillResult{}, fmt.Errorf("source skill is already visible to %s; pass --keep-original or --remove-original explicitly", visible)
 	}
-	doc, manifestPath, root, err := loadAdminManifestCheckout(manifestDir)
+	doc, manifestPath, root, err := a.loadAuthorizedAdminManifestCheckout(manifestDir)
 	if err != nil {
 		return adminSkillResult{}, err
 	}
@@ -709,7 +722,7 @@ func (a app) runAdminSkillsRemove(args []string) error {
 }
 
 func (a app) adminSkillsRemove(ref, manifestDir string, deleteSource, pruneRelated, pruneOrphans, force bool) (adminSkillResult, error) {
-	doc, manifestPath, root, err := loadAdminManifestCheckout(manifestDir)
+	doc, manifestPath, root, err := a.loadAuthorizedAdminManifestCheckout(manifestDir)
 	if err != nil {
 		return adminSkillResult{}, err
 	}
@@ -910,11 +923,33 @@ func adminNextCommands(root string) []string {
 }
 
 func loadAdminManifestCheckout(dir string) (manifest.Document, string, string, error) {
+	if strings.TrimSpace(dir) == "" {
+		return manifest.Document{}, "", "", fmt.Errorf("manifest checkout is required")
+	}
 	doc, manifestPath, err := manifest.LoadDocument(dir)
 	if err != nil {
 		return manifest.Document{}, "", "", err
 	}
 	root := filepath.Dir(manifestPath)
+	return doc, manifestPath, root, nil
+}
+
+// loadAuthorizedAdminManifestCheckout is the single authorization chokepoint
+// for manifest-authoring operations. Callers pass the directory produced by
+// their actual flag parser, so alternate Go flag spellings cannot create a
+// parser differential between authorization and mutation.
+func (a app) loadAuthorizedAdminManifestCheckout(dir string) (manifest.Document, string, string, error) {
+	doc, manifestPath, root, err := loadAdminManifestCheckout(dir)
+	if err != nil {
+		return manifest.Document{}, "", "", err
+	}
+	if !manifest.GovernanceConfigured(doc.Governance) {
+		return doc, manifestPath, root, nil
+	}
+	decision := access.ResolveGitHub(doc.Governance.Authorization.ManifestRepository, a.accessRunner)
+	if err := access.Require(decision, access.PermissionAdmin); err != nil {
+		return manifest.Document{}, "", "", fmt.Errorf("governed manifest authoring denied: %w", err)
+	}
 	return doc, manifestPath, root, nil
 }
 
