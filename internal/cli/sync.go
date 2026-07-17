@@ -85,6 +85,14 @@ func (a app) runSync(args []string) error {
 		return a.maybeJSONError(jsonOut, rootErr)
 	} else if accessErr := a.requireGovernedLaunchAccess(home, doc, root); accessErr != nil {
 		return a.maybeJSONError(jsonOut, accessErr)
+	} else if freshnessErr := a.requireGovernedManifestFreshness(home, doc, root); freshnessErr != nil {
+		return a.maybeJSONError(jsonOut, freshnessErr)
+	} else if refreshed, refreshErr := loadSingleRegisteredDoc(home, manifestName); refreshErr != nil {
+		return a.maybeJSONError(jsonOut, refreshErr)
+	} else if accessErr := a.requireGovernedLaunchAccess(home, refreshed, root); accessErr != nil {
+		return a.maybeJSONError(jsonOut, accessErr)
+	} else if policyErr := a.requireGovernedPolicyAcceptances(home, refreshed, root); policyErr != nil {
+		return a.maybeJSONError(jsonOut, policyErr)
 	}
 	if push {
 		publish, err = a.syncPushPublish(home, manifestName)

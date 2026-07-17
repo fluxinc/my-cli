@@ -11,17 +11,21 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fluxinc/my-cli/internal/access"
+	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 type policyTestFixture struct {
-	home          string
-	umbrellaRoot  string
-	manifestCache string
-	handbook      string
-	content       string
-	digest        string
+	home           string
+	umbrellaRoot   string
+	manifestCache  string
+	manifestWriter string
+	handbook       string
+	content        string
+	digest         string
 }
 
 func newPolicyTestFixture(t *testing.T) policyTestFixture {
@@ -67,12 +71,12 @@ func newPolicyTestFixture(t *testing.T) policyTestFixture {
     ]
   }
 }`, digest)
-	home, umbrellaRoot, manifestCache, _, _ := setupCLITrackedManifestBody(t, body)
+	home, umbrellaRoot, manifestCache, _, manifestWriter := setupCLITrackedManifestBody(t, body)
 	handbook := filepath.Join(umbrellaRoot, "handbook")
 	writeCLITestFile(t, filepath.Join(handbook, "policy", "release.md"), content)
 	initCLIGitRepo(t, handbook)
 	return policyTestFixture{
-		home: home, umbrellaRoot: umbrellaRoot, manifestCache: manifestCache,
+		home: home, umbrellaRoot: umbrellaRoot, manifestCache: manifestCache, manifestWriter: manifestWriter,
 		handbook: handbook, content: content, digest: digest,
 	}
 }
@@ -131,6 +135,28 @@ func (f policyTestFixture) attestationPath() string {
 		f.handbook, "policy", "attestations", "17", "release-policy",
 		strings.TrimPrefix(f.digest, "sha256:")+".json",
 	)
+}
+
+func (f policyTestFixture) configureGovernedOperator(t *testing.T) {
+	t.Helper()
+	_, state, err := umbrella.Ensure(f.umbrellaRoot, "acme", "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.SelectedRole = "operator"
+	if err := umbrella.SaveState(f.umbrellaRoot, state); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := testAccessMonitorApp(app{
+		stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+	}, f.home)
+	if err := a.run([]string{
+		"my", "access", "activate", "--yes", "--manifest", "acme",
+		"--home", f.home, "--umbrella", f.umbrellaRoot,
+	}); err != nil {
+		t.Fatalf("activate governed fixture: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
 }
 
 func TestPolicyListShowStatusAndAcceptanceLifecycle(t *testing.T) {
@@ -308,5 +334,330 @@ func TestPolicyHasNoEditOrDeleteVerbs(t *testing.T) {
 		if _, err := f.run(t, verb, "release-policy"); err == nil || !strings.Contains(err.Error(), "unknown policy subcommand") {
 			t.Fatalf("policy %s error = %v", verb, err)
 		}
+	}
+}
+
+func TestRequiredPolicyScopeUsesSelectedRoleAndEmptyMeansEveryone(t *testing.T) {
+	doc := manifest.Document{Governance: manifest.Governance{Policies: []manifest.Policy{
+		{ID: "everyone", Acceptance: "required"},
+		{ID: "operators", Acceptance: "required", Roles: []string{"operator"}},
+		{ID: "auditors", Acceptance: "required", Roles: []string{"auditor"}},
+		{ID: "optional", Acceptance: "optional"},
+	}}}
+	for role, want := range map[string]string{
+		"":         "everyone",
+		"operator": "everyone,operators",
+		"auditor":  "everyone,auditors",
+	} {
+		policies := requiredPoliciesForRole(doc, role)
+		ids := make([]string, 0, len(policies))
+		for _, policy := range policies {
+			ids = append(ids, policy.ID)
+		}
+		if got := strings.Join(ids, ","); got != want {
+			t.Fatalf("role %q policies = %q, want %q", role, got, want)
+		}
+	}
+}
+
+func TestGovernedPolicyGateUsesBaselineIdentityAndExactRemediation(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	f.configureGovernedOperator(t)
+	doc, err := loadSingleRegisteredDoc(f.home, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := app{accessRunner: func(string, ...string) ([]byte, error) {
+		t.Fatal("fresh positive access baseline should make policy gate offline")
+		return nil, nil
+	}}
+	err = a.requireGovernedPolicyAcceptances(f.home, doc, f.umbrellaRoot)
+	if err == nil {
+		t.Fatal("missing required acceptance did not block")
+	}
+	for _, want := range []string{
+		"GitHub actor 17", "my policy show release-policy --manifest acme",
+		"my policy accept release-policy --yes --manifest acme",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("gate error missing %q: %v", want, err)
+		}
+	}
+	if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.requireGovernedPolicyAcceptances(f.home, doc, f.umbrellaRoot); err != nil {
+		t.Fatalf("accepted policy still blocked: %v", err)
+	}
+}
+
+func TestGovernedPolicyGateIsNotBypassedByTourMarker(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	f.configureGovernedOperator(t)
+	state, err := umbrella.LoadState(f.umbrellaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Tour = &umbrella.TourState{
+		CompletedAt: time.Now().UTC().Format(time.RFC3339), Version: onboardingTourVersion,
+	}
+	if err := umbrella.SaveState(f.umbrellaRoot, state); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	launched := false
+	a := app{
+		stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+		lookPath:    func(string) (string, error) { return "/bin/true", nil },
+		execHarness: func(string, []string, string) error { launched = true; return nil },
+	}
+	err = a.run([]string{
+		"my", "ai", "--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
+		"--no-session", "--no-refresh", "--no-update-check", "codex",
+	})
+	if err == nil || !strings.Contains(err.Error(), "has not accepted") {
+		t.Fatalf("launch error = %v", err)
+	}
+	if launched {
+		t.Fatal("stale onboarding marker bypassed current policy acceptance")
+	}
+}
+
+func TestNonInteractiveOnboardingPrintsPolicyCommandsAndDoesNotComplete(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	f.configureGovernedOperator(t)
+	statePath := filepath.Join(f.umbrellaRoot, umbrella.DirName, "state.json")
+	before, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", f.home,
+		"--umbrella", f.umbrellaRoot, "--no-refresh", "--no-update-check",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"Required policy acceptance is incomplete",
+		"my policy show release-policy",
+		"my policy accept release-policy --yes",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("non-interactive onboarding missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Onboarding complete") {
+		t.Fatalf("non-interactive onboarding claimed completion:\n%s", out)
+	}
+	after, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("non-interactive policy onboarding changed completion state")
+	}
+}
+
+func TestInteractiveOnboardingDeclineThenAcceptExactPolicy(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	f.configureGovernedOperator(t)
+	state, err := umbrella.LoadState(f.umbrellaRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Tour = &umbrella.TourState{CompletedAt: "2026-07-01T00:00:00Z", Version: onboardingTourVersion}
+	if err := umbrella.SaveState(f.umbrellaRoot, state); err != nil {
+		t.Fatal(err)
+	}
+
+	var declinedOut, declinedErr bytes.Buffer
+	decline := app{
+		stdout: &declinedOut, stderr: &declinedErr, stdin: strings.NewReader("n\n"), interactive: true,
+		accessRunner: governedAccessRunner(false),
+	}
+	if err := decline.run([]string{
+		"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", f.home,
+		"--umbrella", f.umbrellaRoot, "--no-refresh", "--no-update-check",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(declinedOut.String(), f.content) ||
+		!strings.Contains(declinedOut.String(), "Policy onboarding incomplete (acceptance declined)") {
+		t.Fatalf("declined onboarding output:\n%s", declinedOut.String())
+	}
+	if _, err := os.Lstat(f.attestationPath()); !os.IsNotExist(err) {
+		t.Fatalf("declined onboarding wrote acceptance: %v", err)
+	}
+
+	var acceptedOut, acceptedErr bytes.Buffer
+	accept := app{
+		stdout: &acceptedOut, stderr: &acceptedErr, stdin: strings.NewReader("y\n"), interactive: true,
+		accessRunner: governedAccessRunner(false),
+	}
+	if err := accept.run([]string{
+		"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", f.home,
+		"--umbrella", f.umbrellaRoot, "--no-refresh", "--no-update-check",
+	}); err != nil {
+		t.Fatalf("accept onboarding: %v\nstdout:\n%s\nstderr:\n%s", err, acceptedOut.String(), acceptedErr.String())
+	}
+	if !strings.Contains(acceptedOut.String(), "Onboarding complete - acme") {
+		t.Fatalf("accepted onboarding output:\n%s", acceptedOut.String())
+	}
+	if _, err := os.Stat(f.attestationPath()); err != nil {
+		t.Fatalf("accepted onboarding did not write evidence: %v", err)
+	}
+}
+
+func TestInteractivePolicyOnboardingFailsClosedOnDigestOrIdentity(t *testing.T) {
+	t.Run("digest mismatch", func(t *testing.T) {
+		f := newPolicyTestFixture(t)
+		f.configureGovernedOperator(t)
+		writeCLITestFile(t, filepath.Join(f.handbook, "policy", "release.md"), f.content+"undeclared change\n")
+		commitCLIGit(t, f.handbook, "undeclared policy change")
+		var stdout, stderr bytes.Buffer
+		a := app{
+			stdout: &stdout, stderr: &stderr, stdin: strings.NewReader("y\n"), interactive: true,
+			accessRunner: governedAccessRunner(false),
+		}
+		err := a.run([]string{
+			"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", f.home,
+			"--umbrella", f.umbrellaRoot, "--no-refresh", "--no-update-check",
+		})
+		if err == nil || !strings.Contains(err.Error(), "digest mismatch") {
+			t.Fatalf("digest mismatch error = %v", err)
+		}
+		if _, err := os.Lstat(f.attestationPath()); !os.IsNotExist(err) {
+			t.Fatalf("digest mismatch wrote acceptance: %v", err)
+		}
+	})
+
+	t.Run("identity failure", func(t *testing.T) {
+		f := newPolicyTestFixture(t)
+		f.configureGovernedOperator(t)
+		var stdout, stderr bytes.Buffer
+		a := app{
+			stdout: &stdout, stderr: &stderr, stdin: strings.NewReader("y\n"), interactive: true,
+			accessRunner: func(string, ...string) ([]byte, error) { return []byte(`{}`), nil },
+		}
+		err := a.run([]string{
+			"my", "onboarding", "--no-agent", "--manifest", "acme", "--home", f.home,
+			"--umbrella", f.umbrellaRoot, "--no-refresh", "--no-update-check",
+		})
+		if err == nil || !strings.Contains(err.Error(), "cannot establish immutable GitHub identity") {
+			t.Fatalf("identity failure error = %v", err)
+		}
+		if _, err := os.Lstat(f.attestationPath()); !os.IsNotExist(err) {
+			t.Fatalf("identity failure wrote acceptance: %v", err)
+		}
+	})
+}
+
+func TestGovernedLaunchRefreshesManifestEvenWithNoRefreshAndFindsNewPolicy(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	f.configureGovernedOperator(t)
+	if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
+		t.Fatal(err)
+	}
+
+	manifestPath := filepath.Join(f.manifestWriter, "manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc manifest.Document
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	second := doc.Governance.Policies[0]
+	second.ID = "new-required-policy"
+	second.Title = "New required policy"
+	doc.Governance.Policies = append(doc.Governance.Policies, second)
+	updated, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, manifestPath, string(append(updated, '\n')))
+	commitAndPushCLIGit(t, f.manifestWriter, "require a new policy")
+
+	var stdout, stderr bytes.Buffer
+	launched := false
+	a := app{
+		stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+		lookPath:    func(string) (string, error) { return "/bin/true", nil },
+		execHarness: func(string, []string, string) error { launched = true; return nil },
+	}
+	err = a.run([]string{
+		"my", "ai", "--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
+		"--no-session", "--no-refresh", "--no-update-check", "codex",
+	})
+	if err == nil || !strings.Contains(err.Error(), "new-required-policy") {
+		t.Fatalf("stale-manifest launch error = %v", err)
+	}
+	if launched {
+		t.Fatal("--no-refresh hid a newly required policy")
+	}
+	refreshed, err := loadSingleRegisteredDoc(f.home, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refreshed.doc.Governance.Policies) != 2 {
+		t.Fatalf("manifest did not refresh: %#v", refreshed.doc.Governance.Policies)
+	}
+}
+
+func TestGovernedLaunchBlocksWhenManifestFreshnessIsUnknownOrDirty(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		prepare func(*testing.T, policyTestFixture)
+		want    string
+	}{
+		{
+			name: "remote unreachable",
+			prepare: func(t *testing.T, f policyTestFixture) {
+				runCLIGit(t, f.manifestCache, "remote", "set-url", "origin", filepath.Join(f.home, "missing-remote.git"))
+			},
+			want: "freshness could not be proven",
+		},
+		{
+			name: "local manifest modification",
+			prepare: func(t *testing.T, f policyTestFixture) {
+				path := filepath.Join(f.manifestCache, "manifest.json")
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				writeCLITestFile(t, path, string(data)+"\n")
+			},
+			want: "local changes or unpublished commits",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newPolicyTestFixture(t)
+			f.configureGovernedOperator(t)
+			if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
+				t.Fatal(err)
+			}
+			test.prepare(t, f)
+			var stdout, stderr bytes.Buffer
+			launched := false
+			a := app{
+				stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+				lookPath:    func(string) (string, error) { return "/bin/true", nil },
+				execHarness: func(string, []string, string) error { launched = true; return nil },
+			}
+			err := a.run([]string{
+				"my", "ai", "--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
+				"--no-session", "--no-refresh", "--no-update-check", "codex",
+			})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("launch error = %v, want %q", err, test.want)
+			}
+			if launched {
+				t.Fatal("unproven manifest freshness launched harness")
+			}
+		})
 	}
 }

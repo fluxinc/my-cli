@@ -68,6 +68,19 @@ func (a app) runRoot(args []string) error {
 		if err := a.requireGovernedLaunchAccess(home, doc, root); err != nil {
 			return err
 		}
+		if err := a.requireGovernedManifestFreshness(home, doc, root); err != nil {
+			return err
+		}
+		doc, err = loadSingleRegisteredDoc(home, manifestName)
+		if err != nil {
+			return err
+		}
+		if err := a.requireGovernedLaunchAccess(home, doc, root); err != nil {
+			return err
+		}
+		if err := a.requireGovernedPolicyAcceptances(home, doc, root); err != nil {
+			return err
+		}
 	}
 	a.maybeAutoRefresh(home, manifestName, root, root, noRefresh)
 	a.maybeUpdateNotice(home, noUpdateCheck)
@@ -209,9 +222,29 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 		if err != nil {
 			return err
 		}
-		if err := a.requireGovernedLaunchAccess(opts.home, doc, root); err != nil {
+		complete, err := a.reviewRequiredPolicies(opts.home, doc, root)
+		if err != nil {
 			return err
 		}
+		if !complete {
+			return fmt.Errorf("onboarding incomplete: required policy acceptance has not been recorded")
+		}
+	}
+	if err := a.requireGovernedLaunchAccess(opts.home, doc, root); err != nil {
+		return err
+	}
+	if err := a.requireGovernedManifestFreshness(opts.home, doc, root); err != nil {
+		return err
+	}
+	doc, err = loadSingleRegisteredDoc(opts.home, doc.ref.Name)
+	if err != nil {
+		return err
+	}
+	if err := a.requireGovernedLaunchAccess(opts.home, doc, root); err != nil {
+		return err
+	}
+	if err := a.requireGovernedPolicyAcceptances(opts.home, doc, root); err != nil {
+		return err
 	}
 	if err := a.ensureLaunchGuidance(root, doc); err != nil {
 		return err

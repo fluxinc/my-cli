@@ -469,7 +469,18 @@ func (a app) runOnboard(args []string) error {
 		// LoadWorkspace returns path errors directly; any non-missing error is real.
 		return err
 	}
+	if !a.interactive && len(requiredPoliciesForRole(doc.doc, state.SelectedRole)) != 0 {
+		a.printRequiredPolicyCommands(opts.home, doc, root, requiredPoliciesForRole(doc.doc, state.SelectedRole))
+		return nil
+	}
 	if tourMarked(state) {
+		complete, err := a.reviewRequiredPolicies(opts.home, doc, root)
+		if err != nil {
+			return err
+		}
+		if !complete {
+			return nil
+		}
 		a.printOnboardComplete(doc, root, state)
 		return nil
 	}
@@ -491,6 +502,17 @@ func (a app) runOnboard(args []string) error {
 	if runSetup {
 		if err := a.runSetup(onboardSetupArgs(opts, doc.ref.Name, root)); err != nil {
 			return err
+		}
+		doc, err = loadSingleRegisteredDoc(opts.home, doc.ref.Name)
+		if err != nil {
+			return err
+		}
+		complete, err := a.reviewRequiredPolicies(opts.home, doc, root)
+		if err != nil {
+			return err
+		}
+		if !complete {
+			return nil
 		}
 		if err := markTourComplete(root); err != nil {
 			return err

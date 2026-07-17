@@ -334,6 +334,9 @@ func policyActor(doc manifest.Document, runner access.Runner) (access.Actor, err
 }
 
 func currentPolicyStatus(ctx policyContext, policy manifest.Policy, actor access.Actor) (policyStatusRow, error) {
+	if _, _, err := verifiedPolicyBlob(ctx, policy); err != nil {
+		return policyStatusRow{}, err
+	}
 	ledger, ok := ctx.mounts[ctx.doc.doc.Governance.Attestations.Mount]
 	if !ok {
 		return policyStatusRow{}, fmt.Errorf("attestation mount %q is not materialized", ctx.doc.doc.Governance.Attestations.Mount)
@@ -377,6 +380,165 @@ func currentPolicyStatus(ctx policyContext, policy manifest.Policy, actor access
 		row.Status = "accepted-locally"
 	}
 	return row, nil
+}
+
+func requiredPoliciesForRole(doc manifest.Document, role string) []manifest.Policy {
+	var required []manifest.Policy
+	for _, policy := range doc.Governance.Policies {
+		if policy.Acceptance != "required" {
+			continue
+		}
+		if len(policy.Roles) == 0 || stringSliceContains(policy.Roles, role) {
+			required = append(required, policy)
+		}
+	}
+	return required
+}
+
+func stringSliceContains(values []string, value string) bool {
+	for _, candidate := range values {
+		if candidate == value {
+			return true
+		}
+	}
+	return false
+}
+
+func (a app) requireGovernedPolicyAcceptances(home string, doc registeredDoc, root string) error {
+	if len(doc.doc.Governance.Policies) == 0 {
+		return nil
+	}
+	role, err := selectedRoleForRoot(root)
+	if err != nil {
+		return err
+	}
+	policies := requiredPoliciesForRole(doc.doc, role)
+	if len(policies) == 0 {
+		return nil
+	}
+	actor, err := policyActorFromInventory(home, doc)
+	if err != nil {
+		return err
+	}
+	ctx, err := loadPolicyContext(home, doc.ref.Name, root)
+	if err != nil {
+		return err
+	}
+	var missing []manifest.Policy
+	for _, policy := range policies {
+		row, err := currentPolicyStatus(ctx, policy, actor)
+		if err != nil {
+			return fmt.Errorf("governed operation blocked while verifying required policy %q: %w", policy.ID, err)
+		}
+		if row.Status == "missing" {
+			missing = append(missing, policy)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	var remediation strings.Builder
+	for _, policy := range missing {
+		fmt.Fprintf(&remediation, "\n  my policy show %s --manifest %s", policy.ID, doc.ref.Name)
+		fmt.Fprintf(&remediation, "\n  my policy accept %s --yes --manifest %s", policy.ID, doc.ref.Name)
+	}
+	return fmt.Errorf("governed operation blocked: GitHub actor %d has not accepted %d required current policy document(s); review and accept each exact document:%s", actor.ID, len(missing), remediation.String())
+}
+
+func policyActorFromInventory(home string, doc registeredDoc) (access.Actor, error) {
+	inventory, err := access.LoadInventory(home)
+	if err != nil {
+		return access.Actor{}, err
+	}
+	entry, ok := managedInventoryEntry(inventory, doc.ref.LocalPath)
+	if !ok {
+		return access.Actor{}, fmt.Errorf("governed operation blocked: manifest has no positive access baseline; run `my access activate --yes`")
+	}
+	baseline, ok := newestPositiveBaseline(entry.Baselines)
+	if !ok || baseline.Actor.ID == 0 || baseline.Actor.NodeID == "" {
+		return access.Actor{}, fmt.Errorf("governed operation blocked: manifest has no immutable actor baseline; run `my access activate --yes`")
+	}
+	return baseline.Actor, nil
+}
+
+func (a app) reviewRequiredPolicies(home string, doc registeredDoc, root string) (bool, error) {
+	role, err := selectedRoleForRoot(root)
+	if err != nil {
+		return false, err
+	}
+	policies := requiredPoliciesForRole(doc.doc, role)
+	if len(policies) == 0 {
+		return true, nil
+	}
+	if !a.interactive {
+		a.printRequiredPolicyCommands(home, doc, root, policies)
+		return false, nil
+	}
+	ctx, err := loadPolicyContext(home, doc.ref.Name, root)
+	if err != nil {
+		return false, err
+	}
+	actor, err := policyActor(doc.doc, a.accessRunner)
+	if err != nil {
+		return false, err
+	}
+	for _, policy := range policies {
+		row, err := currentPolicyStatus(ctx, policy, actor)
+		if err != nil {
+			return false, err
+		}
+		if row.Status != "missing" {
+			continue
+		}
+		content, _, err := verifiedPolicyBlob(ctx, policy)
+		if err != nil {
+			return false, err
+		}
+		fmt.Fprintf(a.stdout, "\nRequired policy: %s (%s, version %s)\n", policy.Title, policy.ID, policy.Version)
+		fmt.Fprintln(a.stdout, strings.Repeat("-", 72))
+		if _, err := a.stdout.Write(content); err != nil {
+			return false, err
+		}
+		if len(content) == 0 || content[len(content)-1] != '\n' {
+			fmt.Fprintln(a.stdout)
+		}
+		fmt.Fprintln(a.stdout, strings.Repeat("-", 72))
+		accepted, answered, err := a.promptConfirm("Accept this exact policy document?", false)
+		if err != nil {
+			return false, err
+		}
+		if !answered || !accepted {
+			reason := "no input received"
+			if answered {
+				reason = "acceptance declined"
+			}
+			fmt.Fprintf(a.stdout, "Policy onboarding incomplete (%s).\n", reason)
+			a.printRequiredPolicyCommands(home, doc, root, []manifest.Policy{policy})
+			return false, nil
+		}
+		args := append([]string{policy.ID, "--yes"}, policyCommandFlags(home, doc.ref.Name, root)...)
+		if err := a.runPolicyAccept(args); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+func (a app) printRequiredPolicyCommands(home string, doc registeredDoc, root string, policies []manifest.Policy) {
+	fmt.Fprintln(a.stdout, "Required policy acceptance is incomplete. Review and accept each exact document:")
+	flags := policyCommandFlags(home, doc.ref.Name, root)
+	for _, policy := range policies {
+		fmt.Fprintf(a.stdout, "  %s\n", shellCommandLine("", "my", append([]string{"policy", "show", policy.ID}, flags...)))
+		fmt.Fprintf(a.stdout, "  %s\n", shellCommandLine("", "my", append([]string{"policy", "accept", policy.ID, "--yes"}, flags...)))
+	}
+}
+
+func policyCommandFlags(home, manifestName, root string) []string {
+	args := []string{"--manifest", manifestName, "--umbrella", root}
+	if home != "" {
+		args = append(args, "--home", home)
+	}
+	return args
 }
 
 func samePolicyAcceptance(left, right policyAttestation) bool {

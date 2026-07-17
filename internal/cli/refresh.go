@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fluxinc/my-cli/internal/manifest"
 	"github.com/fluxinc/my-cli/internal/syncer"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 )
@@ -122,6 +123,79 @@ func (a app) maybeAutoRefresh(home, manifestName, umbrellaRoot, root string, noR
 			fmt.Fprintf(a.stderr, "warning: auto-refresh state not saved: %v\n", err)
 		}
 	}
+}
+
+// requireGovernedManifestFreshness makes policy discovery fail closed. A
+// stale manifest cache could otherwise hide a newly required policy while all
+// local evidence still appeared valid. --no-refresh only controls the
+// best-effort convenience refresh; it cannot disable this governed gate.
+func (a app) requireGovernedManifestFreshness(home string, doc registeredDoc, root string) error {
+	if !manifest.GovernanceConfigured(doc.doc.Governance) {
+		return nil
+	}
+	state, err := loadAutoRefreshState(root)
+	if err != nil {
+		return fmt.Errorf("governed operation blocked: read manifest freshness state: %w", err)
+	}
+	entries, err := a.collectSyncEntries(home, doc.ref.Name, root, "local")
+	if err != nil {
+		return fmt.Errorf("governed operation blocked: resolve manifest freshness: %w", err)
+	}
+	var manifestEntry *syncer.Entry
+	for i := range entries {
+		if entries[i].Role == "manifest" && samePath(entries[i].LocalPath, doc.ref.LocalPath) {
+			manifestEntry = &entries[i]
+			break
+		}
+	}
+	if manifestEntry == nil {
+		return fmt.Errorf("governed operation blocked: manifest checkout is not in the managed sync inventory")
+	}
+	ttl, err := accessPositiveTTL(doc.doc.Governance.Access)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	key := autoRefreshKey(*manifestEntry)
+	if !autoRefreshDue(state, key, now, ttl) {
+		return nil
+	}
+	result := syncer.Inspect([]syncer.Entry{*manifestEntry}, syncer.InspectOptions{Fetch: true})[0]
+	if result.BehindUnknown || result.Status == "unknown" || result.Status == "failed" || result.FetchError != "" {
+		message := result.FetchError
+		if message == "" {
+			message = result.Error
+		}
+		if message == "" {
+			message = "remote freshness is unknown"
+		}
+		return fmt.Errorf("governed operation blocked: manifest freshness could not be proven: %s", message)
+	}
+	if len(result.Dirty) != 0 || result.Ahead != 0 {
+		return fmt.Errorf("governed operation blocked: manifest checkout has local changes or unpublished commits; an administrator must reconcile it")
+	}
+	if result.Behind > 0 {
+		fixed := syncer.FastForward(*manifestEntry, syncer.FastForwardOptions{})
+		if fixed.Status != "pulled" && fixed.Status != "already landed" {
+			message := fixed.Error
+			if message == "" {
+				message = fixed.Message
+			}
+			if message == "" {
+				message = fixed.Status
+			}
+			return fmt.Errorf("governed operation blocked: manifest could not fast-forward safely: %s", message)
+		}
+	}
+	verified := syncer.Inspect([]syncer.Entry{*manifestEntry}, syncer.InspectOptions{})[0]
+	if verified.BehindUnknown || verified.Status == "failed" || len(verified.Dirty) != 0 || verified.Ahead != 0 || verified.Behind != 0 {
+		return fmt.Errorf("governed operation blocked: manifest checkout did not converge to a clean remote revision")
+	}
+	state.Repos[key] = autoRefreshRecord{LastAutoRefresh: now.Format(time.RFC3339)}
+	if err := saveAutoRefreshState(root, state); err != nil {
+		return fmt.Errorf("governed operation blocked: persist manifest freshness proof: %w", err)
+	}
+	return nil
 }
 
 // freshnessNotice describes a checkout the auto-refresh could not converge,
