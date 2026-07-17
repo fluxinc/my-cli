@@ -173,6 +173,8 @@ func (a app) run(args []string) error {
 		return a.runDoctor(args[2:])
 	case "access":
 		return a.runAccess(args[2:])
+	case "policy":
+		return a.runPolicy(args[2:])
 	case "meetings":
 		return a.runMeetings(args[2:])
 	case "support":
@@ -291,6 +293,7 @@ Usage:
   my access enforce [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my access status [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my access monitor install|uninstall|run [--manifest NAME] [--home DIR] [--umbrella DIR]
+  my policy list|show|status|accept [ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my version`)
 }
 
