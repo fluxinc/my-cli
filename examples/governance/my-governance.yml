@@ -1,0 +1,86 @@
+name: my-governance
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  my-governance:
+    name: my-governance
+    runs-on: ubuntu-latest
+    steps:
+      # Pin every action to an immutable commit. pull_request_target makes this
+      # workflow definition come from the trusted base branch; never execute a
+      # script from the proposed checkout.
+      - name: Check out proposed content without executing it
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          path: proposed
+          persist-credentials: false
+
+      - name: Check out trusted organization manifest
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: ${{ vars.MY_MANIFEST_REPOSITORY }}
+          ref: ${{ vars.MY_MANIFEST_BRANCH }}
+          token: ${{ secrets.MY_MANIFEST_READ_TOKEN }}
+          fetch-depth: 0
+          path: manifest
+          persist-credentials: false
+
+      - name: Check out the immutable trusted validator
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: fluxinc/my-cli
+          ref: ${{ vars.MY_CLI_COMMIT }}
+          fetch-depth: 1
+          path: my-cli
+          persist-credentials: false
+
+      - name: Install the validator toolchain
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: my-cli/go.mod
+          cache: false
+
+      - name: Build the immutable trusted validator
+        shell: bash
+        env:
+          MY_CLI_COMMIT: ${{ vars.MY_CLI_COMMIT }}
+        run: |
+          set -euo pipefail
+          [[ "$MY_CLI_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git -C my-cli rev-parse HEAD^{commit})" = "$MY_CLI_COMMIT"
+          (cd my-cli && go build -trimpath -o "$RUNNER_TEMP/my-governance" ./cmd/my)
+
+      - name: Validate full proposed history under trusted base policy
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_AUTHOR_ID: ${{ github.event.pull_request.user.id }}
+          PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PROTECTED_REPOSITORY: ${{ github.repository }}
+          PROTECTED_MOUNT: ${{ vars.MY_GOVERNANCE_MOUNT }}
+        run: |
+          set -euo pipefail
+          manifest_base="$(git -C manifest rev-parse HEAD^{commit})"
+          "$RUNNER_TEMP/my-governance" governance check \
+            --repo proposed \
+            --repository "$PROTECTED_REPOSITORY" \
+            --base "$PR_BASE" \
+            --head "$PR_HEAD" \
+            --manifest-repo manifest \
+            --manifest-base "$manifest_base" \
+            --mount "$PROTECTED_MOUNT" \
+            --actor-id "$PR_AUTHOR_ID" \
+            --actor-login "$PR_AUTHOR_LOGIN" \
+            --json

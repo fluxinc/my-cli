@@ -1,0 +1,4 @@
+/.github/workflows/ @example/security-admins
+/.github/CODEOWNERS @example/security-admins
+/manifest.json @example/security-admins
+/policy/ @example/security-admins

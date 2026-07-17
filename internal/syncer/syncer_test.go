@@ -89,6 +89,58 @@ func TestRunPublishesExplicitlyStagedNewContent(t *testing.T) {
 	}
 }
 
+func TestRunPRDelegatesOnlyAfterSyncSafetyGates(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	writeFile(t, filepath.Join(content, "meetings", "2026-07-17-governed.md"), "governed\n")
+	runGit(t, content, "add", "meetings/2026-07-17-governed.md")
+	called := 0
+	report := Run([]Entry{{
+		ID: "handbook", Role: "content", Kind: "handbook", GitURL: remote,
+		LocalPath: content, ContentPaths: []string{"meetings"},
+	}}, Options{
+		Publish: "pr", Message: "Add governed meeting",
+		PRPublisher: func(request PRRequest) PRResult {
+			called++
+			if request.Entry.ID != "handbook" || request.Branch == "" || request.Upstream == "" ||
+				request.Head == "" || request.Message != "Add governed meeting" || len(request.Dirty) != 1 {
+				t.Fatalf("request = %#v", request)
+			}
+			return PRResult{Status: "pull request opened", ReasonCode: "governance_pr_opened", Message: "https://github.com/example/handbook/pull/1", Changed: request.Dirty}
+		},
+	})
+	result := findResult(t, report, "handbook")
+	if called != 1 || result.Status != "pull request opened" || result.ReasonCode != "governance_pr_opened" {
+		t.Fatalf("called=%d result=%#v", called, result)
+	}
+}
+
+func TestRunPRRefusesMissingPublisherAndOutsideContent(t *testing.T) {
+	t.Run("publisher missing", func(t *testing.T) {
+		remote, content, _ := setupTwoCheckoutRemote(t)
+		writeFile(t, filepath.Join(content, "meetings", "new.md"), "new\n")
+		runGit(t, content, "add", "meetings/new.md")
+		report := Run([]Entry{{ID: "handbook", Role: "content", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}}}, Options{Publish: "pr"})
+		result := findResult(t, report, "handbook")
+		if result.Status != "held back" || result.ReasonCode != "pr_publisher_unavailable" {
+			t.Fatalf("result = %#v", result)
+		}
+	})
+
+	t.Run("outside content", func(t *testing.T) {
+		remote, content, _ := setupTwoCheckoutRemote(t)
+		writeFile(t, filepath.Join(content, "scratch", "new.md"), "new\n")
+		runGit(t, content, "add", "scratch/new.md")
+		called := false
+		report := Run([]Entry{{ID: "handbook", Role: "content", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}}}, Options{
+			Publish: "pr", PRPublisher: func(PRRequest) PRResult { called = true; return PRResult{} },
+		})
+		result := findResult(t, report, "handbook")
+		if called || result.Status != "held back" || result.ReasonCode != "pr_outside_content_paths" {
+			t.Fatalf("called=%t result=%#v", called, result)
+		}
+	})
+}
+
 func TestRunAutoHoldsWorkspaceRoleEvenWhenContentIsAdopted(t *testing.T) {
 	remote, content, _ := setupTwoCheckoutRemote(t)
 	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")

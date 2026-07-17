@@ -54,7 +54,33 @@ type Options struct {
 	DirRunner    DirRunner
 	Visibility   VisibilityFunc
 	SessionHolds []SessionHold
+	PRPublisher  PRPublisher
 }
+
+// PRRequest is a preflighted outbound change request. The publisher owns
+// branch creation and pull-request proof; syncer retains fetch/divergence,
+// declared-content, duplicate-checkout, adoption, and active-session gates.
+type PRRequest struct {
+	Entry    Entry
+	Branch   string
+	Upstream string
+	Head     string
+	Dirty    []string
+	Changed  []string
+	Message  string
+	DryRun   bool
+}
+
+type PRResult struct {
+	Status      string
+	Message     string
+	ReasonCode  string
+	NextCommand string
+	Changed     []string
+	Error       string
+}
+
+type PRPublisher func(PRRequest) PRResult
 
 // InspectOptions controls report-only repository inspection.
 type InspectOptions struct {
@@ -478,15 +504,36 @@ func reconcile(in *inspection, all []inspection, opts Options, runner Runner) {
 		hold(in, "publish disabled")
 		return
 	}
-	if opts.Publish == "pr" {
-		hold(in, "PR mode is not implemented yet; use --print or --publish direct")
-		return
-	}
 	if hasDuplicatePendingSibling(in, all) {
 		hold(in, "another checkout of the same remote has pending changes")
 		return
 	}
 	if holdActiveSession(in, opts) {
+		return
+	}
+	if opts.Publish == "pr" {
+		if !in.contentOnly {
+			hold(in, "PR publish is limited to changes inside declared content paths")
+			return
+		}
+		if opts.PRPublisher == nil {
+			hold(in, "PR publisher is unavailable")
+			return
+		}
+		result := opts.PRPublisher(PRRequest{
+			Entry: in.entry, Branch: in.result.Branch, Upstream: in.upstream, Head: in.result.Head,
+			Dirty: append([]string(nil), in.dirty...), Changed: append([]string(nil), in.changed...),
+			Message: opts.Message, DryRun: opts.DryRun,
+		})
+		in.result.Status = result.Status
+		in.result.Direction = "outbound"
+		in.result.Message = result.Message
+		in.result.ReasonCode = result.ReasonCode
+		in.result.NextCommand = result.NextCommand
+		in.result.Error = result.Error
+		if len(result.Changed) != 0 {
+			in.result.Changed = result.Changed
+		}
 		return
 	}
 	if opts.Publish == "auto" {
@@ -626,6 +673,10 @@ func holdReasonCode(reason string) string {
 		return "publish_disabled"
 	case strings.HasPrefix(reason, "PR mode"):
 		return "pr_mode_unimplemented"
+	case reason == "PR publisher is unavailable":
+		return "pr_publisher_unavailable"
+	case strings.HasPrefix(reason, "PR publish is limited"):
+		return "pr_outside_content_paths"
 	case reason == "detached HEAD":
 		return "detached_head"
 	case reason == "not cloned; run my mounts sync or my setup first":
@@ -676,8 +727,10 @@ func holdNextCommand(in inspection, reasonCode string) string {
 		return "my doctor"
 	case "gnit_not_control_workspace":
 		return "my sync --backend builtin --push --print"
-	case "pr_mode_unimplemented":
-		return "my sync --publish direct --print"
+	case "pr_mode_unimplemented", "pr_publisher_unavailable":
+		return "my doctor"
+	case "pr_outside_content_paths":
+		return "git status --short"
 	default:
 		return ""
 	}

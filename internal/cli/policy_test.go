@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/fluxinc/my-cli/internal/access"
 	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/syncer"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
@@ -37,6 +39,7 @@ func newPolicyTestFixture(t *testing.T) policyTestFixture {
   "manifest_version": 1,
   "organization": { "id": "acme", "name": "Acme Example" },
   "umbrella": { "recommended_path": "~/acme" },
+  "sync": { "publish_policy": "pr", "pull_request_auto_merge": true },
   "mounts": [
     { "id": "handbook", "kind": "handbook", "git_url": "git@github.com:example/handbook.git", "mode": "required" }
   ],
@@ -659,5 +662,331 @@ func TestGovernedLaunchBlocksWhenManifestFreshnessIsUnknownOrDirty(t *testing.T)
 				t.Fatal("unproven manifest freshness launched harness")
 			}
 		})
+	}
+}
+
+type governedPRRunnerState struct {
+	remote      string
+	created     bool
+	merged      bool
+	branch      string
+	commit      string
+	createCalls int
+	proofActor  int64
+	lostCreate  bool
+}
+
+func (s *governedPRRunnerState) run(name string, args ...string) ([]byte, error) {
+	if name != "gh" {
+		return nil, fmt.Errorf("unexpected command %s", name)
+	}
+	joined := strings.Join(args, " ")
+	switch {
+	case joined == "api user", joined == "api users/operator":
+		return []byte(`{"id":17,"node_id":"U_actor","login":"operator"}`), nil
+	case strings.Contains(joined, "/collaborators/operator/permission"):
+		return []byte(`{"permission":"write","user":{"id":17,"node_id":"U_actor","login":"operator"}}`), nil
+	case strings.HasPrefix(joined, "api repos/example/handbook/pulls?state=open"):
+		if !s.created {
+			return []byte(`[]`), nil
+		}
+		proofActor := s.proofActor
+		if proofActor == 0 {
+			proofActor = 17
+		}
+		return []byte(fmt.Sprintf(`[{"html_url":"https://github.com/example/handbook/pull/1","user":{"id":%d},"head":{"sha":%q}}]`, proofActor, s.commit)), nil
+	case len(args) >= 2 && args[0] == "pr" && args[1] == "create":
+		s.createCalls++
+		for i := range args {
+			if args[i] == "--head" && i+1 < len(args) {
+				s.branch = args[i+1]
+			}
+		}
+		if s.branch == "" {
+			return nil, fmt.Errorf("missing PR head branch")
+		}
+		cmd := exec.Command("git", "--git-dir", s.remote, "rev-parse", "refs/heads/"+s.branch)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return out, err
+		}
+		s.commit = strings.TrimSpace(string(out))
+		s.created = true
+		if s.lostCreate {
+			return nil, fmt.Errorf("simulated lost gh response after PR creation")
+		}
+		return []byte("https://github.com/example/handbook/pull/1\n"), nil
+	case joined == "api repos/example/handbook/pulls/1":
+		if !s.created {
+			return nil, fmt.Errorf("PR was not created")
+		}
+		proofActor := s.proofActor
+		if proofActor == 0 {
+			proofActor = 17
+		}
+		return []byte(fmt.Sprintf(`{"html_url":"https://github.com/example/handbook/pull/1","user":{"id":%d},"head":{"sha":%q}}`, proofActor, s.commit)), nil
+	case len(args) >= 2 && args[0] == "pr" && args[1] == "merge":
+		s.merged = true
+		return []byte("auto-merge enabled\n"), nil
+	default:
+		return nil, fmt.Errorf("unexpected gh call: %s", joined)
+	}
+}
+
+func preparePolicyFixtureRemote(t *testing.T, f policyTestFixture) (string, string) {
+	t.Helper()
+	writeCLITestFile(t, filepath.Join(f.handbook, ".gitignore"), "private.tmp\n")
+	commitCLIGit(t, f.handbook, "add ignore policy")
+	remote := filepath.Join(f.home, "handbook.git")
+	runCLIGit(t, f.home, "init", "--bare", "-q", remote)
+	runCLIGit(t, f.handbook, "remote", "add", "origin", remote)
+	runCLIGit(t, f.handbook, "branch", "-M", "master")
+	runCLIGit(t, f.handbook, "push", "-q", "-u", "origin", "master")
+	return remote, strings.TrimSpace(gitCLIOutput(t, f.handbook, "rev-parse", "HEAD"))
+}
+
+func TestGovernedSyncPRDryRunAndApplyPreserveWorkingBytes(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	remote, remoteMaster := preparePolicyFixtureRemote(t, f)
+	f.configureGovernedOperator(t)
+	if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(f.handbook, "private.tmp"), "never publish or remove\n")
+	attestationBefore, err := os.ReadFile(f.attestationPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ignoredBefore, err := os.ReadFile(filepath.Join(f.handbook, "private.tmp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state := &governedPRRunnerState{remote: remote}
+	newApp := func(stdout, stderr *bytes.Buffer) app {
+		return app{
+			stdout: stdout, stderr: stderr, accessRunner: governedAccessRunner(false),
+			publishRunner: state.run,
+		}
+	}
+	args := []string{
+		"my", "sync", "--push", "--manifest", "acme", "--home", f.home,
+		"--umbrella", f.umbrellaRoot, "--message", "Accept release policy",
+	}
+	var dryOut, dryErr bytes.Buffer
+	dry := newApp(&dryOut, &dryErr)
+	if err := dry.run(append(append([]string{}, args...), "--print")); err != nil {
+		t.Fatalf("PR dry run: %v\nstdout:\n%s\nstderr:\n%s", err, dryOut.String(), dryErr.String())
+	}
+	if state.createCalls != 0 || !strings.Contains(dryOut.String(), "governance pre-check passed") {
+		t.Fatalf("dry-run state=%#v stdout=%s", state, dryOut.String())
+	}
+	if got := strings.TrimSpace(gitCLIOutput(t, f.handbook, "rev-parse", "HEAD")); got != remoteMaster {
+		t.Fatalf("dry run changed HEAD: %s != %s", got, remoteMaster)
+	}
+	if branches := gitCLIOutput(t, f.handbook, "for-each-ref", "--format=%(refname)", "refs/heads/my/governed"); strings.TrimSpace(branches) != "" {
+		t.Fatalf("dry run created branch: %s", branches)
+	}
+
+	var applyOut, applyErr bytes.Buffer
+	apply := newApp(&applyOut, &applyErr)
+	if err := apply.run(args); err != nil {
+		t.Fatalf("PR apply: %v\nstdout:\n%s\nstderr:\n%s", err, applyOut.String(), applyErr.String())
+	}
+	if !state.created || !state.merged || state.commit == "" ||
+		!strings.Contains(applyOut.String(), "pull request opened") ||
+		!strings.Contains(applyOut.String(), "auto-merge requested") {
+		t.Fatalf("state=%#v stdout=%s", state, applyOut.String())
+	}
+	after, err := os.ReadFile(f.attestationPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ignoredAfter, err := os.ReadFile(filepath.Join(f.handbook, "private.tmp"))
+	if err != nil {
+		t.Fatalf("ignored local file was removed: %v", err)
+	}
+	if !bytes.Equal(attestationBefore, after) || !bytes.Equal(ignoredBefore, ignoredAfter) {
+		t.Fatal("PR publication changed working-tree bytes")
+	}
+	if status := gitCLIOutput(t, f.handbook, "status", "--porcelain", "--", "policy/attestations"); strings.TrimSpace(status) != "" {
+		t.Fatalf("published attestation remains dirty: %q", status)
+	}
+	if got := strings.TrimSpace(gitCLIOutput(t, f.handbook, "rev-parse", "HEAD")); got != state.commit {
+		t.Fatalf("local HEAD = %s, PR commit = %s", got, state.commit)
+	}
+	if got := strings.TrimSpace(gitCLIOutput(t, f.handbook, "symbolic-ref", "--short", "HEAD")); got != state.branch {
+		t.Fatalf("checkout stayed on protected base instead of PR branch: %q != %q", got, state.branch)
+	}
+	if got := strings.TrimSpace(gitCLIOutput(t, f.handbook, "rev-parse", "refs/heads/master")); got != remoteMaster {
+		t.Fatalf("local protected base advanced to unmerged PR: %s != %s", got, remoteMaster)
+	}
+	if got := strings.TrimSpace(gitCLIOutput(t, f.handbook, "ls-remote", "origin", "refs/heads/master")); !strings.HasPrefix(got, remoteMaster) {
+		t.Fatalf("PR publication changed protected base branch: %q", got)
+	}
+}
+
+func TestGovernedSyncLocalPrecheckDeniesForgedAcceptanceAndDirectPush(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	remote, _ := preparePolicyFixtureRemote(t, f)
+	f.configureGovernedOperator(t)
+	if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(f.attestationPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged := strings.Replace(string(data), `"subject_id":17`, `"subject_id":99`, 1)
+	forgedPath := filepath.Join(
+		f.handbook, "policy", "attestations", "99", "release-policy",
+		strings.TrimPrefix(f.digest, "sha256:")+".json",
+	)
+	writeCLITestFile(t, forgedPath, forged)
+
+	state := &governedPRRunnerState{remote: remote}
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+		publishRunner: state.run,
+	}
+	err = a.run([]string{
+		"my", "sync", "--push", "--print", "--json", "--manifest", "acme", "--home", f.home,
+		"--umbrella", f.umbrellaRoot, "--message", "Forge acceptance",
+	})
+	if err != nil {
+		t.Fatalf("governance hold should be a structured non-mutating result: %v\n%s", err, stdout.String())
+	}
+	if state.createCalls != 0 || !strings.Contains(stdout.String(), `"reason_code": "governance_denied"`) ||
+		!strings.Contains(stdout.String(), "attestation_subject_mismatch") || !strings.Contains(stdout.String(), "my governance check") {
+		t.Fatalf("state=%#v report=%s", state, stdout.String())
+	}
+
+	stdout.Reset()
+	err = a.run([]string{
+		"my", "sync", "--publish", "direct", "--print", "--manifest", "acme", "--home", f.home,
+		"--umbrella", f.umbrellaRoot,
+	})
+	if err == nil || !strings.Contains(err.Error(), "refuse direct publish") {
+		t.Fatalf("direct publish error = %v", err)
+	}
+}
+
+func TestGovernedPRProofFailureLeavesAllLocalBytesAndChangesInPlace(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	remote, baseHead := preparePolicyFixtureRemote(t, f)
+	f.configureGovernedOperator(t)
+	if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(f.attestationPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := &governedPRRunnerState{remote: remote, proofActor: 99}
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+		publishRunner: state.run,
+	}
+	err = a.run([]string{
+		"my", "sync", "--push", "--manifest", "acme", "--home", f.home,
+		"--umbrella", f.umbrellaRoot, "--message", "Proof failure test",
+	})
+	if err == nil || !strings.Contains(stdout.String(), "pull request author id 99") {
+		t.Fatalf("proof failure err=%v stdout=%s", err, stdout.String())
+	}
+	after, readErr := os.ReadFile(f.attestationPath())
+	if readErr != nil || !bytes.Equal(before, after) {
+		t.Fatalf("proof failure changed or removed local bytes: %v", readErr)
+	}
+	if got := strings.TrimSpace(gitCLIOutput(t, f.handbook, "rev-parse", "HEAD")); got != baseHead {
+		t.Fatalf("proof failure advanced local base: %s != %s", got, baseHead)
+	}
+	if status := gitCLIOutput(t, f.handbook, "status", "--porcelain", "--", "policy/attestations"); strings.TrimSpace(status) == "" {
+		t.Fatal("proof failure discarded the local uncommitted acceptance")
+	}
+	remoteProof := strings.TrimSpace(gitCLIOutput(t, f.handbook, "ls-remote", "origin", "refs/heads/"+state.branch))
+	if state.branch == "" || !strings.HasPrefix(remoteProof, state.commit) {
+		t.Fatalf("pushed recovery branch missing: state=%#v remote=%q", state, remoteProof)
+	}
+}
+
+func TestGovernedPRRecoversIdempotentlyWhenCreateResponseIsLost(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	remote, baseHead := preparePolicyFixtureRemote(t, f)
+	f.configureGovernedOperator(t)
+	if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(f.attestationPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := &governedPRRunnerState{remote: remote, lostCreate: true}
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+		publishRunner: state.run,
+	}
+	if err := a.run([]string{
+		"my", "sync", "--push", "--manifest", "acme", "--home", f.home,
+		"--umbrella", f.umbrellaRoot, "--message", "Recover lost response",
+	}); err != nil {
+		t.Fatalf("lost response recovery: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	after, readErr := os.ReadFile(f.attestationPath())
+	if readErr != nil || !bytes.Equal(before, after) {
+		t.Fatalf("lost response recovery changed working bytes: %v", readErr)
+	}
+	if state.createCalls != 1 || !strings.Contains(stdout.String(), "pull request opened") {
+		t.Fatalf("state=%#v stdout=%s", state, stdout.String())
+	}
+	if got := strings.TrimSpace(gitCLIOutput(t, f.handbook, "rev-parse", "refs/heads/master")); got != baseHead {
+		t.Fatalf("lost response recovery advanced base: %s != %s", got, baseHead)
+	}
+}
+
+func TestProspectiveCommitIsDeterministicAndReusesExistingAheadHead(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "content")
+	writeCLITestFile(t, filepath.Join(repo, "policy", "record.md"), "one\n")
+	initCLIGitRepo(t, repo)
+	base := strings.TrimSpace(gitCLIOutput(t, repo, "rev-parse", "HEAD"))
+	writeCLITestFile(t, filepath.Join(repo, "policy", "record.md"), "two\n")
+	request := syncer.PRRequest{
+		Entry:  syncer.Entry{LocalPath: repo, ContentPaths: []string{"policy"}},
+		Branch: "master", Upstream: base, Head: base, Dirty: []string{"policy/record.md"},
+		Message: "deterministic proposal",
+	}
+	first, err := buildProspectiveCommit(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Cleanup()
+	request.DryRun = true
+	second, err := buildProspectiveCommit(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Cleanup()
+	if first.Commit != second.Commit {
+		t.Fatalf("same bytes produced retry-unstable commits: %s != %s", first.Commit, second.Commit)
+	}
+
+	runCLIGit(t, repo, "add", "policy/record.md")
+	runCLIGit(t, repo, "commit", "-q", "-m", "existing ahead commit")
+	ahead := strings.TrimSpace(gitCLIOutput(t, repo, "rev-parse", "HEAD"))
+	aheadRequest := syncer.PRRequest{
+		Entry:  syncer.Entry{LocalPath: repo, ContentPaths: []string{"policy"}},
+		Branch: "master", Upstream: base, Head: ahead, Changed: []string{"policy/record.md"},
+		Message: "publish existing commit",
+	}
+	prospective, err := buildProspectiveCommit(aheadRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prospective.Cleanup()
+	if prospective.Commit != ahead {
+		t.Fatalf("ahead-only publish added a synthetic empty commit: %s != %s", prospective.Commit, ahead)
 	}
 }

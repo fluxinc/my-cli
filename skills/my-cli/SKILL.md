@@ -26,7 +26,7 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
 
 ## The Model
 
-`my` has eight concepts. Everything in the CLI is one of these:
+`my` has nine concepts. Everything in the CLI is one of these:
 
 - **Manifest** — an organization's configuration in its own private Git repo:
   declares skills, mounts, data bindings, catalog, services, roles, and tool
@@ -69,6 +69,10 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
   `## Organization Contract` section; treat those rules as obligations.
 - **Tool** — an external executable the org depends on; `my` reports presence
   and install hints, it never silently installs tools.
+- **Governance** — optional manifest policy that binds exact policy documents,
+  immutable GitHub acceptance evidence, repository access baselines, protected
+  append-only/no-delete paths, pull-request publication, and trusted-base CI.
+  Local roles never grant provider permissions.
 
 ## Operational vs Admin
 
@@ -320,7 +324,10 @@ my sync --scope repos            # limit to catalog repo clones (all|local|conte
 my sync --publish direct --scope manifest  # publish reviewed manifest control-plane edits
 my sync --no-derived             # skip derived guidance/MCP/skill reconcile after manifest changes
 my sync --publish never          # explicit local-only reconcile
-my sync --publish pr             # currently holds changes and reports PR-mode follow-up
+my sync --publish pr             # pre-check, push a topic branch, and open a governed PR
+my policy list|show|status       # inspect exact policy bytes and acceptance state
+my policy accept <id> --yes      # record immutable-id, digest-bound local evidence
+my governance audit --json       # audit live GitHub rulesets/workflow enforcement
 ```
 
 Plain untracked (`??`) files under declared content paths are held instead of
@@ -332,6 +339,15 @@ after checking that it belongs in the shared content repo. Explicit `git add`
 also counts as adoption. Held-back JSON results include `reason_code` and,
 when the remedy is unambiguous, `next_command`; text output shows that command
 as `next=...` on the held-back row.
+
+When governance is configured, outbound sync refuses direct push and uses PR
+mode even if the legacy publish policy says `auto`. The CLI validates the
+prospective commit under rules loaded from the trusted manifest base, proves
+the remote branch and numeric PR author, then attaches the checkout to the
+topic branch while restoring the protected base ref to upstream. It leaves all
+working-tree bytes in place on any failure. A local pre-check is convenience; the required
+`my-governance` GitHub check remains authoritative. Never disable or rewrite
+the workflow, CODEOWNERS, ruleset, or acceptance ledger to make a publish pass.
 
 "Derived" means the artifacts generated from the manifest: root guidance
 (`AGENTS.md` plus the `CLAUDE.md` pointer), umbrella-root `.mcp.json`, and

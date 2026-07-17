@@ -16,6 +16,8 @@ func (a app) runGovernance(args []string) error {
 	switch args[0] {
 	case "check":
 		return a.runGovernanceCheck(args[1:])
+	case "audit":
+		return a.runGovernanceAudit(args[1:])
 	case "-h", "--help", "help":
 		a.printGovernanceUsage()
 		return nil
@@ -97,6 +99,7 @@ func (a app) printGovernanceUsage() {
   my governance check --repo DIR --repository OWNER/REPO --base SHA --head SHA \
     --manifest-repo DIR --manifest-base SHA --mount ID|@manifest \
     --actor-id GITHUB_NUMERIC_ID --actor-login LOGIN [--manifest-path PATH] [--json]
+  my governance audit [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
 
 The manifest and all governance rules are read from --manifest-base, never from
 the proposed head. In pull-request CI, pass github.event.pull_request.user.id

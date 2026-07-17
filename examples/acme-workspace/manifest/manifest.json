@@ -15,6 +15,9 @@
       "agent-guidance/acme.md"
     ]
   },
+  "sync": {
+    "publish_policy": "pr"
+  },
   "skills": [
     {
       "id": "acme:handbook",

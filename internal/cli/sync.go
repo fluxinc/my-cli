@@ -102,6 +102,12 @@ func (a app) runSync(args []string) error {
 	} else if !publishExplicit {
 		publish = "never"
 	}
+	if governedDoc, loadErr := loadSingleRegisteredDoc(home, manifestName); loadErr == nil && manifest.GovernanceConfigured(governedDoc.doc.Governance) && publish != "never" {
+		if publish == "direct" {
+			return a.maybeJSONError(jsonOut, fmt.Errorf("governed organizations refuse direct publish; use `my sync --publish pr --print` so required checks and approvals remain authoritative"))
+		}
+		publish = "pr"
+	}
 	entries, err := a.collectSyncEntries(home, manifestName, umbrellaRoot, scope)
 	if err != nil {
 		return a.maybeJSONError(jsonOut, err)
@@ -137,14 +143,19 @@ func (a app) runSync(args []string) error {
 			}
 		}
 	}
+	var visibility syncer.VisibilityFunc
+	if publish == "auto" {
+		visibility = a.githubRepoVisibility
+	}
 	report := syncer.Run(entries, syncer.Options{
 		Backend:      effectiveBackend,
 		GnitRoot:     gnitRoot,
 		Publish:      publish,
 		DryRun:       printOnly,
 		Message:      message,
-		Visibility:   a.githubRepoVisibility,
+		Visibility:   visibility,
 		SessionHolds: sessionHolds,
+		PRPublisher:  a.pullRequestPublisher(home),
 	})
 	if backendMessage != "" && report.BackendMessage == "" {
 		report.BackendMessage = backendMessage
@@ -324,6 +335,9 @@ func (a app) syncPushPublish(home, manifestName string) (string, error) {
 	doc, err := loadSingleRegisteredDoc(home, manifestName)
 	if err != nil {
 		return "auto", nil
+	}
+	if manifest.GovernanceConfigured(doc.doc.Governance) {
+		return "pr", nil
 	}
 	if doc.doc.Sync.PublishPolicy == "" {
 		return "auto", nil

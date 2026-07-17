@@ -178,7 +178,8 @@ type AgentGuidance struct {
 
 // SyncPolicy controls workspace-wide sync behavior.
 type SyncPolicy struct {
-	PublishPolicy string `json:"publish_policy,omitempty"`
+	PublishPolicy        string `json:"publish_policy,omitempty"`
+	PullRequestAutoMerge bool   `json:"pull_request_auto_merge,omitempty"`
 }
 
 // Mount describes one content source that can be cloned into an umbrella.

@@ -302,7 +302,7 @@ my sync                                   # pull/reconcile only; never publishes
 my sync --print                           # plan the pull-only default
 my sync --push --print                    # preview explicit publish work
 my sync --push [--backend auto|gnit|builtin]  # publish eligible local changes per policy
-my sync --publish auto|never|direct|pr    # explicit override; direct is CLI-only
+my sync --publish auto|never|direct|pr    # governed organizations force PR mode
 my sync --scope all|local|content|manifest|repos  # limit to one repo class; repos = catalog repo clones
 my sync --no-derived                      # skip derived guidance/MCP/skill reconcile after manifest changes
 ```
@@ -316,7 +316,17 @@ they are collapsed to one canonical checkout. Gnit is the intended backend for
 real multi-repo Change creation, ordered push, and resume; Pins are reserved for
 intentional recorded workspace states. The My AI backend is a guarded bootstrap
 fallback when a workspace has not been initialized as a Gnit control workspace.
-`--publish direct` can publish existing local commits directly. For reviewed
+`--publish direct` can publish existing local commits directly in an
+ungoverned organization. Governed organizations refuse direct publication and
+route outbound changes through a dedicated branch and pull request. Before the
+branch is pushed, the CLI builds the prospective commit with a temporary Git
+index and runs the same trusted-base governance validator used in CI. After it
+proves both the remote branch and the pull request author's immutable GitHub
+id, it attaches the checkout to the dedicated topic branch without changing
+working-tree bytes and restores the local protected base ref to its proven
+upstream commit. Ignored and unrelated local files remain in place. Optional auto-merge
+is requested only when `sync.pull_request_auto_merge` is true, and GitHub's
+required checks and reviews still gate the merge. For reviewed
 manifest control-plane edits under `manifest.json`, `catalog/`, `skills/`,
 `guidance/`, and `agent-guidance/`, prefer `my publish --manifest NAME`; the
 equivalent low-level sync form is `my sync --publish direct --scope manifest`.
@@ -327,11 +337,33 @@ Held-back rows carry `reason_code` and, when the next step is unambiguous,
 point first at the local status command, diverged checkouts point at
 `my doctor`, and clean behind checkouts point at `my sync`.
 A manifest can set top-level `sync.publish_policy` to `auto`, `never`, or `pr`
-as the mode for `--push`; an explicit `--publish` flag always wins. Non-print
+as the mode for `--push`. Governed manifests always select `pr` for outbound
+sync and reject an explicit `direct` override. Set
+`sync.pull_request_auto_merge` only when auto-merge after required checks and
+human approvals is intended. Non-print
 syncs write `.my-cli/last-sync.json` so `my doctor` can show the last sync/publish audit.
 When sync pulls or publishes a manifest checkout, it reconciles generated
 guidance, umbrella MCP config, and launch-scoped skill reconciliation notices
 unless `--no-derived` is passed.
+
+Governed organizations bind policy acceptances to exact committed document
+bytes and an immutable GitHub user id:
+
+```sh
+my policy list
+my policy show <id>
+my policy accept <id> --yes
+my policy status [id]
+my governance audit --json
+```
+
+Required current acceptances gate `my ai`, `my root`, and outbound sync, while
+`my sync --push` can turn a new local acceptance into a governed pull request.
+CI builds `my` from an explicitly configured 40-character trusted commit and
+runs `my governance check` against every commit-parent edge in the complete
+proposal history and reads its protections only from the trusted manifest base
+revision. See `examples/governance/` for the pinned base-owned workflow,
+CODEOWNERS pattern, ruleset baseline, and immutable PR-author inputs.
 
 ### Catalog and customer records
 
@@ -489,6 +521,12 @@ rationale.
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
+- **Active — governed organizations.** The security core is implemented:
+  provider-backed authorization, lossless revocation quarantine, digest-bound
+  policy acceptance, launch gates, PR-only publication, trusted-base CI, and
+  live GitHub enforcement audits. Manifest-declared record-domain routing and
+  the durable publication outbox remain before this plan is shipped. Plan:
+  [governed organizations](docs/plans/2026-07-16-governed-organizations.md).
 - **Shipped (v0.35.0) — dogfood ergonomics audit.** A reviewed two-agent audit
   of real operator transcripts produced small self-healing CLI fixes: clearer
   held-back sync reasons, publish-path warnings, session dead-end recovery,

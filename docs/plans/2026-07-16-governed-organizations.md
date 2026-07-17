@@ -1,6 +1,6 @@
 # Governed organizations: policy, authorization, acceptance, and retention
 
-Status: accepted for implementation after first security review
+Status: active — access, quarantine, policy, PR, and CI enforcement implemented; domain routing and durable outbox pending
 
 ## Objective
 
