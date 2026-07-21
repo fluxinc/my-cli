@@ -77,6 +77,46 @@ command.
 paths, and `my doctor` names each such mount with the `my publish`
 remediation.
 
+## Governance and experimental access revocation
+
+```sh
+my policy list|show|status
+my policy accept <id> --yes
+my policy acceptances [--json]
+my policy supersede <id> --subject-id <github-id> --reason <text> --yes
+my governance audit --json
+my record domains
+my record add <domain> <slug> --source github-pr:<owner>/<repo>#<number>
+my sync --push --record <domain>/<record-id>
+```
+
+Governed organizations bind acceptances to exact policy bytes and immutable
+GitHub user ids. Acceptance evidence is durably queued and published through
+an attestation-only pull request; `acceptances` distinguishes local, submitted,
+and merge-proven ledger state. Supersession is append-only and permanently
+blocks re-acceptance of the same version and digest. Publishing an acceptance
+does not refresh manifest freshness; later governed commands pass their own
+freshness gate. CI currently enforces universal required policies. Role-scoped
+requirements remain a local gate until manifests carry authoritative
+identity-to-role mapping.
+
+```sh
+my access check --dry-run
+my access activate --yes
+my access status
+my access monitor install|uninstall|run
+```
+
+Automatic quarantine is a separate experimental endpoint-security plane.
+Policy and record governance never activate it; activation is an explicit
+per-machine action. Quarantine is immediate after revocation is detected and
+confirmed, while detection latency is bounded by the monitor interval, the
+positive-access TTL, and denial-confirmation count and interval. Ambiguous 404,
+SSO, scope, and network results block use after the TTL but never authorize
+quarantine. Do not recommend activation for a real umbrella until a drill with
+disposable private repositories and a second identity proves lossless recovery,
+capsule restore, dirty/untracked/ahead/session handling, and no purge fallback.
+
 ## Skills
 
 ```sh

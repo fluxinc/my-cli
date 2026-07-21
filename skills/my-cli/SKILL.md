@@ -345,6 +345,13 @@ preserves the sync-managed manifest checkout and index. Use the compatibility
 `--manifest-dir DIR` form only when a maintainer explicitly wants a local edit
 to publish later.
 
+`my policy acceptances` is the authoritative operator-facing ledger report:
+distinguish local, submitted, and merge-proven evidence. Acceptance publication
+deliberately does not refresh the manifest-freshness TTL; the attestation's
+manifest commit is provenance, and later governed operations must pass their
+own freshness gate. A superseded subject cannot re-accept the same version and
+digest; a new policy version is required.
+
 Plain untracked (`??`) files under declared content paths are held instead of
 being published. Use `my customers add`, `my meetings add`, `my support add`,
 or `my fleet add` for new records; those commands mark the created file with
@@ -363,6 +370,17 @@ topic branch while restoring the protected base ref to upstream. It leaves all
 working-tree bytes in place on any failure. A local pre-check is convenience; the required
 `my-governance` GitHub check remains authoritative. Never disable or rewrite
 the workflow, CODEOWNERS, ruleset, or acceptance ledger to make a publish pass.
+
+Automatic access-revocation quarantine is a separate experimental
+endpoint-security plane. Policy acceptance, record publication, and governance
+dogfood never activate it. `my access check --dry-run` is the zero-write
+inspection path; `my access activate --yes` is the explicit per-machine gate,
+and `my access status` reports its state. "Immediate" quarantine means after
+revocation is detected and confirmed; detection latency can include the monitor
+interval, positive-access TTL, and denial-confirmation count and interval.
+Never recommend activation for a real umbrella until a disposable-private-repo
+drill with a second identity proves ambiguous-denial handling, dirty/untracked/
+ahead/session recovery, capsule restore, and no purge fallback.
 
 Generic record domains are opt-in and path-scoped. Treat their retention and
 review fields as binding policy: `append-only` records are corrected with new

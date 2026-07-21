@@ -1,6 +1,6 @@
 # Governed organizations: policy, authorization, acceptance, and retention
 
-Status: active — security core implemented; completion hardening and private-manifest dogfood pending
+Status: active — mechanism and docs implemented; private-manifest dogfood and separate revocation drill pending
 
 ## Objective
 
@@ -13,8 +13,9 @@ Add a generic governance layer to My AI so an organization can:
 - require a human operator to read and accept current policy documents before
   onboarding completes or a harness launches;
 - refuse to clone, mount, or use a managed repository unless the current
-  identity still has access, and automatically remove managed checkouts after
-  confirmed revocation without prompting;
+  identity still has access, with an explicitly activated experimental plane
+  that quarantines managed checkouts after confirmed revocation without
+  prompting;
 - prevent non-administrators from deleting protected operational records or
   rewriting acceptance evidence; and
 - produce evidence that a security reviewer can reproduce independently.
@@ -60,8 +61,10 @@ itself proof of revocation because repository rename, transfer, deletion, token
 scope, and access loss can all produce it. `revoked` requires
 provider-positive evidence tied to the repository's cached immutable node id,
 or repeated independent denials separated by the configured confirmation
-interval. Once revocation is confirmed, active mount removal is immediate and
-has no prompt.
+interval. Once the experimental monitor detects and confirms revocation, active
+mount quarantine is immediate and has no prompt. Detection is not instantaneous:
+its latency is bounded by the monitor interval, the positive-access TTL, and
+the configured denial-confirmation count and interval.
 
 ## Repository model
 
@@ -259,6 +262,9 @@ Human acceptance:
 
 ```text
 my policy accept <id> --yes [--manifest NAME] [--json]
+my policy acceptances [--manifest NAME] [--json]
+my policy supersede <id> --subject-id <github-id> --reason <text> --yes \
+  [--manifest NAME] [--json]
 ```
 
 `show` reads the declared mount/path, verifies the digest, and prints the
@@ -273,9 +279,13 @@ creates a canonical JSON attestation at:
 The attestation contains schema version, organization, policy id/version and
 digest, subject provider, immutable provider user id, display login, acceptance
 time, and the manifest commit used.
-It is marked with Git intent-to-add. A later policy revision produces a new
-file. There is no normal delete or edit command. Administrative revocation or
-supersession is a new append-only event, never silent replacement.
+It is durably queued and publication attempts an isolated pull request that
+contains only the attestation path. A later policy revision produces a new
+file. `my policy acceptances` reports local, submitted, and merge-proven state
+from the authoritative ledger. There is no normal delete or edit command.
+Administrative revocation or supersession is a new append-only event, never
+silent replacement. Supersession permanently blocks re-acceptance of the same
+version and digest; reinstatement requires a new policy version.
 
 Admin authoring remains under `my admin`. When governance authorization is
 configured, all manifest authoring helpers call one fail-closed guard before
@@ -325,11 +335,26 @@ last verified refresh is inside the governance TTL. A stale or
 freshness-unknown manifest blocks launch. Direct harness execution can bypass
 local UX, so the authoritative content-repository check also requires the
 pull-request author (not commit author, committer, pusher, or merger) to have
-current acceptances. An administrator merging another person's attestation does
+current acceptances for universally required policies; role-scoped policies
+remain a local gate until manifests carry an authoritative identity-to-role
+mapping. An administrator merging another person's attestation does
 not change its subject: the attestation subject must still equal the
 attestation pull-request author.
 
+Publishing an acceptance deliberately does not refresh this manifest-freshness
+TTL. The attestation's manifest commit is provenance; later launch, root, and
+sync operations must still perform their own freshness gate.
+
 ## Repository access and revocation
+
+This is an experimental endpoint-security plane, not an automatic consequence
+of enabling policy acceptance, records, or governance CI. Policy and record
+dogfood never install its monitor or record its baselines. Activation remains
+an explicit per-machine `my access activate --yes`, and recommendation for a
+real umbrella has a separate release gate: a drill against disposable private
+repositories with a second identity must prove dirty, untracked,
+ahead-of-upstream, and active-session recovery, ambiguous-denial handling,
+lossless quarantine, capsule restore, and no purge fallback.
 
 All clone, setup, sync, root, and launch paths call one access resolver before
 using a managed repository. For GitHub repositories the resolver authenticates
@@ -362,9 +387,10 @@ repository outside the manifest. A mount added later requires its own positive
 baseline; cleanup is forbidden for a repository that has never had one on that
 machine.
 
-On confirmed revocation, cleanup runs without a prompt even when the checkout
-is dirty. This is an explicit confidentiality invariant. Active removal is an
-atomic move into a restrictive, non-mounted quarantine. If the filesystem
+After revocation is detected and confirmed, cleanup runs without a prompt even
+when the checkout is dirty. This is an explicit confidentiality invariant.
+Active removal is an atomic move into a restrictive, non-mounted quarantine.
+If the filesystem
 cannot perform a verified lossless move, cleanup blocks use and reports an
 error; it never falls back to recursive deletion. Quarantine preserves local
 work without leaving the repository mounted or usable by My AI. Cleanup:
@@ -440,6 +466,12 @@ governed-workspace failure. Doctor reports the platform's actual availability
 boundary: launchd agents run only in a login session; systemd user monitoring
 after logout requires linger; Windows scheduling depends on the configured
 user task.
+
+"Immediate" describes quarantine after confirmed detection, not continuous or
+zero-latency observation. Worst-case detection and confirmation can accumulate
+the monitor interval, a still-valid positive TTL, and repeated-denial count and
+interval. Until the disposable-repository drill passes, this monitor is not
+recommended for a real umbrella even though the mechanism is implemented.
 
 The current Windows build deliberately blocks the physical quarantine move
 until it can verify an explicit per-user DACL on the quarantine directory.
@@ -520,8 +552,9 @@ mode are incompatible with required-check branches.
 
 - A local role cannot promote an operator; GitHub permission is authoritative.
 - A managed repository is never cloned or used without a positive current
-  access decision, and a positively confirmed revocation removes the managed
-  checkout without an operator prompt.
+  access decision. In the explicitly activated experimental plane, a detected
+  and positively confirmed revocation quarantines the managed checkout without
+  an operator prompt.
 - A local manifest edit cannot pass the required remote check when its actor is
   not an administrator.
 - A protected record cannot be removed through `my sync` or merged through a
@@ -569,11 +602,13 @@ sufficient evidence of repository-level enforcement.
 The first Claude security review produced nine findings. All are incorporated:
 
 - F1: CI trusts the base-ref governance document and protects the workflow.
-- F2: 404 is ambiguous; scope and SSO failures are unknown; destructive cleanup
-  requires strong or repeated evidence and immediately unmounts via quarantine.
+- F2: 404 is ambiguous; scope and SSO failures are unknown; cleanup requires
+  strong or repeated evidence and, after confirmed detection, immediately
+  unmounts via quarantine. Detection latency remains separately bounded.
 - F3: attestations use immutable provider user ids and pull-request author
   identity.
-- F4: launch requires fresh governance and CI enforces acceptance for writers.
+- F4: launch requires fresh governance and CI enforces acceptance for writers
+  of universally required policies; role-scoped policies stay locally gated.
 - F5: TTL caching, cleanup locking, atomic state, platform monitor limits,
   Windows deletion, session worktrees, and shared-reference handling are
   explicit requirements.

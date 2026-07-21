@@ -1,6 +1,6 @@
 # Governed organizations completion: hardening, acceptance CI, and dogfood
 
-Status: active — S1-S6 complete; S7 documentation truth pass next
+Status: active — S1-S7 complete; S8 dogfood package and revocation drill next
 
 Design source of truth: [2026-07-16-governed-organizations](2026-07-16-governed-organizations.md).
 This plan closes the gap between mechanism-complete code and a
@@ -216,7 +216,7 @@ Files: `internal/manifest/manifest.go` (change_record_rules + validation),
   requires the reciprocal record at a separately fetched current trusted
   default-branch commit. This remains conditional on the S8 dogfood path.
 
-### S7 — Docs truth pass and revocation-plane framing (H)
+### S7 — Docs truth pass and revocation-plane framing (H) — complete
 
 Files: `README.md`, `docs/plans/README.md`, both plan docs,
 `skills/my-cli/SKILL.md`, `site/` if rendered content changes.

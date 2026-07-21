@@ -372,6 +372,9 @@ supersession event with `my policy supersede`; acceptance and supersession
 evidence are never rewritten or deleted. Supersession permanently blocks that
 subject's acceptance of the same policy version and digest; restoring access
 requires publishing a new policy version for the subject to accept.
+Acceptance publication deliberately does not refresh the manifest-freshness
+TTL: its manifest commit is provenance, and every later governed operation
+must independently pass its own manifest freshness gate.
 CI builds `my` from an explicitly configured 40-character trusted commit and
 runs `my governance check` against every commit-parent edge in the complete
 proposal history and reads its protections only from the trusted manifest base
@@ -433,6 +436,34 @@ When `change_record_rules` covers a source path, `my sync --record` writes a
 authoritative pull-request number and accepts the source change only after the
 named record is merged and reciprocally cites
 `github-pr:<owner>/<repository>#<number>` in `sources`.
+
+### Experimental access-revocation plane
+
+Repository access enforcement and automatic quarantine are endpoint-security
+mechanisms with a separate activation and release gate from policy acceptance
+and linked records:
+
+```sh
+my access check --dry-run
+my access activate --yes
+my access status
+my access monitor install|uninstall|run
+```
+
+Policy or record dogfood never activates this plane. `my access activate --yes`
+is an explicit per-machine action that records positive baselines before the
+monitor can quarantine anything. "Immediate" quarantine means immediately
+after revocation is detected and positively confirmed; detection itself is not
+instantaneous and is bounded by the monitor interval, the positive-access TTL,
+and the configured denial-confirmation count and interval. Ambiguous provider
+results such as 404, SSO, scope, or network failures block use after the TTL but
+do not authorize quarantine.
+
+Do not recommend activation for a real umbrella until a separate drill passes
+against disposable private repositories with a second identity. The drill must
+prove dirty, untracked, ahead-of-upstream, and active-session recovery; repeated
+denial handling; lossless quarantine; recovery-capsule restore; and that no
+path ever falls back to purge or recursive deletion.
 
 ### Catalog and customer records
 
@@ -602,6 +633,9 @@ indexed in [docs/plans/](docs/plans/README.md):
   Umbrella-root contract authoring now proposes isolated manifest PRs without
   dirtying the sync-managed cache. Reciprocal linked-record CI is implemented
   and remains conditional on private-manifest dogfood before release.
+  The documentation truth pass is complete: automatic revocation quarantine is
+  explicitly an experimental endpoint-security plane with separate activation
+  and real-world drill gates. Policy/record dogfood does not activate it.
   Plans: [governed organizations](docs/plans/2026-07-16-governed-organizations.md)
   and [completion gates](docs/plans/2026-07-21-governed-organizations-completion.md).
 - **Shipped (v0.35.0) — dogfood ergonomics audit.** A reviewed two-agent audit
