@@ -85,6 +85,8 @@ my policy accept <id> --yes
 my policy acceptances [--json]
 my policy supersede <id> --subject-id <github-id> --reason <text> --yes
 my governance audit --json
+my admin policy add <id> --title <text> --mount <id> --path <path> --version <version> --acceptance required|optional [--role <id>]
+my admin policy remove <id>
 my record domains
 my record add <domain> <slug> --source github-pr:<owner>/<repo>#<number>
 my sync --push --record <domain>/<record-id>
@@ -99,6 +101,12 @@ does not refresh manifest freshness; later governed commands pass their own
 freshness gate. CI currently enforces universal required policies. Role-scoped
 requirements remain a local gate until manifests carry authoritative
 identity-to-role mapping.
+
+Registered policy authoring proposes an isolated manifest pull request and
+leaves the sync-managed manifest checkout unchanged. `add` hashes the committed
+upstream policy blob from the declared mount, not dirty worktree bytes. The
+maintainer-checkout compatibility path uses `--manifest-dir` and requires an
+explicit `--sha256` for add.
 
 ```sh
 my access check --dry-run
@@ -151,6 +159,9 @@ my admin support add ...
 my admin tools add|edit|remove <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
 my admin contract add "RULE TEXT" --manifest-dir DIR [--force] [--json]
 my admin contract remove <index|"RULE TEXT"> --manifest-dir DIR [--force] [--json]
+my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION --acceptance required|optional [--role ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+my admin policy add <id> ... --manifest-dir DIR --sha256 sha256:HEX [--force] [--json]
+my admin policy remove <id> [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
 ```
 
 See the [admin guide](./admin.md) for the full flag set and the

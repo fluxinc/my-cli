@@ -360,6 +360,9 @@ my policy status [id]
 my policy acceptances [--json]
 my policy supersede <id> --subject-id <github-id> --reason <text> --yes
 my governance audit --json
+my admin policy add <id> --title <text> --mount <id> --path <path> \
+  --version <version> --acceptance required|optional [--role <id>]
+my admin policy remove <id>
 ```
 
 Required current acceptances gate `my ai`, `my root`, and outbound sync, while
@@ -375,6 +378,11 @@ requires publishing a new policy version for the subject to accept.
 Acceptance publication deliberately does not refresh the manifest-freshness
 TTL: its manifest commit is provenance, and every later governed operation
 must independently pass its own manifest freshness gate.
+Registered `my admin policy add|remove` authoring proposes an isolated manifest
+pull request without modifying the sync-managed cache. `add` fetches the policy
+mount and hashes the committed upstream blob, never dirty working-tree bytes.
+The compatibility `--manifest-dir` path requires an explicit `--sha256` because
+it has no registered mounted-policy context.
 CI builds `my` from an explicitly configured 40-character trusted commit and
 runs `my governance check` against every commit-parent edge in the complete
 proposal history and reads its protections only from the trusted manifest base
@@ -636,6 +644,8 @@ indexed in [docs/plans/](docs/plans/README.md):
   The documentation truth pass is complete: automatic revocation quarantine is
   explicitly an experimental endpoint-security plane with separate activation
   and real-world drill gates. Policy/record dogfood does not activate it.
+  The final operator-package review also closed the original policy-authoring
+  gap with digest-safe isolated `my admin policy add|remove` proposals.
   Plans: [governed organizations](docs/plans/2026-07-16-governed-organizations.md)
   and [completion gates](docs/plans/2026-07-21-governed-organizations-completion.md).
 - **Shipped (v0.35.0) — dogfood ergonomics audit.** A reviewed two-agent audit

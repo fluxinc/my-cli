@@ -331,6 +331,8 @@ my policy accept <id> --yes      # queue evidence and attempt an attestation-onl
 my policy acceptances [--json]   # report local, submitted, and merge-proven acceptances
 my policy supersede <id> --subject-id <github-id> --reason <text> --yes # append an admin-authorized supersession
 my governance audit --json       # audit live GitHub rulesets/workflow enforcement
+my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION --acceptance required|optional [--role ID] # propose an isolated manifest PR
+my admin policy remove <id>       # propose removal without rewriting old acceptance evidence
 my admin contract add "RULE" [--manifest NAME] [--umbrella DIR] # propose an isolated manifest PR
 my admin contract remove <index|"RULE"> [--manifest NAME] [--umbrella DIR]
 my record domains                # inspect manifest-routed generic record classes
@@ -344,6 +346,12 @@ Registered-manifest contract authoring opens an isolated governed PR and
 preserves the sync-managed manifest checkout and index. Use the compatibility
 `--manifest-dir DIR` form only when a maintainer explicitly wants a local edit
 to publish later.
+
+Registered policy authoring has the same isolated-PR and cache-preservation
+contract. `my admin policy add` fetches the declared mount and hashes the
+committed upstream policy blob; it never binds a manifest to dirty worktree
+bytes. For an independent maintainer checkout, use `--manifest-dir DIR` with an
+explicit `--sha256 sha256:...` on add.
 
 `my policy acceptances` is the authoritative operator-facing ledger report:
 distinguish local, submitted, and merge-proven evidence. Acceptance publication

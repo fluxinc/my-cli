@@ -300,16 +300,20 @@ my admin contract add "RULE" --manifest-dir DIR
 my admin contract remove <index|RULE> --manifest-dir DIR
 ```
 
-Policy document authoring gains digest-safe verbs:
+Policy document authoring uses digest-safe verbs. Registered authoring resolves
+the umbrella and proposes an isolated manifest pull request without changing
+the sync-managed cache:
 
 ```text
 my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION \
-  --acceptance required|optional [--role ID] --manifest-dir DIR
-my admin policy remove <id> --manifest-dir DIR
+  --acceptance required|optional [--role ID] [--manifest NAME] [--umbrella DIR]
+my admin policy remove <id> [--manifest NAME] [--umbrella DIR]
 ```
 
-`add` hashes the current mounted policy bytes when an umbrella is supplied, or
-accepts an explicit `--sha256` for an independently prepared manifest.
+`add` fetches the selected mount and hashes its committed upstream policy blob,
+never uncommitted working-tree bytes. An independently prepared maintainer
+checkout uses the compatibility forms `--manifest-dir DIR --sha256 sha256:HEX`
+for add and `--manifest-dir DIR` for remove.
 
 ## Onboarding and launch gates
 

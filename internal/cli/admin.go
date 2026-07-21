@@ -53,6 +53,9 @@ func (a app) runAdmin(args []string) error {
 	case "contract":
 		// Manifest authoring; gated in the parsed-checkout loader.
 		return a.runAdminContract(args[1:])
+	case "policy":
+		// Manifest authoring; gated in the parsed-checkout loader.
+		return a.runAdminPolicy(args[1:])
 	case "-h", "--help", "help":
 		a.printAdminUsage()
 		return nil
@@ -73,6 +76,10 @@ func (a app) printAdminUsage() {
   my admin contract add "RULE TEXT" [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my admin contract remove <index|"RULE TEXT"> [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my admin contract add|remove ... --manifest-dir DIR [--force] [--json]  (compatibility)
+  my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION --acceptance required|optional [--role ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my admin policy add <id> ... --manifest-dir DIR --sha256 sha256:HEX [--force] [--json]  (compatibility)
+  my admin policy remove <id> [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my admin policy remove <id> --manifest-dir DIR [--force] [--json]  (compatibility)
   my admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
   my admin tools edit <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--clear-install-commands] [--docs-url URL|--clear-docs-url] [--skill-install-command CMD] [--skill-install-arg ARG] [--clear-skill-install] [--force] [--json]
   my admin tools remove <id> --manifest-dir DIR [--force] [--json]

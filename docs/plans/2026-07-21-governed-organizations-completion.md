@@ -1,6 +1,6 @@
 # Governed organizations completion: hardening, acceptance CI, and dogfood
 
-Status: active — S1-S7 complete; S8 dogfood package and revocation drill next
+Status: active — S1-S7 and S8a complete; S8 private dogfood and revocation drill next
 
 Design source of truth: [2026-07-16-governed-organizations](2026-07-16-governed-organizations.md).
 This plan closes the gap between mechanism-complete code and a
@@ -240,10 +240,25 @@ Deliverables, not mechanism code:
   restore, dirty/untracked/ahead/session fixtures, ambiguous 404/SSO handling,
   and no-purge proof — executed before any real monitor activation.
 
+### S8a — Dogfood-discovered policy authoring gap — complete
+
+The first operator-package validation found that the base design documented
+`my admin policy add|remove`, but the command was absent. Implement it before
+dogfood rather than replacing a product requirement with manual JSON editing:
+
+- registered-manifest add/remove proposes an isolated manifest PR and preserves
+  the sync-managed cache, reusing the S5 prospective-file mechanism;
+- add fetches the policy mount and hashes the committed upstream blob rather
+  than dirty worktree bytes;
+- the explicit `--manifest-dir` compatibility path requires `--sha256` for add;
+- tests cover admin authorization, alternate flag spellings, dirty/stale cache
+  refusal, digest provenance, validation, add/remove, and checkout preservation.
+
 ### Release gate (step 8)
 
 - All S1–S5 merged with green CI; S6 merged or explicitly deferred; S7 docs
-  accurate; S8 dogfood and drill evidence recorded.
+  accurate; S8a policy authoring complete; S8 dogfood and drill evidence
+  recorded.
 - Then: plan statuses updated, `CHANGELOG.md` + `site/changelog.md` stamped,
   release tagged per repository release process with policy/record governance
   explicitly labeled beta, staff-Flux enablement considered separately by the

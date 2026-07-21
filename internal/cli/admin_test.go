@@ -114,6 +114,13 @@ func TestEveryGovernedManifestAuthoringGroupUsesParsedDirectoryGuardOnce(t *test
 				{"contract", func(t *testing.T) []string {
 					return []string{"my", "admin", "contract", "add", "Require approval."}
 				}},
+				{"policy", func(t *testing.T) []string {
+					return []string{
+						"my", "admin", "policy", "add", "handling-policy",
+						"--title", "Handling policy", "--mount", "workspace", "--path", "policy/handling.md",
+						"--version", "2026-07", "--acceptance", "required", "--sha256", "sha256:" + strings.Repeat("a", 64),
+					}
+				}},
 				{"tools", func(t *testing.T) []string {
 					return []string{"my", "admin", "tools", "add", "sample-tool", "--mode", "optional", "--purpose", "Test tool"}
 				}},
