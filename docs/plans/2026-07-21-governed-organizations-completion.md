@@ -1,6 +1,6 @@
 # Governed organizations completion: hardening, acceptance CI, and dogfood
 
-Status: active — S1-S2 complete; S3 durable acceptance publication next
+Status: active — S1-S3 complete; S4 remote acceptance CI and supersession next
 
 Design source of truth: [2026-07-16-governed-organizations](2026-07-16-governed-organizations.md).
 This plan closes the gap between mechanism-complete code and a
@@ -77,7 +77,10 @@ interval, the positive-access TTL, and the denial-confirmation policy.
   from the trusted default branch; missing upstream is pending/error, never
   silently "nothing to publish"; parent-directory CODEOWNERS patterns count
   as covering a domain path; every path included in a batched PR is surfaced
-  to the operator.
+  to the operator. A pending item may transition directly to `merged` only
+  when the exact queued digest is already present at the fetched trusted
+  upstream tip, covering publication by another machine or workflow without
+  opening a redundant pull request.
 - **G. Linked-record CI (separate slice, opt-in).** Manifest-declared
   `governance.change_record_rules` map a governed source surface to a record
   domain. A governed source PR must carry a `My-Record: <domain>/<record-id>`
@@ -159,7 +162,7 @@ Files: `internal/governance/check.go` (validateAttestationAdditions),
 - Replace the equality check with full-OID validation; keep the trusted-base
   policy tuple match. Regression test: manifest advances post-acceptance.
 
-### S3 — Durable acceptance publication and reporting (step 5, C)
+### S3 — Durable acceptance publication and reporting (step 5, C) — complete
 
 Files: `internal/cli/policy.go`, `internal/cli/record_domains.go`,
 `internal/outbox/`, tests.
@@ -168,6 +171,14 @@ Files: `internal/cli/policy.go`, `internal/cli/record_domains.go`,
   an attestation-only governed PR; `my policy acceptances` report with
   local/submitted/merged; onboarding/launch remediation text gains the
   publish step.
+- The prospective commit starts at the fetched trusted upstream and contains
+  only the queued attestation path, excluding unrelated dirty, staged, and
+  ahead state while preserving the checkout and index. Exact content already
+  at trusted upstream converges pending outbox state directly to merged.
+- Acceptance reporting skips and warns on an unreadable individual ledger or
+  outbox item instead of hiding every valid row. The publication attempt does
+  not update the manifest-freshness TTL cache; later governed operations still
+  perform their own freshness gate.
 
 ### S4 — Remote acceptance CI and supersession (steps 3, B, D)
 
@@ -202,7 +213,8 @@ Files: `README.md`, `docs/plans/README.md`, both plan docs,
 
 - Revocation = endpoint-security plane with separate activation/release gate;
   "immediate after confirmed detection" latency bounds; acceptance-ledger
-  authoritative reporting; role-scope limitation.
+  authoritative reporting; role-scope limitation; and the acceptance
+  publisher's deliberate non-interference with the manifest-freshness TTL.
 
 ### S8 — Dogfood package and revocation drill (step 7)
 

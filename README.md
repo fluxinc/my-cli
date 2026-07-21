@@ -354,11 +354,16 @@ my policy list
 my policy show <id>
 my policy accept <id> --yes
 my policy status [id]
+my policy acceptances [--json]
 my governance audit --json
 ```
 
 Required current acceptances gate `my ai`, `my root`, and outbound sync, while
-`my sync --push` can turn a new local acceptance into a governed pull request.
+`my policy accept` durably queues its evidence and attempts an isolated governed
+pull request containing only that attestation path. Unrelated working-tree and
+index state is left in place; `my record flush` retries a failed submission.
+`my policy acceptances` reports local, submitted, and merge-proven ledger state
+per immutable subject and policy.
 CI builds `my` from an explicitly configured 40-character trusted commit and
 runs `my governance check` against every commit-parent edge in the complete
 proposal history and reads its protections only from the trusted manifest base
@@ -568,7 +573,8 @@ indexed in [docs/plans/](docs/plans/README.md):
   live GitHub enforcement audits. Manifest-routed generic records and the
   retryable publication outbox are hardened, and policy attestations now keep
   manifest commits as provenance without racing unrelated manifest advances.
-  Durable acceptance publication, remote acceptance CI, umbrella-root
+  Acceptance evidence now has isolated durable PR publication and
+  local/submitted/merge-proven reporting. Remote acceptance CI, umbrella-root
   authoring, and private-manifest dogfood remain before release.
   Plans: [governed organizations](docs/plans/2026-07-16-governed-organizations.md)
   and [completion gates](docs/plans/2026-07-21-governed-organizations-completion.md).

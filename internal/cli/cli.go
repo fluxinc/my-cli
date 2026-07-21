@@ -295,7 +295,7 @@ Usage:
   my access enforce [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my access status [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my access monitor install|uninstall|run [--manifest NAME] [--home DIR] [--umbrella DIR]
-  my policy list|show|status|accept [ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my policy list|show|status|accept|acceptances [ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my governance check --repo DIR --repository OWNER/REPO --base REF --head REF --manifest-repo DIR --manifest-base REF --mount ID|@manifest --actor-id ID --actor-login LOGIN [--json]
   my governance audit [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my version`)

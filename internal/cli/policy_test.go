@@ -16,6 +16,7 @@ import (
 
 	"github.com/fluxinc/my-cli/internal/access"
 	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/outbox"
 	"github.com/fluxinc/my-cli/internal/syncer"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 )
@@ -261,6 +262,193 @@ func TestPolicyListShowStatusAndAcceptanceLifecycle(t *testing.T) {
 	published, err := f.run(t, "status", "release-policy")
 	if err != nil || !strings.Contains(published, "published") {
 		t.Fatalf("published status = %q, %v", published, err)
+	}
+}
+
+func TestPolicyAcceptPublishesOnlyQueuedAttestationAndReportsSubmitted(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	remote, _ := preparePolicyFixtureRemote(t, f)
+	f.configureGovernedOperator(t)
+	writeCLITestFile(t, filepath.Join(f.handbook, "decisions", "ahead.md"), "unrelated ahead commit\n")
+	commitCLIGit(t, f.handbook, "unrelated local ahead commit")
+	localHead := strings.TrimSpace(gitCLIOutput(t, f.handbook, "rev-parse", "HEAD"))
+	unrelatedPath := filepath.Join(f.handbook, "decisions", "unrelated.md")
+	writeCLITestFile(t, unrelatedPath, "unrelated local work\n")
+	unrelatedBefore, err := os.ReadFile(unrelatedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unrelatedStatus := gitCLIOutput(t, f.handbook, "status", "--porcelain", "--", "decisions/unrelated.md")
+
+	state := &governedPRRunnerState{remote: remote}
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+		publishRunner: state.run,
+	}
+	base := []string{"--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot}
+	if err := a.run(append([]string{"my", "policy", "accept", "release-policy", "--yes"}, base...)); err != nil {
+		t.Fatalf("accept: %v\nstdout=%s\nstderr=%s", err, stdout.String(), stderr.String())
+	}
+	if !state.created || state.commit == "" || !strings.Contains(stdout.String(), "release-policy\tsubmitted") {
+		t.Fatalf("state=%#v stdout=%s stderr=%s", state, stdout.String(), stderr.String())
+	}
+	if got := strings.TrimSpace(gitCLIOutput(t, f.handbook, "rev-parse", "HEAD")); got != localHead {
+		t.Fatalf("isolated acceptance changed HEAD: %s != %s", got, localHead)
+	}
+	if got := gitCLIOutput(t, f.handbook, "status", "--porcelain", "--", "decisions/unrelated.md"); got != unrelatedStatus {
+		t.Fatalf("unrelated status changed: %q != %q", got, unrelatedStatus)
+	}
+	unrelatedAfter, err := os.ReadFile(unrelatedPath)
+	if err != nil || !bytes.Equal(unrelatedBefore, unrelatedAfter) {
+		t.Fatalf("unrelated bytes changed: %v", err)
+	}
+	tree := gitCLIOutput(t, remote, "ls-tree", "-r", "--name-only", state.commit)
+	attestationRel, ok := relativePathUnder(f.handbook, f.attestationPath())
+	if !ok || !strings.Contains(tree, filepath.ToSlash(attestationRel)) || strings.Contains(tree, "decisions/unrelated.md") || strings.Contains(tree, "decisions/ahead.md") {
+		t.Fatalf("isolated PR tree is wrong:\n%s", tree)
+	}
+	events, err := outbox.List(f.umbrellaRoot)
+	if err != nil || len(events) != 1 || events[0].State != outbox.StateSubmitted ||
+		len(events[0].PublishedPaths) != 1 || events[0].PublishedPaths[0] != filepath.ToSlash(attestationRel) {
+		t.Fatalf("acceptance outbox = %#v, %v", events, err)
+	}
+
+	stdout.Reset()
+	if err := a.run(append([]string{"my", "policy", "acceptances", "--json"}, base...)); err != nil {
+		t.Fatalf("acceptances: %v\n%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"state": "submitted"`) || !strings.Contains(stdout.String(), `"subject_id": 17`) ||
+		!strings.Contains(stdout.String(), `"pr_url": "https://github.com/example/handbook/pull/1"`) {
+		t.Fatalf("acceptance report = %s", stdout.String())
+	}
+	runCLIGit(t, remote, "update-ref", "refs/heads/master", state.commit)
+	stdout.Reset()
+	if err := a.run(append([]string{"my", "policy", "acceptances", "--json"}, base...)); err != nil {
+		t.Fatalf("merged acceptances: %v\n%s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"state": "merged"`) {
+		t.Fatalf("merged acceptance report = %s", stdout.String())
+	}
+}
+
+func TestPolicyAcceptanceOutboxReconcilesAndFlushesAfterFailedAttempt(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	remote, _ := preparePolicyFixtureRemote(t, f)
+	f.configureGovernedOperator(t)
+	var stdout, stderr bytes.Buffer
+	failing := app{
+		stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+		publishRunner: func(string, ...string) ([]byte, error) { return nil, fmt.Errorf("publisher offline") },
+	}
+	base := []string{"--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot}
+	if err := failing.run(append([]string{"my", "policy", "accept", "release-policy", "--yes"}, base...)); err != nil {
+		t.Fatalf("local acceptance must survive publisher failure: %v", err)
+	}
+	events, err := outbox.List(f.umbrellaRoot)
+	if err != nil || len(events) != 1 || events[0].State != outbox.StateAttemptFailed {
+		t.Fatalf("failed acceptance outbox = %#v, %v", events, err)
+	}
+	stdout.Reset()
+	if err := failing.run(append([]string{"my", "policy", "acceptances", "--json"}, base...)); err != nil {
+		t.Fatalf("local acceptance report: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"state": "local"`) {
+		t.Fatalf("local acceptance report = %s", stdout.String())
+	}
+	if err := os.RemoveAll(outbox.Root(f.umbrellaRoot)); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	if err := failing.run(append([]string{"my", "record", "reconcile", "--json"}, base...)); err != nil {
+		t.Fatalf("reconcile missing acceptance event: %v\n%s", err, stderr.String())
+	}
+	events, err = outbox.List(f.umbrellaRoot)
+	if err != nil || len(events) != 1 || events[0].Domain != manifest.ReservedPolicyAcceptanceDomain || events[0].State != outbox.StateQueued {
+		t.Fatalf("reconciled acceptance outbox = %#v, %v", events, err)
+	}
+
+	state := &governedPRRunnerState{remote: remote}
+	stdout.Reset()
+	success := app{
+		stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+		publishRunner: state.run,
+	}
+	if err := success.run(append([]string{"my", "record", "flush", "--json"}, base...)); err != nil {
+		t.Fatalf("flush acceptance: %v\nstdout=%s\nstderr=%s", err, stdout.String(), stderr.String())
+	}
+	events, err = outbox.List(f.umbrellaRoot)
+	if err != nil || len(events) != 1 || events[0].State != outbox.StateSubmitted || !state.created {
+		t.Fatalf("flushed acceptance outbox = %#v, state=%#v, err=%v", events, state, err)
+	}
+}
+
+func TestPolicyAcceptanceAlreadyAtUpstreamConvergesToMergedWithoutPR(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	preparePolicyFixtureRemote(t, f)
+	f.configureGovernedOperator(t)
+	var stdout, stderr bytes.Buffer
+	failing := app{
+		stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+		publishRunner: func(string, ...string) ([]byte, error) { return nil, fmt.Errorf("publisher offline") },
+	}
+	base := []string{"--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot}
+	if err := failing.run(append([]string{"my", "policy", "accept", "release-policy", "--yes"}, base...)); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	events, err := outbox.List(f.umbrellaRoot)
+	if err != nil || len(events) != 1 || events[0].State != outbox.StateAttemptFailed {
+		t.Fatalf("failed acceptance outbox = %#v, %v", events, err)
+	}
+
+	// The exact attestation reaches the trusted upstream through another
+	// publication path, for example my sync --push or a second machine.
+	commitCLIGit(t, f.handbook, "externally publish acceptance")
+	runCLIGit(t, f.handbook, "push", "-q", "origin", "master")
+	upstreamHead := strings.TrimSpace(gitCLIOutput(t, f.handbook, "rev-parse", "origin/master"))
+
+	stdout.Reset()
+	noPR := app{
+		stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+		publishRunner: func(name string, args ...string) ([]byte, error) {
+			return nil, fmt.Errorf("no provider call expected, got %s %s", name, strings.Join(args, " "))
+		},
+	}
+	if err := noPR.run(append([]string{"my", "record", "flush", "--json"}, base...)); err != nil {
+		t.Fatalf("flush: %v\nstdout=%s\nstderr=%s", err, stdout.String(), stderr.String())
+	}
+	events, err = outbox.List(f.umbrellaRoot)
+	if err != nil || len(events) != 1 || events[0].State != outbox.StateMerged || events[0].MergedCommit != upstreamHead {
+		t.Fatalf("converged acceptance outbox = %#v, %v", events, err)
+	}
+}
+
+func TestPolicyAcceptancesReportSkipsInvalidLedgerFileWithWarning(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	preparePolicyFixtureRemote(t, f)
+	f.configureGovernedOperator(t)
+	var stdout, stderr bytes.Buffer
+	a := app{
+		stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+		publishRunner: func(string, ...string) ([]byte, error) { return nil, fmt.Errorf("publisher offline") },
+	}
+	base := []string{"--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot}
+	if err := a.run(append([]string{"my", "policy", "accept", "release-policy", "--yes"}, base...)); err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	stray := filepath.Join(f.handbook, "policy", "attestations", "17", "release-policy", "stray.json")
+	writeCLITestFile(t, stray, "{ not an attestation }\n")
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run(append([]string{"my", "policy", "acceptances", "--json"}, base...)); err != nil {
+		t.Fatalf("acceptances must survive one invalid ledger file: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"policy_id": "release-policy"`) {
+		t.Fatalf("valid acceptance row missing: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "warning: policy acceptance skipped") {
+		t.Fatalf("expected skip warning, stderr=%s", stderr.String())
 	}
 }
 

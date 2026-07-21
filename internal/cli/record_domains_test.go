@@ -84,9 +84,8 @@ func TestRecordDomainAutoPublishSubmitsGovernedPR(t *testing.T) {
 	remote, baseHead := preparePolicyFixtureRemote(t, f)
 	f.configureGovernedOperator(t)
 	configureRecordDomainMount(t, f)
-	if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
-		t.Fatal(err)
-	}
+	acceptMergedPolicyForRecordTests(t, f)
+	baseHead = strings.TrimSpace(gitCLIOutput(t, f.handbook, "rev-parse", "HEAD"))
 	state := &governedPRRunnerState{remote: remote}
 	var stdout, stderr bytes.Buffer
 	a := app{
@@ -121,9 +120,7 @@ func TestRecordDomainDigestDriftNeverSubmitsStaleOutboxItem(t *testing.T) {
 	remote, _ := preparePolicyFixtureRemote(t, f)
 	f.configureGovernedOperator(t)
 	configureRecordDomainMount(t, f)
-	if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
-		t.Fatal(err)
-	}
+	acceptMergedPolicyForRecordTests(t, f)
 	state := &governedPRRunnerState{remote: remote}
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false), publishRunner: state.run}
@@ -172,9 +169,7 @@ func TestRecordDomainManualFlushRequiresExplicitInclude(t *testing.T) {
 	remote, _ := preparePolicyFixtureRemote(t, f)
 	f.configureGovernedOperator(t)
 	configureRecordDomainMount(t, f)
-	if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
-		t.Fatal(err)
-	}
+	acceptMergedPolicyForRecordTests(t, f)
 	state := &governedPRRunnerState{remote: remote}
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false), publishRunner: state.run}
@@ -224,9 +219,7 @@ func TestRecordDomainSubmittedTransitionsToMergedWithExactBlobProof(t *testing.T
 	remote, _ := preparePolicyFixtureRemote(t, f)
 	f.configureGovernedOperator(t)
 	configureRecordDomainMount(t, f)
-	if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
-		t.Fatal(err)
-	}
+	acceptMergedPolicyForRecordTests(t, f)
 	state := &governedPRRunnerState{remote: remote}
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false), publishRunner: state.run}
@@ -249,9 +242,7 @@ func TestAccessMonitorRetriesAutomaticRecordOutbox(t *testing.T) {
 	remote, _ := preparePolicyFixtureRemote(t, f)
 	f.configureGovernedOperator(t)
 	configureRecordDomainMount(t, f)
-	if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
-		t.Fatal(err)
-	}
+	acceptMergedPolicyForRecordTests(t, f)
 	state := &governedPRRunnerState{remote: remote}
 	var stdout, stderr bytes.Buffer
 	a := testAccessMonitorApp(app{
@@ -279,9 +270,7 @@ func TestRecordDomainMixedPolicyBatchIsHeld(t *testing.T) {
 	remote, _ := preparePolicyFixtureRemote(t, f)
 	f.configureGovernedOperator(t)
 	configureRecordDomainMount(t, f)
-	if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
-		t.Fatal(err)
-	}
+	acceptMergedPolicyForRecordTests(t, f)
 	state := &governedPRRunnerState{remote: remote}
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false), publishRunner: state.run}
@@ -298,6 +287,17 @@ func TestRecordDomainMixedPolicyBatchIsHeld(t *testing.T) {
 	if state.createCalls != 0 || !strings.Contains(stderr.String(), "different review or publication policies") {
 		t.Fatalf("mixed policy batch was not held: calls=%d\nstderr=%s", state.createCalls, stderr.String())
 	}
+}
+
+func acceptMergedPolicyForRecordTests(t *testing.T, f policyTestFixture) {
+	t.Helper()
+	if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(outbox.Root(f.umbrellaRoot)); err != nil {
+		t.Fatal(err)
+	}
+	commitAndPushCLIGit(t, f.handbook, "establish merged policy acceptance")
 }
 
 func setRecordDomainPublish(t *testing.T, f policyTestFixture, publish string) {

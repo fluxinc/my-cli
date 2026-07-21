@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	registryVersion = 1
-	appDir          = "my-cli"
-	manifestFile    = "manifest.json"
+	registryVersion                = 1
+	appDir                         = "my-cli"
+	manifestFile                   = "manifest.json"
+	ReservedPolicyAcceptanceDomain = "policy-acceptances"
 )
 
 // Registry records configured organization manifests on this machine.
@@ -1085,6 +1086,8 @@ func validateGovernance(g Governance, mounts []Mount, mountIDs map[string]bool, 
 		prefix := fmt.Sprintf("governance.record_domains[%d]", i)
 		if !portableID(domain.ID) {
 			result.Errors = append(result.Errors, prefix+".id must be lowercase kebab-case")
+		} else if domain.ID == ReservedPolicyAcceptanceDomain {
+			result.Errors = append(result.Errors, prefix+".id is reserved for policy acceptances")
 		} else if seenDomains[domain.ID] {
 			result.Errors = append(result.Errors, fmt.Sprintf("duplicate governance record domain id %q", domain.ID))
 		}
@@ -1099,6 +1102,10 @@ func validateGovernance(g Governance, mounts []Mount, mountIDs map[string]bool, 
 			result.Errors = append(result.Errors, prefix+".path must be a relative path that stays inside the mount")
 		} else if includes := mountPaths[domain.Mount]; len(includes) != 0 && !pathCoveredByAny(domain.Path, includes) {
 			result.Errors = append(result.Errors, fmt.Sprintf("%s.path %q is outside mount %q include_paths", prefix, domain.Path, domain.Mount))
+		}
+		if domain.Mount == g.Attestations.Mount && portableIncludePath(domain.Path) && portableIncludePath(g.Attestations.Path) &&
+			(pathIncludes(domain.Path, g.Attestations.Path) || pathIncludes(g.Attestations.Path, domain.Path)) {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s.path overlaps the reserved attestation path %q", prefix, g.Attestations.Path))
 		}
 		if domain.Retention != "no-delete" && domain.Retention != "append-only" {
 			result.Errors = append(result.Errors, prefix+".retention must be no-delete or append-only")

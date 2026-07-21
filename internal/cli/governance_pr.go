@@ -158,6 +158,20 @@ func (a app) publishPullRequest(home string, request syncer.PRRequest, allowManu
 		return fail("pr_proof_failed", err.Error(), "gh pr view "+shellQuote(prURL))
 	}
 
+	if request.PreserveCheckout {
+		message := prURL + "; remote branch and immutable PR author verified; local checkout and index preserved"
+		if !doc.doc.Sync.PullRequestAutoMerge {
+			message += "; awaiting required checks and human approvals"
+			return syncer.PRResult{Status: "pull request opened", Message: message, ReasonCode: "governance_pr_opened", NextCommand: "gh pr view " + shellQuote(prURL), Changed: changed, PRURL: prURL, PRHeadSHA: prospective.Commit, PRBase: baseBranch}
+		}
+		if mergeOut, mergeErr := publishRunner("gh", "pr", "merge", "--auto", "--merge", prURL); mergeErr != nil {
+			message += "; requested auto-merge could not be enabled: " + commandMessage(mergeOut, mergeErr)
+			return syncer.PRResult{Status: "pull request opened", Message: message, ReasonCode: "pr_open_auto_merge_pending", NextCommand: "gh pr view " + shellQuote(prURL), Changed: changed, PRURL: prURL, PRHeadSHA: prospective.Commit, PRBase: baseBranch}
+		}
+		message += "; auto-merge requested by manifest policy, still subject to required checks and reviews"
+		return syncer.PRResult{Status: "pull request opened", Message: message, ReasonCode: "governance_pr_opened", NextCommand: "gh pr view " + shellQuote(prURL), Changed: changed, PRURL: prURL, PRHeadSHA: prospective.Commit, PRBase: baseBranch}
+	}
+
 	// The commit and PR are now independently proven remote. Attach HEAD to the
 	// dedicated topic branch and reset only the index. Neither command writes or
 	// removes working-tree files. The former base ref is restored to its proven

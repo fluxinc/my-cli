@@ -711,6 +711,24 @@ func TestValidateManifestAllowsGovernance(t *testing.T) {
 	if len(doc.Governance.RecordDomains) != 1 || len(protections) != 3 || protections[2].Paths[0] != "decisions" {
 		t.Fatalf("record domains/protections = %#v / %#v", doc.Governance.RecordDomains, protections)
 	}
+
+	reserved := doc
+	reserved.Governance.RecordDomains = append(append([]RecordDomain(nil), doc.Governance.RecordDomains...), RecordDomain{
+		ID: ReservedPolicyAcceptanceDomain, Title: "Reserved", Mount: "handbook", Path: "other",
+		Retention: "append-only", Review: "standard", Publish: "auto-pr",
+	})
+	if got := ValidateDocument("", reserved); !containsValidationError(got.Errors, "id is reserved for policy acceptances") {
+		t.Fatalf("reserved acceptance domain errors = %#v", got.Errors)
+	}
+
+	overlap := doc
+	overlap.Governance.RecordDomains = append(append([]RecordDomain(nil), doc.Governance.RecordDomains...), RecordDomain{
+		ID: "custom-attestations", Title: "Custom attestations", Mount: "handbook", Path: "policy/attestations/custom",
+		Retention: "append-only", Review: "standard", Publish: "auto-pr",
+	})
+	if got := ValidateDocument("", overlap); !containsValidationError(got.Errors, "overlaps the reserved attestation path") {
+		t.Fatalf("attestation overlap errors = %#v", got.Errors)
+	}
 }
 
 func TestValidateManifestRejectsUnsafeGovernance(t *testing.T) {

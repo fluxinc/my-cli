@@ -61,14 +61,15 @@ type Options struct {
 // branch creation and pull-request proof; syncer retains fetch/divergence,
 // declared-content, duplicate-checkout, adoption, and active-session gates.
 type PRRequest struct {
-	Entry    Entry
-	Branch   string
-	Upstream string
-	Head     string
-	Dirty    []string
-	Changed  []string
-	Message  string
-	DryRun   bool
+	Entry            Entry
+	Branch           string
+	Upstream         string
+	Head             string
+	Dirty            []string
+	Changed          []string
+	Message          string
+	DryRun           bool
+	PreserveCheckout bool
 }
 
 type PRResult struct {

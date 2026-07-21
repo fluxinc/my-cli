@@ -267,10 +267,29 @@ func (a app) runRecordFlush(args []string) error {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
 	domains := recordDomainMap(doc.doc)
+	sort.SliceStable(events, func(i, j int) bool {
+		return events[i].Domain == manifest.ReservedPolicyAcceptanceDomain && events[j].Domain != manifest.ReservedPolicyAcceptanceDomain
+	})
 	seenRepo := map[string]bool{}
 	var results []outbox.Event
 	for _, event := range events {
 		if event.State != outbox.StateQueued && event.State != outbox.StateAttemptFailed {
+			continue
+		}
+		if event.Domain == manifest.ReservedPolicyAcceptanceDomain {
+			if seenRepo[event.RepoPath] {
+				continue
+			}
+			seenRepo[event.RepoPath] = true
+			ctx, err := loadPolicyContext(opts.home, name, root)
+			if err != nil {
+				return a.maybeJSONError(opts.jsonOut, err)
+			}
+			result, publishErr := a.publishPolicyAcceptance(ctx, event)
+			results = append(results, result)
+			if publishErr != nil {
+				fmt.Fprintf(a.stderr, "warning: %s remains pending: %v\n", event.RelativePath, publishErr)
+			}
 			continue
 		}
 		domain, ok := domains[event.Domain]
@@ -521,6 +540,15 @@ func (a app) reconcileDomainOutbox(home, manifestName, umbrellaRoot string) ([]o
 		known[event.ItemID] = true
 	}
 	var queued []outbox.Event
+	if policyCtx, policyErr := loadPolicyContext(home, manifestName, umbrellaRoot); policyErr != nil {
+		fmt.Fprintf(a.stderr, "warning: policy acceptances skipped during reconcile: %v\n", policyErr)
+	} else {
+		acceptances, issues := reconcilePolicyAcceptanceOutbox(policyCtx)
+		queued = append(queued, acceptances...)
+		for _, issue := range issues {
+			fmt.Fprintf(a.stderr, "warning: policy acceptance skipped during reconcile: %v\n", issue)
+		}
+	}
 	for _, domain := range doc.doc.Governance.RecordDomains {
 		ctx, err := a.recordDomainContext(meetingCommonOpts{home: home, manifestName: manifestName, workspaceID: domain.Mount, umbrellaRoot: umbrellaRoot}, domain.ID)
 		if err != nil {

@@ -326,7 +326,8 @@ my sync --no-derived             # skip derived guidance/MCP/skill reconcile aft
 my sync --publish never          # explicit local-only reconcile
 my sync --publish pr             # pre-check, push a topic branch, and open a governed PR
 my policy list|show|status       # inspect exact policy bytes and acceptance state
-my policy accept <id> --yes      # record immutable-id, digest-bound local evidence
+my policy accept <id> --yes      # queue evidence and attempt an attestation-only governed PR
+my policy acceptances [--json]   # report local, submitted, and merge-proven acceptances
 my governance audit --json       # audit live GitHub rulesets/workflow enforcement
 my record domains                # inspect manifest-routed generic record classes
 my record add <domain> <slug>    # write, queue, and optionally PR-submit a record

@@ -356,7 +356,10 @@ func validTransition(current string, exists bool, next string) error {
 	}
 	switch current {
 	case StateQueued, StateAttemptFailed:
-		if next == StateAttemptFailed || next == StateSubmitted {
+		// merged directly from a pending state records proof that the exact
+		// content already reached the trusted upstream through another
+		// publication path (for example my sync --push or another machine).
+		if next == StateAttemptFailed || next == StateSubmitted || next == StateMerged {
 			return nil
 		}
 	case StateSubmitted:

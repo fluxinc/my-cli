@@ -3,6 +3,7 @@ package outbox
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -52,5 +53,30 @@ func TestCrashOrphanedEventFileBlocksOnlyItsOwnItem(t *testing.T) {
 	bad.RelativePath = "decisions/b.md"
 	if _, err := Append(root, bad, time.Now()); err == nil {
 		t.Fatal("appending to a corrupt item must stay blocked")
+	}
+}
+
+// A pending item may converge directly to merged when the exact content is
+// proven at the trusted upstream without this machine opening a PR.
+func TestPendingItemMayConvergeDirectlyToMerged(t *testing.T) {
+	root := t.TempDir()
+	digest := ContentDigest([]byte("payload"))
+	event := Event{
+		ItemID:       ItemID("org", "decisions", "workspace", "decisions/a.md", digest),
+		Organization: "org", Manifest: "m", Domain: "decisions", Mount: "workspace",
+		RepoPath: filepath.Join(root, "mount"), RelativePath: "decisions/a.md",
+		ContentSHA256: digest, State: StateQueued,
+	}
+	if _, err := Append(root, event, time.Now()); err != nil {
+		t.Fatalf("queue: %v", err)
+	}
+	event.State = StateMerged
+	event.MergedCommit = strings.Repeat("c", 40)
+	if _, err := Append(root, event, time.Now()); err != nil {
+		t.Fatalf("queued item must accept upstream-proven merged: %v", err)
+	}
+	event.State = StateSubmitted
+	if _, err := Append(root, event, time.Now()); err == nil {
+		t.Fatal("merged item must stay terminal")
 	}
 }

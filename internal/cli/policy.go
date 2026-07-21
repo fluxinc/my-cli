@@ -6,15 +6,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/fluxinc/my-cli/internal/access"
 	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/outbox"
+	"github.com/fluxinc/my-cli/internal/safefs"
+	"github.com/fluxinc/my-cli/internal/syncer"
 	"github.com/fluxinc/my-cli/internal/workspace"
 )
 
@@ -36,6 +41,20 @@ type policyStatusRow struct {
 	Acceptance string `json:"acceptance"`
 	Status     string `json:"status"`
 	Path       string `json:"path,omitempty"`
+}
+
+type policyAcceptanceRow struct {
+	Organization   string `json:"organization"`
+	PolicyID       string `json:"policy_id"`
+	PolicyVersion  string `json:"policy_version"`
+	PolicySHA256   string `json:"policy_sha256"`
+	SubjectID      int64  `json:"subject_id"`
+	SubjectLogin   string `json:"subject_login"`
+	AcceptedAt     string `json:"accepted_at"`
+	ManifestCommit string `json:"manifest_commit"`
+	State          string `json:"state"`
+	Path           string `json:"path"`
+	PRURL          string `json:"pr_url,omitempty"`
 }
 
 type policyAttestation struct {
@@ -64,8 +83,10 @@ func (a app) runPolicy(args []string) error {
 		return a.runPolicyStatus(args[1:])
 	case "accept":
 		return a.runPolicyAccept(args[1:])
+	case "acceptances":
+		return a.runPolicyAcceptances(args[1:])
 	default:
-		return fmt.Errorf("unknown policy subcommand %q; supported subcommands are list, show, status, and accept", args[0])
+		return fmt.Errorf("unknown policy subcommand %q; supported subcommands are list, show, status, accept, and acceptances", args[0])
 	}
 }
 
@@ -217,6 +238,7 @@ func (a app) runPolicyAccept(args []string) error {
 		if json.Unmarshal(existing, &recorded) != nil || !samePolicyAcceptance(recorded, attestation) {
 			return fmt.Errorf("existing attestation path contains different evidence and will not be overwritten: %s", fullPath)
 		}
+		data = existing
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	} else {
@@ -238,9 +260,22 @@ func (a app) runPolicyAccept(args []string) error {
 		if err := file.Close(); err != nil {
 			return err
 		}
+		if err := safefs.SyncDirectory(filepath.Dir(fullPath)); err != nil {
+			return err
+		}
 	}
 	if _, err := gitPolicyBytes(ledger.LocalPath, "add", "-N", "--", relativePath); err != nil {
 		return fmt.Errorf("mark attestation intent-to-add: %w", err)
+	}
+	event, err := ensurePolicyAcceptanceQueued(ctx, ledger, relativePath, data)
+	if err != nil {
+		return fmt.Errorf("policy acceptance was written at %s but publication queueing failed: %w", fullPath, err)
+	}
+	if event.State == outbox.StateQueued || event.State == outbox.StateAttemptFailed {
+		if _, publishErr := a.publishPolicyAcceptance(ctx, event); publishErr != nil {
+			fmt.Fprintf(a.stderr, "warning: policy acceptance is durable locally and remains in the publication outbox: %v\n", publishErr)
+			fmt.Fprintf(a.stderr, "next: my record flush --manifest %s --umbrella %s\n", ctx.manifestName, ctx.root)
+		}
 	}
 	row, err := currentPolicyStatus(ctx, policy, actor)
 	if err != nil {
@@ -250,6 +285,39 @@ func (a app) runPolicyAccept(args []string) error {
 		return printJSON(a.stdout, row)
 	}
 	fmt.Fprintf(a.stdout, "%s\t%s\t%s\n", row.ID, row.Status, row.Path)
+	return nil
+}
+
+func (a app) runPolicyAcceptances(args []string) error {
+	home, manifestName, umbrellaRoot, jsonOut, _, rest, err := parsePolicyFlags("my policy acceptances", a.stderr, args, false)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("policy acceptances does not accept positional arguments")
+	}
+	ctx, err := loadPolicyContext(home, manifestName, umbrellaRoot)
+	if err != nil {
+		return err
+	}
+	if _, issues := a.reconcileSubmittedOutbox(ctx.root); len(issues) != 0 {
+		for _, issue := range issues {
+			fmt.Fprintf(a.stderr, "warning: acceptance merge reconciliation: %v\n", issue)
+		}
+	}
+	rows, rowIssues, err := policyAcceptanceRows(ctx)
+	if err != nil {
+		return err
+	}
+	for _, issue := range rowIssues {
+		fmt.Fprintf(a.stderr, "warning: policy acceptance skipped: %v\n", issue)
+	}
+	if jsonOut {
+		return printJSON(a.stdout, rows)
+	}
+	for _, row := range rows {
+		fmt.Fprintf(a.stdout, "%d\t%s\t%s\t%s\t%s\n", row.SubjectID, row.PolicyID, row.PolicyVersion, row.State, row.PRURL)
+	}
 	return nil
 }
 
@@ -379,7 +447,295 @@ func currentPolicyStatus(ctx policyContext, policy manifest.Policy, actor access
 	} else {
 		row.Status = "accepted-locally"
 	}
+	digest := outbox.ContentDigest(data)
+	itemID := outbox.ItemID(ctx.doc.doc.Organization.ID, manifest.ReservedPolicyAcceptanceDomain, ledger.ID, relativePath, digest)
+	if event, ok, err := outbox.Current(ctx.root, itemID); err != nil {
+		return row, err
+	} else if ok {
+		switch event.State {
+		case outbox.StateSubmitted:
+			row.Status = "submitted"
+		case outbox.StateMerged:
+			row.Status = "merged"
+		}
+	}
 	return row, nil
+}
+
+func ensurePolicyAcceptanceQueued(ctx policyContext, ledger workspace.Entry, relativePath string, data []byte) (outbox.Event, error) {
+	digest := outbox.ContentDigest(data)
+	itemID := outbox.ItemID(ctx.doc.doc.Organization.ID, manifest.ReservedPolicyAcceptanceDomain, ledger.ID, relativePath, digest)
+	if current, ok, err := outbox.Current(ctx.root, itemID); err != nil {
+		return outbox.Event{}, err
+	} else if ok {
+		return current, nil
+	}
+	event := outbox.Event{
+		ItemID: itemID, Organization: ctx.doc.doc.Organization.ID, Manifest: ctx.doc.ref.Name,
+		Domain: manifest.ReservedPolicyAcceptanceDomain, Mount: ledger.ID, RepoPath: ledger.LocalPath,
+		RelativePath: filepath.ToSlash(relativePath), ContentSHA256: digest, State: outbox.StateQueued,
+		Message: "policy acceptance queued for isolated governed publication",
+	}
+	return outbox.Append(ctx.root, event, time.Now())
+}
+
+func (a app) publishPolicyAcceptance(ctx policyContext, item outbox.Event) (outbox.Event, error) {
+	if item.Domain != manifest.ReservedPolicyAcceptanceDomain {
+		return item, fmt.Errorf("outbox item is not a policy acceptance")
+	}
+	if err := verifyOutboxContent(item); err != nil {
+		return appendOutboxFailure(ctx.root, item, err)
+	}
+	if err := a.requireGovernedLaunchAccess(ctx.home, ctx.doc, ctx.root); err != nil {
+		return appendOutboxFailure(ctx.root, item, err)
+	}
+	refreshed, err := loadPolicyContext(ctx.home, ctx.doc.ref.Name, ctx.root)
+	if err != nil {
+		return appendOutboxFailure(ctx.root, item, err)
+	}
+	ledger, ok := refreshed.mounts[refreshed.doc.doc.Governance.Attestations.Mount]
+	if !ok || !samePath(ledger.LocalPath, item.RepoPath) || ledger.ID != item.Mount {
+		return appendOutboxFailure(ctx.root, item, fmt.Errorf("attestation mount no longer matches queued acceptance"))
+	}
+	prefix := strings.Trim(filepath.ToSlash(refreshed.doc.doc.Governance.Attestations.Path), "/")
+	if item.RelativePath != prefix && !strings.HasPrefix(item.RelativePath, prefix+"/") {
+		return appendOutboxFailure(ctx.root, item, fmt.Errorf("queued acceptance is outside the attestation path"))
+	}
+	data, err := os.ReadFile(filepath.Join(item.RepoPath, filepath.FromSlash(item.RelativePath)))
+	if err != nil {
+		return appendOutboxFailure(ctx.root, item, err)
+	}
+	attestation, err := validatePolicyAcceptanceFile(refreshed, item.RelativePath, data, true)
+	if err != nil {
+		return appendOutboxFailure(ctx.root, item, err)
+	}
+	actor, err := policyActor(refreshed.doc.doc, a.accessRunner)
+	if err != nil {
+		return appendOutboxFailure(ctx.root, item, err)
+	}
+	if attestation.SubjectID != actor.ID {
+		return appendOutboxFailure(ctx.root, item, fmt.Errorf("queued acceptance subject %d does not match current GitHub actor %d", attestation.SubjectID, actor.ID))
+	}
+	if out, err := gitPolicyBytes(ledger.LocalPath, "fetch", "--prune", "origin"); err != nil {
+		return appendOutboxFailure(ctx.root, item, fmt.Errorf("refresh attestation repository: %s", commandMessage(out, err)))
+	}
+	upstream, err := gitPolicyText(ledger.LocalPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	if err != nil {
+		return appendOutboxFailure(ctx.root, item, fmt.Errorf("attestation repository has no trusted upstream: %w", err))
+	}
+	baseCommit, err := gitPolicyText(ledger.LocalPath, "rev-parse", upstream+"^{commit}")
+	if err != nil {
+		return appendOutboxFailure(ctx.root, item, fmt.Errorf("resolve attestation upstream: %w", err))
+	}
+	if blob, showErr := gitPolicyBytes(ledger.LocalPath, "show", upstream+":"+item.RelativePath); showErr == nil && outbox.ContentDigest(blob) == item.ContentSHA256 {
+		item.State = outbox.StateMerged
+		item.MergedCommit = baseCommit
+		item.Message = "exact acceptance already published at the trusted upstream; no pull request needed"
+		return outbox.Append(ctx.root, item, time.Now())
+	}
+	result := a.publishPullRequest(ctx.home, syncer.PRRequest{
+		Entry: syncer.Entry{
+			Manifest: refreshed.doc.ref.Name, ID: ledger.ID, Role: "content", Kind: ledger.Kind,
+			GitURL: ledger.GitURL, LocalPath: ledger.LocalPath, ContentPaths: []string{item.RelativePath},
+		},
+		Branch: pullRequestBaseBranch(upstream, "master"), Upstream: upstream, Head: baseCommit,
+		Dirty: []string{item.RelativePath}, Message: "Accept policy " + attestation.PolicyID,
+		PreserveCheckout: true,
+	}, false)
+	if result.Status != "pull request opened" {
+		message := strings.TrimSpace(result.Message + " " + result.Error)
+		if message == "" {
+			message = "isolated acceptance publication did not open a pull request"
+		}
+		return appendOutboxFailure(ctx.root, item, fmt.Errorf("%s", message))
+	}
+	if result.PRURL == "" || result.PRHeadSHA == "" || result.PRBase == "" || len(result.Changed) != 1 || filepath.ToSlash(result.Changed[0]) != item.RelativePath {
+		return appendOutboxFailure(ctx.root, item, fmt.Errorf("acceptance publisher did not return exact structural PR proof"))
+	}
+	item.State = outbox.StateSubmitted
+	item.PRURL = result.PRURL
+	item.PRHeadSHA = result.PRHeadSHA
+	item.PRBase = result.PRBase
+	item.PublishedPaths = []string{item.RelativePath}
+	item.Message = "isolated acceptance pull request verified; awaiting checks and merge"
+	return outbox.Append(ctx.root, item, time.Now())
+}
+
+func policyAcceptanceRows(ctx policyContext) ([]policyAcceptanceRow, []error, error) {
+	var rowIssues []error
+	ledger, ok := ctx.mounts[ctx.doc.doc.Governance.Attestations.Mount]
+	if !ok {
+		return nil, nil, fmt.Errorf("attestation mount %q is not materialized", ctx.doc.doc.Governance.Attestations.Mount)
+	}
+	paths, err := listPolicyAcceptancePaths(ledger.LocalPath, ctx.doc.doc.Governance.Attestations.Path)
+	if err != nil {
+		return nil, nil, err
+	}
+	events, issues, err := outbox.ListWithIssues(ctx.root)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, issue := range issues {
+		rowIssues = append(rowIssues, fmt.Errorf("outbox item %s is unreadable and stays blocked: %w", issue.ItemID, issue.Err))
+	}
+	byID := make(map[string]outbox.Event, len(events))
+	for _, event := range events {
+		byID[event.ItemID] = event
+	}
+	upstream := ""
+	if _, fetchErr := gitPolicyBytes(ledger.LocalPath, "fetch", "--prune", "origin"); fetchErr == nil {
+		upstream, _ = gitPolicyText(ledger.LocalPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	}
+	rows := make([]policyAcceptanceRow, 0, len(paths))
+	for _, relativePath := range paths {
+		data, err := readRegularPolicyFile(filepath.Join(ledger.LocalPath, filepath.FromSlash(relativePath)))
+		if err != nil {
+			rowIssues = append(rowIssues, err)
+			continue
+		}
+		attestation, err := validatePolicyAcceptanceFile(ctx, relativePath, data, false)
+		if err != nil {
+			rowIssues = append(rowIssues, err)
+			continue
+		}
+		state := "local"
+		prURL := ""
+		itemID := outbox.ItemID(ctx.doc.doc.Organization.ID, manifest.ReservedPolicyAcceptanceDomain, ledger.ID, relativePath, outbox.ContentDigest(data))
+		if event, ok := byID[itemID]; ok {
+			prURL = event.PRURL
+			switch event.State {
+			case outbox.StateSubmitted:
+				state = "submitted"
+			case outbox.StateMerged:
+				state = "merged"
+			}
+		}
+		if upstream != "" {
+			if mergedData, showErr := gitPolicyBytes(ledger.LocalPath, "show", upstream+":"+relativePath); showErr == nil && string(mergedData) == string(data) {
+				state = "merged"
+			}
+		}
+		rows = append(rows, policyAcceptanceRow{
+			Organization: attestation.Organization, PolicyID: attestation.PolicyID,
+			PolicyVersion: attestation.PolicyVersion, PolicySHA256: attestation.PolicySHA256,
+			SubjectID: attestation.SubjectID, SubjectLogin: attestation.SubjectLogin,
+			AcceptedAt: attestation.AcceptedAt, ManifestCommit: attestation.ManifestCommit,
+			State: state, Path: relativePath, PRURL: prURL,
+		})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].SubjectID != rows[j].SubjectID {
+			return rows[i].SubjectID < rows[j].SubjectID
+		}
+		if rows[i].PolicyID != rows[j].PolicyID {
+			return rows[i].PolicyID < rows[j].PolicyID
+		}
+		return rows[i].PolicySHA256 < rows[j].PolicySHA256
+	})
+	return rows, rowIssues, nil
+}
+
+func listPolicyAcceptancePaths(repo, prefix string) ([]string, error) {
+	root := filepath.Join(repo, filepath.FromSlash(prefix))
+	var paths []string
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if errors.Is(walkErr, os.ErrNotExist) {
+			return nil
+		}
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("policy acceptance path must not contain symlinks: %s", path)
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if !entry.Type().IsRegular() || filepath.Ext(path) != ".json" {
+			return fmt.Errorf("policy acceptance ledger contains unsupported file: %s", path)
+		}
+		rel, ok := relativePathUnder(repo, path)
+		if !ok {
+			return fmt.Errorf("policy acceptance path escaped repository: %s", path)
+		}
+		paths = append(paths, filepath.ToSlash(rel))
+		return nil
+	})
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	sort.Strings(paths)
+	return paths, err
+}
+
+func validatePolicyAcceptanceFile(ctx policyContext, relativePath string, data []byte, requireCurrentPolicy bool) (policyAttestation, error) {
+	var attestation policyAttestation
+	if err := json.Unmarshal(data, &attestation); err != nil {
+		return policyAttestation{}, fmt.Errorf("invalid policy acceptance %s: %w", relativePath, err)
+	}
+	if attestation.SchemaVersion != policyAttestationSchemaVersion || attestation.Organization != ctx.doc.doc.Organization.ID ||
+		attestation.SubjectProvider != "github" || attestation.SubjectID <= 0 || attestation.SubjectLogin == "" || !fullGitOID(attestation.ManifestCommit) {
+		return policyAttestation{}, fmt.Errorf("policy acceptance %s has invalid schema, organization, identity, or manifest provenance", relativePath)
+	}
+	if _, err := time.Parse(time.RFC3339Nano, attestation.AcceptedAt); err != nil {
+		return policyAttestation{}, fmt.Errorf("policy acceptance %s has invalid accepted_at", relativePath)
+	}
+	expected := filepath.ToSlash(filepath.Join(
+		ctx.doc.doc.Governance.Attestations.Path, strconv.FormatInt(attestation.SubjectID, 10),
+		attestation.PolicyID, strings.TrimPrefix(attestation.PolicySHA256, "sha256:")+".json",
+	))
+	if relativePath != expected {
+		return policyAttestation{}, fmt.Errorf("policy acceptance path %s does not match its immutable evidence", relativePath)
+	}
+	if requireCurrentPolicy {
+		policy, err := findGovernancePolicy(ctx.doc.doc, attestation.PolicyID)
+		if err != nil || policy.Version != attestation.PolicyVersion || policy.SHA256 != attestation.PolicySHA256 {
+			return policyAttestation{}, fmt.Errorf("policy acceptance %s does not match a current policy", relativePath)
+		}
+	}
+	return attestation, nil
+}
+
+func reconcilePolicyAcceptanceOutbox(ctx policyContext) ([]outbox.Event, []error) {
+	ledger, ok := ctx.mounts[ctx.doc.doc.Governance.Attestations.Mount]
+	if !ok {
+		return nil, []error{fmt.Errorf("attestation mount %q is not materialized", ctx.doc.doc.Governance.Attestations.Mount)}
+	}
+	paths, err := listPolicyAcceptancePaths(ledger.LocalPath, ctx.doc.doc.Governance.Attestations.Path)
+	if err != nil {
+		return nil, []error{err}
+	}
+	var queued []outbox.Event
+	var issues []error
+	for _, relativePath := range paths {
+		fullPath := filepath.Join(ledger.LocalPath, filepath.FromSlash(relativePath))
+		data, err := readRegularPolicyFile(fullPath)
+		if err != nil {
+			issues = append(issues, err)
+			continue
+		}
+		if _, err := validatePolicyAcceptanceFile(ctx, relativePath, data, true); err != nil {
+			issues = append(issues, err)
+			continue
+		}
+		needsPublication, err := recordNeedsPublication(ledger.LocalPath, fullPath)
+		if err != nil {
+			issues = append(issues, fmt.Errorf("inspect policy acceptance %s: %w", relativePath, err))
+			continue
+		}
+		if !needsPublication {
+			continue
+		}
+		event, err := ensurePolicyAcceptanceQueued(ctx, ledger, relativePath, data)
+		if err != nil {
+			issues = append(issues, fmt.Errorf("queue policy acceptance %s: %w", relativePath, err))
+			continue
+		}
+		if event.State == outbox.StateQueued {
+			queued = append(queued, event)
+		}
+	}
+	return queued, issues
 }
 
 func requiredPoliciesForRole(doc manifest.Document, role string) []manifest.Policy {
@@ -442,6 +798,8 @@ func (a app) requireGovernedPolicyAcceptances(home string, doc registeredDoc, ro
 		fmt.Fprintf(&remediation, "\n  my policy show %s --manifest %s", policy.ID, doc.ref.Name)
 		fmt.Fprintf(&remediation, "\n  my policy accept %s --yes --manifest %s", policy.ID, doc.ref.Name)
 	}
+	fmt.Fprintf(&remediation, "\n  my record flush --manifest %s", doc.ref.Name)
+	fmt.Fprintf(&remediation, "\n  my policy acceptances --manifest %s", doc.ref.Name)
 	return fmt.Errorf("governed operation blocked: GitHub actor %d has not accepted %d required current policy document(s); review and accept each exact document:%s", actor.ID, len(missing), remediation.String())
 }
 
@@ -531,6 +889,8 @@ func (a app) printRequiredPolicyCommands(home string, doc registeredDoc, root st
 		fmt.Fprintf(a.stdout, "  %s\n", shellCommandLine("", "my", append([]string{"policy", "show", policy.ID}, flags...)))
 		fmt.Fprintf(a.stdout, "  %s\n", shellCommandLine("", "my", append([]string{"policy", "accept", policy.ID, "--yes"}, flags...)))
 	}
+	fmt.Fprintf(a.stdout, "  %s\n", shellCommandLine("", "my", append([]string{"record", "flush"}, flags...)))
+	fmt.Fprintf(a.stdout, "  %s\n", shellCommandLine("", "my", append([]string{"policy", "acceptances"}, flags...)))
 }
 
 func policyCommandFlags(home, manifestName, root string) []string {
