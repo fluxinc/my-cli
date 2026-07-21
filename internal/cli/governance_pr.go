@@ -27,17 +27,34 @@ type prospectiveCommit struct {
 
 func (a app) pullRequestPublisher(home string) syncer.PRPublisher {
 	return func(request syncer.PRRequest) syncer.PRResult {
-		return a.publishPullRequest(home, request)
+		return a.publishPullRequest(home, request, false)
 	}
 }
 
-func (a app) publishPullRequest(home string, request syncer.PRRequest) syncer.PRResult {
+func (a app) pullRequestPublisherAllowManual(home string) syncer.PRPublisher {
+	return func(request syncer.PRRequest) syncer.PRResult {
+		return a.publishPullRequest(home, request, true)
+	}
+}
+
+func (a app) publishPullRequest(home string, request syncer.PRRequest, allowManualDomains bool) syncer.PRResult {
 	fail := func(reason, message, next string) syncer.PRResult {
 		return syncer.PRResult{Status: "failed", ReasonCode: reason, Error: message, NextCommand: next}
 	}
 	doc, err := loadSingleRegisteredDoc(home, request.Entry.Manifest)
 	if err != nil {
 		return fail("manifest_unavailable", err.Error(), "my manifests sync "+request.Entry.Manifest)
+	}
+	if request.Entry.Role != "manifest" {
+		domains := changedRecordDomains(doc.doc, request.Entry.ID, append(append([]string(nil), request.Dirty...), request.Changed...))
+		for _, domain := range domains {
+			if domain.Publish == "manual-pr" && !allowManualDomains {
+				return syncer.PRResult{Status: "held back", ReasonCode: "manual_record_domain", Message: "record domain " + domain.ID + " requires explicit `my record flush --include-manual`", NextCommand: "my record flush --include-manual"}
+			}
+		}
+		if !compatibleRecordDomainPolicies(domains) {
+			return syncer.PRResult{Status: "held back", ReasonCode: "mixed_record_domain_policy", Message: "changed record domains have different review or publication policies; split the changes into separate PRs", NextCommand: "git -C " + shellQuote(request.Entry.LocalPath) + " status --short"}
+		}
 	}
 	repository, ok := access.GitHubRepositoryName(request.Entry.GitURL)
 	if !ok {
@@ -147,20 +164,55 @@ func (a app) publishPullRequest(home string, request syncer.PRRequest) syncer.PR
 	// upstream commit so an unmerged or squash-merged PR cannot make the local
 	// default branch falsely appear ahead or cause accidental stacked changes.
 	if err := attachPublishedTopic(request, branch, prospective.Commit); err != nil {
-		return syncer.PRResult{Status: "pull request opened", Message: prURL + "; local checkout could not be marked committed: " + err.Error(), ReasonCode: "pr_open_local_unreconciled", NextCommand: "git -C " + shellQuote(request.Entry.LocalPath) + " status --short", Changed: changed}
+		return syncer.PRResult{Status: "pull request opened", Message: prURL + "; local checkout could not be marked committed: " + err.Error(), ReasonCode: "pr_open_local_unreconciled", NextCommand: "git -C " + shellQuote(request.Entry.LocalPath) + " status --short", Changed: changed, PRURL: prURL, PRHeadSHA: prospective.Commit, PRBase: baseBranch}
 	}
 
 	message := prURL + "; remote branch and immutable PR author verified"
 	if !doc.doc.Sync.PullRequestAutoMerge {
 		message += "; awaiting required checks and human approvals"
-		return syncer.PRResult{Status: "pull request opened", Message: message, ReasonCode: "governance_pr_opened", NextCommand: "gh pr view " + shellQuote(prURL), Changed: changed}
+		return syncer.PRResult{Status: "pull request opened", Message: message, ReasonCode: "governance_pr_opened", NextCommand: "gh pr view " + shellQuote(prURL), Changed: changed, PRURL: prURL, PRHeadSHA: prospective.Commit, PRBase: baseBranch}
 	}
 	if mergeOut, mergeErr := publishRunner("gh", "pr", "merge", "--auto", "--merge", prURL); mergeErr != nil {
 		message += "; requested auto-merge could not be enabled: " + commandMessage(mergeOut, mergeErr)
-		return syncer.PRResult{Status: "pull request opened", Message: message, ReasonCode: "pr_open_auto_merge_pending", NextCommand: "gh pr view " + shellQuote(prURL), Changed: changed}
+		return syncer.PRResult{Status: "pull request opened", Message: message, ReasonCode: "pr_open_auto_merge_pending", NextCommand: "gh pr view " + shellQuote(prURL), Changed: changed, PRURL: prURL, PRHeadSHA: prospective.Commit, PRBase: baseBranch}
 	}
 	message += "; auto-merge requested by manifest policy, still subject to required checks and reviews"
-	return syncer.PRResult{Status: "pull request opened", Message: message, ReasonCode: "governance_pr_opened", NextCommand: "gh pr view " + shellQuote(prURL), Changed: changed}
+	return syncer.PRResult{Status: "pull request opened", Message: message, ReasonCode: "governance_pr_opened", NextCommand: "gh pr view " + shellQuote(prURL), Changed: changed, PRURL: prURL, PRHeadSHA: prospective.Commit, PRBase: baseBranch}
+}
+
+func changedRecordDomains(doc manifest.Document, mount string, paths []string) []manifest.RecordDomain {
+	seen := map[string]bool{}
+	var out []manifest.RecordDomain
+	for _, domain := range doc.Governance.RecordDomains {
+		if domain.Mount != mount {
+			continue
+		}
+		for _, path := range paths {
+			path = filepath.ToSlash(filepath.Clean(path))
+			prefix := strings.Trim(filepath.ToSlash(domain.Path), "/")
+			if path == prefix || strings.HasPrefix(path, prefix+"/") {
+				if !seen[domain.ID] {
+					out = append(out, domain)
+					seen[domain.ID] = true
+				}
+				break
+			}
+		}
+	}
+	return out
+}
+
+func compatibleRecordDomainPolicies(domains []manifest.RecordDomain) bool {
+	if len(domains) < 2 {
+		return true
+	}
+	review, publish := domains[0].Review, domains[0].Publish
+	for _, domain := range domains[1:] {
+		if domain.Review != review || domain.Publish != publish {
+			return false
+		}
+	}
+	return true
 }
 
 func buildProspectiveCommit(request syncer.PRRequest) (prospectiveCommit, error) {

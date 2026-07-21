@@ -272,7 +272,7 @@ Usage:
   my fleet get <id|identifier|path>
   my fleet add <id>
   my fleet set <id> KEY=VALUE...
-  my record adopt <path>
+  my record domains|add|list|get|outbox|reconcile|flush|adopt
   my work start [--slug SLUG] [--json] [--print] [harness] [-- harness args...]   (deprecated; use my session)
   my work status [--all] [--json]
   my work list [--all] [--json]

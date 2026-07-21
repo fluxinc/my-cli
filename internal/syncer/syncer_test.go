@@ -105,11 +105,16 @@ func TestRunPRDelegatesOnlyAfterSyncSafetyGates(t *testing.T) {
 				request.Head == "" || request.Message != "Add governed meeting" || len(request.Dirty) != 1 {
 				t.Fatalf("request = %#v", request)
 			}
-			return PRResult{Status: "pull request opened", ReasonCode: "governance_pr_opened", Message: "https://github.com/example/handbook/pull/1", Changed: request.Dirty}
+			return PRResult{
+				Status: "pull request opened", ReasonCode: "governance_pr_opened",
+				Message: "https://github.com/example/handbook/pull/1", Changed: request.Dirty,
+				PRURL: "https://github.com/example/handbook/pull/1", PRHeadSHA: strings.Repeat("a", 40), PRBase: "master",
+			}
 		},
 	})
 	result := findResult(t, report, "handbook")
-	if called != 1 || result.Status != "pull request opened" || result.ReasonCode != "governance_pr_opened" {
+	if called != 1 || result.Status != "pull request opened" || result.ReasonCode != "governance_pr_opened" ||
+		result.PRURL == "" || result.PRHeadSHA == "" || result.PRBase != "master" {
 		t.Fatalf("called=%d result=%#v", called, result)
 	}
 }

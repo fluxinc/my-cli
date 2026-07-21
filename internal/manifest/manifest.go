@@ -84,6 +84,7 @@ type Governance struct {
 	Access        GovernanceAccess        `json:"access,omitzero"`
 	Policies      []Policy                `json:"policies,omitempty"`
 	Attestations  AttestationStore        `json:"attestations,omitzero"`
+	RecordDomains []RecordDomain          `json:"record_domains,omitempty"`
 	Protections   []Protection            `json:"protections,omitempty"`
 }
 
@@ -131,6 +132,20 @@ type Protection struct {
 	Paths         []string `json:"paths"`
 	Mode          string   `json:"mode"`
 	AdminOverride bool     `json:"admin_override,omitempty"`
+}
+
+// RecordDomain routes one generic additive record class to a path in an
+// existing mount. Retention is enforced as an implicit path protection;
+// review authority remains in GitHub CODEOWNERS/rulesets, never local roles.
+type RecordDomain struct {
+	ID            string `json:"id"`
+	Title         string `json:"title"`
+	Mount         string `json:"mount"`
+	Path          string `json:"path"`
+	Retention     string `json:"retention"`
+	AdminOverride bool   `json:"admin_override,omitempty"`
+	Review        string `json:"review"`
+	Publish       string `json:"publish"`
 }
 
 // DataBinding maps one stable business data type to the mount or service that
@@ -890,7 +905,7 @@ func validateOrgManifest(doc Document, result *ValidationResult) {
 	validateRoles(doc.Roles, mountIDs, skillIDs, tools, serviceIDs, result)
 	validateProfiles(doc.Profiles, skillIDs, result)
 	validateContract(doc.Contract, result)
-	validateGovernance(doc.Governance, mountIDs, doc.Roles, result)
+	validateGovernance(doc.Governance, EffectiveMounts(doc), mountIDs, doc.Roles, result)
 }
 
 func validateDataBindings(bindings map[string]DataBinding, mountIDs, serviceIDs map[string]bool, result *ValidationResult) {
@@ -985,7 +1000,7 @@ func validateContract(rules []string, result *ValidationResult) {
 	}
 }
 
-func validateGovernance(g Governance, mountIDs map[string]bool, roles []Role, result *ValidationResult) {
+func validateGovernance(g Governance, mounts []Mount, mountIDs map[string]bool, roles []Role, result *ValidationResult) {
 	if !GovernanceConfigured(g) {
 		return
 	}
@@ -1061,6 +1076,52 @@ func validateGovernance(g Governance, mountIDs map[string]bool, roles []Role, re
 	}
 
 	seenProtections := map[string]bool{}
+	seenDomains := map[string]bool{}
+	mountPaths := map[string][]string{}
+	for _, mount := range mounts {
+		mountPaths[mount.ID] = mount.IncludePaths
+	}
+	for i, domain := range g.RecordDomains {
+		prefix := fmt.Sprintf("governance.record_domains[%d]", i)
+		if !portableID(domain.ID) {
+			result.Errors = append(result.Errors, prefix+".id must be lowercase kebab-case")
+		} else if seenDomains[domain.ID] {
+			result.Errors = append(result.Errors, fmt.Sprintf("duplicate governance record domain id %q", domain.ID))
+		}
+		seenDomains[domain.ID] = true
+		if strings.TrimSpace(domain.Title) == "" {
+			result.Errors = append(result.Errors, prefix+".title is required")
+		}
+		if !mountIDs[domain.Mount] {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s.mount references unknown mount %q", prefix, domain.Mount))
+		}
+		if !portableIncludePath(domain.Path) {
+			result.Errors = append(result.Errors, prefix+".path must be a relative path that stays inside the mount")
+		} else if includes := mountPaths[domain.Mount]; len(includes) != 0 && !pathCoveredByAny(domain.Path, includes) {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s.path %q is outside mount %q include_paths", prefix, domain.Path, domain.Mount))
+		}
+		if domain.Retention != "no-delete" && domain.Retention != "append-only" {
+			result.Errors = append(result.Errors, prefix+".retention must be no-delete or append-only")
+		}
+		if domain.Retention == "append-only" && domain.AdminOverride {
+			result.Errors = append(result.Errors, prefix+".admin_override must be false for append-only records")
+		}
+		if domain.Review != "standard" && domain.Review != "codeowner" {
+			result.Errors = append(result.Errors, prefix+".review must be standard or codeowner")
+		}
+		if domain.Publish != "auto-pr" && domain.Publish != "manual-pr" {
+			result.Errors = append(result.Errors, prefix+".publish must be auto-pr or manual-pr")
+		}
+		for j := 0; j < i; j++ {
+			other := g.RecordDomains[j]
+			if domain.Mount == other.Mount && (pathIncludes(domain.Path, other.Path) || pathIncludes(other.Path, domain.Path)) {
+				result.Errors = append(result.Errors, fmt.Sprintf("governance record domain paths overlap in mount %q: %q and %q", domain.Mount, other.Path, domain.Path))
+			}
+		}
+		if portableIncludePath(domain.Path) {
+			seenProtections[domain.Mount+"\x00"+domain.Path] = true
+		}
+	}
 	attestationsAppendOnly := false
 	for i, protection := range g.Protections {
 		prefix := fmt.Sprintf("governance.protections[%d]", i)
@@ -1093,6 +1154,15 @@ func validateGovernance(g Governance, mountIDs map[string]bool, roles []Role, re
 	}
 }
 
+func pathCoveredByAny(path string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if pathIncludes(prefix, path) {
+			return true
+		}
+	}
+	return false
+}
+
 // GovernanceConfigured reports whether a manifest has opted in to governed
 // behavior. Zero-value governance preserves all legacy behavior.
 func GovernanceConfigured(g Governance) bool {
@@ -1105,10 +1175,24 @@ func GovernanceConfigured(g Governance) bool {
 		g.Access.ConfirmationInterval != "" ||
 		g.Access.QuarantineRetention != "" ||
 		len(g.Policies) != 0 ||
+		len(g.RecordDomains) != 0 ||
 		g.Attestations.Mount != "" ||
 		g.Attestations.Path != "" ||
 		g.Attestations.Identity != "" ||
 		len(g.Protections) != 0
+}
+
+// GovernanceProtections returns explicit protections plus the implicit
+// retention protection declared by every generic record domain.
+func GovernanceProtections(g Governance) []Protection {
+	out := append([]Protection(nil), g.Protections...)
+	for _, domain := range g.RecordDomains {
+		out = append(out, Protection{
+			Mount: domain.Mount, Paths: []string{domain.Path}, Mode: domain.Retention,
+			AdminOverride: domain.AdminOverride,
+		})
+	}
+	return out
 }
 
 func validateGovernanceAccess(access GovernanceAccess, result *ValidationResult) {

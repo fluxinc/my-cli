@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 func TestGovernanceCheckCommandReturnsStructuredDenial(t *testing.T) {
@@ -129,7 +131,7 @@ jobs:
           go build ./cmd/my
           "$RUNNER_TEMP/my-governance" governance check --actor-id ${{ github.event.pull_request.user.id }} --actor-login ${{ github.event.pull_request.user.login }} --manifest-base origin/main
 `
-	codeowners := "/.github/workflows/ @example/security-admins\n/.github/CODEOWNERS @example/security-admins\n"
+	codeowners := "/.github/workflows/ @example/security-admins\n/.github/CODEOWNERS @example/security-admins\n/decisions/ @example/security-admins\n"
 	content := func(value string) []byte {
 		return []byte(fmt.Sprintf(`{"encoding":"base64","content":%q}`, base64.StdEncoding.EncodeToString([]byte(value))))
 	}
@@ -173,5 +175,23 @@ jobs:
 		default:
 			return nil, fmt.Errorf("unexpected audit endpoint: %s", endpoint)
 		}
+	}
+}
+
+func TestRecordDomainPolicyClassificationAndCodeownerCoverage(t *testing.T) {
+	doc := manifest.Document{Governance: manifest.Governance{RecordDomains: []manifest.RecordDomain{
+		{ID: "decisions", Mount: "handbook", Path: "decisions", Review: "codeowner", Publish: "auto-pr"},
+		{ID: "bugs", Mount: "handbook", Path: "engineering/bugs", Review: "standard", Publish: "auto-pr"},
+	}}}
+	domains := changedRecordDomains(doc, "handbook", []string{"decisions/one.md", "engineering/bugs/two.md", "other.md"})
+	if len(domains) != 2 || compatibleRecordDomainPolicies(domains) {
+		t.Fatalf("domains=%#v compatible=%v", domains, compatibleRecordDomainPolicies(domains))
+	}
+	owners := "/.github/workflows/ @example/admins\n/decisions/ @example/admins\n"
+	if !codeownersCoversDomain(owners, "decisions") || codeownersCoversDomain(owners, "engineering/bugs") {
+		t.Fatalf("unexpected CODEOWNERS coverage")
+	}
+	if !codeownersCoversDomain("/investigations/ @example/admins\n", "investigations/customer-assets") {
+		t.Fatal("parent-directory CODEOWNERS pattern should cover nested domain")
 	}
 }

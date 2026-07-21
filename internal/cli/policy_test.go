@@ -69,6 +69,9 @@ func newPolicyTestFixture(t *testing.T) policyTestFixture {
       "path": "policy/attestations",
       "identity": "github"
     },
+    "record_domains": [
+      {"id":"decisions","title":"Decisions","mount":"handbook","path":"decisions","retention":"no-delete","admin_override":true,"review":"codeowner","publish":"auto-pr"}
+    ],
     "protections": [
       { "mount": "handbook", "paths": ["policy/attestations"], "mode": "append-only" }
     ]
@@ -725,6 +728,14 @@ func (s *governedPRRunnerState) run(name string, args ...string) ([]byte, error)
 			proofActor = 17
 		}
 		return []byte(fmt.Sprintf(`{"html_url":"https://github.com/example/handbook/pull/1","user":{"id":%d},"head":{"sha":%q}}`, proofActor, s.commit)), nil
+	case joined == "pr view https://github.com/example/handbook/pull/1 --json state,headRefOid,mergeCommit":
+		state := "OPEN"
+		mergeCommit := "null"
+		if s.merged {
+			state = "MERGED"
+			mergeCommit = fmt.Sprintf(`{"oid":%q}`, s.commit)
+		}
+		return []byte(fmt.Sprintf(`{"state":%q,"headRefOid":%q,"mergeCommit":%s}`, state, s.commit, mergeCommit)), nil
 	case len(args) >= 2 && args[0] == "pr" && args[1] == "merge":
 		s.merged = true
 		return []byte("auto-merge enabled\n"), nil

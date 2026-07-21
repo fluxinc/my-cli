@@ -365,6 +365,47 @@ proposal history and reads its protections only from the trusted manifest base
 revision. See `examples/governance/` for the pinned base-owned workflow,
 CODEOWNERS pattern, ruleset baseline, and immutable PR-author inputs.
 
+Governed manifests can also opt generic additive records into exact mount paths:
+
+```json
+{
+  "governance": {
+    "record_domains": [
+      {
+        "id": "decisions",
+        "title": "Decisions",
+        "mount": "handbook",
+        "path": "decisions",
+        "retention": "no-delete",
+        "admin_override": true,
+        "review": "codeowner",
+        "publish": "auto-pr"
+      }
+    ]
+  }
+}
+```
+
+```sh
+my record domains
+my record add decisions choose-safe-default --source git:OWNER/REPO@SHA
+my record list decisions
+my record get decisions 2026-07-17-choose-safe-default
+my record outbox
+my record reconcile
+my record flush [--include-manual]
+```
+
+`add` durably creates an intent-to-add Markdown record, then appends a local
+queue event before trying publication. `auto-pr` submits through the governed
+PR path immediately; `manual-pr` waits for an explicit flush with
+`--include-manual`. Offline, access, review-policy, or provider failures append
+an `attempt-failed` event and leave the record in place. Reconciliation can
+rebuild a missing queue item from unpublished Git state after a crash. A
+verified remote branch and PR move an item to `submitted`, not `merged`; the
+outbox never claims repository acceptance prematurely and never copies record
+content outside its governed mount.
+
 ### Catalog and customer records
 
 ```sh
@@ -521,12 +562,14 @@ rationale.
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
-- **Active — governed organizations.** The security core is implemented:
+- **Active — governed organizations.** The reviewed security core is implemented:
   provider-backed authorization, lossless revocation quarantine, digest-bound
   policy acceptance, launch gates, PR-only publication, trusted-base CI, and
-  live GitHub enforcement audits. Manifest-declared record-domain routing and
-  the durable publication outbox remain before this plan is shipped. Plan:
-  [governed organizations](docs/plans/2026-07-16-governed-organizations.md).
+  live GitHub enforcement audits. Manifest-routed generic records and the
+  retryable publication outbox are in active hardening; remote acceptance CI,
+  umbrella-root authoring, and private-manifest dogfood remain before release.
+  Plans: [governed organizations](docs/plans/2026-07-16-governed-organizations.md)
+  and [completion gates](docs/plans/2026-07-21-governed-organizations-completion.md).
 - **Shipped (v0.35.0) — dogfood ergonomics audit.** A reviewed two-agent audit
   of real operator transcripts produced small self-healing CLI fixes: clearer
   held-back sync reasons, publish-path warnings, session dead-end recovery,

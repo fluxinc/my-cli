@@ -77,6 +77,9 @@ type PRResult struct {
 	ReasonCode  string
 	NextCommand string
 	Changed     []string
+	PRURL       string
+	PRHeadSHA   string
+	PRBase      string
 	Error       string
 }
 
@@ -124,6 +127,9 @@ type Result struct {
 	FetchError    string   `json:"fetch_error,omitempty"`
 	Dirty         []string `json:"dirty,omitempty"`
 	Changed       []string `json:"changed,omitempty"`
+	PRURL         string   `json:"pr_url,omitempty"`
+	PRHeadSHA     string   `json:"pr_head_sha,omitempty"`
+	PRBase        string   `json:"pr_base,omitempty"`
 	Message       string   `json:"message,omitempty"`
 	ReasonCode    string   `json:"reason_code,omitempty"`
 	NextCommand   string   `json:"next_command,omitempty"`
@@ -531,6 +537,9 @@ func reconcile(in *inspection, all []inspection, opts Options, runner Runner) {
 		in.result.ReasonCode = result.ReasonCode
 		in.result.NextCommand = result.NextCommand
 		in.result.Error = result.Error
+		in.result.PRURL = result.PRURL
+		in.result.PRHeadSHA = result.PRHeadSHA
+		in.result.PRBase = result.PRBase
 		if len(result.Changed) != 0 {
 			in.result.Changed = result.Changed
 		}

@@ -17,6 +17,20 @@ func (a app) runRecord(args []string) error {
 		return fmt.Errorf("missing record subcommand")
 	}
 	switch args[0] {
+	case "domains":
+		return a.runRecordDomains(args[1:])
+	case "add":
+		return a.runRecordAdd(args[1:])
+	case "list":
+		return a.runRecordList(args[1:])
+	case "get":
+		return a.runRecordGet(args[1:])
+	case "outbox":
+		return a.runRecordOutbox(args[1:])
+	case "flush":
+		return a.runRecordFlush(args[1:])
+	case "reconcile":
+		return a.runRecordReconcile(args[1:])
 	case "adopt":
 		return a.runRecordAdopt(args[1:])
 	case "-h", "--help", "help":
@@ -29,12 +43,22 @@ func (a app) runRecord(args []string) error {
 
 func (a app) printRecordUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
+  my record domains [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my record add <domain> <slug> [--date YYYY-MM-DD] [--title TEXT] [--status STATUS]
+      [--actor ID] [--source REF] [--related REF] [--field KEY=VALUE]
+      [--no-publish] [--print] [--manifest NAME] [--workspace ID] [--home DIR] [--umbrella DIR] [--json]
+  my record list <domain> [--manifest NAME] [--workspace ID] [--home DIR] [--umbrella DIR] [--json]
+  my record get <domain> <id> [--manifest NAME] [--workspace ID] [--home DIR] [--umbrella DIR] [--json]
+  my record outbox [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my record reconcile [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my record flush [--include-manual] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my record adopt <path> [--manifest NAME] [--workspace ID] [--home DIR] [--umbrella DIR] [--json]
 
-Record commands operate on local markdown records under declared content
-mounts. adopt marks an existing untracked file as intentional publish content
-using Git intent-to-add; my sync still stages the final content when it
-publishes.`)
+Generic record domains are opt-in manifest routes to existing mount paths.
+add writes a durable Markdown record, queues an append-only local publication
+event, and auto-submits a governed PR only when the domain says auto-pr.
+Failures remain visible and retryable through outbox/reconcile/flush. adopt
+marks any existing untracked content file intentional with Git intent-to-add.`)
 }
 
 type recordAdoptResult struct {

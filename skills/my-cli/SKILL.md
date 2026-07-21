@@ -328,6 +328,11 @@ my sync --publish pr             # pre-check, push a topic branch, and open a go
 my policy list|show|status       # inspect exact policy bytes and acceptance state
 my policy accept <id> --yes      # record immutable-id, digest-bound local evidence
 my governance audit --json       # audit live GitHub rulesets/workflow enforcement
+my record domains                # inspect manifest-routed generic record classes
+my record add <domain> <slug>    # write, queue, and optionally PR-submit a record
+my record outbox                 # distinguish queued/failed/submitted publication
+my record reconcile              # recover queue state from unpublished Git records
+my record flush [--include-manual] # retry eligible PR submissions
 ```
 
 Plain untracked (`??`) files under declared content paths are held instead of
@@ -348,6 +353,15 @@ topic branch while restoring the protected base ref to upstream. It leaves all
 working-tree bytes in place on any failure. A local pre-check is convenience; the required
 `my-governance` GitHub check remains authoritative. Never disable or rewrite
 the workflow, CODEOWNERS, ruleset, or acceptance ledger to make a publish pass.
+
+Generic record domains are opt-in and path-scoped. Treat their retention and
+review fields as binding policy: `append-only` records are corrected with new
+records, `codeowner` review is enforced by the Git host, and `manual-pr`
+records are never swept into ordinary sync. A successful local write is not a
+successful publication. Read `my record outbox` and report `submitted` as
+awaiting checks/merge; only the authoritative repository can establish that a
+record was merged. The local outbox stores record hashes and paths, never the
+record body.
 
 "Derived" means the artifacts generated from the manifest: root guidance
 (`AGENTS.md` plus the `CLAUDE.md` pointer), umbrella-root `.mcp.json`, and

@@ -29,3 +29,9 @@ base branch, checks out proposed bytes only as data, and passes the pull request
 author's immutable numeric GitHub id to the validator. It never executes code
 from the proposed checkout. It builds the validator only from the exact
 `MY_CLI_COMMIT`; tags and moving branches are rejected.
+
+For every `governance.record_domains` entry with `"review":"codeowner"`, add
+the domain path to CODEOWNERS (the sample includes `/decisions/`). The audit
+checks this path coverage in addition to protecting the workflow and
+CODEOWNERS file itself. `auto-pr` means automatic PR submission under these
+rules; it never means direct push or automatic approval.

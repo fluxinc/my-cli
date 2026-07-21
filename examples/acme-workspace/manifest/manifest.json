@@ -159,6 +159,18 @@
       "path": "policy/attestations",
       "identity": "github"
     },
+    "record_domains": [
+      {
+        "id": "decisions",
+        "title": "Decisions",
+        "mount": "handbook",
+        "path": "decisions",
+        "retention": "no-delete",
+        "admin_override": true,
+        "review": "codeowner",
+        "publish": "auto-pr"
+      }
+    ],
     "protections": [
       {
         "mount": "handbook",

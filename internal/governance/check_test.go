@@ -51,6 +51,9 @@ func newCheckFixture(t *testing.T) checkFixture {
       "path": "policy/attestations",
       "identity": "github"
     },
+    "record_domains": [
+      {"id":"decisions","title":"Decisions","mount":"handbook","path":"decisions","retention":"no-delete","review":"codeowner","publish":"auto-pr"}
+    ],
     "protections": [
       { "mount": "handbook", "paths": ["fleet"], "mode": "no-delete", "admin_override": true },
       { "mount": "handbook", "paths": ["policy/attestations"], "mode": "append-only" }
@@ -62,10 +65,28 @@ func newCheckFixture(t *testing.T) checkFixture {
 	manifestBase := gitOutput(t, manifestRepo, "rev-parse", "HEAD")
 
 	writeTestFile(t, filepath.Join(contentRepo, "fleet", "asset.md"), "asset\n")
+	writeTestFile(t, filepath.Join(contentRepo, "decisions", "one.md"), "decision\n")
 	writeTestFile(t, filepath.Join(contentRepo, "policy", "attestations", "17", "release", strings.Repeat("a", 64)+".json"), `{"subject_id":17}`+"\n")
 	initTestRepo(t, contentRepo)
 	contentBase := gitOutput(t, contentRepo, "rev-parse", "HEAD")
 	return checkFixture{root: root, manifestRepo: manifestRepo, contentRepo: contentRepo, manifestBase: manifestBase, contentBase: contentBase}
+}
+
+func TestCheckEnforcesRecordDomainImplicitRetention(t *testing.T) {
+	f := newCheckFixture(t)
+	if err := os.Remove(filepath.Join(f.contentRepo, "decisions", "one.md")); err != nil {
+		t.Fatal(err)
+	}
+	head := commitTestRepo(t, f.contentRepo, "delete domain record")
+	for _, permission := range []string{"write", "admin"} {
+		report, err := Check(f.input(head, "handbook", "example/handbook", permission))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Allowed || !hasViolation(report, "protected_path_deleted", "decisions/one.md") {
+			t.Fatalf("permission %s report = %#v", permission, report)
+		}
+	}
 }
 
 func (f checkFixture) input(head, mount, repository string, permission string) CheckInput {

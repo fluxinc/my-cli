@@ -2,3 +2,4 @@
 /.github/CODEOWNERS @example/security-admins
 /manifest.json @example/security-admins
 /policy/ @example/security-admins
+/decisions/ @example/security-admins

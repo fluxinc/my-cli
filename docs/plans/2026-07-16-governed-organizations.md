@@ -1,6 +1,6 @@
 # Governed organizations: policy, authorization, acceptance, and retention
 
-Status: active — access, quarantine, policy, PR, and CI enforcement implemented; domain routing and durable outbox pending
+Status: active — security core implemented; completion hardening and private-manifest dogfood pending
 
 ## Objective
 
@@ -132,6 +132,44 @@ provider authorization boundary. An administrative control repository may use
 submodules when its operators accept that complexity. A control workspace may
 represent mounts as Gnit dependencies when atomic coordination is useful,
 while the manifest remains the portable source of the intended graph.
+
+The implemented domain schema is deliberately path-scoped and reuses mounts:
+
+```json
+{
+  "governance": {
+    "record_domains": [
+      {
+        "id": "customer-asset-investigations",
+        "title": "Customer asset investigations",
+        "mount": "restricted-records",
+        "path": "investigations/customer-assets",
+        "retention": "append-only",
+        "review": "codeowner",
+        "publish": "manual-pr"
+      }
+    ]
+  }
+}
+```
+
+`retention` becomes an implicit trusted-base protection, so a domain cannot
+claim additive/no-delete semantics without the CI verifier enforcing it.
+`review` is `standard` or `codeowner`; it never names a local role or grants
+authority. `publish` is `auto-pr` or `manual-pr`; both use PRs. Overlapping
+domain paths are invalid, and changes spanning domains with different review
+or publication policy are held for splitting.
+
+The local outbox is an append-only event ledger under `.my-cli/outbox`. Each
+item is keyed by organization, domain, mount, relative path, and content
+digest. Events contain only identity, path, digest, state, and PR metadata—no
+record body. The state machine is `queued -> attempt-failed -> submitted ->
+merged`, with repeated `attempt-failed` retries allowed. `submitted` means the
+remote branch and human-authored PR were independently proven; it does not
+mean merged. A crash between record creation and queueing is recovered by
+`my record reconcile`, which derives missing items from unpublished Git state.
+The access monitor retries auto-PR items only after access enforcement passes;
+manual-PR domains require `my record flush --include-manual`.
 
 Administrative and staff planes are separate organizations and manifests. An
 executive-only administrative mount is never inherited merely because a staff

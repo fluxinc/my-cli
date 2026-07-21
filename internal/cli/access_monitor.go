@@ -270,7 +270,13 @@ func (a app) runAccessMonitorOnce(args []string) (runErr error) {
 	if umbrellaRoot != "" {
 		enforceArgs = append(enforceArgs, "--umbrella", umbrellaRoot)
 	}
-	return a.runAccessEnforce(enforceArgs)
+	if err := a.runAccessEnforce(enforceArgs); err != nil {
+		return err
+	}
+	// The same unattended loop retries additive record publication only after
+	// access enforcement succeeds. Manual-PR domains remain queued until an
+	// operator explicitly includes them.
+	return a.runRecordFlush(enforceArgs)
 }
 
 func (a app) runAccessStatus(args []string) error {

@@ -669,6 +669,18 @@ func TestValidateManifestAllowsGovernance(t *testing.T) {
       "path": "policy/attestations",
       "identity": "github"
     },
+    "record_domains": [
+      {
+        "id": "decisions",
+        "title": "Decisions",
+        "mount": "handbook",
+        "path": "decisions",
+        "retention": "no-delete",
+        "admin_override": true,
+        "review": "codeowner",
+        "publish": "auto-pr"
+      }
+    ],
     "protections": [
       {
         "mount": "handbook",
@@ -694,6 +706,10 @@ func TestValidateManifestAllowsGovernance(t *testing.T) {
 	}
 	if len(doc.Governance.Policies) != 1 || doc.Governance.Policies[0].ID != "release-policy" {
 		t.Fatalf("governance = %#v", doc.Governance)
+	}
+	protections := GovernanceProtections(doc.Governance)
+	if len(doc.Governance.RecordDomains) != 1 || len(protections) != 3 || protections[2].Paths[0] != "decisions" {
+		t.Fatalf("record domains/protections = %#v / %#v", doc.Governance.RecordDomains, protections)
 	}
 }
 
@@ -750,6 +766,11 @@ func TestValidateManifestRejectsUnsafeGovernance(t *testing.T) {
       "path": "/tmp/attestations",
       "identity": "local"
     },
+    "record_domains": [
+      {"id":"Bad Domain","title":"","mount":"missing","path":"../records","retention":"rewrite","admin_override":true,"review":"local-role","publish":"direct"},
+      {"id":"duplicate","title":"Duplicate","mount":"handbook","path":"records","retention":"append-only","admin_override":true,"review":"standard","publish":"auto-pr"},
+      {"id":"duplicate","title":"Overlap","mount":"handbook","path":"records/nested","retention":"no-delete","review":"standard","publish":"manual-pr"}
+    ],
     "protections": [
       {
         "mount": "missing",
@@ -771,6 +792,11 @@ func TestValidateManifestRejectsUnsafeGovernance(t *testing.T) {
 		"governance.policies[0].sha256",
 		"governance.policies[1].roles duplicates",
 		"governance.attestations.identity must be github",
+		"governance.record_domains[0].id must be lowercase kebab-case",
+		"governance.record_domains[0].retention must be no-delete or append-only",
+		"governance.record_domains[1].admin_override must be false for append-only records",
+		"duplicate governance record domain id",
+		"governance record domain paths overlap",
 		"governance.protections[0].mode must be no-delete or append-only",
 		"required governance policies need an append-only protection",
 	} {

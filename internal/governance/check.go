@@ -164,7 +164,7 @@ func Check(input CheckInput) (Report, error) {
 		return report, nil
 	}
 
-	protections := protectionsForMount(doc.Governance.Protections, input.Mount)
+	protections := protectionsForMount(manifest.GovernanceProtections(doc.Governance), input.Mount)
 	report.CheckedProtections = len(protections)
 	cache := map[string]map[string]treeEntry{}
 	seen := map[string]bool{}

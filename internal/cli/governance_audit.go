@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -98,7 +99,7 @@ func (a app) runGovernanceAudit(args []string) error {
 	}
 	report := governanceAuditReport{Compliant: true, Organization: doc.doc.Organization.ID, Manifest: manifestName}
 	for _, surface := range surfaces {
-		audit := auditGovernedRepository(runner, surface.Repository, surface.Surface)
+		audit := auditGovernedRepository(runner, surface.Repository, surface.Surface, surface.CodeownerPaths...)
 		report.Repositories = append(report.Repositories, audit)
 		if !audit.Compliant {
 			report.Compliant = false
@@ -130,7 +131,11 @@ func (a app) runGovernanceAudit(args []string) error {
 	return nil
 }
 
-type governedAuditSurface struct{ Repository, Surface string }
+type governedAuditSurface struct {
+	Repository     string
+	Surface        string
+	CodeownerPaths []string
+}
 
 func governedAuditSurfaces(doc manifest.Document) ([]governedAuditSurface, error) {
 	manifestRepo, ok := access.GitHubRepositoryName(doc.Governance.Authorization.ManifestRepository)
@@ -139,8 +144,14 @@ func governedAuditSurfaces(doc manifest.Document) ([]governedAuditSurface, error
 	}
 	surfaces := []governedAuditSurface{{Repository: manifestRepo, Surface: "@manifest"}}
 	protected := map[string]bool{}
-	for _, protection := range doc.Governance.Protections {
+	for _, protection := range manifest.GovernanceProtections(doc.Governance) {
 		protected[protection.Mount] = true
+	}
+	codeownerPaths := map[string][]string{}
+	for _, domain := range doc.Governance.RecordDomains {
+		if domain.Review == "codeowner" {
+			codeownerPaths[domain.Mount] = append(codeownerPaths[domain.Mount], domain.Path)
+		}
 	}
 	for _, mount := range manifest.EffectiveMounts(doc) {
 		if !protected[mount.ID] {
@@ -150,13 +161,13 @@ func governedAuditSurfaces(doc manifest.Document) ([]governedAuditSurface, error
 		if !ok {
 			return nil, fmt.Errorf("protected mount %q is not a GitHub repository", mount.ID)
 		}
-		surfaces = append(surfaces, governedAuditSurface{Repository: repository, Surface: mount.ID})
+		surfaces = append(surfaces, governedAuditSurface{Repository: repository, Surface: mount.ID, CodeownerPaths: codeownerPaths[mount.ID]})
 	}
 	sort.Slice(surfaces, func(i, j int) bool { return surfaces[i].Repository < surfaces[j].Repository })
 	return surfaces, nil
 }
 
-func auditGovernedRepository(runner manifest.Runner, repository, surface string) governanceRepositoryAudit {
+func auditGovernedRepository(runner manifest.Runner, repository, surface string, codeownerPaths ...string) governanceRepositoryAudit {
 	audit := governanceRepositoryAudit{Repository: repository, Surface: surface, Compliant: true}
 	add := func(id string, ok bool, message string) {
 		audit.Checks = append(audit.Checks, governanceAuditCheck{ID: id, OK: ok, Message: message})
@@ -246,6 +257,15 @@ func auditGovernedRepository(runner manifest.Runner, repository, surface string)
 		message = ownersErr.Error()
 	}
 	add("workflow-codeowners", ownersOK, message)
+	if len(codeownerPaths) != 0 {
+		var missing []string
+		for _, path := range codeownerPaths {
+			if !codeownersCoversDomain(owners, path) {
+				missing = append(missing, path)
+			}
+		}
+		add("domain-codeowners", ownersErr == nil && len(missing) == 0, "CODEOWNERS covers review-required domain paths; missing: "+strings.Join(missing, ","))
+	}
 	return audit
 }
 
@@ -360,4 +380,25 @@ func codeownersProtectsGovernance(body string) bool {
 		}
 	}
 	return workflows && codeowners
+}
+
+func codeownersCoversDomain(body, domainPath string) bool {
+	domainPath = strings.Trim(filepath.ToSlash(domainPath), "/")
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(strings.SplitN(line, "#", 2)[0])
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		pattern := strings.TrimSpace(fields[0])
+		switch pattern {
+		case "*", "/*", "/**":
+			return true
+		}
+		clean := strings.Trim(strings.TrimSuffix(strings.TrimSuffix(pattern, "**"), "*"), "/")
+		if clean == domainPath || strings.HasPrefix(domainPath, clean+"/") {
+			return true
+		}
+	}
+	return false
 }
