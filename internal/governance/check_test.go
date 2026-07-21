@@ -236,6 +236,69 @@ func TestCheckBindsAddedAttestationToImmutablePRAuthorID(t *testing.T) {
 	}
 }
 
+func TestCheckTreatsAttestationManifestCommitAsProvenance(t *testing.T) {
+	f := newCheckFixture(t)
+	path := filepath.Join(f.contentRepo, "policy", "attestations", "17", "release-policy", strings.Repeat("a", 64)+".json")
+	writeTestFile(t, path, attestationJSON(17, f.manifestBase))
+	contentHead := commitTestRepo(t, f.contentRepo, "accept policy")
+
+	writeTestFile(t, filepath.Join(f.manifestRepo, "README.md"), "manifest advances without changing policy\n")
+	currentManifest := commitTestRepo(t, f.manifestRepo, "advance manifest")
+	input := f.input(contentHead, "handbook", "example/handbook", "write")
+	input.ManifestBaseRef = currentManifest
+	report, err := Check(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Allowed || len(report.Violations) != 0 {
+		t.Fatalf("manifest advance must not invalidate matching provenance: %#v", report)
+	}
+}
+
+func TestCheckRejectsStaleAttestationAfterPolicyRevision(t *testing.T) {
+	f := newCheckFixture(t)
+	path := filepath.Join(f.contentRepo, "policy", "attestations", "17", "release-policy", strings.Repeat("a", 64)+".json")
+	writeTestFile(t, path, attestationJSON(17, f.manifestBase))
+	contentHead := commitTestRepo(t, f.contentRepo, "accept old policy version")
+
+	manifestBody, err := os.ReadFile(filepath.Join(f.manifestRepo, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	revised := strings.ReplaceAll(string(manifestBody), strings.Repeat("a", 64), strings.Repeat("b", 64))
+	revised = strings.ReplaceAll(revised, `"version": "2026-07"`, `"version": "2026-08"`)
+	writeTestFile(t, filepath.Join(f.manifestRepo, "manifest.json"), revised)
+	currentManifest := commitTestRepo(t, f.manifestRepo, "revise release policy")
+
+	input := f.input(contentHead, "handbook", "example/handbook", "write")
+	input.ManifestBaseRef = currentManifest
+	report, err := Check(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Allowed || len(report.Violations) != 1 || !strings.Contains(report.Violations[0].Message, "does not match a policy in the trusted base manifest") {
+		t.Fatalf("stale attestation after policy revision must be rejected: %#v", report)
+	}
+}
+
+func TestCheckRejectsMalformedAttestationManifestCommit(t *testing.T) {
+	for _, manifestCommit := range []string{"", "deadbeef", strings.Repeat("g", 40), strings.Repeat("A", 40)} {
+		t.Run(fmt.Sprintf("%q", manifestCommit), func(t *testing.T) {
+			f := newCheckFixture(t)
+			path := filepath.Join(f.contentRepo, "policy", "attestations", "17", "release-policy", strings.Repeat("a", 64)+".json")
+			writeTestFile(t, path, attestationJSON(17, manifestCommit))
+			head := commitTestRepo(t, f.contentRepo, "add malformed attestation provenance")
+			report, err := Check(f.input(head, "handbook", "example/handbook", "write"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.Allowed || len(report.Violations) != 1 || !strings.Contains(report.Violations[0].Message, "full Git object ID") {
+				t.Fatalf("malformed manifest_commit report = %#v", report)
+			}
+		})
+	}
+}
+
 func attestationJSON(subjectID int64, manifestCommit string) string {
 	return fmt.Sprintf(`{"schema_version":1,"organization":"acme","policy_id":"release-policy","policy_version":"2026-07","policy_sha256":"sha256:%s","subject_provider":"github","subject_id":%d,"subject_login":"operator","accepted_at":"2026-07-17T03:00:00Z","manifest_commit":%q}`+"\n", strings.Repeat("a", 64), subjectID, manifestCommit)
 }

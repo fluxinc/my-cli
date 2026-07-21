@@ -191,7 +191,7 @@ func Check(input CheckInput) (Report, error) {
 			}
 		}
 		if input.Mount == doc.Governance.Attestations.Mount {
-			if err := validateAttestationAdditions(input.Runner, input.Repo, doc, manifestCommit, parentTree, commitTree, edge, input.ActorID); err != nil {
+			if err := validateAttestationAdditions(input.Runner, input.Repo, doc, parentTree, commitTree, edge, input.ActorID); err != nil {
 				report.Violations = append(report.Violations, Violation{
 					ReasonCode: "attestation_subject_mismatch", Mode: "append-only", Path: attestationErrorPath(err),
 					Commit: edge.Commit, Parent: edge.Parent, Message: err.Error(),
@@ -426,7 +426,7 @@ type pathError struct{ path, message string }
 
 func (e pathError) Error() string { return e.message }
 
-func validateAttestationAdditions(runner Runner, repo string, doc manifest.Document, manifestCommit string, before, after map[string]treeEntry, edge commitEdge, actorID int64) error {
+func validateAttestationAdditions(runner Runner, repo string, doc manifest.Document, before, after map[string]treeEntry, edge commitEdge, actorID int64) error {
 	prefix := doc.Governance.Attestations.Path
 	for path, entry := range after {
 		if !protectedPath(path, []string{prefix}) {
@@ -456,8 +456,8 @@ func validateAttestationAdditions(runner Runner, repo string, doc manifest.Docum
 		if _, err := time.Parse(time.RFC3339Nano, attestation.AcceptedAt); err != nil {
 			return pathError{path: path, message: fmt.Sprintf("attestation %s has invalid accepted_at", path)}
 		}
-		if attestation.ManifestCommit != manifestCommit {
-			return pathError{path: path, message: fmt.Sprintf("attestation manifest_commit does not match trusted base manifest commit %s", manifestCommit)}
+		if !validFullGitOID(attestation.ManifestCommit) {
+			return pathError{path: path, message: "attestation manifest_commit must be a full Git object ID"}
 		}
 		rel := strings.TrimPrefix(filepath.ToSlash(path), strings.TrimSuffix(filepath.ToSlash(prefix), "/")+"/")
 		expected := filepath.ToSlash(filepath.Join(
@@ -468,6 +468,18 @@ func validateAttestationAdditions(runner Runner, repo string, doc manifest.Docum
 		}
 	}
 	return nil
+}
+
+func validFullGitOID(value string) bool {
+	if len(value) != 40 {
+		return false
+	}
+	for _, r := range value {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func policyByID(policies []manifest.Policy, id string) (manifest.Policy, bool) {

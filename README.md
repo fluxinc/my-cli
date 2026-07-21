@@ -566,8 +566,10 @@ indexed in [docs/plans/](docs/plans/README.md):
   provider-backed authorization, lossless revocation quarantine, digest-bound
   policy acceptance, launch gates, PR-only publication, trusted-base CI, and
   live GitHub enforcement audits. Manifest-routed generic records and the
-  retryable publication outbox are in active hardening; remote acceptance CI,
-  umbrella-root authoring, and private-manifest dogfood remain before release.
+  retryable publication outbox are hardened, and policy attestations now keep
+  manifest commits as provenance without racing unrelated manifest advances.
+  Durable acceptance publication, remote acceptance CI, umbrella-root
+  authoring, and private-manifest dogfood remain before release.
   Plans: [governed organizations](docs/plans/2026-07-16-governed-organizations.md)
   and [completion gates](docs/plans/2026-07-21-governed-organizations-completion.md).
 - **Shipped (v0.35.0) — dogfood ergonomics audit.** A reviewed two-agent audit

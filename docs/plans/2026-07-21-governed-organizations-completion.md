@@ -1,6 +1,6 @@
 # Governed organizations completion: hardening, acceptance CI, and dogfood
 
-Status: active — joint Claude/Codex plan agreed; S1 complete
+Status: active — S1-S2 complete; S3 durable acceptance publication next
 
 Design source of truth: [2026-07-16-governed-organizations](2026-07-16-governed-organizations.md).
 This plan closes the gap between mechanism-complete code and a
@@ -132,7 +132,7 @@ Talking Stick. Tests first within each slice; `go build ./... && go vet ./...
 slice, README/roadmap and `docs/plans/README.md` updated in the same commit
 whenever a status changes.
 
-### S1 — Slice-8 integrity fixes and tests (steps 1, F)
+### S1 — Slice-8 integrity fixes and tests (steps 1, F) — complete
 
 Files: `internal/outbox/outbox.go`, `internal/cli/record_domains.go`,
 `internal/cli/governance_pr.go`, `internal/cli/governance_audit.go`,
@@ -151,7 +151,7 @@ Files: `internal/outbox/outbox.go`, `internal/cli/record_domains.go`,
   premature "implementation complete" wording from README/plan status in the
   same commit.
 
-### S2 — Policy provenance race fix (step 2, A)
+### S2 — Policy provenance race fix (step 2, A) — complete
 
 Files: `internal/governance/check.go` (validateAttestationAdditions),
 `internal/governance/check_test.go`.
