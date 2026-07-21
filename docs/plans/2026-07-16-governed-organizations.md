@@ -248,7 +248,11 @@ digest and therefore requires a new acceptance without erasing the old one.
 `roles` on a policy control which selected local roles require acceptance; an
 empty list means every operator. Roles still do not grant authority.
 
-## CLI surface
+## Mechanism surface
+
+The commands in this section are the deterministic agent/admin API. They are
+not an employee policy-update runbook; the employee experience is the ordinary
+interactive `my ai` flow described under onboarding and launch gates.
 
 Read-only policy inspection:
 
@@ -258,7 +262,7 @@ my policy show <id> [--manifest NAME]
 my policy status [--manifest NAME] [--json]
 ```
 
-Human acceptance:
+Low-level acceptance and ledger operations:
 
 ```text
 my policy accept <id> --yes [--manifest NAME] [--json]
@@ -330,9 +334,21 @@ EOF, decline, identity failure, digest mismatch, or ledger write failure leaves
 onboarding incomplete. Non-interactive onboarding reports the exact
 `my policy show` and `my policy accept` commands and does not mark completion.
 
-`my ai` checks policy status before launching. It fails with the missing policy
-IDs and remediation commands. This prevents an old local tour marker from
-bypassing a newly required policy version.
+Interactive `my ai` is the employee-facing policy surface. Before launching it
+displays each missing exact policy document, asks once for acceptance, records
+and starts publishing the evidence, and continues. Decline or EOF does not
+launch. Non-interactive invocations fail closed and may expose structured
+remediation for an agent or harness. This prevents an old local tour marker
+from bypassing a newly required policy version without making employees operate
+the policy plumbing themselves.
+
+When the separate revocation plane has no positive baseline, governed launch
+checks current GitHub readability live without writing inventory, recording a
+baseline, or installing a monitor. Allowed proceeds; denied and unknown both
+block, with distinct messages. Existing fresh baselines retain their TTL and
+confirmed-revocation behavior. `my root` and `my ai --print` never prompt:
+stdout remains path/command-pure and stderr carries a short notice directing
+policy review to `my ai`.
 
 Governed launch uses a positively refreshed manifest or a cached manifest whose
 last verified refresh is inside the governance TTL. A stale or

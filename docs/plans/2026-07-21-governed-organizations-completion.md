@@ -1,6 +1,6 @@
 # Governed organizations completion: hardening, acceptance CI, and dogfood
 
-Status: active — S1-S7 and S8a complete; S8 private dogfood and revocation drill next
+Status: active — S1-S7, S8a, and S8b complete; S8 dogfood and S8c ergonomics follow-ups next
 
 Design source of truth: [2026-07-16-governed-organizations](2026-07-16-governed-organizations.md).
 This plan closes the gap between mechanism-complete code and a
@@ -232,9 +232,11 @@ Deliverables, not mechanism code:
 
 - Flux Admin manifest governance config draft (policies, attestations mount,
   acceptance domain) prepared for the private repo — never committed here.
-- An operator-runnable command script for the flux-admin umbrella covering:
-  install dev binary, `my policy list/show/status/accept`, acceptance PR and
-  report, `my record add` round trip, `my governance audit --json`.
+- A Flux Admin employee proves the policy interaction by running ordinary
+  `my ai`: exact-document review, one acceptance question, durable acceptance
+  publication, and launch. Agents perform policy setup, publication inspection,
+  record round trips, and GitHub governance audits without handing the employee
+  a low-level command runbook.
 - Revocation drill runbook: disposable private repositories, second identity,
   baseline activation, revocation, quarantine verification, recovery-capsule
   restore, dirty/untracked/ahead/session fixtures, ambiguous 404/SSO handling,
@@ -253,6 +255,33 @@ dogfood rather than replacing a product requirement with manual JSON editing:
 - the explicit `--manifest-dir` compatibility path requires `--sha256` for add;
 - tests cover admin authorization, alternate flag spellings, dirty/stale cache
   refusal, digest provenance, validation, add/remove, and checkout preservation.
+
+### S8b — Human surface correction — complete
+
+Dogfood review exposed that the mechanism had become the documented product.
+Restore the intended noun-simple interaction:
+
+- interactive `my ai` reviews and accepts a newly required policy in place,
+  starts durable evidence publication, and then launches;
+- decline and EOF stop launch without printing a policy/admin command wall;
+- non-interactive paths retain fail-closed, machine-oriented remediation;
+- governance does not implicitly activate the separate access-revocation plane;
+  without a baseline, launch uses a zero-write live access check instead; and
+- employee-facing docs lead with `my ai`, while detailed policy/admin verbs are
+  explicitly agent and automation plumbing.
+
+### S8c — Dogfood ergonomics follow-ups — pending
+
+The live S8b verification reached the real policy prompt and exposed two
+separate, smaller product issues. Keep them out of the security-sensitive S8b
+commit, but resolve them before the governance release:
+
+- bare `my meetings` and `my support` should perform their obvious read action
+  (list) instead of returning a missing-subcommand error; and
+- organization skills must keep runtime credentials, cookies, and other local
+  state outside the sync-managed manifest cache. Document the state boundary
+  and add a guard or diagnostic that prevents private runtime state from being
+  mistaken for publishable manifest content.
 
 ### Release gate (step 8)
 

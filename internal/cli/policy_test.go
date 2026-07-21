@@ -146,14 +146,7 @@ func (f policyTestFixture) attestationPath() string {
 
 func (f policyTestFixture) configureGovernedOperator(t *testing.T) {
 	t.Helper()
-	_, state, err := umbrella.Ensure(f.umbrellaRoot, "acme", "acme")
-	if err != nil {
-		t.Fatal(err)
-	}
-	state.SelectedRole = "operator"
-	if err := umbrella.SaveState(f.umbrellaRoot, state); err != nil {
-		t.Fatal(err)
-	}
+	f.selectGovernedOperator(t)
 	var stdout, stderr bytes.Buffer
 	a := testAccessMonitorApp(app{
 		stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
@@ -163,6 +156,18 @@ func (f policyTestFixture) configureGovernedOperator(t *testing.T) {
 		"--home", f.home, "--umbrella", f.umbrellaRoot,
 	}); err != nil {
 		t.Fatalf("activate governed fixture: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+}
+
+func (f policyTestFixture) selectGovernedOperator(t *testing.T) {
+	t.Helper()
+	_, state, err := umbrella.Ensure(f.umbrellaRoot, "acme", "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.SelectedRole = "operator"
+	if err := umbrella.SaveState(f.umbrellaRoot, state); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -689,6 +694,154 @@ func TestGovernedPolicyGateUsesBaselineIdentityAndExactRemediation(t *testing.T)
 	}
 }
 
+func TestGovernedPolicyGateUsesLiveIdentityWithoutRevocationActivation(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	_, state, err := umbrella.Ensure(f.umbrellaRoot, "acme", "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.SelectedRole = "operator"
+	if err := umbrella.SaveState(f.umbrellaRoot, state); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := loadSingleRegisteredDoc(f.home, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := app{accessRunner: governedAccessRunner(false)}
+	if err := a.requireGovernedPolicyAcceptances(f.home, doc, f.umbrellaRoot); err == nil ||
+		!strings.Contains(err.Error(), "has not accepted") || strings.Contains(err.Error(), "access activate") {
+		t.Fatalf("unactivated policy gate error = %v", err)
+	}
+	if _, err := f.run(t, "accept", "release-policy", "--yes"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.requireGovernedPolicyAcceptances(f.home, doc, f.umbrellaRoot); err != nil {
+		t.Fatalf("live-identity acceptance stayed blocked: %v", err)
+	}
+}
+
+func TestInteractiveMyAIReviewsNewPolicyAndContinues(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	f.selectGovernedOperator(t)
+	var stdout, stderr bytes.Buffer
+	launched := false
+	a := app{
+		stdout: &stdout, stderr: &stderr, stdin: strings.NewReader("y\n"), interactive: true,
+		accessRunner: governedAccessRunner(false),
+		lookPath:     func(string) (string, error) { return "/bin/true", nil },
+		execHarness:  func(string, []string, string) error { launched = true; return nil },
+	}
+	if err := a.run([]string{
+		"my", "ai", "--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
+		"--no-session", "--no-refresh", "--no-update-check", "codex",
+	}); err != nil {
+		t.Fatalf("interactive launch: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if !launched {
+		t.Fatal("AI did not launch after policy acceptance")
+	}
+	for _, want := range []string{f.content, "Accept this exact policy document?", "Accepted Release approval policy."} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("interactive launch output missing %q:\n%s", want, stdout.String())
+		}
+	}
+	for _, unwanted := range []string{"my policy show", "my policy accept", "my record flush"} {
+		if strings.Contains(stdout.String(), unwanted) || strings.Contains(stderr.String(), unwanted) {
+			t.Fatalf("human launch exposed plumbing command %q\nstdout:\n%s\nstderr:\n%s", unwanted, stdout.String(), stderr.String())
+		}
+	}
+	if _, err := os.Stat(f.attestationPath()); err != nil {
+		t.Fatalf("interactive launch did not record acceptance: %v", err)
+	}
+}
+
+func TestInteractiveMyAIDeclineStopsWithoutCommandWall(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	f.selectGovernedOperator(t)
+	var stdout, stderr bytes.Buffer
+	launched := false
+	a := app{
+		stdout: &stdout, stderr: &stderr, stdin: strings.NewReader("n\n"), interactive: true,
+		accessRunner: governedAccessRunner(false),
+		lookPath:     func(string) (string, error) { return "/bin/true", nil },
+		execHarness:  func(string, []string, string) error { launched = true; return nil },
+	}
+	err := a.run([]string{
+		"my", "ai", "--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
+		"--no-session", "--no-refresh", "--no-update-check", "codex",
+	})
+	if err == nil || !strings.Contains(err.Error(), "AI was not launched") {
+		t.Fatalf("declined launch error = %v", err)
+	}
+	if launched {
+		t.Fatal("AI launched after policy decline")
+	}
+	if strings.Contains(stdout.String(), "my policy") || strings.Contains(stdout.String(), "my record") {
+		t.Fatalf("declined launch exposed command wall:\n%s", stdout.String())
+	}
+	if _, err := os.Lstat(f.attestationPath()); !os.IsNotExist(err) {
+		t.Fatalf("declined launch wrote acceptance: %v", err)
+	}
+}
+
+func TestRootKeepsPathOutputAndPointsPendingPolicyAtMyAI(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	f.selectGovernedOperator(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false)}
+	if err := a.run([]string{
+		"my", "root", "--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
+		"--no-refresh", "--no-update-check",
+	}); err != nil {
+		t.Fatalf("root with pending policy: %v\nstderr:\n%s", err, stderr.String())
+	}
+	if stdout.String() != f.umbrellaRoot+"\n" {
+		t.Fatalf("root stdout = %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "required policy review is pending; run `my ai`") || strings.Contains(stderr.String(), "my policy") {
+		t.Fatalf("root policy notice = %q", stderr.String())
+	}
+}
+
+func TestMyAIPrintKeepsCommandOutputAndShowsPendingPolicyNotice(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	f.selectGovernedOperator(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false)}
+	if err := a.run([]string{
+		"my", "ai", "--print", "--manifest", "acme", "--home", f.home,
+		"--umbrella", f.umbrellaRoot, "codex",
+	}); err != nil {
+		t.Fatalf("ai print with pending policy: %v\nstderr:\n%s", err, stderr.String())
+	}
+	if !strings.HasPrefix(stdout.String(), "cd ") || !strings.Contains(stdout.String(), " && codex") {
+		t.Fatalf("ai print stdout = %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "required policy review is pending; run `my ai`") || strings.Contains(stderr.String(), "my policy") {
+		t.Fatalf("ai print policy notice = %q", stderr.String())
+	}
+}
+
+func TestMyAIPrintShowsPendingAccessWithoutChangingCommandOutput(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	f.selectGovernedOperator(t)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(true)}
+	if err := a.run([]string{
+		"my", "ai", "--print", "--manifest", "acme", "--home", f.home,
+		"--umbrella", f.umbrellaRoot, "codex",
+	}); err != nil {
+		t.Fatalf("ai print with denied access: %v\nstderr:\n%s", err, stderr.String())
+	}
+	if !strings.HasPrefix(stdout.String(), "cd ") || !strings.Contains(stdout.String(), " && codex") {
+		t.Fatalf("ai print stdout = %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "launch will be blocked: current GitHub identity cannot read") {
+		t.Fatalf("ai print access notice = %q", stderr.String())
+	}
+}
+
 func TestGovernedPolicyGateIsNotBypassedByTourMarker(t *testing.T) {
 	f := newPolicyTestFixture(t)
 	f.configureGovernedOperator(t)
@@ -783,7 +936,7 @@ func TestInteractiveOnboardingDeclineThenAcceptExactPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(declinedOut.String(), f.content) ||
-		!strings.Contains(declinedOut.String(), "Policy onboarding incomplete (acceptance declined)") {
+		!strings.Contains(declinedOut.String(), "Policy review incomplete (acceptance declined)") {
 		t.Fatalf("declined onboarding output:\n%s", declinedOut.String())
 	}
 	if _, err := os.Lstat(f.attestationPath()); !os.IsNotExist(err) {

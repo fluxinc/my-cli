@@ -342,6 +342,17 @@ my record reconcile              # recover queue state from unpublished Git reco
 my record flush [--include-manual] # retry eligible PR submissions
 ```
 
+Keep the human surface noun-simple. An employee launches with `my ai`; when a
+required policy changes, that interactive launch displays the exact document,
+asks for acceptance, records it, and continues. Never hand the operator the
+policy/admin/record command block above as a runbook. Those verbs are agent and
+administrator plumbing: run them yourself when authorized, and report the
+outcome in plain language. Never accept a policy on a person's behalf.
+When no revocation baseline exists, `my ai` performs a read-only live access
+check without recording a baseline or activating the monitor. `my root` and
+`my ai --print` remain non-prompting and put concise governance notices on
+stderr so their stdout stays safe for scripts.
+
 Registered-manifest contract authoring opens an isolated governed PR and
 preserves the sync-managed manifest checkout and index. Use the compatibility
 `--manifest-dir DIR` form only when a maintainer explicitly wants a local edit

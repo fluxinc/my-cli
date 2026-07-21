@@ -349,36 +349,30 @@ When sync pulls or publishes a manifest checkout, it reconciles generated
 guidance, umbrella MCP config, and launch-scoped skill reconciliation notices
 unless `--no-derived` is passed.
 
-Governed organizations bind policy acceptances to exact committed document
-bytes and an immutable GitHub user id:
+Governed organizations keep the human interaction inside the ordinary product
+surface. An employee runs `my ai`. If a required policy is new or changed, the
+CLI displays the exact committed document, asks whether it is accepted, records
+the answer, starts durable publication of the evidence, and then launches the
+AI. Declining or reaching EOF leaves the policy unaccepted and does not launch.
+Non-interactive callers fail closed so an agent or harness cannot silently
+accept for a person.
 
-```sh
-my policy list
-my policy show <id>
-my policy accept <id> --yes
-my policy status [id]
-my policy acceptances [--json]
-my policy supersede <id> --subject-id <github-id> --reason <text> --yes
-my governance audit --json
-my admin policy add <id> --title <text> --mount <id> --path <path> \
-  --version <version> --acceptance required|optional [--role <id>]
-my admin policy remove <id>
-```
+The same launch performs a read-only live GitHub access check when the optional
+revocation system has not been activated. That check writes no baseline and
+does not install or enable a monitor. `my root` and `my ai --print` never prompt
+or pollute command output; they put a short policy/access notice on stderr and
+leave policy review to the next ordinary `my ai` launch.
 
-Required current acceptances gate `my ai`, `my root`, and outbound sync, while
-`my policy accept` durably queues its evidence and attempts an isolated governed
-pull request containing only that attestation path. Unrelated working-tree and
-index state is left in place; `my record flush` retries a failed submission.
-`my policy acceptances` reports local, submitted, and merge-proven ledger state
-per immutable subject and policy. A current manifest administrator can append a
-supersession event with `my policy supersede`; acceptance and supersession
-evidence are never rewritten or deleted. Supersession permanently blocks that
-subject's acceptance of the same policy version and digest; restoring access
-requires publishing a new policy version for the subject to accept.
+Policy setup, inspection, publication recovery, supersession, and GitHub audits
+remain available as agent/admin automation under `my policy`, `my admin policy`,
+`my record`, and `my governance`. They are implementation controls, not an
+employee onboarding checklist. Acceptance and supersession evidence are
+append-only and bound to exact committed document bytes and an immutable GitHub
+user id. Restoring a superseded acceptance requires a new policy version.
 Acceptance publication deliberately does not refresh the manifest-freshness
 TTL: its manifest commit is provenance, and every later governed operation
 must independently pass its own manifest freshness gate.
-Registered `my admin policy add|remove` authoring proposes an isolated manifest
+Registered policy authoring proposes an isolated manifest
 pull request without modifying the sync-managed cache. `add` fetches the policy
 mount and hashes the committed upstream blob, never dirty working-tree bytes.
 The compatibility `--manifest-dir` path requires an explicit `--sha256` because
@@ -645,7 +639,13 @@ indexed in [docs/plans/](docs/plans/README.md):
   explicitly an experimental endpoint-security plane with separate activation
   and real-world drill gates. Policy/record dogfood does not activate it.
   The final operator-package review also closed the original policy-authoring
-  gap with digest-safe isolated `my admin policy add|remove` proposals.
+  gap with digest-safe isolated policy proposals. A subsequent product review
+  restored the intended human surface: employees use `my ai`, which handles
+  exact-document policy review and acceptance inline; the detailed governance
+  verbs remain agent/admin plumbing. Live verification reached that policy
+  prompt. Two small pre-release ergonomics follow-ups remain: bare
+  `my meetings`/`my support` list defaults and a stronger boundary keeping
+  organization-skill runtime state out of the managed manifest cache.
   Plans: [governed organizations](docs/plans/2026-07-16-governed-organizations.md)
   and [completion gates](docs/plans/2026-07-21-governed-organizations-completion.md).
 - **Shipped (v0.35.0) — dogfood ergonomics audit.** A reviewed two-agent audit

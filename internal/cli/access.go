@@ -399,22 +399,28 @@ func (a app) requireGovernedLaunchAccess(home string, doc registeredDoc, root st
 	if err != nil {
 		return err
 	}
+	inventory, err := access.LoadInventory(home)
+	if err != nil {
+		return err
+	}
 	now := time.Now().UTC()
 	for _, target := range targets {
 		if !pathExists(target.Path) {
 			continue
 		}
-		inventory, err := access.LoadInventory(home)
-		if err != nil {
-			return err
-		}
 		entry, ok := managedInventoryEntry(inventory, target.Path)
 		if !ok {
-			return fmt.Errorf("governed launch blocked: %s has no positive access baseline; run `my access check --dry-run` then `my access activate --yes`", target.Repository)
+			if err := requireLiveReadableAccess(target, inventory, a.accessRunner); err != nil {
+				return err
+			}
+			continue
 		}
 		baseline, ok := newestPositiveBaseline(entry.Baselines)
 		if !ok {
-			return fmt.Errorf("governed launch blocked: %s has no positive access baseline; run `my access activate --yes`", target.Repository)
+			if err := requireLiveReadableAccess(target, inventory, a.accessRunner); err != nil {
+				return err
+			}
+			continue
 		}
 		checkedAt, err := time.Parse(time.RFC3339Nano, baseline.CheckedAt)
 		if err != nil {
@@ -452,6 +458,55 @@ func (a app) requireGovernedLaunchAccess(home string, doc registeredDoc, root st
 		}
 	}
 	return nil
+}
+
+func (a app) checkGovernedLaunchAccessReadOnly(home string, doc registeredDoc, root string) error {
+	if !manifest.GovernanceConfigured(doc.doc.Governance) {
+		return nil
+	}
+	ttl, err := accessPositiveTTL(doc.doc.Governance.Access)
+	if err != nil {
+		return err
+	}
+	targets, err := collectAccessTargets(home, doc, root)
+	if err != nil {
+		return err
+	}
+	inventory, err := access.LoadInventory(home)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, target := range targets {
+		if !pathExists(target.Path) {
+			continue
+		}
+		if entry, ok := managedInventoryEntry(inventory, target.Path); ok {
+			if baseline, ok := newestPositiveBaseline(entry.Baselines); ok {
+				checkedAt, parseErr := time.Parse(time.RFC3339Nano, baseline.CheckedAt)
+				if parseErr == nil && now.Before(checkedAt.Add(ttl)) && !progressBlocksCachedAccess(entry.Revocations, baseline, checkedAt) {
+					continue
+				}
+			}
+		}
+		if err := requireLiveReadableAccess(target, inventory, a.accessRunner); err != nil {
+			return errors.New(strings.Replace(err.Error(), "governed launch blocked: ", "launch will be blocked: ", 1))
+		}
+	}
+	return nil
+}
+
+func requireLiveReadableAccess(target accessTarget, inventory access.Inventory, runner access.Runner) error {
+	decision := resolveAccessTarget(target, inventory, runner)
+	if decision.Allows(access.PermissionRead) {
+		// A live check permits this launch only. It deliberately does not write a
+		// positive baseline or activate monitoring/quarantine.
+		return nil
+	}
+	if decision.State == access.StateDenied {
+		return fmt.Errorf("governed launch blocked: current GitHub identity cannot read %s (%s)", target.Repository, decision.ReasonCode)
+	}
+	return fmt.Errorf("governed launch blocked: access to %s could not be verified because provider state is unknown (%s)", target.Repository, decision.ReasonCode)
 }
 
 func newestPositiveBaseline(baselines []access.PositiveBaseline) (access.PositiveBaseline, bool) {

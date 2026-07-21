@@ -221,6 +221,60 @@ func TestGovernedLaunchUsesFreshPositiveTTLWhenProviderIsOffline(t *testing.T) {
 	}
 }
 
+func TestGovernanceUsesLiveAccessWithoutImplicitlyActivatingAccessPlane(t *testing.T) {
+	home, root, _, _, _ := setupCLITrackedManifestBody(t, governedAccessTestManifest())
+	materializeAccessTargetsForTest(t, home)
+	doc, err := loadSingleRegisteredDoc(home, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := app{accessRunner: governedAccessRunner(false)}
+	before := snapshotAccessTestTree(t, home)
+	if err := a.requireGovernedLaunchAccess(home, doc, root); err != nil {
+		t.Fatalf("unactivated access plane blocked governance: %v", err)
+	}
+	if after := snapshotAccessTestTree(t, home); !reflect.DeepEqual(before, after) {
+		t.Fatal("live launch check activated access state or changed files")
+	}
+	path, err := access.InventoryPath(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("live launch check wrote access inventory: %v", err)
+	}
+}
+
+func TestGovernedLaunchWithoutBaselineBlocksLiveDenial(t *testing.T) {
+	home, root, _, _, _ := setupCLITrackedManifestBody(t, governedAccessTestManifest())
+	materializeAccessTargetsForTest(t, home)
+	doc, err := loadSingleRegisteredDoc(home, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := app{accessRunner: governedAccessRunner(true)}
+	err = a.requireGovernedLaunchAccess(home, doc, root)
+	if err == nil || !strings.Contains(err.Error(), "cannot read") || strings.Contains(err.Error(), "access activate") {
+		t.Fatalf("live denial error = %v", err)
+	}
+}
+
+func TestGovernedLaunchWithoutBaselineDistinguishesUnknownProviderState(t *testing.T) {
+	home, root, _, _, _ := setupCLITrackedManifestBody(t, governedAccessTestManifest())
+	materializeAccessTargetsForTest(t, home)
+	doc, err := loadSingleRegisteredDoc(home, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := app{accessRunner: func(string, ...string) ([]byte, error) {
+		return nil, fmt.Errorf("network unavailable")
+	}}
+	err = a.requireGovernedLaunchAccess(home, doc, root)
+	if err == nil || !strings.Contains(err.Error(), "provider state is unknown") || !strings.Contains(err.Error(), "network_unavailable") {
+		t.Fatalf("live unknown error = %v", err)
+	}
+}
+
 func TestGovernedLaunchBlocksUnknownAfterPositiveTTLExpires(t *testing.T) {
 	body := strings.Replace(governedAccessTestManifest(), `"access": {`, `"access": { "positive_ttl": "1ns",`, 1)
 	home, root, _, _, _ := setupCLITrackedManifestBody(t, body)

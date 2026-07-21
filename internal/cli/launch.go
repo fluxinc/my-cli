@@ -78,9 +78,7 @@ func (a app) runRoot(args []string) error {
 		if err := a.requireGovernedLaunchAccess(home, doc, root); err != nil {
 			return err
 		}
-		if err := a.requireGovernedPolicyAcceptances(home, doc, root); err != nil {
-			return err
-		}
+		a.printGovernedPolicyReviewNotice(home, doc, root)
 	}
 	a.maybeAutoRefresh(home, manifestName, root, root, noRefresh)
 	a.maybeUpdateNotice(home, noUpdateCheck)
@@ -188,6 +186,7 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 		opts.sessionID = sessionID
 	}
 	if opts.printOnly {
+		a.printGovernedLaunchProjectionNotices(opts.home, opts.manifestName, root)
 		target, err := a.launchTarget(opts, root)
 		if err != nil {
 			return a.maybePrintStructuredCommandError(err)
@@ -243,6 +242,15 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 	if err := a.requireGovernedLaunchAccess(opts.home, doc, root); err != nil {
 		return err
 	}
+	if a.interactive {
+		complete, err := a.reviewRequiredPolicies(opts.home, doc, root)
+		if err != nil {
+			return err
+		}
+		if !complete {
+			return fmt.Errorf("required policy review was not accepted; AI was not launched")
+		}
+	}
 	if err := a.requireGovernedPolicyAcceptances(opts.home, doc, root); err != nil {
 		return err
 	}
@@ -286,6 +294,21 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 		return err
 	}
 	return a.runHarness(binary, harnessArgs, targetDir)
+}
+
+func (a app) printGovernedLaunchProjectionNotices(home, manifestName, root string) {
+	if manifestName == "" {
+		return
+	}
+	doc, err := loadSingleRegisteredDoc(home, manifestName)
+	if err != nil {
+		fmt.Fprintln(a.stderr, "notice\tgovernance\tlaunch checks could not be projected; `my ai` will verify them before launch")
+		return
+	}
+	if err := a.checkGovernedLaunchAccessReadOnly(home, doc, root); err != nil {
+		fmt.Fprintf(a.stderr, "notice\tgovernance\t%s\n", err)
+	}
+	a.printGovernedPolicyReviewNotice(home, doc, root)
 }
 
 func launchCreatesNewSession(opts launchCommandOpts) bool {

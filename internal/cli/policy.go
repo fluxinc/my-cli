@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -993,7 +994,7 @@ func (a app) requireGovernedPolicyAcceptances(home string, doc registeredDoc, ro
 	if len(policies) == 0 {
 		return nil
 	}
-	actor, err := policyActorFromInventory(home, doc)
+	actor, err := policyActorForGate(home, doc, a.accessRunner)
 	if err != nil {
 		return err
 	}
@@ -1022,30 +1023,29 @@ func (a app) requireGovernedPolicyAcceptances(home string, doc registeredDoc, ro
 		fmt.Fprintf(&remediation, "\n  my policy show %s --manifest %s", policy.ID, doc.ref.Name)
 		fmt.Fprintf(&remediation, "\n  my policy accept %s --yes --manifest %s", policy.ID, doc.ref.Name)
 	}
-	if len(missing) != 0 {
-		fmt.Fprintf(&remediation, "\n  my record flush --manifest %s", doc.ref.Name)
-		fmt.Fprintf(&remediation, "\n  my policy acceptances --manifest %s", doc.ref.Name)
-	}
 	for _, policy := range superseded {
 		fmt.Fprintf(&remediation, "\n  policy %s: your acceptance was administratively superseded; re-running accept cannot restore it. Ask a manifest administrator; a new policy version is required before you can accept again.", policy.ID)
 	}
 	return fmt.Errorf("governed operation blocked: GitHub actor %d has not accepted %d required current policy document(s):%s", actor.ID, len(missing)+len(superseded), remediation.String())
 }
 
-func policyActorFromInventory(home string, doc registeredDoc) (access.Actor, error) {
+func (a app) printGovernedPolicyReviewNotice(home string, doc registeredDoc, root string) {
+	if err := a.requireGovernedPolicyAcceptances(home, doc, root); err != nil {
+		fmt.Fprintln(a.stderr, "notice\tgovernance\trequired policy review is pending; run `my ai`")
+	}
+}
+
+func policyActorForGate(home string, doc registeredDoc, runner access.Runner) (access.Actor, error) {
 	inventory, err := access.LoadInventory(home)
 	if err != nil {
 		return access.Actor{}, err
 	}
-	entry, ok := managedInventoryEntry(inventory, doc.ref.LocalPath)
-	if !ok {
-		return access.Actor{}, fmt.Errorf("governed operation blocked: manifest has no positive access baseline; run `my access activate --yes`")
+	if entry, ok := managedInventoryEntry(inventory, doc.ref.LocalPath); ok {
+		if baseline, ok := newestPositiveBaseline(entry.Baselines); ok && baseline.Actor.ID != 0 && baseline.Actor.NodeID != "" {
+			return baseline.Actor, nil
+		}
 	}
-	baseline, ok := newestPositiveBaseline(entry.Baselines)
-	if !ok || baseline.Actor.ID == 0 || baseline.Actor.NodeID == "" {
-		return access.Actor{}, fmt.Errorf("governed operation blocked: manifest has no immutable actor baseline; run `my access activate --yes`")
-	}
-	return baseline.Actor, nil
+	return policyActor(doc.doc, runner)
 }
 
 func (a app) reviewRequiredPolicies(home string, doc registeredDoc, root string) (bool, error) {
@@ -1099,13 +1099,21 @@ func (a app) reviewRequiredPolicies(home string, doc registeredDoc, root string)
 			if answered {
 				reason = "acceptance declined"
 			}
-			fmt.Fprintf(a.stdout, "Policy onboarding incomplete (%s).\n", reason)
-			a.printRequiredPolicyCommands(home, doc, root, []manifest.Policy{policy})
+			fmt.Fprintf(a.stdout, "Policy review incomplete (%s).\n", reason)
+			fmt.Fprintln(a.stdout, "Run `my ai` again when you are ready to review it.")
 			return false, nil
 		}
 		args := append([]string{policy.ID, "--yes"}, policyCommandFlags(home, doc.ref.Name, root)...)
-		if err := a.runPolicyAccept(args); err != nil {
+		var acceptOut, acceptErr bytes.Buffer
+		acceptApp := a
+		acceptApp.stdout = &acceptOut
+		acceptApp.stderr = &acceptErr
+		if err := acceptApp.runPolicyAccept(args); err != nil {
 			return false, err
+		}
+		fmt.Fprintf(a.stdout, "Accepted %s.\n", policy.Title)
+		if acceptErr.Len() != 0 {
+			fmt.Fprintln(a.stdout, "The acceptance is recorded locally and will finish publishing automatically.")
 		}
 	}
 	return true, nil

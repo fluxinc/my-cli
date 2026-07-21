@@ -79,34 +79,30 @@ remediation.
 
 ## Governance and experimental access revocation
 
+For employees, governance is part of the normal launch:
+
 ```sh
-my policy list|show|status
-my policy accept <id> --yes
-my policy acceptances [--json]
-my policy supersede <id> --subject-id <github-id> --reason <text> --yes
-my governance audit --json
-my admin policy add <id> --title <text> --mount <id> --path <path> --version <version> --acceptance required|optional [--role <id>]
-my admin policy remove <id>
-my record domains
-my record add <domain> <slug> --source github-pr:<owner>/<repo>#<number>
-my sync --push --record <domain>/<record-id>
+my ai
 ```
 
-Governed organizations bind acceptances to exact policy bytes and immutable
-GitHub user ids. Acceptance evidence is durably queued and published through
-an attestation-only pull request; `acceptances` distinguishes local, submitted,
-and merge-proven ledger state. Supersession is append-only and permanently
-blocks re-acceptance of the same version and digest. Publishing an acceptance
-does not refresh manifest freshness; later governed commands pass their own
-freshness gate. CI currently enforces universal required policies. Role-scoped
-requirements remain a local gate until manifests carry authoritative
-identity-to-role mapping.
+If a required policy is new or changed, `my ai` displays the exact committed
+document and asks once for acceptance. A yes records the acceptance, starts its
+durable publication, and continues into the AI. A decline or EOF does not
+launch. Non-interactive callers fail closed.
 
-Registered policy authoring proposes an isolated manifest pull request and
-leaves the sync-managed manifest checkout unchanged. `add` hashes the committed
-upstream policy blob from the declared mount, not dirty worktree bytes. The
-maintainer-checkout compatibility path uses `--manifest-dir` and requires an
-explicit `--sha256` for add.
+Without an explicitly activated access baseline, launch uses a read-only live
+GitHub access check. It does not write access state or enable quarantine.
+`my root` and `my ai --print` never prompt; they preserve machine-readable
+stdout and emit a short pending-policy or pending-access notice on stderr.
+
+The detailed policy, record, audit, and authoring verbs remain available to
+agents and administrative automation. They are intentionally not a human setup
+runbook; use `my policy --help`, `my record --help`, `my governance --help`, or
+`my admin policy --help` when building those workflows. Acceptance and
+supersession evidence are append-only, bound to exact policy bytes and immutable
+GitHub user ids, and published through isolated pull requests. CI currently
+enforces universal required policies. Role-scoped requirements remain a local
+gate until manifests carry authoritative identity-to-role mapping.
 
 ```sh
 my access check --dry-run
