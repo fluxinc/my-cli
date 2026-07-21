@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
 
 	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/syncer"
 )
 
 // contractEntry is one organization contract rule with its manifest and
@@ -24,6 +26,18 @@ type adminContractResult struct {
 	Contract     []string `json:"contract"`
 	Message      string   `json:"message,omitempty"`
 	NextCommands []string `json:"next_commands,omitempty"`
+	Publication  string   `json:"publication,omitempty"`
+	PRURL        string   `json:"pr_url,omitempty"`
+	PRHeadSHA    string   `json:"pr_head_sha,omitempty"`
+}
+
+type adminContractOpts struct {
+	manifestDir  string
+	home         string
+	manifestName string
+	umbrellaRoot string
+	force        bool
+	jsonOut      bool
 }
 
 func (a app) runContract(args []string) error {
@@ -119,42 +133,174 @@ func (a app) runAdminContract(args []string) error {
 }
 
 func (a app) runAdminContractAdd(args []string) error {
-	manifestDir, force, jsonOut, rest, err := parseAdminContractOpts("my admin contract add", a.stderr, args)
+	opts, rest, err := parseAdminContractOpts("my admin contract add", a.stderr, args)
 	if err != nil {
 		return err
 	}
-	if len(rest) != 1 || manifestDir == "" {
-		return fmt.Errorf("usage: my admin contract add \"RULE TEXT\" --manifest-dir DIR")
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: my admin contract add \"RULE TEXT\" [--manifest NAME --umbrella DIR | --manifest-dir DIR]")
 	}
-	result, err := a.adminContractAdd(rest[0], manifestDir, force)
+	var result adminContractResult
+	if opts.manifestDir != "" {
+		if opts.home != "" || opts.manifestName != "" || opts.umbrellaRoot != "" {
+			return fmt.Errorf("--manifest-dir cannot be combined with --home, --manifest, or --umbrella")
+		}
+		result, err = a.adminContractAdd(rest[0], opts.manifestDir, opts.force)
+	} else {
+		result, err = a.adminContractRegistered("add", rest[0], opts)
+	}
 	if err != nil {
 		return err
 	}
-	return a.printAdminContractResult(result, jsonOut)
+	return a.printAdminContractResult(result, opts.jsonOut)
 }
 
 func (a app) runAdminContractRemove(args []string) error {
-	manifestDir, force, jsonOut, rest, err := parseAdminContractOpts("my admin contract remove", a.stderr, args)
+	opts, rest, err := parseAdminContractOpts("my admin contract remove", a.stderr, args)
 	if err != nil {
 		return err
 	}
-	if len(rest) != 1 || manifestDir == "" {
-		return fmt.Errorf("usage: my admin contract remove <index|\"RULE TEXT\"> --manifest-dir DIR")
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: my admin contract remove <index|\"RULE TEXT\"> [--manifest NAME --umbrella DIR | --manifest-dir DIR]")
 	}
-	result, err := a.adminContractRemove(rest[0], manifestDir, force)
+	var result adminContractResult
+	if opts.manifestDir != "" {
+		if opts.home != "" || opts.manifestName != "" || opts.umbrellaRoot != "" {
+			return fmt.Errorf("--manifest-dir cannot be combined with --home, --manifest, or --umbrella")
+		}
+		result, err = a.adminContractRemove(rest[0], opts.manifestDir, opts.force)
+	} else {
+		result, err = a.adminContractRegistered("remove", rest[0], opts)
+	}
 	if err != nil {
 		return err
 	}
-	return a.printAdminContractResult(result, jsonOut)
+	return a.printAdminContractResult(result, opts.jsonOut)
 }
 
-func parseAdminContractOpts(name string, stderr io.Writer, args []string) (manifestDir string, force, jsonOut bool, rest []string, err error) {
+func parseAdminContractOpts(name string, stderr io.Writer, args []string) (opts adminContractOpts, rest []string, err error) {
 	fs := newFlagSet(name, stderr)
-	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
-	fs.BoolVar(&force, "force", false, "allow dirty checkout")
-	fs.BoolVar(&jsonOut, "json", false, "print JSON result")
-	rest, err = parseInterspersed(fs, args, map[string]bool{"manifest-dir": true})
-	return manifestDir, force, jsonOut, rest, err
+	fs.StringVar(&opts.manifestDir, "manifest-dir", "", "compatibility: explicit maintainer manifest checkout")
+	fs.StringVar(&opts.home, "home", "", "override home directory")
+	fs.StringVar(&opts.manifestName, "manifest", "", "use a registered manifest")
+	fs.StringVar(&opts.umbrellaRoot, "umbrella", "", "override umbrella root")
+	fs.BoolVar(&opts.force, "force", false, "allow dirty explicit --manifest-dir checkout")
+	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON result")
+	rest, err = parseInterspersed(fs, args, map[string]bool{
+		"manifest-dir": true, "home": true, "manifest": true, "umbrella": true,
+	})
+	return opts, rest, err
+}
+
+func (a app) adminContractRegistered(action, target string, opts adminContractOpts) (adminContractResult, error) {
+	if opts.force {
+		return adminContractResult{}, fmt.Errorf("--force is only available with the compatibility --manifest-dir path")
+	}
+	name, err := defaultManifestName(opts.home, opts.manifestName, opts.umbrellaRoot)
+	if err != nil {
+		return adminContractResult{}, err
+	}
+	docRef, err := loadSingleRegisteredDoc(opts.home, name)
+	if err != nil {
+		return adminContractResult{}, err
+	}
+	doc, manifestPath, repo, err := a.loadAuthorizedAdminManifestCheckout(docRef.ref.LocalPath)
+	if err != nil {
+		return adminContractResult{}, err
+	}
+	if err := ensureAdminManifestClean(repo, false); err != nil {
+		return adminContractResult{}, fmt.Errorf("registered manifest cache must remain clean: %w", err)
+	}
+	root, err := resolveMyRoot(opts.home, name, opts.umbrellaRoot)
+	if err != nil {
+		return adminContractResult{}, err
+	}
+	if out, err := gitPRBytes(repo, nil, "fetch", "--prune", "origin"); err != nil {
+		return adminContractResult{}, fmt.Errorf("refresh registered manifest: %s", commandMessage(out, err))
+	}
+	branch, err := gitPRText(repo, nil, "symbolic-ref", "--short", "HEAD")
+	if err != nil {
+		return adminContractResult{}, fmt.Errorf("registered manifest must be on a branch: %w", err)
+	}
+	upstream, err := gitPRText(repo, nil, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	if err != nil {
+		return adminContractResult{}, fmt.Errorf("registered manifest has no trusted upstream: %w", err)
+	}
+	head, err := gitPRText(repo, nil, "rev-parse", "HEAD^{commit}")
+	if err != nil {
+		return adminContractResult{}, err
+	}
+	trusted, err := gitPRText(repo, nil, "rev-parse", upstream+"^{commit}")
+	if err != nil {
+		return adminContractResult{}, err
+	}
+	if head != trusted {
+		return adminContractResult{}, fmt.Errorf("registered manifest is not at its trusted upstream; run my manifests sync %s before authoring", name)
+	}
+
+	rule := strings.TrimSpace(target)
+	switch action {
+	case "add":
+		if rule == "" {
+			return adminContractResult{}, fmt.Errorf("contract rule must not be blank")
+		}
+		for _, existing := range doc.Contract {
+			if strings.TrimSpace(existing) == rule {
+				return adminContractResult{}, fmt.Errorf("contract rule already exists: %q", rule)
+			}
+		}
+		doc.Contract = append(doc.Contract, rule)
+	case "remove":
+		idx := contractRuleIndex(doc.Contract, target)
+		if idx == -1 {
+			return adminContractResult{}, fmt.Errorf("contract rule %q not found; run my contract list", target)
+		}
+		rule = doc.Contract[idx]
+		doc.Contract = append(doc.Contract[:idx], doc.Contract[idx+1:]...)
+		if len(doc.Contract) == 0 {
+			doc.Contract = nil
+		}
+	default:
+		return adminContractResult{}, fmt.Errorf("unknown contract action %q", action)
+	}
+	if validation := manifest.ValidateDocument(repo, doc); len(validation.Errors) != 0 {
+		return adminContractResult{}, fmt.Errorf("updated manifest is invalid: %s", strings.Join(validation.Errors, "; "))
+	}
+	data, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return adminContractResult{}, err
+	}
+	data = append(data, '\n')
+	result := a.publishPullRequest(opts.home, syncer.PRRequest{
+		Entry: syncer.Entry{
+			Manifest: name, ID: name, Role: "manifest", Kind: "manifest",
+			GitURL: docRef.ref.GitURL, LocalPath: repo, UmbrellaRoot: root,
+			ContentPaths: manifestControlPaths(),
+		},
+		Branch: branch, Upstream: upstream, Head: head, Dirty: []string{"manifest.json"},
+		FileContents: map[string][]byte{"manifest.json": data},
+		Message:      "Update organization contract", PreserveCheckout: true,
+	}, false)
+	if result.Status != "pull request opened" {
+		message := result.Message
+		if message == "" {
+			message = result.Error
+		}
+		return adminContractResult{}, fmt.Errorf("contract change was not published (%s): %s", result.ReasonCode, message)
+	}
+	next := []string{}
+	if result.NextCommand != "" {
+		next = append(next, result.NextCommand)
+	}
+	resultAction := "added"
+	if action == "remove" {
+		resultAction = "removed"
+	}
+	return adminContractResult{
+		Action: resultAction, Rule: rule, ManifestPath: manifestPath, Contract: doc.Contract,
+		Message:      "contract change proposed without modifying the sync-managed manifest cache",
+		NextCommands: next, Publication: result.Status, PRURL: result.PRURL, PRHeadSHA: result.PRHeadSHA,
+	}, nil
 }
 
 func (a app) adminContractAdd(rule, manifestDir string, force bool) (adminContractResult, error) {

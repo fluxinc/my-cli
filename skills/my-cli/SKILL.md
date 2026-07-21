@@ -330,12 +330,19 @@ my policy accept <id> --yes      # queue evidence and attempt an attestation-onl
 my policy acceptances [--json]   # report local, submitted, and merge-proven acceptances
 my policy supersede <id> --subject-id <github-id> --reason <text> --yes # append an admin-authorized supersession
 my governance audit --json       # audit live GitHub rulesets/workflow enforcement
+my admin contract add "RULE" [--manifest NAME] [--umbrella DIR] # propose an isolated manifest PR
+my admin contract remove <index|"RULE"> [--manifest NAME] [--umbrella DIR]
 my record domains                # inspect manifest-routed generic record classes
 my record add <domain> <slug>    # write, queue, and optionally PR-submit a record
 my record outbox                 # distinguish queued/failed/submitted publication
 my record reconcile              # recover queue state from unpublished Git records
 my record flush [--include-manual] # retry eligible PR submissions
 ```
+
+Registered-manifest contract authoring opens an isolated governed PR and
+preserves the sync-managed manifest checkout and index. Use the compatibility
+`--manifest-dir DIR` form only when a maintainer explicitly wants a local edit
+to publish later.
 
 Plain untracked (`??`) files under declared content paths are held instead of
 being published. Use `my customers add`, `my meetings add`, `my support add`,

@@ -70,8 +70,9 @@ func (a app) printAdminUsage() {
   my admin mounts add|remove|sync ...        (alias of my mounts ...)
   my admin meetings add ...                 (alias of my meetings add)
   my admin support add ...                  (alias of my support add)
-  my admin contract add "RULE TEXT" --manifest-dir DIR [--force] [--json]
-  my admin contract remove <index|"RULE TEXT"> --manifest-dir DIR [--force] [--json]
+  my admin contract add "RULE TEXT" [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my admin contract remove <index|"RULE TEXT"> [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my admin contract add|remove ... --manifest-dir DIR [--force] [--json]  (compatibility)
   my admin tools add <id> --manifest-dir DIR --mode required|optional --purpose TEXT [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
   my admin tools edit <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--clear-install-commands] [--docs-url URL|--clear-docs-url] [--skill-install-command CMD] [--skill-install-arg ARG] [--clear-skill-install] [--force] [--json]
   my admin tools remove <id> --manifest-dir DIR [--force] [--json]

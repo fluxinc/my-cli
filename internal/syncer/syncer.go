@@ -68,6 +68,7 @@ type PRRequest struct {
 	Head             string
 	Dirty            []string
 	Changed          []string
+	FileContents     map[string][]byte
 	Message          string
 	DryRun           bool
 	PreserveCheckout bool

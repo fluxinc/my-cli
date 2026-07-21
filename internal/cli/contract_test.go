@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 func writeContractManifest(t *testing.T, home string) {
@@ -177,6 +178,170 @@ func TestAdminContractAddAndRemove(t *testing.T) {
 			t.Fatal("remove of unknown rule should fail")
 		}
 	})
+}
+
+func TestAdminContractRegisteredManifestPublishesIsolatedPRAndPreservesCache(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		action     string
+		target     string
+		contract   string
+		wantAction string
+		wantRule   string
+		wantInPR   bool
+	}{
+		{name: "add", action: "add", target: "Require reviewed changes.", wantAction: "added", wantRule: "Require reviewed changes.", wantInPR: true},
+		{name: "remove", action: "remove", target: "1", contract: `, "contract":["Retire this rule."]`, wantAction: "removed", wantRule: "Retire this rule."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{
+  "manifest_version": 1,
+  "organization": {"id":"acme","name":"Acme Example"},
+  "umbrella": {"recommended_path":"~/acme"},
+  "governance": {
+    "authorization": {"provider":"github","manifest_repository":"example/control","admin_permission":"admin"}
+  }` + tc.contract + `
+}`
+			home, umbrellaRoot, cache, remote, _ := setupCLITrackedManifestBody(t, body)
+			if err := os.MkdirAll(umbrellaRoot, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := umbrella.Ensure(umbrellaRoot, "acme", "acme"); err != nil {
+				t.Fatal(err)
+			}
+			reg, err := manifest.LoadRegistry(home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reg.Manifests[0].GitURL = "https://github.com/example/control.git"
+			if err := manifest.SaveRegistry(home, reg); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(filepath.Join(cache, "manifest.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			headBefore := strings.TrimSpace(gitCLIOutput(t, cache, "rev-parse", "HEAD"))
+			state := &governedPRRunnerState{remote: remote, permission: "admin", repository: "example/control"}
+			var stdout, stderr bytes.Buffer
+			a := app{
+				stdout: &stdout, stderr: &stderr, accessRunner: governedAdminAccessRunner(),
+				publishRunner: state.run,
+			}
+			if err := a.run([]string{
+				"my", "admin", "contract", tc.action, tc.target,
+				"--home", home, "--umbrella", umbrellaRoot, "--json",
+			}); err != nil {
+				t.Fatalf("registered contract %s: %v\nstdout=%s\nstderr=%s", tc.action, err, stdout.String(), stderr.String())
+			}
+			var result adminContractResult
+			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if result.Action != tc.wantAction || result.Rule != tc.wantRule || result.Publication != "pull request opened" || result.PRURL == "" {
+				t.Fatalf("result = %#v", result)
+			}
+			after, err := os.ReadFile(filepath.Join(cache, "manifest.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) || strings.TrimSpace(gitCLIOutput(t, cache, "status", "--porcelain")) != "" ||
+				strings.TrimSpace(gitCLIOutput(t, cache, "rev-parse", "HEAD")) != headBefore {
+				t.Fatal("sync-managed manifest cache changed during isolated contract publication")
+			}
+			proposal := gitCLIOutput(t, remote, "show", state.commit+":manifest.json")
+			contains := strings.Contains(proposal, tc.wantRule)
+			if contains != tc.wantInPR {
+				t.Fatalf("proposal contains rule = %v, want %v:\n%s", contains, tc.wantInPR, proposal)
+			}
+		})
+	}
+}
+
+func TestAdminContractRegisteredManifestFailsClosedBeforePublication(t *testing.T) {
+	body := `{
+  "manifest_version": 1,
+  "organization": {"id":"acme","name":"Acme Example"},
+  "governance": {
+    "authorization": {"provider":"github","manifest_repository":"example/control","admin_permission":"admin"}
+  }
+}`
+	home, umbrellaRoot, cache, _, _ := setupCLITrackedManifestBody(t, body)
+	reg, err := manifest.LoadRegistry(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg.Manifests[0].GitURL = "https://github.com/example/control.git"
+	if err := manifest.SaveRegistry(home, reg); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(filepath.Join(cache, "manifest.json"))
+	a := app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, accessRunner: governedAdminRunner("write")}
+	err = a.run([]string{
+		"my", "admin", "contract", "add", "Must not publish.",
+		"--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot,
+	})
+	if err == nil || !strings.Contains(err.Error(), "governed manifest authoring denied") {
+		t.Fatalf("err = %v, want fail-closed admin denial", err)
+	}
+	after, _ := os.ReadFile(filepath.Join(cache, "manifest.json"))
+	if !bytes.Equal(before, after) {
+		t.Fatal("denied registered authoring changed manifest cache")
+	}
+}
+
+func TestAdminContractRegisteredManifestRejectsStaleCache(t *testing.T) {
+	body := `{
+  "manifest_version": 1,
+  "organization": {"id":"acme","name":"Acme Example"},
+  "governance": {
+    "authorization": {"provider":"github","manifest_repository":"example/control","admin_permission":"admin"}
+  }
+}`
+	home, umbrellaRoot, cache, _, writer := setupCLITrackedManifestBody(t, body)
+	reg, err := manifest.LoadRegistry(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg.Manifests[0].GitURL = "https://github.com/example/control.git"
+	if err := manifest.SaveRegistry(home, reg); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(writer, "README.md"), "manifest advanced remotely\n")
+	commitCLIGit(t, writer, "advance manifest remotely")
+	runCLIGit(t, writer, "push", "-q", "origin", "HEAD")
+
+	headBefore := strings.TrimSpace(gitCLIOutput(t, cache, "rev-parse", "HEAD"))
+	a := app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, accessRunner: governedAdminAccessRunner()}
+	err = a.run([]string{
+		"my", "admin", "contract", "add", "Stale caches must not author.",
+		"--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot,
+	})
+	if err == nil || !strings.Contains(err.Error(), "not at its trusted upstream") {
+		t.Fatalf("stale cache error = %v", err)
+	}
+	if strings.TrimSpace(gitCLIOutput(t, cache, "rev-parse", "HEAD")) != headBefore {
+		t.Fatal("stale-cache rejection moved the cache HEAD")
+	}
+}
+
+func TestProspectiveFileContentsPathContainment(t *testing.T) {
+	for path, want := range map[string]bool{
+		"manifest.json":            true,
+		"catalog/products.json":    true,
+		"../escape.json":           false,
+		"/abs/manifest.json":       false,
+		"manifest.json/../../evil": false,
+		"a\\b.json":                false,
+		"":                         false,
+		"secrets.env":              false,
+		"manifest.json.bak":        false,
+	} {
+		got := portableProspectivePath(path) && prospectivePathDeclared(path, manifestControlPaths())
+		if got != want {
+			t.Errorf("containment(%q) = %v, want %v", path, got, want)
+		}
+	}
 }
 
 func jsonString(s string) string {

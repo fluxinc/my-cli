@@ -194,14 +194,16 @@ manifest declares roles; manifests with no roles compile unscoped.
 
 ```sh
 my contract list [--json]
-my admin contract add "RULE TEXT" --manifest-dir <checkout>
-my admin contract remove <index|"RULE TEXT"> --manifest-dir <checkout>
+my admin contract add "RULE TEXT" [--manifest <name>] [--umbrella <root>]
+my admin contract remove <index|"RULE TEXT"> [--manifest <name>] [--umbrella <root>]
 ```
 
 Manifest `contract` entries are short, binding organization rules rendered
 into generated `AGENTS.md`. Reads stay top-level; edits go through the admin
-review flow against a maintainer manifest checkout, then publish through
-`my publish --manifest NAME`.
+review flow. The registered-manifest form resolves the current umbrella and
+opens an isolated governed pull request without dirtying the sync-managed
+manifest cache. `--manifest-dir <checkout>` remains available for maintainers
+who intentionally want a local-only edit followed by `my publish --manifest`.
 
 ### Skills
 
@@ -251,13 +253,14 @@ my admin services remove <id> --manifest-dir <checkout> [--prune-roles]
 my admin roles add <id> --manifest-dir <checkout> --purpose "..."
 my admin roles edit <id> --manifest-dir <checkout> [--purpose "..."]
 my admin roles remove <id> --manifest-dir <checkout>
-my admin contract add "RULE TEXT" --manifest-dir <checkout>
-my admin contract remove <index|"RULE TEXT"> --manifest-dir <checkout>
+my admin contract add "RULE TEXT" [--manifest <name>] [--umbrella <root>]
+my admin contract remove <index|"RULE TEXT"> [--manifest <name>] [--umbrella <root>]
 ```
 
-Admin commands write a maintainer checkout, not the synced cache. They
-refuse dirty git checkouts unless `--force` is supplied, never commit or push,
-and require explicit flags for duplicate-prone or destructive cleanup such as
+Admin commands other than registered-manifest contract authoring write a
+maintainer checkout, not the synced cache. They refuse dirty git checkouts
+unless `--force` is supplied, never commit or push, and require explicit flags
+for duplicate-prone or destructive cleanup such as
 `--keep-original`, `--remove-original`, `--delete-source`, or product
 `related_skills` pruning. Removing a skill reports now-orphaned tools and
 allowed namespaces; `--prune-orphans` removes those too. Tool removal refuses
@@ -583,7 +586,9 @@ indexed in [docs/plans/](docs/plans/README.md):
   Acceptance evidence now has isolated durable PR publication,
   local/submitted/merge-proven reporting, trusted-branch CI enforcement for
   universal policies, and append-only administrative supersession.
-  Umbrella-root authoring and private-manifest dogfood remain before release.
+  Umbrella-root contract authoring now proposes isolated manifest PRs without
+  dirtying the sync-managed cache. Linked-record CI and private-manifest
+  dogfood remain before release.
   Plans: [governed organizations](docs/plans/2026-07-16-governed-organizations.md)
   and [completion gates](docs/plans/2026-07-21-governed-organizations-completion.md).
 - **Shipped (v0.35.0) — dogfood ergonomics audit.** A reviewed two-agent audit

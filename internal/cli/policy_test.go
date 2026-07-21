@@ -970,6 +970,18 @@ type governedPRRunnerState struct {
 	proofActor  int64
 	lostCreate  bool
 	permission  string
+	repository  string
+}
+
+func (s *governedPRRunnerState) repositoryName() string {
+	if s.repository != "" {
+		return s.repository
+	}
+	return "example/handbook"
+}
+
+func (s *governedPRRunnerState) pullRequestURL() string {
+	return "https://github.com/" + s.repositoryName() + "/pull/1"
 }
 
 func (s *governedPRRunnerState) run(name string, args ...string) ([]byte, error) {
@@ -986,7 +998,7 @@ func (s *governedPRRunnerState) run(name string, args ...string) ([]byte, error)
 			permission = "write"
 		}
 		return []byte(fmt.Sprintf(`{"permission":%q,"user":{"id":17,"node_id":"U_actor","login":"operator"}}`, permission)), nil
-	case strings.HasPrefix(joined, "api repos/example/handbook/pulls?state=open"):
+	case strings.HasPrefix(joined, "api repos/"+s.repositoryName()+"/pulls?state=open"):
 		if !s.created {
 			return []byte(`[]`), nil
 		}
@@ -994,7 +1006,7 @@ func (s *governedPRRunnerState) run(name string, args ...string) ([]byte, error)
 		if proofActor == 0 {
 			proofActor = 17
 		}
-		return []byte(fmt.Sprintf(`[{"html_url":"https://github.com/example/handbook/pull/1","user":{"id":%d},"head":{"sha":%q}}]`, proofActor, s.commit)), nil
+		return []byte(fmt.Sprintf(`[{"html_url":%q,"user":{"id":%d},"head":{"sha":%q}}]`, s.pullRequestURL(), proofActor, s.commit)), nil
 	case len(args) >= 2 && args[0] == "pr" && args[1] == "create":
 		s.createCalls++
 		for i := range args {
@@ -1015,8 +1027,8 @@ func (s *governedPRRunnerState) run(name string, args ...string) ([]byte, error)
 		if s.lostCreate {
 			return nil, fmt.Errorf("simulated lost gh response after PR creation")
 		}
-		return []byte("https://github.com/example/handbook/pull/1\n"), nil
-	case joined == "api repos/example/handbook/pulls/1":
+		return []byte(s.pullRequestURL() + "\n"), nil
+	case joined == "api repos/"+s.repositoryName()+"/pulls/1":
 		if !s.created {
 			return nil, fmt.Errorf("PR was not created")
 		}
@@ -1024,8 +1036,8 @@ func (s *governedPRRunnerState) run(name string, args ...string) ([]byte, error)
 		if proofActor == 0 {
 			proofActor = 17
 		}
-		return []byte(fmt.Sprintf(`{"html_url":"https://github.com/example/handbook/pull/1","user":{"id":%d},"head":{"sha":%q}}`, proofActor, s.commit)), nil
-	case joined == "pr view https://github.com/example/handbook/pull/1 --json state,headRefOid,mergeCommit":
+		return []byte(fmt.Sprintf(`{"html_url":%q,"user":{"id":%d},"head":{"sha":%q}}`, s.pullRequestURL(), proofActor, s.commit)), nil
+	case joined == "pr view "+s.pullRequestURL()+" --json state,headRefOid,mergeCommit":
 		state := "OPEN"
 		mergeCommit := "null"
 		if s.merged {

@@ -1,6 +1,6 @@
 # Governed organizations completion: hardening, acceptance CI, and dogfood
 
-Status: active — S1-S4 complete; S5 umbrella-root contract authoring next
+Status: active — S1-S5 complete; S6 linked-record CI next
 
 Design source of truth: [2026-07-16-governed-organizations](2026-07-16-governed-organizations.md).
 This plan closes the gap between mechanism-complete code and a
@@ -190,7 +190,7 @@ Files: `internal/governance/check.go`, `internal/cli/policy.go` (admin verb),
   attestation-PR bootstrap; documented role-scope limitation; minimal
   append-only supersession verb with CI admin validation.
 
-### S5 — Umbrella-root contract authoring (step 4, E)
+### S5 — Umbrella-root contract authoring (step 4, E) — complete
 
 Files: `internal/cli/contract.go`, `internal/cli/admin.go`, tests
 (`internal/cli/governance_test.go` or new `contract_admin_test.go`).
@@ -198,6 +198,11 @@ Files: `internal/cli/contract.go`, `internal/cli/admin.go`, tests
 - `--manifest`/`--umbrella` resolution to the registered manifest checkout,
   governed-PR next commands, `--manifest-dir` untouched; fail-closed guard
   exercised in tests via stubbed runner.
+- Registered-manifest authoring synthesizes the exact proposed `manifest.json`
+  in a temporary index and opens an isolated PR without modifying the
+  sync-managed cache. PR-first behavior for ungoverned registered manifests is
+  retained for one predictable command contract; direct-publish alignment is
+  a later UX question, not a governance release blocker.
 
 ### S6 — Linked-record CI (step 6, G)
 

@@ -335,6 +335,36 @@ func buildProspectiveCommit(request syncer.PRRequest) (prospectiveCommit, error)
 			return prospectiveCommit{}, err
 		}
 	}
+	for path, data := range request.FileContents {
+		path = filepath.ToSlash(path)
+		if !portableProspectivePath(path) || !prospectivePathDeclared(path, request.Entry.ContentPaths) {
+			_ = cleanup()
+			return prospectiveCommit{}, fmt.Errorf("prospective file %q is outside declared content paths", path)
+		}
+		tempFile, err := os.CreateTemp(tempDir, "content-")
+		if err != nil {
+			_ = cleanup()
+			return prospectiveCommit{}, err
+		}
+		if _, err = tempFile.Write(data); err == nil {
+			err = tempFile.Close()
+		} else {
+			_ = tempFile.Close()
+		}
+		if err != nil {
+			_ = cleanup()
+			return prospectiveCommit{}, err
+		}
+		oid, err := gitPRText(request.Entry.LocalPath, env, "hash-object", "-w", "--path="+path, tempFile.Name())
+		if err != nil {
+			_ = cleanup()
+			return prospectiveCommit{}, err
+		}
+		if _, err := gitPRBytes(request.Entry.LocalPath, env, "update-index", "--add", "--cacheinfo", "100644,"+oid+","+path); err != nil {
+			_ = cleanup()
+			return prospectiveCommit{}, err
+		}
+	}
 	tree, err := gitPRText(request.Entry.LocalPath, env, "write-tree")
 	if err != nil {
 		_ = cleanup()
@@ -349,7 +379,7 @@ func buildProspectiveCommit(request syncer.PRRequest) (prospectiveCommit, error)
 		_ = cleanup()
 		return prospectiveCommit{}, fmt.Errorf("no publishable changes inside declared content paths")
 	}
-	if len(request.Dirty) == 0 {
+	if len(request.Dirty) == 0 && len(request.FileContents) == 0 {
 		// Existing ahead commits are already the exact proposal. Do not add an
 		// empty synthetic commit merely to obtain a PR head.
 		return prospectiveCommit{Commit: request.Head, Tree: tree, Repo: request.Entry.LocalPath, GitEnv: env, Cleanup: cleanup}, nil
@@ -366,6 +396,24 @@ func buildProspectiveCommit(request syncer.PRRequest) (prospectiveCommit, error)
 		return prospectiveCommit{}, err
 	}
 	return prospectiveCommit{Commit: commit, Tree: tree, Repo: request.Entry.LocalPath, GitEnv: env, Cleanup: cleanup}, nil
+}
+
+func portableProspectivePath(path string) bool {
+	if path == "" || filepath.IsAbs(path) || strings.Contains(path, "\\") {
+		return false
+	}
+	clean := filepath.ToSlash(filepath.Clean(path))
+	return clean == path && clean != "." && clean != ".." && !strings.HasPrefix(clean, "../")
+}
+
+func prospectivePathDeclared(path string, declared []string) bool {
+	for _, root := range declared {
+		root = strings.Trim(filepath.ToSlash(filepath.Clean(root)), "/")
+		if path == root || strings.HasPrefix(path, root+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func governancePRRunner(publishRunner manifest.Runner, prospective prospectiveCommit) governancecheck.Runner {
