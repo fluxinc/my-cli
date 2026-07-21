@@ -40,6 +40,10 @@ func (a app) runGovernanceCheck(args []string) error {
 	fs.StringVar(&input.AttestationRepo, "attestation-repo", "", "local authoritative attestation repository checkout")
 	fs.StringVar(&input.AttestationRepository, "attestation-repository", "", "authoritative attestation GitHub owner/repository")
 	fs.StringVar(&input.AttestationBaseRef, "attestation-base", "", "trusted attestation default-branch commit/ref")
+	fs.StringVar(&input.RecordRepo, "record-repo", "", "local authoritative linked-record repository checkout")
+	fs.StringVar(&input.RecordRepository, "record-repository", "", "authoritative linked-record GitHub owner/repository")
+	fs.StringVar(&input.RecordBaseRef, "record-base", "", "trusted linked-record default-branch commit/ref")
+	fs.Int64Var(&input.PullRequestNumber, "pull-request-number", 0, "authoritative source pull request number")
 	fs.StringVar(&input.Mount, "mount", "", "protected mount id or @manifest")
 	fs.Int64Var(&input.ActorID, "actor-id", 0, "immutable pull request author GitHub id")
 	fs.StringVar(&input.ActorLogin, "actor-login", "", "pull request author GitHub login")
@@ -52,7 +56,8 @@ func (a app) runGovernanceCheck(args []string) error {
 		"repo": true, "repository": true, "base": true, "head": true, "manifest-repo": true,
 		"manifest-base": true, "manifest-path": true, "attestation-repo": true,
 		"attestation-repository": true, "attestation-base": true, "mount": true,
-		"actor-id": true, "actor-login": true,
+		"record-repo": true, "record-repository": true, "record-base": true,
+		"pull-request-number": true, "actor-id": true, "actor-login": true,
 	})
 	if err != nil {
 		return err

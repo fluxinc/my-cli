@@ -35,6 +35,8 @@ func TestGovernanceCITrustBoundary(t *testing.T) {
 
 	contentSource := filepath.Join(testRoot, "content-source")
 	writeFile(t, filepath.Join(contentSource, "fleet", "asset.md"), "# Synthetic asset\n")
+	writeFile(t, filepath.Join(contentSource, "decisions", "2026-07-21-change.md"), "---\nschema_version: 1\nid: 2026-07-21-change\ndomain: decisions\ndate: 2026-07-21\ntitle: Change record\nsources:\n  - github-pr:example/records#42\n---\n\n# Change record\n")
+	writeFile(t, filepath.Join(contentSource, "software", ".keep"), "")
 	writeFile(t, filepath.Join(contentSource, "policy", "attestations", "18", "release-policy", governancePolicyDigest+".json"), attestationE2EJSON(18, manifestBase))
 	initGitRepo(t, contentSource)
 	unacceptedBase := gitOutput(t, contentSource, "rev-parse", "HEAD")
@@ -84,6 +86,20 @@ func TestGovernanceCITrustBoundary(t *testing.T) {
 		runGovernanceCheck(t, bin, testPath, "admin", false, "append_only_path_modified", repo, "example/records", contentBase, head, manifestSource, manifestBase, "handbook", contentSource, contentBase)
 	})
 
+	t.Run("source change requires merged reciprocal record", func(t *testing.T) {
+		repo := cloneWork(t, contentBare, filepath.Join(testRoot, "linked-source"))
+		writeFile(t, filepath.Join(repo, "software", "app.go"), "package app\n")
+		head := commitAll(t, repo, "change software\n\nMy-Record: decisions/2026-07-21-change")
+		runGovernanceCheck(t, bin, testPath, "write", true, "", repo, "example/records", contentBase, head, manifestSource, manifestBase, "handbook", contentSource, contentBase)
+	})
+
+	t.Run("source change without record trailer is denied", func(t *testing.T) {
+		repo := cloneWork(t, contentBare, filepath.Join(testRoot, "unlinked-source"))
+		writeFile(t, filepath.Join(repo, "software", "app.go"), "package app\n")
+		head := commitAll(t, repo, "change software without record")
+		runGovernanceCheck(t, bin, testPath, "write", false, "change_record_missing", repo, "example/records", contentBase, head, manifestSource, manifestBase, "handbook", contentSource, contentBase)
+	})
+
 	manifestHeadRepo := cloneWork(t, manifestBare, filepath.Join(testRoot, "manifest-change"))
 	writeFile(t, filepath.Join(manifestHeadRepo, "README.md"), "proposed control-plane change\n")
 	manifestHead := commitAll(t, manifestHeadRepo, "change manifest control plane")
@@ -120,6 +136,12 @@ func governedE2EManifest() string {
       {"id":"release-policy","title":"Release policy","mount":"handbook","path":"policy/release.md","version":"2026-07","sha256":"sha256:%s","acceptance":"required"}
     ],
     "attestations": {"mount":"handbook","path":"policy/attestations","identity":"github"},
+    "record_domains": [
+      {"id":"decisions","title":"Decisions","mount":"handbook","path":"decisions","retention":"no-delete","review":"codeowner","publish":"auto-pr"}
+    ],
+    "change_record_rules": [
+      {"mount":"handbook","paths":["software"],"record_domain":"decisions"}
+    ],
     "protections": [
       {"mount":"handbook","paths":["fleet"],"mode":"no-delete","admin_override":true},
       {"mount":"handbook","paths":["policy/attestations"],"mode":"append-only"}
@@ -193,6 +215,9 @@ func runGovernanceCheck(t *testing.T, bin, path, permission string, wantAllowed 
 		"--manifest-base", manifestBase, "--mount", mount,
 		"--attestation-repo", attestationRepo, "--attestation-repository", "example/records",
 		"--attestation-base", attestationBase,
+		"--record-repo", attestationRepo, "--record-repository", "example/records",
+		"--record-base", attestationBase,
+		"--pull-request-number", "42",
 		"--actor-id", "17", "--actor-login", "operator", "--json",
 	)
 	cmd.Env = append(os.Environ(), "PATH="+path, "MY_E2E_PERMISSION="+permission)

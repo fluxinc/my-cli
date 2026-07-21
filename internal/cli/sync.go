@@ -25,6 +25,7 @@ func (a app) runSync(args []string) error {
 	var publish string
 	var scope string
 	var message string
+	var recordRef string
 	var printOnly bool
 	var push bool
 	var noDerived bool
@@ -38,6 +39,7 @@ func (a app) runSync(args []string) error {
 	fs.StringVar(&publish, "publish", "never", "explicit publish mode: auto, never, direct, or pr")
 	fs.StringVar(&scope, "scope", "all", "sync scope: all, local, content, manifest, or repos")
 	fs.StringVar(&message, "message", "", "commit message for newly committed content")
+	fs.StringVar(&recordRef, "record", "", "linked governance record as domain/record-id")
 	fs.BoolVar(&printOnly, "print", false, "print planned actions without changing files or remotes")
 	fs.BoolVar(&push, "push", false, "publish eligible local changes using the manifest policy or auto policy")
 	fs.BoolVar(&noDerived, "no-derived", false, "skip derived skill/guidance reconciliation after manifest changes")
@@ -55,6 +57,7 @@ func (a app) runSync(args []string) error {
 		"publish":  true,
 		"scope":    true,
 		"message":  true,
+		"record":   true,
 	})
 	if err != nil {
 		return err
@@ -108,6 +111,14 @@ func (a app) runSync(args []string) error {
 		}
 		publish = "pr"
 	}
+	if recordRef != "" {
+		if _, _, ok := parseCLIChangeRecordRef(recordRef); !ok {
+			return a.maybeJSONError(jsonOut, fmt.Errorf("--record must be domain/record-id using lowercase kebab-case parts"))
+		}
+		if publish != "pr" {
+			return a.maybeJSONError(jsonOut, fmt.Errorf("--record requires governed pull-request publication via --push or --publish pr"))
+		}
+	}
 	entries, err := a.collectSyncEntries(home, manifestName, umbrellaRoot, scope)
 	if err != nil {
 		return a.maybeJSONError(jsonOut, err)
@@ -153,6 +164,7 @@ func (a app) runSync(args []string) error {
 		Publish:      publish,
 		DryRun:       printOnly,
 		Message:      message,
+		RecordRef:    recordRef,
 		Visibility:   visibility,
 		SessionHolds: sessionHolds,
 		PRPublisher:  a.pullRequestPublisher(home),
@@ -273,7 +285,7 @@ type syncCommandReport struct {
 
 func (a app) printSyncUsage() {
 	fmt.Fprintln(a.stderr, `Usage of my sync:
-  my sync [--backend auto|gnit|builtin] [--push|--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--verbose] [--json]
+  my sync [--backend auto|gnit|builtin] [--push|--publish auto|never|direct|pr] [--record DOMAIN/ID] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--verbose] [--json]
 
 Synchronizes registered My AI repositories in both directions. The default
 backend uses Gnit when the umbrella is a Gnit workspace; otherwise My AI uses a

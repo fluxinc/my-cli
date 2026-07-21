@@ -45,6 +45,16 @@ jobs:
           path: attestations
           persist-credentials: false
 
+      - name: Check out authoritative linked records
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: ${{ vars.MY_RECORD_REPOSITORY }}
+          ref: ${{ vars.MY_RECORD_BRANCH }}
+          token: ${{ secrets.MY_RECORD_READ_TOKEN }}
+          fetch-depth: 0
+          path: records
+          persist-credentials: false
+
       - name: Check out the immutable trusted validator
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -78,13 +88,16 @@ jobs:
           PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           PROTECTED_REPOSITORY: ${{ github.repository }}
           PROTECTED_MOUNT: ${{ vars.MY_GOVERNANCE_MOUNT }}
           ATTESTATION_REPOSITORY: ${{ vars.MY_ATTESTATION_REPOSITORY }}
+          RECORD_REPOSITORY: ${{ vars.MY_RECORD_REPOSITORY }}
         run: |
           set -euo pipefail
           manifest_base="$(git -C manifest rev-parse HEAD^{commit})"
           attestation_base="$(git -C attestations rev-parse HEAD^{commit})"
+          record_base="$(git -C records rev-parse HEAD^{commit})"
           "$RUNNER_TEMP/my-governance" governance check \
             --repo proposed \
             --repository "$PROTECTED_REPOSITORY" \
@@ -95,6 +108,10 @@ jobs:
             --attestation-repo attestations \
             --attestation-repository "$ATTESTATION_REPOSITORY" \
             --attestation-base "$attestation_base" \
+            --record-repo records \
+            --record-repository "$RECORD_REPOSITORY" \
+            --record-base "$record_base" \
+            --pull-request-number "$PR_NUMBER" \
             --mount "$PROTECTED_MOUNT" \
             --actor-id "$PR_AUTHOR_ID" \
             --actor-login "$PR_AUTHOR_LOGIN" \

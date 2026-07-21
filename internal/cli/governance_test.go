@@ -129,7 +129,7 @@ jobs:
           [[ "$MY_CLI_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           git -C my-cli rev-parse HEAD^{commit}
           go build ./cmd/my
-          "$RUNNER_TEMP/my-governance" governance check --actor-id ${{ github.event.pull_request.user.id }} --actor-login ${{ github.event.pull_request.user.login }} --manifest-base origin/main --attestation-repository example/handbook --attestation-base origin/main
+          "$RUNNER_TEMP/my-governance" governance check --actor-id ${{ github.event.pull_request.user.id }} --actor-login ${{ github.event.pull_request.user.login }} --manifest-base origin/main --attestation-repository example/handbook --attestation-base origin/main --pull-request-number ${{ github.event.pull_request.number }} --record-repository example/handbook --record-base origin/main
 `
 	codeowners := "/.github/workflows/ @example/security-admins\n/.github/CODEOWNERS @example/security-admins\n/decisions/ @example/security-admins\n"
 	content := func(value string) []byte {

@@ -1,6 +1,6 @@
 # Governed organizations completion: hardening, acceptance CI, and dogfood
 
-Status: active — S1-S5 complete; S6 linked-record CI next
+Status: active — S1-S6 complete; S7 documentation truth pass next
 
 Design source of truth: [2026-07-16-governed-organizations](2026-07-16-governed-organizations.md).
 This plan closes the gap between mechanism-complete code and a
@@ -204,13 +204,17 @@ Files: `internal/cli/contract.go`, `internal/cli/admin.go`, tests
   retained for one predictable command contract; direct-publish alignment is
   a later UX question, not a governance release blocker.
 
-### S6 — Linked-record CI (step 6, G)
+### S6 — Linked-record CI (step 6, G) — complete
 
 Files: `internal/manifest/manifest.go` (change_record_rules + validation),
 `internal/governance/check.go`, `examples/governance/`, tests.
 
 - Trailer parsing, reciprocal PR-URL matching, merged-record resolution
   through the domain repository; ships only when dogfood-solid.
+- The local publisher may open the source PR after validating its trailer but
+  before the record exists; CI alone receives the authoritative PR number and
+  requires the reciprocal record at a separately fetched current trusted
+  default-branch commit. This remains conditional on the S8 dogfood path.
 
 ### S7 — Docs truth pass and revocation-plane framing (H)
 

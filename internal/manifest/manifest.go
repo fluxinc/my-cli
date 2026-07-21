@@ -86,6 +86,7 @@ type Governance struct {
 	Policies      []Policy                `json:"policies,omitempty"`
 	Attestations  AttestationStore        `json:"attestations,omitzero"`
 	RecordDomains []RecordDomain          `json:"record_domains,omitempty"`
+	ChangeRecords []ChangeRecordRule      `json:"change_record_rules,omitempty"`
 	Protections   []Protection            `json:"protections,omitempty"`
 }
 
@@ -147,6 +148,16 @@ type RecordDomain struct {
 	AdminOverride bool   `json:"admin_override,omitempty"`
 	Review        string `json:"review"`
 	Publish       string `json:"publish"`
+}
+
+// ChangeRecordRule requires governed changes on one source surface to link to
+// a merged record in an existing record domain. Empty Paths covers the entire
+// source mount; otherwise any changed path under a listed prefix activates the
+// rule. The manifest control plane is named by the reserved mount @manifest.
+type ChangeRecordRule struct {
+	Mount        string   `json:"mount"`
+	Paths        []string `json:"paths,omitempty"`
+	RecordDomain string   `json:"record_domain"`
 }
 
 // DataBinding maps one stable business data type to the mount or service that
@@ -1127,6 +1138,43 @@ func validateGovernance(g Governance, mounts []Mount, mountIDs map[string]bool, 
 		}
 		if portableIncludePath(domain.Path) {
 			seenProtections[domain.Mount+"\x00"+domain.Path] = true
+		}
+	}
+	domainsByID := map[string]RecordDomain{}
+	for _, domain := range g.RecordDomains {
+		domainsByID[domain.ID] = domain
+	}
+	seenChangeRules := map[string]bool{}
+	changeRecordMounts := map[string]string{}
+	for i, rule := range g.ChangeRecords {
+		prefix := fmt.Sprintf("governance.change_record_rules[%d]", i)
+		if rule.Mount != "@manifest" && !mountIDs[rule.Mount] {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s.mount references unknown mount %q", prefix, rule.Mount))
+		}
+		domain, domainOK := domainsByID[rule.RecordDomain]
+		if !domainOK {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s.record_domain references unknown domain %q", prefix, rule.RecordDomain))
+		} else if previous := changeRecordMounts[rule.Mount]; previous != "" && previous != domain.Mount {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s.record_domain must use record mount %q already selected for source mount %q", prefix, previous, rule.Mount))
+		} else {
+			changeRecordMounts[rule.Mount] = domain.Mount
+		}
+		key := rule.Mount + "\x00" + rule.RecordDomain
+		if seenChangeRules[key] {
+			result.Errors = append(result.Errors, fmt.Sprintf("duplicate governance change-record rule for mount %q and domain %q", rule.Mount, rule.RecordDomain))
+		}
+		seenChangeRules[key] = true
+		for _, path := range rule.Paths {
+			if !portableIncludePath(path) {
+				result.Errors = append(result.Errors, fmt.Sprintf("%s.paths entry %q must be a relative path that stays inside the mount", prefix, path))
+				continue
+			}
+			if domainOK && rule.Mount == domain.Mount && (pathIncludes(path, domain.Path) || pathIncludes(domain.Path, path)) {
+				result.Errors = append(result.Errors, fmt.Sprintf("%s.paths entry %q overlaps its record domain path %q", prefix, path, domain.Path))
+			}
+		}
+		if domainOK && rule.Mount == domain.Mount && len(rule.Paths) == 0 {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s.paths is required when source and record domain share mount %q", prefix, rule.Mount))
 		}
 	}
 	attestationsAppendOnly := false

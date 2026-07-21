@@ -171,6 +171,15 @@
         "publish": "auto-pr"
       }
     ],
+    "change_record_rules": [
+      {
+        "mount": "handbook",
+        "paths": [
+          "projects"
+        ],
+        "record_domain": "decisions"
+      }
+    ],
     "protections": [
       {
         "mount": "handbook",

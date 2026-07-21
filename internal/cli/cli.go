@@ -220,7 +220,7 @@ Usage:
   my init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
   my publish [--manifest NAME] [--home DIR] [--print] [--json]
   my compile --role ROLE [--manifest NAME] [--home DIR]
-  my sync [--backend auto|gnit|builtin] [--push|--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--no-derived] [--print] [--verbose] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
+  my sync [--backend auto|gnit|builtin] [--push|--publish auto|never|direct|pr] [--record DOMAIN/ID] [--scope all|local|content|manifest|repos] [--no-derived] [--print] [--verbose] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
   my session start [--slug SLUG] [--json] [--print] [harness] [-- harness args...]
   my session join <session-id> <harness> [-- harness args...]
   my session resume [session-id] [harness] [--json]
@@ -296,7 +296,7 @@ Usage:
   my access status [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my access monitor install|uninstall|run [--manifest NAME] [--home DIR] [--umbrella DIR]
   my policy list|show|status|accept|acceptances|supersede [ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
-  my governance check --repo DIR --repository OWNER/REPO --base REF --head REF --manifest-repo DIR --manifest-base REF --mount ID|@manifest --actor-id ID --actor-login LOGIN [--attestation-repo DIR --attestation-repository OWNER/REPO --attestation-base REF] [--json]
+  my governance check --repo DIR --repository OWNER/REPO --base REF --head REF --manifest-repo DIR --manifest-base REF --mount ID|@manifest --actor-id ID --actor-login LOGIN [--attestation-repo DIR --attestation-repository OWNER/REPO --attestation-base REF] [--record-repo DIR --record-repository OWNER/REPO --record-base REF --pull-request-number N] [--json]
   my governance audit [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my version`)
 }

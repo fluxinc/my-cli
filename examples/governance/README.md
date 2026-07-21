@@ -13,13 +13,18 @@ approved pull request. Configure these repository variables:
 - `MY_ATTESTATION_REPOSITORY`: the `owner/repository` declared by the
   manifest's `governance.attestations.mount`; and
 - `MY_ATTESTATION_BRANCH`: that repository's protected default branch.
+- `MY_RECORD_REPOSITORY`: the `owner/repository` containing record domains
+  named by `governance.change_record_rules`; and
+- `MY_RECORD_BRANCH`: that repository's protected default branch.
 
 `MY_MANIFEST_READ_TOKEN` must be a read-only GitHub App or fine-grained token
 that can read the private manifest repository. `MY_ATTESTATION_READ_TOKEN`
 must likewise have read-only contents access to the authoritative attestation
 repository. A single least-privilege GitHub App token may fill both secrets
-when its installation is scoped to both repositories. Do not store a literal
-token in the workflow or manifest.
+when its installation is scoped to both repositories. `MY_RECORD_READ_TOKEN`
+likewise needs read-only contents access to the authoritative record repository.
+One least-privilege installation may fill all three secrets when scoped to all
+three repositories. Do not store a literal token in the workflow or manifest.
 
 Create an active default-branch ruleset with no bypass actors that requires:
 
@@ -42,6 +47,14 @@ default-branch tip. A pull request that contains only the author's own current
 attestation may bootstrap itself; bundling unrelated content does not. Policies
 scoped to manifest roles remain local launch gates until the manifest has an
 authoritative provider-identity-to-role mapping.
+
+`governance.change_record_rules` can require source changes to carry a
+`My-Record: <domain>/<record-id>` commit trailer. The workflow passes the pull
+request number from the trusted event payload; CI then reads the record only
+from the fetched record default-branch tip and requires its `sources` to contain
+`github-pr:<owner>/<repository>#<number>`. This intentionally supports the
+ordering: open source PR, merge its additive reciprocal record, then let source
+CI turn green.
 
 For every `governance.record_domains` entry with `"review":"codeowner"`, add
 the domain path to CODEOWNERS (the sample includes `/decisions/`). The audit

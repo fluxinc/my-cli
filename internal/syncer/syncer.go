@@ -51,6 +51,7 @@ type Options struct {
 	GnitRoot     string
 	DryRun       bool
 	Message      string
+	RecordRef    string
 	Runner       Runner
 	DirRunner    DirRunner
 	Visibility   VisibilityFunc
@@ -69,6 +70,8 @@ type PRRequest struct {
 	Dirty            []string
 	Changed          []string
 	FileContents     map[string][]byte
+	RecordRef        string
+	ForceCommit      bool
 	Message          string
 	DryRun           bool
 	PreserveCheckout bool
@@ -532,7 +535,7 @@ func reconcile(in *inspection, all []inspection, opts Options, runner Runner) {
 		result := opts.PRPublisher(PRRequest{
 			Entry: in.entry, Branch: in.result.Branch, Upstream: in.upstream, Head: in.result.Head,
 			Dirty: append([]string(nil), in.dirty...), Changed: append([]string(nil), in.changed...),
-			Message: opts.Message, DryRun: opts.DryRun,
+			Message: opts.Message, RecordRef: opts.RecordRef, DryRun: opts.DryRun,
 		})
 		in.result.Status = result.Status
 		in.result.Direction = "outbound"

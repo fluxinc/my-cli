@@ -681,6 +681,9 @@ func TestValidateManifestAllowsGovernance(t *testing.T) {
         "publish": "auto-pr"
       }
     ],
+    "change_record_rules": [
+      {"mount":"handbook","paths":["fleet"],"record_domain":"decisions"}
+    ],
     "protections": [
       {
         "mount": "handbook",
@@ -710,6 +713,9 @@ func TestValidateManifestAllowsGovernance(t *testing.T) {
 	protections := GovernanceProtections(doc.Governance)
 	if len(doc.Governance.RecordDomains) != 1 || len(protections) != 3 || protections[2].Paths[0] != "decisions" {
 		t.Fatalf("record domains/protections = %#v / %#v", doc.Governance.RecordDomains, protections)
+	}
+	if len(doc.Governance.ChangeRecords) != 1 || doc.Governance.ChangeRecords[0].RecordDomain != "decisions" {
+		t.Fatalf("change record rules = %#v", doc.Governance.ChangeRecords)
 	}
 
 	reserved := doc
@@ -789,6 +795,12 @@ func TestValidateManifestRejectsUnsafeGovernance(t *testing.T) {
       {"id":"duplicate","title":"Duplicate","mount":"handbook","path":"records","retention":"append-only","admin_override":true,"review":"standard","publish":"auto-pr"},
       {"id":"duplicate","title":"Overlap","mount":"handbook","path":"records/nested","retention":"no-delete","review":"standard","publish":"manual-pr"}
     ],
+    "change_record_rules": [
+      {"mount":"missing","paths":["../source"],"record_domain":"missing"},
+      {"mount":"handbook","record_domain":"duplicate"},
+      {"mount":"handbook","paths":["records"],"record_domain":"duplicate"},
+      {"mount":"handbook","paths":["other"],"record_domain":"duplicate"}
+    ],
     "protections": [
       {
         "mount": "missing",
@@ -815,6 +827,12 @@ func TestValidateManifestRejectsUnsafeGovernance(t *testing.T) {
 		"governance.record_domains[1].admin_override must be false for append-only records",
 		"duplicate governance record domain id",
 		"governance record domain paths overlap",
+		"governance.change_record_rules[0].mount references unknown mount",
+		"governance.change_record_rules[0].record_domain references unknown domain",
+		"governance.change_record_rules[0].paths entry",
+		"governance.change_record_rules[1].paths is required",
+		"governance.change_record_rules[2].paths entry \"records\" overlaps",
+		"duplicate governance change-record rule",
 		"governance.protections[0].mode must be no-delete or append-only",
 		"required governance policies need an append-only protection",
 	} {

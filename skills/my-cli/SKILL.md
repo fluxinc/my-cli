@@ -325,6 +325,7 @@ my sync --publish direct --scope manifest  # publish reviewed manifest control-p
 my sync --no-derived             # skip derived guidance/MCP/skill reconcile after manifest changes
 my sync --publish never          # explicit local-only reconcile
 my sync --publish pr             # pre-check, push a topic branch, and open a governed PR
+my sync --push --record <domain>/<record-id> # link a governed source PR to its reciprocal record
 my policy list|show|status       # inspect exact policy bytes and acceptance state
 my policy accept <id> --yes      # queue evidence and attempt an attestation-only governed PR
 my policy acceptances [--json]   # report local, submitted, and merge-proven acceptances

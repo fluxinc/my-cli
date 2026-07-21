@@ -91,6 +91,200 @@ func TestCheckEnforcesRecordDomainImplicitRetention(t *testing.T) {
 	}
 }
 
+func TestCheckRequiresMergedReciprocalChangeRecord(t *testing.T) {
+	t.Run("missing trailer is denied", func(t *testing.T) {
+		f := newLinkedRecordFixture(t, "")
+		writeTestFile(t, filepath.Join(f.contentRepo, "software", "app.go"), "package app\n")
+		head := commitTestRepo(t, f.contentRepo, "change software")
+		input := f.input(head, "handbook", "example/handbook", "write")
+		input.PullRequestNumber = 42
+		input.RecordRepo, input.RecordRepository, input.RecordBaseRef = f.contentRepo, "example/handbook", f.contentBase
+		report, err := Check(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Allowed || !hasViolation(report, "change_record_missing", "") {
+			t.Fatalf("missing trailer report = %#v", report)
+		}
+	})
+
+	t.Run("merged reciprocal record permits source change", func(t *testing.T) {
+		record := linkedRecordMarkdown("2026-07-21-change", "github-pr:example/handbook#42")
+		f := newLinkedRecordFixture(t, record)
+		writeTestFile(t, filepath.Join(f.contentRepo, "software", "app.go"), "package app\n")
+		head := commitTestRepo(t, f.contentRepo, "change software\n\nMy-Record: decisions/2026-07-21-change")
+		input := f.input(head, "handbook", "example/handbook", "write")
+		input.PullRequestNumber = 42
+		input.RecordRepo, input.RecordRepository, input.RecordBaseRef = f.contentRepo, "example/handbook", f.contentBase
+		report, err := Check(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !report.Allowed || report.RecordCommit != f.contentBase {
+			t.Fatalf("reciprocal record report = %#v", report)
+		}
+	})
+
+	t.Run("record without authoritative PR source is denied", func(t *testing.T) {
+		record := linkedRecordMarkdown("2026-07-21-change", "github-pr:example/handbook#41")
+		f := newLinkedRecordFixture(t, record)
+		writeTestFile(t, filepath.Join(f.contentRepo, "software", "app.go"), "package app\n")
+		head := commitTestRepo(t, f.contentRepo, "change software\n\nMy-Record: decisions/2026-07-21-change")
+		input := f.input(head, "handbook", "example/handbook", "write")
+		input.PullRequestNumber = 42
+		input.RecordRepo, input.RecordRepository, input.RecordBaseRef = f.contentRepo, "example/handbook", f.contentBase
+		report, err := Check(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Allowed || !hasViolation(report, "change_record_reciprocity_missing", "decisions/2026-07-21-change.md") {
+			t.Fatalf("non-reciprocal record report = %#v", report)
+		}
+	})
+
+	t.Run("local publisher may open the source PR before record merge", func(t *testing.T) {
+		f := newLinkedRecordFixture(t, "")
+		writeTestFile(t, filepath.Join(f.contentRepo, "software", "app.go"), "package app\n")
+		head := commitTestRepo(t, f.contentRepo, "change software\n\nMy-Record: decisions/2026-07-21-change")
+		input := f.input(head, "handbook", "example/handbook", "write")
+		input.AllowPendingRecord = true
+		report, err := Check(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !report.Allowed || report.RecordCommit != "" {
+			t.Fatalf("pending local record report = %#v", report)
+		}
+	})
+}
+
+func TestCheckLinkedRecordAdversarialTrailerAndMergeStates(t *testing.T) {
+	t.Run("unmerged record is denied with PR proof present", func(t *testing.T) {
+		f := newLinkedRecordFixture(t, "")
+		writeTestFile(t, filepath.Join(f.contentRepo, "software", "app.go"), "package app\n")
+		head := commitTestRepo(t, f.contentRepo, "change software\n\nMy-Record: decisions/2026-07-21-change")
+		input := f.input(head, "handbook", "example/handbook", "write")
+		input.PullRequestNumber = 42
+		input.RecordRepo, input.RecordRepository, input.RecordBaseRef = f.contentRepo, "example/handbook", f.contentBase
+		report, err := Check(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Allowed || !hasViolation(report, "change_record_unmerged", "decisions/2026-07-21-change.md") {
+			t.Fatalf("unmerged record report = %#v", report)
+		}
+	})
+
+	t.Run("two distinct trailer ids for one domain are denied", func(t *testing.T) {
+		record := linkedRecordMarkdown("2026-07-21-change", "github-pr:example/handbook#42")
+		f := newLinkedRecordFixture(t, record)
+		writeTestFile(t, filepath.Join(f.contentRepo, "software", "app.go"), "package app\n")
+		_ = commitTestRepo(t, f.contentRepo, "change software\n\nMy-Record: decisions/2026-07-21-change")
+		writeTestFile(t, filepath.Join(f.contentRepo, "software", "other.go"), "package app\n")
+		head := commitTestRepo(t, f.contentRepo, "more software\n\nMy-Record: decisions/2026-07-21-other")
+		input := f.input(head, "handbook", "example/handbook", "write")
+		input.PullRequestNumber = 42
+		input.RecordRepo, input.RecordRepository, input.RecordBaseRef = f.contentRepo, "example/handbook", f.contentBase
+		report, err := Check(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Allowed || !hasViolation(report, "change_record_missing", "") {
+			t.Fatalf("duplicate trailer report = %#v", report)
+		}
+	})
+
+	t.Run("malformed trailer refs are treated as absent", func(t *testing.T) {
+		f := newLinkedRecordFixture(t, "")
+		writeTestFile(t, filepath.Join(f.contentRepo, "software", "app.go"), "package app\n")
+		head := commitTestRepo(t, f.contentRepo,
+			"change software\n\nMy-Record: Decisions/2026-07-21-Change\nMy-Record: decisions/../escape\nMy-Record: decisions/a/b")
+		input := f.input(head, "handbook", "example/handbook", "write")
+		input.PullRequestNumber = 42
+		input.RecordRepo, input.RecordRepository, input.RecordBaseRef = f.contentRepo, "example/handbook", f.contentBase
+		report, err := Check(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Allowed || !hasViolation(report, "change_record_missing", "") {
+			t.Fatalf("malformed trailer report = %#v", report)
+		}
+	})
+}
+
+func TestCheckReadsLinkedRecordFromExternalTrustedRepository(t *testing.T) {
+	f := newCheckFixture(t)
+	manifestPath := filepath.Join(f.manifestRepo, "manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc manifest.Document
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc.Mounts = append(doc.Mounts, manifest.Mount{ID: "records", Kind: "handbook", GitURL: "git@github.com:example/records.git", Mode: "required"})
+	doc.Governance.RecordDomains[0].Mount = "records"
+	doc.Governance.ChangeRecords = []manifest.ChangeRecordRule{{Mount: "handbook", Paths: []string{"software"}, RecordDomain: "decisions"}}
+	encoded, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, manifestPath, string(append(encoded, '\n')))
+	f.manifestBase = commitTestRepo(t, f.manifestRepo, "route decisions to records repository")
+	writeTestFile(t, filepath.Join(f.contentRepo, "software", ".keep"), "")
+	f.contentBase = commitTestRepo(t, f.contentRepo, "prepare software base")
+
+	recordsRepo := filepath.Join(f.root, "records")
+	writeTestFile(t, filepath.Join(recordsRepo, "decisions", "2026-07-21-change.md"), linkedRecordMarkdown("2026-07-21-change", "github-pr:example/handbook#42"))
+	initTestRepo(t, recordsRepo)
+	recordBase := gitOutput(t, recordsRepo, "rev-parse", "HEAD")
+
+	writeTestFile(t, filepath.Join(f.contentRepo, "software", "app.go"), "package app\n")
+	head := commitTestRepo(t, f.contentRepo, "change software\n\nMy-Record: decisions/2026-07-21-change")
+	input := f.input(head, "handbook", "example/handbook", "write")
+	input.PullRequestNumber = 42
+	input.RecordRepo = recordsRepo
+	input.RecordRepository = "example/records"
+	input.RecordBaseRef = recordBase
+	report, err := Check(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Allowed || report.RecordCommit != recordBase {
+		t.Fatalf("external record report = %#v", report)
+	}
+	input.RecordRepository = "example/wrong"
+	if _, err := Check(input); err == nil || !strings.Contains(err.Error(), "does not match trusted mount repository") {
+		t.Fatalf("mismatched record repository error = %v", err)
+	}
+}
+
+func newLinkedRecordFixture(t *testing.T, recordBody string) checkFixture {
+	t.Helper()
+	f := newCheckFixture(t)
+	data, err := os.ReadFile(filepath.Join(f.manifestRepo, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := strings.Replace(string(data), `"protections": [`, `"change_record_rules": [
+      {"mount":"handbook","paths":["software"],"record_domain":"decisions"}
+    ],
+    "protections": [`, 1)
+	writeTestFile(t, filepath.Join(f.manifestRepo, "manifest.json"), updated)
+	f.manifestBase = commitTestRepo(t, f.manifestRepo, "require linked change records")
+	writeTestFile(t, filepath.Join(f.contentRepo, "software", ".keep"), "")
+	if recordBody != "" {
+		writeTestFile(t, filepath.Join(f.contentRepo, "decisions", "2026-07-21-change.md"), recordBody)
+	}
+	f.contentBase = commitTestRepo(t, f.contentRepo, "prepare linked record base")
+	return f
+}
+
+func linkedRecordMarkdown(id, source string) string {
+	return fmt.Sprintf("---\nschema_version: 1\nid: %s\ndomain: decisions\ndate: 2026-07-21\ntitle: Change record\nsources:\n  - %s\n---\n\n# Change record\n", id, source)
+}
+
 func (f checkFixture) input(head, mount, repository string, permission string) CheckInput {
 	return CheckInput{
 		Repo: f.contentRepo, Repository: repository, BaseRef: f.contentBase, HeadRef: head,

@@ -46,6 +46,23 @@ func (a app) publishPullRequest(home string, request syncer.PRRequest, allowManu
 	if err != nil {
 		return fail("manifest_unavailable", err.Error(), "my manifests sync "+request.Entry.Manifest)
 	}
+	changedPaths := append(append([]string(nil), request.Dirty...), request.Changed...)
+	recordDomain, recordRequired, err := requiredChangeRecordDomain(doc.doc, request.Entry, changedPaths)
+	if err != nil {
+		return fail("change_record_rule_invalid", err.Error(), "my manifests validate "+request.Entry.Manifest)
+	}
+	if recordRequired {
+		domain, _, ok := parseCLIChangeRecordRef(request.RecordRef)
+		if !ok || domain != recordDomain {
+			return fail(
+				"change_record_required",
+				fmt.Sprintf("governed changes require --record %s/<record-id>", recordDomain),
+				"my sync --push --record "+recordDomain+"/<record-id>",
+			)
+		}
+		request.Message = withChangeRecordTrailer(request.Message, request.RecordRef)
+		request.ForceCommit = true
+	}
 	if request.Entry.Role != "manifest" {
 		domains := changedRecordDomains(doc.doc, request.Entry.ID, append(append([]string(nil), request.Dirty...), request.Changed...))
 		for _, domain := range domains {
@@ -97,7 +114,7 @@ func (a app) publishPullRequest(home string, request syncer.PRRequest, allowManu
 			BaseRef: request.Upstream, HeadRef: prospective.Commit,
 			ManifestRepo: doc.ref.LocalPath, ManifestBaseRef: manifestBase,
 			Mount: mount, ActorID: actor.ID, ActorLogin: actor.Login,
-			Runner: governancePRRunner(publishRunner, prospective),
+			AllowPendingRecord: true, Runner: governancePRRunner(publishRunner, prospective),
 		}
 		if err := populateAttestationCheckInput(home, request.Entry.UmbrellaRoot, doc, repository, &checkInput); err != nil {
 			return fail("attestation_base_unavailable", err.Error(), "my refresh --manifest "+request.Entry.Manifest)
@@ -141,6 +158,9 @@ func (a app) publishPullRequest(home string, request syncer.PRRequest, allowManu
 	}
 	baseBranch := pullRequestBaseBranch(request.Upstream, request.Branch)
 	body := fmt.Sprintf("Created by `my sync` from governed organization `%s`.\n\nTrusted manifest commit: `%s`\nProposed commit: `%s`\n\nThe repository's required governance check and review rules remain authoritative.", doc.doc.Organization.ID, manifestBase, prospective.Commit)
+	if recordRequired {
+		body += "\n\nMy-Record: " + request.RecordRef
+	}
 	prURL, found, err := findOpenPullRequest(publishRunner, repository, branch, baseBranch, actor.ID, prospective.Commit)
 	if err != nil {
 		return fail("pr_existing_proof_failed", err.Error(), "gh pr list --repo "+repository+" --head "+branch)
@@ -375,11 +395,11 @@ func buildProspectiveCommit(request syncer.PRRequest) (prospectiveCommit, error)
 		_ = cleanup()
 		return prospectiveCommit{}, err
 	}
-	if tree == baseTree && len(request.Changed) == 0 {
+	if tree == baseTree && len(request.Changed) == 0 && !request.ForceCommit {
 		_ = cleanup()
 		return prospectiveCommit{}, fmt.Errorf("no publishable changes inside declared content paths")
 	}
-	if len(request.Dirty) == 0 && len(request.FileContents) == 0 {
+	if len(request.Dirty) == 0 && len(request.FileContents) == 0 && !request.ForceCommit {
 		// Existing ahead commits are already the exact proposal. Do not add an
 		// empty synthetic commit merely to obtain a PR head.
 		return prospectiveCommit{Commit: request.Head, Tree: tree, Repo: request.Entry.LocalPath, GitEnv: env, Cleanup: cleanup}, nil
@@ -396,6 +416,67 @@ func buildProspectiveCommit(request syncer.PRRequest) (prospectiveCommit, error)
 		return prospectiveCommit{}, err
 	}
 	return prospectiveCommit{Commit: commit, Tree: tree, Repo: request.Entry.LocalPath, GitEnv: env, Cleanup: cleanup}, nil
+}
+
+func requiredChangeRecordDomain(doc manifest.Document, entry syncer.Entry, paths []string) (string, bool, error) {
+	mount := entry.ID
+	if entry.Role == "manifest" {
+		mount = governancecheck.ManifestSurface
+	}
+	var domain string
+	for _, rule := range doc.Governance.ChangeRecords {
+		if rule.Mount != mount || !cliChangeRecordRuleMatches(rule, paths) {
+			continue
+		}
+		if domain != "" && domain != rule.RecordDomain {
+			return "", false, fmt.Errorf("changed paths require multiple linked-record domains; split the publication")
+		}
+		domain = rule.RecordDomain
+	}
+	return domain, domain != "", nil
+}
+
+func cliChangeRecordRuleMatches(rule manifest.ChangeRecordRule, paths []string) bool {
+	if len(paths) == 0 {
+		return false
+	}
+	if len(rule.Paths) == 0 {
+		return true
+	}
+	for _, path := range paths {
+		path = filepath.ToSlash(filepath.Clean(path))
+		for _, prefix := range rule.Paths {
+			prefix = strings.Trim(filepath.ToSlash(filepath.Clean(prefix)), "/")
+			if path == prefix || strings.HasPrefix(path, prefix+"/") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func parseCLIChangeRecordRef(value string) (string, string, bool) {
+	parts := strings.Split(strings.TrimSpace(value), "/")
+	if len(parts) != 2 || !portableKebab(parts[0]) || !portableKebab(parts[1]) {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
+
+func withChangeRecordTrailer(message, ref string) string {
+	var lines []string
+	for _, line := range strings.Split(strings.TrimSpace(message), "\n") {
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 && strings.EqualFold(strings.TrimSpace(parts[0]), "My-Record") {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	message = strings.TrimSpace(strings.Join(lines, "\n"))
+	if message == "" {
+		message = "Publish governed changes"
+	}
+	return message + "\n\nMy-Record: " + ref
 }
 
 func portableProspectivePath(path string) bool {

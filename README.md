@@ -396,6 +396,13 @@ Governed manifests can also opt generic additive records into exact mount paths:
         "review": "codeowner",
         "publish": "auto-pr"
       }
+    ],
+    "change_record_rules": [
+      {
+        "mount": "handbook",
+        "paths": ["projects"],
+        "record_domain": "decisions"
+      }
     ]
   }
 }
@@ -409,6 +416,7 @@ my record get decisions 2026-07-17-choose-safe-default
 my record outbox
 my record reconcile
 my record flush [--include-manual]
+my sync --push --record decisions/2026-07-17-choose-safe-default
 ```
 
 `add` durably creates an intent-to-add Markdown record, then appends a local
@@ -420,6 +428,11 @@ rebuild a missing queue item from unpublished Git state after a crash. A
 verified remote branch and PR move an item to `submitted`, not `merged`; the
 outbox never claims repository acceptance prematurely and never copies record
 content outside its governed mount.
+When `change_record_rules` covers a source path, `my sync --record` writes a
+`My-Record: <domain>/<id>` trailer into the proposed commit. CI uses the
+authoritative pull-request number and accepts the source change only after the
+named record is merged and reciprocally cites
+`github-pr:<owner>/<repository>#<number>` in `sources`.
 
 ### Catalog and customer records
 
@@ -587,8 +600,8 @@ indexed in [docs/plans/](docs/plans/README.md):
   local/submitted/merge-proven reporting, trusted-branch CI enforcement for
   universal policies, and append-only administrative supersession.
   Umbrella-root contract authoring now proposes isolated manifest PRs without
-  dirtying the sync-managed cache. Linked-record CI and private-manifest
-  dogfood remain before release.
+  dirtying the sync-managed cache. Reciprocal linked-record CI is implemented
+  and remains conditional on private-manifest dogfood before release.
   Plans: [governed organizations](docs/plans/2026-07-16-governed-organizations.md)
   and [completion gates](docs/plans/2026-07-21-governed-organizations-completion.md).
 - **Shipped (v0.35.0) — dogfood ergonomics audit.** A reviewed two-agent audit

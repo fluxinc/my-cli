@@ -1192,6 +1192,63 @@ func TestGovernedSyncLocalPrecheckDeniesForgedAcceptanceAndDirectPush(t *testing
 	}
 }
 
+func TestGovernedSyncRecordTrailerOpensSourcePRBeforeRecordMerge(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	doc, manifestPath, err := manifest.LoadDocument(f.manifestCache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc.Governance.Policies[0].Acceptance = "optional"
+	doc.Governance.ChangeRecords = []manifest.ChangeRecordRule{
+		{Mount: "handbook", Paths: []string{"projects"}, RecordDomain: "decisions"},
+	}
+	if err := manifest.SaveDocument(manifestPath, doc); err != nil {
+		t.Fatal(err)
+	}
+	commitCLIGit(t, f.manifestCache, "require source change records")
+	runCLIGit(t, f.manifestCache, "push", "-q", "origin", "HEAD:master")
+	remote, base := preparePolicyFixtureRemote(t, f)
+	f.configureGovernedOperator(t)
+	writeCLITestFile(t, filepath.Join(f.handbook, "projects", "app.md"), "# App\n")
+
+	state := &governedPRRunnerState{remote: remote}
+	newApp := func(stdout, stderr *bytes.Buffer) app {
+		return app{
+			stdout: stdout, stderr: stderr, accessRunner: governedAccessRunner(false),
+			publishRunner: state.run,
+		}
+	}
+	baseArgs := []string{
+		"my", "sync", "--push", "--scope", "content", "--manifest", "acme", "--home", f.home,
+		"--umbrella", f.umbrellaRoot, "--message", "Change software",
+	}
+	var missingOut, missingErr bytes.Buffer
+	missing := newApp(&missingOut, &missingErr)
+	if err := missing.run(baseArgs); err == nil || !strings.Contains(missingOut.String(), "--record decisions/<record-id>") {
+		t.Fatalf("missing record error=%v\nstdout=%s\nstderr=%s", err, missingOut.String(), missingErr.String())
+	}
+	if state.created {
+		t.Fatal("source PR opened without required record reference")
+	}
+
+	var stdout, stderr bytes.Buffer
+	a := newApp(&stdout, &stderr)
+	args := append(append([]string{}, baseArgs...), "--record", "decisions/2026-07-21-change")
+	if err := a.run(args); err != nil {
+		t.Fatalf("sync with record: %v\nstdout=%s\nstderr=%s", err, stdout.String(), stderr.String())
+	}
+	if !state.created || state.commit == "" {
+		t.Fatalf("source PR not created: %#v\n%s", state, stdout.String())
+	}
+	message := gitCLIOutput(t, remote, "show", "-s", "--format=%B", state.commit)
+	if !strings.Contains(message, "My-Record: decisions/2026-07-21-change") {
+		t.Fatalf("proposal commit lacks record trailer:\n%s", message)
+	}
+	if got := strings.TrimSpace(gitCLIOutput(t, f.handbook, "rev-parse", "refs/heads/master")); got != base {
+		t.Fatalf("protected base moved: %s != %s", got, base)
+	}
+}
+
 func TestGovernedPRProofFailureLeavesAllLocalBytesAndChangesInPlace(t *testing.T) {
 	f := newPolicyTestFixture(t)
 	remote, baseHead := preparePolicyFixtureRemote(t, f)
@@ -1308,5 +1365,22 @@ func TestProspectiveCommitIsDeterministicAndReusesExistingAheadHead(t *testing.T
 	defer prospective.Cleanup()
 	if prospective.Commit != ahead {
 		t.Fatalf("ahead-only publish added a synthetic empty commit: %s != %s", prospective.Commit, ahead)
+	}
+	forced := aheadRequest
+	forced.ForceCommit = true
+	forced.Message = "Link change record\n\nMy-Record: decisions/2026-07-21-change"
+	linked, err := buildProspectiveCommit(forced)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer linked.Cleanup()
+	if linked.Commit == ahead {
+		t.Fatal("record-linked ahead proposal did not gain a trailer commit")
+	}
+	if parent := strings.TrimSpace(gitCLIOutput(t, repo, "rev-parse", linked.Commit+"^")); parent != ahead {
+		t.Fatalf("record trailer commit parent = %s, want %s", parent, ahead)
+	}
+	if message := gitCLIOutput(t, repo, "show", "-s", "--format=%B", linked.Commit); !strings.Contains(message, "My-Record: decisions/2026-07-21-change") {
+		t.Fatalf("record trailer commit message = %q", message)
 	}
 }

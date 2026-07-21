@@ -14,6 +14,7 @@ import (
 
 	"github.com/fluxinc/my-cli/internal/access"
 	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/record"
 )
 
 const ManifestSurface = "@manifest"
@@ -31,6 +32,11 @@ type CheckInput struct {
 	AttestationRepo       string
 	AttestationRepository string
 	AttestationBaseRef    string
+	RecordRepo            string
+	RecordRepository      string
+	RecordBaseRef         string
+	PullRequestNumber     int64
+	AllowPendingRecord    bool
 	Mount                 string
 	ActorID               int64
 	ActorLogin            string
@@ -47,6 +53,7 @@ type Report struct {
 	ManifestBaseRef    string      `json:"manifest_base_ref"`
 	ManifestCommit     string      `json:"manifest_commit"`
 	AttestationCommit  string      `json:"attestation_commit,omitempty"`
+	RecordCommit       string      `json:"record_commit,omitempty"`
 	ActorID            int64       `json:"actor_id"`
 	ActorLogin         string      `json:"actor_login"`
 	ActorPermission    string      `json:"actor_permission"`
@@ -170,6 +177,12 @@ func Check(input CheckInput) (Report, error) {
 		}
 		report.AttestationCommit = attestationCommit
 		report.Violations = append(report.Violations, acceptanceViolations...)
+		recordViolations, recordCommit, err := validateLinkedChangeRecord(input, doc, repository)
+		if err != nil {
+			return Report{}, err
+		}
+		report.RecordCommit = recordCommit
+		report.Violations = append(report.Violations, recordViolations...)
 		report.CheckedProtections = 1
 		report.Allowed = len(report.Violations) == 0
 		return report, nil
@@ -216,6 +229,12 @@ func Check(input CheckInput) (Report, error) {
 	}
 	report.AttestationCommit = attestationCommit
 	report.Violations = append(report.Violations, acceptanceViolations...)
+	recordViolations, recordCommit, err := validateLinkedChangeRecord(input, doc, repository)
+	if err != nil {
+		return Report{}, err
+	}
+	report.RecordCommit = recordCommit
+	report.Violations = append(report.Violations, recordViolations...)
 	sort.Slice(report.Violations, func(i, j int) bool {
 		if report.Violations[i].Commit != report.Violations[j].Commit {
 			return report.Violations[i].Commit < report.Violations[j].Commit
@@ -227,6 +246,210 @@ func Check(input CheckInput) (Report, error) {
 	})
 	report.Allowed = len(report.Violations) == 0
 	return report, nil
+}
+
+func validateLinkedChangeRecord(input CheckInput, doc manifest.Document, repository string) ([]Violation, string, error) {
+	paths, err := changedPaths(input.Runner, input.Repo, input.BaseRef, input.HeadRef)
+	if err != nil {
+		return nil, "", err
+	}
+	required := map[string]bool{}
+	for _, rule := range doc.Governance.ChangeRecords {
+		if rule.Mount != input.Mount || !changeRecordRuleMatches(rule, paths) {
+			continue
+		}
+		required[rule.RecordDomain] = true
+	}
+	if len(required) == 0 {
+		return nil, "", nil
+	}
+	refs, err := changeRecordTrailers(input.Runner, input.Repo, input.BaseRef, input.HeadRef)
+	if err != nil {
+		return nil, "", err
+	}
+	byDomain := map[string][]string{}
+	for _, ref := range refs {
+		domain, id, ok := parseChangeRecordRef(ref)
+		if ok {
+			byDomain[domain] = appendUnique(byDomain[domain], id)
+		}
+	}
+	var violations []Violation
+	for domain := range required {
+		ids := byDomain[domain]
+		if len(ids) != 1 {
+			message := fmt.Sprintf("governed change requires exactly one My-Record: %s/<record-id> trailer", domain)
+			if len(ids) > 1 {
+				message = fmt.Sprintf("governed change has multiple My-Record trailers for domain %s", domain)
+			}
+			violations = append(violations, Violation{
+				ReasonCode: "change_record_missing", Mode: "linked-record", Commit: input.HeadRef, Message: message,
+			})
+		}
+	}
+	if len(violations) != 0 || input.AllowPendingRecord {
+		return violations, "", nil
+	}
+	if input.PullRequestNumber <= 0 {
+		return nil, "", fmt.Errorf("authoritative pull request number is required for linked-record enforcement")
+	}
+
+	var targetMount string
+	for domain := range required {
+		recordDomain, ok := recordDomainByID(doc.Governance.RecordDomains, domain)
+		if !ok {
+			return nil, "", fmt.Errorf("trusted manifest record domain %q is missing", domain)
+		}
+		if targetMount == "" {
+			targetMount = recordDomain.Mount
+		} else if targetMount != recordDomain.Mount {
+			return nil, "", fmt.Errorf("linked-record rules for mount %q require multiple record repositories", input.Mount)
+		}
+	}
+	mount, ok := governanceMountByID(doc, targetMount)
+	if !ok {
+		return nil, "", fmt.Errorf("trusted manifest record mount %q is missing", targetMount)
+	}
+	targetRepository, ok := access.GitHubRepositoryName(mount.GitURL)
+	if !ok {
+		return nil, "", fmt.Errorf("trusted record mount does not name a GitHub repository")
+	}
+	repo, ref := input.RecordRepo, input.RecordBaseRef
+	declared, valid := access.GitHubRepositoryName(input.RecordRepository)
+	if !valid || !strings.EqualFold(declared, targetRepository) {
+		return nil, "", fmt.Errorf("record repository %q does not match trusted mount repository %q", input.RecordRepository, targetRepository)
+	}
+	if strings.TrimSpace(repo) == "" || strings.TrimSpace(ref) == "" {
+		return nil, "", fmt.Errorf("authoritative record repository checkout and trusted base ref are required")
+	}
+	commit, err := gitText(input.Runner, repo, "rev-parse", ref+"^{commit}")
+	if err != nil {
+		return nil, "", fmt.Errorf("resolve trusted record base ref: %w", err)
+	}
+	source := fmt.Sprintf("github-pr:%s#%d", repository, input.PullRequestNumber)
+	for domain := range required {
+		recordDomain, _ := recordDomainByID(doc.Governance.RecordDomains, domain)
+		id := byDomain[domain][0]
+		path := filepath.ToSlash(filepath.Join(recordDomain.Path, id+".md"))
+		data, readErr := gitBytes(input.Runner, repo, "show", commit+":"+path)
+		if readErr != nil {
+			violations = append(violations, Violation{
+				ReasonCode: "change_record_unmerged", Mode: "linked-record", Path: path, Commit: input.HeadRef,
+				Message: fmt.Sprintf("linked record %s/%s is not merged at the trusted record branch", domain, id),
+			})
+			continue
+		}
+		frontmatter, _ := record.SplitFrontmatter(data)
+		if record.FirstValue(frontmatter, "domain") != domain || record.FirstValue(frontmatter, "id") != id {
+			violations = append(violations, Violation{
+				ReasonCode: "change_record_invalid", Mode: "linked-record", Path: path, Commit: input.HeadRef,
+				Message: fmt.Sprintf("linked record %s/%s has mismatched immutable identity", domain, id),
+			})
+			continue
+		}
+		if !containsString(record.Values(frontmatter, "sources"), source) {
+			violations = append(violations, Violation{
+				ReasonCode: "change_record_reciprocity_missing", Mode: "linked-record", Path: path, Commit: input.HeadRef,
+				Message: fmt.Sprintf("linked record %s/%s does not cite authoritative source %s", domain, id, source),
+			})
+		}
+	}
+	return violations, commit, nil
+}
+
+func changedPaths(runner Runner, repo, base, head string) ([]string, error) {
+	out, err := gitBytes(runner, repo, "diff", "--name-only", "-z", base, head)
+	if err != nil {
+		return nil, fmt.Errorf("inspect governed change paths: %w", err)
+	}
+	var paths []string
+	for _, path := range strings.Split(string(out), "\x00") {
+		if path != "" {
+			paths = append(paths, filepath.ToSlash(path))
+		}
+	}
+	return paths, nil
+}
+
+func changeRecordRuleMatches(rule manifest.ChangeRecordRule, paths []string) bool {
+	if len(paths) == 0 {
+		return false
+	}
+	if len(rule.Paths) == 0 {
+		return true
+	}
+	for _, path := range paths {
+		for _, prefix := range rule.Paths {
+			prefix = strings.Trim(filepath.ToSlash(prefix), "/")
+			if path == prefix || strings.HasPrefix(path, prefix+"/") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func changeRecordTrailers(runner Runner, repo, base, head string) ([]string, error) {
+	out, err := gitBytes(runner, repo, "log", "--format=%B%x00", base+".."+head)
+	if err != nil {
+		return nil, fmt.Errorf("read governed proposal messages: %w", err)
+	}
+	var refs []string
+	for _, message := range strings.Split(string(out), "\x00") {
+		for _, line := range strings.Split(message, "\n") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 && strings.EqualFold(strings.TrimSpace(parts[0]), "My-Record") {
+				refs = appendUnique(refs, strings.TrimSpace(parts[1]))
+			}
+		}
+	}
+	return refs, nil
+}
+
+func parseChangeRecordRef(value string) (string, string, bool) {
+	parts := strings.Split(value, "/")
+	if len(parts) != 2 || !portableRecordPart(parts[0]) || !portableRecordPart(parts[1]) {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
+
+func portableRecordPart(value string) bool {
+	if value == "" || value[0] == '-' || value[len(value)-1] == '-' {
+		return false
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func recordDomainByID(domains []manifest.RecordDomain, id string) (manifest.RecordDomain, bool) {
+	for _, domain := range domains {
+		if domain.ID == id {
+			return domain, true
+		}
+	}
+	return manifest.RecordDomain{}, false
+}
+
+func appendUnique(values []string, value string) []string {
+	if !containsString(values, value) {
+		return append(values, value)
+	}
+	return values
+}
+
+func containsString(values []string, value string) bool {
+	for _, candidate := range values {
+		if candidate == value {
+			return true
+		}
+	}
+	return false
 }
 
 func validateUniversalPolicyAcceptances(input CheckInput, doc manifest.Document, repository string) ([]Violation, string, error) {
