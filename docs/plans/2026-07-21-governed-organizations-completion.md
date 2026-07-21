@@ -1,6 +1,6 @@
 # Governed organizations completion: hardening, acceptance CI, and dogfood
 
-Status: active — S1-S3 complete; S4 remote acceptance CI and supersession next
+Status: active — S1-S4 complete; S5 umbrella-root contract authoring next
 
 Design source of truth: [2026-07-16-governed-organizations](2026-07-16-governed-organizations.md).
 This plan closes the gap between mechanism-complete code and a
@@ -60,7 +60,8 @@ interval, the positive-access TTL, and the denial-confirmation policy.
 - **D. Append-only administrative supersession.** Revocation/supersession of
   an acceptance is a new append-only event written by a minimal admin verb;
   CI validates the actor's admin permission on those additions. Never
-  mutation, never deletion.
+  mutation, never deletion. A supersession permanently blocks re-acceptance of
+  the same version and digest; reinstatement requires a new policy version.
 - **E. Umbrella-root contract authoring.** `my admin contract add|remove`
   resolves the registered manifest checkout from `--manifest`/`--umbrella`
   (defaulting like other umbrella commands) and finishes with the governed PR
@@ -180,7 +181,7 @@ Files: `internal/cli/policy.go`, `internal/cli/record_domains.go`,
   not update the manifest-freshness TTL cache; later governed operations still
   perform their own freshness gate.
 
-### S4 — Remote acceptance CI and supersession (steps 3, B, D)
+### S4 — Remote acceptance CI and supersession (steps 3, B, D) — complete
 
 Files: `internal/governance/check.go`, `internal/cli/policy.go` (admin verb),
 `examples/governance/` (workflow + token scope docs), tests.

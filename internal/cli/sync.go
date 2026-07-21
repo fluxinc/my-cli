@@ -389,6 +389,7 @@ func (a app) collectSyncEntries(home, manifestName, umbrellaRoot, scope string) 
 				Kind:         "manifest",
 				GitURL:       doc.ref.GitURL,
 				LocalPath:    doc.ref.LocalPath,
+				UmbrellaRoot: umbrellaRoot,
 				ContentPaths: manifestControlPaths(),
 			})
 		}
@@ -405,6 +406,7 @@ func (a app) collectSyncEntries(home, manifestName, umbrellaRoot, scope string) 
 					Kind:         mount.Kind,
 					GitURL:       mount.GitURL,
 					LocalPath:    mount.LocalPath,
+					UmbrellaRoot: mount.UmbrellaRoot,
 					ContentPaths: syncContentPaths(mount),
 				})
 			}

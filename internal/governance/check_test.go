@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 type checkFixture struct {
@@ -299,8 +301,171 @@ func TestCheckRejectsMalformedAttestationManifestCommit(t *testing.T) {
 	}
 }
 
+func TestCheckRequiresMergedUniversalAcceptanceWithAttestationBootstrap(t *testing.T) {
+	t.Run("ordinary change without merged acceptance is denied", func(t *testing.T) {
+		f := universalPolicyFixture(t)
+		writeTestFile(t, filepath.Join(f.contentRepo, "decisions", "two.md"), "decision two\n")
+		head := commitTestRepo(t, f.contentRepo, "ordinary content change")
+		report, err := Check(f.input(head, "handbook", "example/handbook", "write"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Allowed || !hasViolation(report, "policy_acceptance_missing", "policy/attestations/17/release-policy/") {
+			t.Fatalf("missing acceptance report = %#v", report)
+		}
+	})
+
+	t.Run("attestation-only PR bootstraps its own author", func(t *testing.T) {
+		f := universalPolicyFixture(t)
+		path := filepath.Join(f.contentRepo, "policy", "attestations", "17", "release-policy", strings.Repeat("a", 64)+".json")
+		writeTestFile(t, path, attestationJSON(17, f.manifestBase))
+		head := commitTestRepo(t, f.contentRepo, "accept universal policy")
+		report, err := Check(f.input(head, "handbook", "example/handbook", "write"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !report.Allowed || len(report.Violations) != 0 {
+			t.Fatalf("bootstrap report = %#v", report)
+		}
+	})
+
+	t.Run("bootstrap cannot carry unrelated content", func(t *testing.T) {
+		f := universalPolicyFixture(t)
+		path := filepath.Join(f.contentRepo, "policy", "attestations", "17", "release-policy", strings.Repeat("a", 64)+".json")
+		writeTestFile(t, path, attestationJSON(17, f.manifestBase))
+		writeTestFile(t, filepath.Join(f.contentRepo, "decisions", "two.md"), "decision two\n")
+		head := commitTestRepo(t, f.contentRepo, "bundle acceptance and content")
+		report, err := Check(f.input(head, "handbook", "example/handbook", "write"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Allowed || !hasViolation(report, "policy_acceptance_missing", "policy/attestations/17/release-policy/") {
+			t.Fatalf("mixed bootstrap report = %#v", report)
+		}
+	})
+
+	t.Run("merged exact acceptance authorizes later content", func(t *testing.T) {
+		f := universalPolicyFixture(t)
+		path := filepath.Join(f.contentRepo, "policy", "attestations", "17", "release-policy", strings.Repeat("a", 64)+".json")
+		writeTestFile(t, path, attestationJSON(17, f.manifestBase))
+		f.contentBase = commitTestRepo(t, f.contentRepo, "merge universal acceptance")
+		writeTestFile(t, filepath.Join(f.contentRepo, "decisions", "two.md"), "decision two\n")
+		head := commitTestRepo(t, f.contentRepo, "later content change")
+		report, err := Check(f.input(head, "handbook", "example/handbook", "write"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !report.Allowed || report.AttestationCommit != f.contentBase {
+			t.Fatalf("merged acceptance report = %#v", report)
+		}
+	})
+}
+
+func TestCheckReadsUniversalAcceptanceFromExternalTrustedRepository(t *testing.T) {
+	f := universalPolicyFixture(t)
+	manifestPath := filepath.Join(f.manifestRepo, "manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc manifest.Document
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc.Mounts = append(doc.Mounts, manifest.Mount{ID: "code", Kind: "docs", GitURL: "git@github.com:example/code.git", Mode: "required"})
+	encoded, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, manifestPath, string(append(encoded, '\n')))
+	f.manifestBase = commitTestRepo(t, f.manifestRepo, "add governed code mount")
+
+	attestationPath := filepath.Join(f.contentRepo, "policy", "attestations", "17", "release-policy", strings.Repeat("a", 64)+".json")
+	writeTestFile(t, attestationPath, attestationJSON(17, f.manifestBase))
+	attestationBase := commitTestRepo(t, f.contentRepo, "merge external acceptance")
+	codeRepo := filepath.Join(f.root, "code")
+	writeTestFile(t, filepath.Join(codeRepo, "main.go"), "package main\n")
+	initTestRepo(t, codeRepo)
+	codeBase := gitOutput(t, codeRepo, "rev-parse", "HEAD")
+	writeTestFile(t, filepath.Join(codeRepo, "main.go"), "package main\n\nfunc main() {}\n")
+	codeHead := commitTestRepo(t, codeRepo, "change code")
+	input := CheckInput{
+		Repo: codeRepo, Repository: "example/code", BaseRef: codeBase, HeadRef: codeHead,
+		ManifestRepo: f.manifestRepo, ManifestBaseRef: f.manifestBase, Mount: "code",
+		AttestationRepo: f.contentRepo, AttestationRepository: "example/handbook", AttestationBaseRef: attestationBase,
+		ActorID: 17, ActorLogin: "operator", Runner: testGovernanceRunner("write", 17),
+	}
+	report, err := Check(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Allowed || report.AttestationCommit != attestationBase {
+		t.Fatalf("external acceptance report = %#v", report)
+	}
+	input.AttestationRepository = "example/wrong"
+	if _, err := Check(input); err == nil || !strings.Contains(err.Error(), "does not match trusted mount repository") {
+		t.Fatalf("wrong attestation repository error = %v", err)
+	}
+}
+
+func TestCheckRequiresAdminForSupersessionAndTreatsMergedEventAsRevoked(t *testing.T) {
+	f := universalPolicyFixture(t)
+	attestationPath := filepath.Join(f.contentRepo, "policy", "attestations", "17", "release-policy", strings.Repeat("a", 64)+".json")
+	writeTestFile(t, attestationPath, attestationJSON(17, f.manifestBase))
+	f.contentBase = commitTestRepo(t, f.contentRepo, "merge universal acceptance")
+	supersessionPath := filepath.Join(f.contentRepo, "policy", "attestations", "supersessions", "17", "release-policy", strings.Repeat("a", 64)+".json")
+	writeTestFile(t, supersessionPath, supersessionJSON(17, 17, f.manifestBase))
+	supersessionHead := commitTestRepo(t, f.contentRepo, "supersede universal acceptance")
+
+	report, err := Check(f.input(supersessionHead, "handbook", "example/handbook", "write"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Allowed || !hasViolation(report, "supersession_admin_required", "policy/attestations/supersessions/") {
+		t.Fatalf("non-admin supersession report = %#v", report)
+	}
+	report, err = Check(f.input(supersessionHead, "handbook", "example/handbook", "admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Allowed {
+		t.Fatalf("admin supersession report = %#v", report)
+	}
+
+	f.contentBase = supersessionHead
+	writeTestFile(t, filepath.Join(f.contentRepo, "decisions", "after-revocation.md"), "decision\n")
+	head := commitTestRepo(t, f.contentRepo, "change after supersession")
+	report, err = Check(f.input(head, "handbook", "example/handbook", "write"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Allowed || !hasViolation(report, "policy_acceptance_missing", "policy/attestations/17/release-policy/") {
+		t.Fatalf("superseded acceptance still authorized content: %#v", report)
+	}
+}
+
+func universalPolicyFixture(t *testing.T) checkFixture {
+	t.Helper()
+	f := newCheckFixture(t)
+	path := filepath.Join(f.manifestRepo, "manifest.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := strings.Replace(string(data), `"acceptance": "optional"`, `"acceptance": "required"`, 1)
+	writeTestFile(t, path, updated)
+	f.manifestBase = commitTestRepo(t, f.manifestRepo, "require universal policy acceptance")
+	return f
+}
+
 func attestationJSON(subjectID int64, manifestCommit string) string {
 	return fmt.Sprintf(`{"schema_version":1,"organization":"acme","policy_id":"release-policy","policy_version":"2026-07","policy_sha256":"sha256:%s","subject_provider":"github","subject_id":%d,"subject_login":"operator","accepted_at":"2026-07-17T03:00:00Z","manifest_commit":%q}`+"\n", strings.Repeat("a", 64), subjectID, manifestCommit)
+}
+
+func supersessionJSON(subjectID, actorID int64, manifestCommit string) string {
+	digest := strings.Repeat("a", 64)
+	target := fmt.Sprintf("policy/attestations/%d/release-policy/%s.json", subjectID, digest)
+	return fmt.Sprintf(`{"schema_version":1,"event_type":"supersession","organization":"acme","policy_id":"release-policy","policy_version":"2026-07","policy_sha256":"sha256:%s","subject_provider":"github","subject_id":%d,"supersedes":%q,"actor_provider":"github","actor_id":%d,"actor_login":"operator","reason":"access revoked","superseded_at":"2026-07-21T16:00:00Z","manifest_commit":%q}`+"\n", digest, subjectID, target, actorID, manifestCommit)
 }
 
 func hasViolation(report Report, code, pathPart string) bool {

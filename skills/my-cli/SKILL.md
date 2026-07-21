@@ -328,6 +328,7 @@ my sync --publish pr             # pre-check, push a topic branch, and open a go
 my policy list|show|status       # inspect exact policy bytes and acceptance state
 my policy accept <id> --yes      # queue evidence and attempt an attestation-only governed PR
 my policy acceptances [--json]   # report local, submitted, and merge-proven acceptances
+my policy supersede <id> --subject-id <github-id> --reason <text> --yes # append an admin-authorized supersession
 my governance audit --json       # audit live GitHub rulesets/workflow enforcement
 my record domains                # inspect manifest-routed generic record classes
 my record add <domain> <slug>    # write, queue, and optionally PR-submit a record

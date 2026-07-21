@@ -335,7 +335,8 @@ func workflowUsesImmutablePRAuthor(body string) bool {
 	return strings.Contains(body, "pull_request_target:") &&
 		strings.Contains(body, "github.event.pull_request.user.id") &&
 		strings.Contains(body, "github.event.pull_request.user.login") &&
-		strings.Contains(body, "governance check") && strings.Contains(body, "--manifest-base")
+		strings.Contains(body, "governance check") && strings.Contains(body, "--manifest-base") &&
+		strings.Contains(body, "--attestation-repository") && strings.Contains(body, "--attestation-base")
 }
 
 func workflowBuildsPinnedValidator(body string) bool {

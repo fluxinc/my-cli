@@ -423,6 +423,110 @@ func TestPolicyAcceptanceAlreadyAtUpstreamConvergesToMergedWithoutPR(t *testing.
 	}
 }
 
+func TestPolicySupersedeRequiresAdminAndPublishesAppendOnlyEvent(t *testing.T) {
+	t.Run("non-admin is denied before writing", func(t *testing.T) {
+		f := newPolicyTestFixture(t)
+		preparePolicyFixtureRemote(t, f)
+		acceptMergedPolicyForRecordTests(t, f)
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false)}
+		err := a.run([]string{
+			"my", "policy", "supersede", "release-policy", "--subject-id", "17", "--reason", "access revoked", "--yes",
+			"--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
+		})
+		if err == nil || !strings.Contains(err.Error(), "administrator authority") {
+			t.Fatalf("non-admin supersede error = %v", err)
+		}
+		supersessionPath := filepath.Join(f.handbook, "policy", "attestations", "supersessions", "17", "release-policy", strings.TrimPrefix(f.digest, "sha256:")+".json")
+		if _, statErr := os.Lstat(supersessionPath); !os.IsNotExist(statErr) {
+			t.Fatalf("non-admin wrote supersession: %v", statErr)
+		}
+	})
+
+	t.Run("admin event is isolated and submitted", func(t *testing.T) {
+		f := newPolicyTestFixture(t)
+		remote, _ := preparePolicyFixtureRemote(t, f)
+		f.configureGovernedOperator(t)
+		acceptMergedPolicyForRecordTests(t, f)
+		state := &governedPRRunnerState{remote: remote, permission: "admin"}
+		var stdout, stderr bytes.Buffer
+		a := app{stdout: &stdout, stderr: &stderr, accessRunner: governedAdminAccessRunner(), publishRunner: state.run}
+		if err := a.run([]string{
+			"my", "policy", "supersede", "release-policy", "--subject-id", "17", "--reason", "access revoked", "--yes",
+			"--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot, "--json",
+		}); err != nil {
+			t.Fatalf("admin supersede: %v\nstdout=%s\nstderr=%s", err, stdout.String(), stderr.String())
+		}
+		if !state.created || !strings.Contains(stdout.String(), `"state": "submitted"`) {
+			t.Fatalf("state=%#v output=%s", state, stdout.String())
+		}
+		tree := gitCLIOutput(t, remote, "ls-tree", "-r", "--name-only", state.commit)
+		if !strings.Contains(tree, "policy/attestations/supersessions/17/release-policy/") {
+			t.Fatalf("supersession missing from PR tree:\n%s", tree)
+		}
+		stdout.Reset()
+		if err := a.run([]string{
+			"my", "policy", "acceptances", "--json", "--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(stdout.String(), `"state": "superseded"`) {
+			t.Fatalf("superseded report = %s", stdout.String())
+		}
+	})
+}
+
+func TestSupersededOperatorGetsAdministratorRemediationNotFutileAccept(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	remote, _ := preparePolicyFixtureRemote(t, f)
+	f.configureGovernedOperator(t)
+	acceptMergedPolicyForRecordTests(t, f)
+	state := &governedPRRunnerState{remote: remote, permission: "admin"}
+	var stdout, stderr bytes.Buffer
+	admin := app{stdout: &stdout, stderr: &stderr, accessRunner: governedAdminAccessRunner(), publishRunner: state.run}
+	if err := admin.run([]string{
+		"my", "policy", "supersede", "release-policy", "--subject-id", "17", "--reason", "access revoked", "--yes",
+		"--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
+	}); err != nil {
+		t.Fatalf("supersede: %v\nstderr=%s", err, stderr.String())
+	}
+
+	operator := app{stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false)}
+	doc, err := loadSingleRegisteredDoc(f.home, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gateErr := operator.requireGovernedPolicyAcceptances(f.home, doc, f.umbrellaRoot)
+	if gateErr == nil {
+		t.Fatal("superseded operator must stay blocked")
+	}
+	if !strings.Contains(gateErr.Error(), "administratively superseded") ||
+		!strings.Contains(gateErr.Error(), "manifest administrator") {
+		t.Fatalf("superseded remediation must name the administrator path: %v", gateErr)
+	}
+	if strings.Contains(gateErr.Error(), "my policy accept release-policy") {
+		t.Fatalf("superseded remediation must not suggest a futile accept: %v", gateErr)
+	}
+}
+
+func governedAdminAccessRunner() access.Runner {
+	return func(name string, args ...string) ([]byte, error) {
+		joined := strings.Join(args, " ")
+		if joined == "api user" {
+			return []byte(`{"id":17,"node_id":"U_actor","login":"operator"}`), nil
+		}
+		repository := strings.TrimPrefix(joined, "api -i repos/")
+		id, node := 29, "R_control"
+		permissions := `"pull":true,"admin":true`
+		if repository == "example/handbook" {
+			id, node = 30, "R_handbook"
+			permissions = `"pull":true`
+		}
+		body := fmt.Sprintf(`{"id":%d,"node_id":%q,"full_name":%q,"private":true,"permissions":{%s}}`, id, node, repository, permissions)
+		return accessGitHubResponse(200, body), nil
+	}
+}
+
 func TestPolicyAcceptancesReportSkipsInvalidLedgerFileWithWarning(t *testing.T) {
 	f := newPolicyTestFixture(t)
 	preparePolicyFixtureRemote(t, f)
@@ -865,6 +969,7 @@ type governedPRRunnerState struct {
 	createCalls int
 	proofActor  int64
 	lostCreate  bool
+	permission  string
 }
 
 func (s *governedPRRunnerState) run(name string, args ...string) ([]byte, error) {
@@ -876,7 +981,11 @@ func (s *governedPRRunnerState) run(name string, args ...string) ([]byte, error)
 	case joined == "api user", joined == "api users/operator":
 		return []byte(`{"id":17,"node_id":"U_actor","login":"operator"}`), nil
 	case strings.Contains(joined, "/collaborators/operator/permission"):
-		return []byte(`{"permission":"write","user":{"id":17,"node_id":"U_actor","login":"operator"}}`), nil
+		permission := s.permission
+		if permission == "" {
+			permission = "write"
+		}
+		return []byte(fmt.Sprintf(`{"permission":%q,"user":{"id":17,"node_id":"U_actor","login":"operator"}}`, permission)), nil
 	case strings.HasPrefix(joined, "api repos/example/handbook/pulls?state=open"):
 		if !s.created {
 			return []byte(`[]`), nil

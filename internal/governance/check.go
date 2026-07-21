@@ -4,6 +4,7 @@ package governance
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -20,17 +21,20 @@ const ManifestSurface = "@manifest"
 type Runner func(name string, args ...string) ([]byte, error)
 
 type CheckInput struct {
-	Repo            string
-	Repository      string
-	BaseRef         string
-	HeadRef         string
-	ManifestRepo    string
-	ManifestBaseRef string
-	ManifestPath    string
-	Mount           string
-	ActorID         int64
-	ActorLogin      string
-	Runner          Runner
+	Repo                  string
+	Repository            string
+	BaseRef               string
+	HeadRef               string
+	ManifestRepo          string
+	ManifestBaseRef       string
+	ManifestPath          string
+	AttestationRepo       string
+	AttestationRepository string
+	AttestationBaseRef    string
+	Mount                 string
+	ActorID               int64
+	ActorLogin            string
+	Runner                Runner
 }
 
 type Report struct {
@@ -42,6 +46,7 @@ type Report struct {
 	HeadRef            string      `json:"head_ref"`
 	ManifestBaseRef    string      `json:"manifest_base_ref"`
 	ManifestCommit     string      `json:"manifest_commit"`
+	AttestationCommit  string      `json:"attestation_commit,omitempty"`
 	ActorID            int64       `json:"actor_id"`
 	ActorLogin         string      `json:"actor_login"`
 	ActorPermission    string      `json:"actor_permission"`
@@ -159,6 +164,12 @@ func Check(input CheckInput) (Report, error) {
 			}
 			report.Violations = violations
 		}
+		acceptanceViolations, attestationCommit, err := validateUniversalPolicyAcceptances(input, doc, repository)
+		if err != nil {
+			return Report{}, err
+		}
+		report.AttestationCommit = attestationCommit
+		report.Violations = append(report.Violations, acceptanceViolations...)
 		report.CheckedProtections = 1
 		report.Allowed = len(report.Violations) == 0
 		return report, nil
@@ -191,14 +202,20 @@ func Check(input CheckInput) (Report, error) {
 			}
 		}
 		if input.Mount == doc.Governance.Attestations.Mount {
-			if err := validateAttestationAdditions(input.Runner, input.Repo, doc, parentTree, commitTree, edge, input.ActorID); err != nil {
+			if err := validateAttestationAdditions(input.Runner, input.Repo, doc, parentTree, commitTree, edge, input.ActorID, permission); err != nil {
 				report.Violations = append(report.Violations, Violation{
-					ReasonCode: "attestation_subject_mismatch", Mode: "append-only", Path: attestationErrorPath(err),
+					ReasonCode: attestationErrorCode(err), Mode: "append-only", Path: attestationErrorPath(err),
 					Commit: edge.Commit, Parent: edge.Parent, Message: err.Error(),
 				})
 			}
 		}
 	}
+	acceptanceViolations, attestationCommit, err := validateUniversalPolicyAcceptances(input, doc, repository)
+	if err != nil {
+		return Report{}, err
+	}
+	report.AttestationCommit = attestationCommit
+	report.Violations = append(report.Violations, acceptanceViolations...)
 	sort.Slice(report.Violations, func(i, j int) bool {
 		if report.Violations[i].Commit != report.Violations[j].Commit {
 			return report.Violations[i].Commit < report.Violations[j].Commit
@@ -210,6 +227,141 @@ func Check(input CheckInput) (Report, error) {
 	})
 	report.Allowed = len(report.Violations) == 0
 	return report, nil
+}
+
+func validateUniversalPolicyAcceptances(input CheckInput, doc manifest.Document, repository string) ([]Violation, string, error) {
+	var policies []manifest.Policy
+	for _, policy := range doc.Governance.Policies {
+		if policy.Acceptance == "required" && len(policy.Roles) == 0 {
+			policies = append(policies, policy)
+		}
+	}
+	if len(policies) == 0 {
+		return nil, "", nil
+	}
+	attestationMount, ok := governanceMountByID(doc, doc.Governance.Attestations.Mount)
+	if !ok {
+		return nil, "", fmt.Errorf("trusted manifest attestation mount %q is missing", doc.Governance.Attestations.Mount)
+	}
+	attestationRepository, ok := access.GitHubRepositoryName(attestationMount.GitURL)
+	if !ok {
+		return nil, "", fmt.Errorf("trusted attestation mount does not name a GitHub repository")
+	}
+	repo, ref := input.AttestationRepo, input.AttestationBaseRef
+	if strings.EqualFold(attestationRepository, repository) {
+		repo, ref = input.Repo, input.BaseRef
+	} else {
+		declared, valid := access.GitHubRepositoryName(input.AttestationRepository)
+		if !valid || !strings.EqualFold(declared, attestationRepository) {
+			return nil, "", fmt.Errorf("attestation repository %q does not match trusted mount repository %q", input.AttestationRepository, attestationRepository)
+		}
+		if strings.TrimSpace(repo) == "" || strings.TrimSpace(ref) == "" {
+			return nil, "", fmt.Errorf("external attestation repository checkout and trusted base ref are required")
+		}
+	}
+	commit, err := gitText(input.Runner, repo, "rev-parse", ref+"^{commit}")
+	if err != nil {
+		return nil, "", fmt.Errorf("resolve trusted attestation base ref: %w", err)
+	}
+	bootstrap := false
+	if input.Mount == doc.Governance.Attestations.Mount && strings.EqualFold(attestationRepository, repository) {
+		changed, err := gitText(input.Runner, input.Repo, "diff", "--name-only", input.BaseRef, input.HeadRef)
+		if err != nil {
+			return nil, "", fmt.Errorf("inspect attestation bootstrap paths: %w", err)
+		}
+		prefix := strings.Trim(filepath.ToSlash(doc.Governance.Attestations.Path), "/")
+		paths := strings.Fields(changed)
+		bootstrap = len(paths) != 0
+		for _, path := range paths {
+			path = filepath.ToSlash(path)
+			if path != prefix && !strings.HasPrefix(path, prefix+"/") {
+				bootstrap = false
+				break
+			}
+		}
+	}
+	var violations []Violation
+	for _, policy := range policies {
+		path := policyAttestationPath(doc, input.ActorID, policy)
+		validAtBase, baseErr := validPolicyAttestationAt(input.Runner, repo, commit, path, doc, policy, input.ActorID)
+		if baseErr != nil {
+			return nil, "", baseErr
+		}
+		if validAtBase {
+			continue
+		}
+		validAtHead := false
+		if bootstrap {
+			validAtHead, err = validPolicyAttestationAt(input.Runner, input.Repo, input.HeadRef, path, doc, policy, input.ActorID)
+			if err != nil {
+				return nil, "", err
+			}
+		}
+		if !validAtHead {
+			violations = append(violations, Violation{
+				ReasonCode: "policy_acceptance_missing", Mode: "required-acceptance", Path: path,
+				Commit: input.HeadRef, Message: fmt.Sprintf("pull request author id %d lacks a merged current acceptance for universal policy %s", input.ActorID, policy.ID),
+			})
+		}
+	}
+	return violations, commit, nil
+}
+
+func governanceMountByID(doc manifest.Document, id string) (manifest.Mount, bool) {
+	for _, mount := range manifest.EffectiveMounts(doc) {
+		if mount.ID == id {
+			return mount, true
+		}
+	}
+	return manifest.Mount{}, false
+}
+
+func policyAttestationPath(doc manifest.Document, actorID int64, policy manifest.Policy) string {
+	return filepath.ToSlash(filepath.Join(
+		doc.Governance.Attestations.Path, strconv.FormatInt(actorID, 10), policy.ID,
+		strings.TrimPrefix(policy.SHA256, "sha256:")+".json",
+	))
+}
+
+func policySupersessionPath(doc manifest.Document, actorID int64, policy manifest.Policy) string {
+	return filepath.ToSlash(filepath.Join(
+		doc.Governance.Attestations.Path, "supersessions", strconv.FormatInt(actorID, 10), policy.ID,
+		strings.TrimPrefix(policy.SHA256, "sha256:")+".json",
+	))
+}
+
+func validPolicyAttestationAt(runner Runner, repo, ref, path string, doc manifest.Document, policy manifest.Policy, actorID int64) (bool, error) {
+	out, err := gitBytes(runner, repo, "show", ref+":"+path)
+	if err != nil {
+		return false, nil
+	}
+	var attestation policyAttestation
+	if err := json.Unmarshal(out, &attestation); err != nil {
+		return false, nil
+	}
+	if attestation.SchemaVersion != 1 || attestation.Organization != doc.Organization.ID ||
+		attestation.PolicyID != policy.ID || attestation.PolicyVersion != policy.Version ||
+		attestation.PolicySHA256 != policy.SHA256 || attestation.SubjectProvider != "github" ||
+		attestation.SubjectID != actorID || !validFullGitOID(attestation.ManifestCommit) {
+		return false, nil
+	}
+	if _, err := time.Parse(time.RFC3339Nano, attestation.AcceptedAt); err != nil {
+		return false, nil
+	}
+	supersessionPath := policySupersessionPath(doc, actorID, policy)
+	if supersessionBytes, err := gitBytes(runner, repo, "show", ref+":"+supersessionPath); err == nil {
+		var event policySupersession
+		if json.Unmarshal(supersessionBytes, &event) == nil && event.SchemaVersion == 1 && event.EventType == "supersession" &&
+			event.Organization == doc.Organization.ID && event.PolicyID == policy.ID && event.PolicyVersion == policy.Version &&
+			event.PolicySHA256 == policy.SHA256 && event.SubjectProvider == "github" && event.SubjectID == actorID &&
+			event.Supersedes == path && event.ActorProvider == "github" && event.ActorID > 0 && event.ActorLogin != "" &&
+			strings.TrimSpace(event.Reason) != "" && validFullGitOID(event.ManifestCommit) {
+			if _, timeErr := time.Parse(time.RFC3339Nano, event.SupersededAt); timeErr == nil {
+				return false, nil
+			}
+		}
+	}
+	return true, nil
 }
 
 type commitEdge struct{ Parent, Commit string }
@@ -422,11 +574,29 @@ type policyAttestation struct {
 	ManifestCommit  string `json:"manifest_commit"`
 }
 
-type pathError struct{ path, message string }
+type policySupersession struct {
+	SchemaVersion   int    `json:"schema_version"`
+	EventType       string `json:"event_type"`
+	Organization    string `json:"organization"`
+	PolicyID        string `json:"policy_id"`
+	PolicyVersion   string `json:"policy_version"`
+	PolicySHA256    string `json:"policy_sha256"`
+	SubjectProvider string `json:"subject_provider"`
+	SubjectID       int64  `json:"subject_id"`
+	Supersedes      string `json:"supersedes"`
+	ActorProvider   string `json:"actor_provider"`
+	ActorID         int64  `json:"actor_id"`
+	ActorLogin      string `json:"actor_login"`
+	Reason          string `json:"reason"`
+	SupersededAt    string `json:"superseded_at"`
+	ManifestCommit  string `json:"manifest_commit"`
+}
+
+type pathError struct{ path, message, reasonCode string }
 
 func (e pathError) Error() string { return e.message }
 
-func validateAttestationAdditions(runner Runner, repo string, doc manifest.Document, before, after map[string]treeEntry, edge commitEdge, actorID int64) error {
+func validateAttestationAdditions(runner Runner, repo string, doc manifest.Document, before, after map[string]treeEntry, edge commitEdge, actorID int64, permission string) error {
 	prefix := doc.Governance.Attestations.Path
 	for path, entry := range after {
 		if !protectedPath(path, []string{prefix}) {
@@ -438,6 +608,39 @@ func validateAttestationAdditions(runner Runner, repo string, doc manifest.Docum
 		out, err := gitBytes(runner, repo, "show", edge.Commit+":"+path)
 		if err != nil {
 			return pathError{path: path, message: fmt.Sprintf("read added attestation %s: %v", path, err)}
+		}
+		var envelope struct {
+			EventType string `json:"event_type"`
+		}
+		if err := json.Unmarshal(out, &envelope); err != nil {
+			return pathError{path: path, message: fmt.Sprintf("added attestation %s is invalid JSON: %v", path, err)}
+		}
+		if envelope.EventType == "supersession" {
+			var event policySupersession
+			if err := json.Unmarshal(out, &event); err != nil {
+				return pathError{path: path, message: fmt.Sprintf("added supersession %s is invalid JSON: %v", path, err)}
+			}
+			policy, ok := policyByID(doc.Governance.Policies, event.PolicyID)
+			expectedTarget := ""
+			expectedPath := ""
+			if ok {
+				expectedTarget = policyAttestationPath(doc, event.SubjectID, policy)
+				expectedPath = policySupersessionPath(doc, event.SubjectID, policy)
+			}
+			if event.SchemaVersion != 1 || event.Organization != doc.Organization.ID || event.SubjectProvider != "github" ||
+				event.ActorProvider != "github" || event.ActorID != actorID || event.SubjectID <= 0 || event.ActorLogin == "" ||
+				strings.TrimSpace(event.Reason) == "" || !validFullGitOID(event.ManifestCommit) || !ok ||
+				policy.Version != event.PolicyVersion || policy.SHA256 != event.PolicySHA256 ||
+				event.Supersedes != expectedTarget || filepath.ToSlash(path) != expectedPath {
+				return pathError{path: path, reasonCode: "supersession_invalid", message: fmt.Sprintf("policy supersession %s has invalid immutable evidence", path)}
+			}
+			if _, err := time.Parse(time.RFC3339Nano, event.SupersededAt); err != nil {
+				return pathError{path: path, reasonCode: "supersession_invalid", message: fmt.Sprintf("policy supersession %s has invalid superseded_at", path)}
+			}
+			if !permissionAtLeast(permission, doc.Governance.Authorization.AdminPermission) {
+				return pathError{path: path, reasonCode: "supersession_admin_required", message: "policy supersession requires current repository administrator permission"}
+			}
+			continue
 		}
 		var attestation policyAttestation
 		if err := json.Unmarshal(out, &attestation); err != nil {
@@ -517,6 +720,14 @@ func attestationErrorPath(err error) string {
 		return value.path
 	}
 	return ""
+}
+
+func attestationErrorCode(err error) string {
+	var target pathError
+	if errors.As(err, &target) && target.reasonCode != "" {
+		return target.reasonCode
+	}
+	return "attestation_subject_mismatch"
 }
 
 func gitText(runner Runner, repo string, args ...string) (string, error) {

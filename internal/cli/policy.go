@@ -70,6 +70,24 @@ type policyAttestation struct {
 	ManifestCommit  string `json:"manifest_commit"`
 }
 
+type policySupersession struct {
+	SchemaVersion   int    `json:"schema_version"`
+	EventType       string `json:"event_type"`
+	Organization    string `json:"organization"`
+	PolicyID        string `json:"policy_id"`
+	PolicyVersion   string `json:"policy_version"`
+	PolicySHA256    string `json:"policy_sha256"`
+	SubjectProvider string `json:"subject_provider"`
+	SubjectID       int64  `json:"subject_id"`
+	Supersedes      string `json:"supersedes"`
+	ActorProvider   string `json:"actor_provider"`
+	ActorID         int64  `json:"actor_id"`
+	ActorLogin      string `json:"actor_login"`
+	Reason          string `json:"reason"`
+	SupersededAt    string `json:"superseded_at"`
+	ManifestCommit  string `json:"manifest_commit"`
+}
+
 func (a app) runPolicy(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("missing policy subcommand")
@@ -85,8 +103,10 @@ func (a app) runPolicy(args []string) error {
 		return a.runPolicyAccept(args[1:])
 	case "acceptances":
 		return a.runPolicyAcceptances(args[1:])
+	case "supersede":
+		return a.runPolicySupersede(args[1:])
 	default:
-		return fmt.Errorf("unknown policy subcommand %q; supported subcommands are list, show, status, accept, and acceptances", args[0])
+		return fmt.Errorf("unknown policy subcommand %q; supported subcommands are list, show, status, accept, acceptances, and supersede", args[0])
 	}
 }
 
@@ -321,6 +341,121 @@ func (a app) runPolicyAcceptances(args []string) error {
 	return nil
 }
 
+func (a app) runPolicySupersede(args []string) error {
+	var home, manifestName, umbrellaRoot, reason string
+	var subjectID int64
+	var yes, jsonOut bool
+	fs := newFlagSet("my policy supersede", a.stderr)
+	fs.StringVar(&home, "home", "", "override home directory")
+	fs.StringVar(&manifestName, "manifest", "", "use a registered manifest")
+	fs.StringVar(&umbrellaRoot, "umbrella", "", "override umbrella root")
+	fs.Int64Var(&subjectID, "subject-id", 0, "immutable GitHub subject id to supersede")
+	fs.StringVar(&reason, "reason", "", "administrative supersession reason")
+	fs.BoolVar(&yes, "yes", false, "confirm append-only supersession")
+	fs.BoolVar(&jsonOut, "json", false, "print JSON")
+	rest, err := parseInterspersed(fs, args, map[string]bool{
+		"home": true, "manifest": true, "umbrella": true, "subject-id": true, "reason": true,
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 || subjectID <= 0 || strings.TrimSpace(reason) == "" || !yes {
+		return fmt.Errorf("usage: my policy supersede <id> --subject-id GITHUB_NUMERIC_ID --reason TEXT --yes")
+	}
+	ctx, err := loadPolicyContext(home, manifestName, umbrellaRoot)
+	if err != nil {
+		return err
+	}
+	policy, err := findGovernancePolicy(ctx.doc.doc, rest[0])
+	if err != nil {
+		return err
+	}
+	decision := access.ResolveGitHub(ctx.doc.doc.Governance.Authorization.ManifestRepository, a.accessRunner)
+	if err := access.Require(decision, access.PermissionAdmin); err != nil {
+		return fmt.Errorf("policy supersession requires manifest administrator authority: %w", err)
+	}
+	ledger, ok := ctx.mounts[ctx.doc.doc.Governance.Attestations.Mount]
+	if !ok {
+		return fmt.Errorf("attestation mount %q is not materialized", ctx.doc.doc.Governance.Attestations.Mount)
+	}
+	target := policyAttestationRelativePath(ctx.doc.doc, subjectID, policy)
+	targetData, err := readRegularPolicyFile(filepath.Join(ledger.LocalPath, filepath.FromSlash(target)))
+	if err != nil {
+		return fmt.Errorf("read acceptance to supersede: %w", err)
+	}
+	if _, err := validatePolicyAcceptanceFile(ctx, target, targetData, true); err != nil {
+		return err
+	}
+	manifestCommit, err := gitPolicyText(ctx.doc.ref.LocalPath, "rev-parse", "HEAD^{commit}")
+	if err != nil {
+		return err
+	}
+	relativePath := policySupersessionRelativePath(ctx.doc.doc, subjectID, policy)
+	fullPath := filepath.Join(ledger.LocalPath, filepath.FromSlash(relativePath))
+	event := policySupersession{
+		SchemaVersion: policyAttestationSchemaVersion, EventType: "supersession",
+		Organization: ctx.doc.doc.Organization.ID, PolicyID: policy.ID,
+		PolicyVersion: policy.Version, PolicySHA256: policy.SHA256,
+		SubjectProvider: "github", SubjectID: subjectID, Supersedes: target,
+		ActorProvider: "github", ActorID: decision.Actor.ID, ActorLogin: decision.Actor.Login,
+		Reason: strings.TrimSpace(reason), SupersededAt: time.Now().UTC().Format(time.RFC3339Nano),
+		ManifestCommit: manifestCommit,
+	}
+	data, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	if existing, err := readRegularPolicyFile(fullPath); err == nil {
+		var recorded policySupersession
+		if json.Unmarshal(existing, &recorded) != nil || !samePolicySupersession(recorded, event) {
+			return fmt.Errorf("existing supersession path contains different evidence and will not be overwritten: %s", fullPath)
+		}
+		data = existing
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	} else {
+		if err := ensurePolicyParent(ledger.LocalPath, fullPath); err != nil {
+			return err
+		}
+		file, err := os.OpenFile(fullPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if err != nil {
+			return err
+		}
+		if _, err = file.Write(data); err == nil {
+			err = file.Sync()
+		}
+		if closeErr := file.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			return err
+		}
+		if err := safefs.SyncDirectory(filepath.Dir(fullPath)); err != nil {
+			return err
+		}
+	}
+	if _, err := gitPolicyBytes(ledger.LocalPath, "add", "-N", "--", relativePath); err != nil {
+		return fmt.Errorf("mark supersession intent-to-add: %w", err)
+	}
+	queued, err := ensurePolicyAcceptanceQueued(ctx, ledger, relativePath, data)
+	if err != nil {
+		return err
+	}
+	result := queued
+	if queued.State == outbox.StateQueued || queued.State == outbox.StateAttemptFailed {
+		result, err = a.publishPolicyAcceptance(ctx, queued)
+		if err != nil {
+			fmt.Fprintf(a.stderr, "warning: policy supersession is durable locally and remains in the publication outbox: %v\n", err)
+		}
+	}
+	if jsonOut {
+		return printJSON(a.stdout, result)
+	}
+	fmt.Fprintf(a.stdout, "%s\t%d\t%s\t%s\n", policy.ID, subjectID, result.State, relativePath)
+	return nil
+}
+
 func parsePolicyFlags(name string, stderr interface{ Write([]byte) (int, error) }, args []string, accept bool) (string, string, string, bool, bool, []string, error) {
 	var home, manifestName, umbrellaRoot string
 	var jsonOut, yes bool
@@ -459,6 +594,16 @@ func currentPolicyStatus(ctx policyContext, policy manifest.Policy, actor access
 			row.Status = "merged"
 		}
 	}
+	supersessionPath := filepath.Join(ledger.LocalPath, filepath.FromSlash(policySupersessionRelativePath(ctx.doc.doc, actor.ID, policy)))
+	if supersessionData, err := readRegularPolicyFile(supersessionPath); err == nil {
+		rel, _ := relativePathUnder(ledger.LocalPath, supersessionPath)
+		if _, err := validatePolicySupersessionFile(ctx, filepath.ToSlash(rel), supersessionData, true); err != nil {
+			return row, err
+		}
+		row.Status = "superseded"
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return row, err
+	}
 	return row, nil
 }
 
@@ -505,7 +650,7 @@ func (a app) publishPolicyAcceptance(ctx policyContext, item outbox.Event) (outb
 	if err != nil {
 		return appendOutboxFailure(ctx.root, item, err)
 	}
-	attestation, err := validatePolicyAcceptanceFile(refreshed, item.RelativePath, data, true)
+	policyID, subjectID, eventActorID, requiresAdmin, err := validatePolicyPublicationFile(refreshed, item.RelativePath, data)
 	if err != nil {
 		return appendOutboxFailure(ctx.root, item, err)
 	}
@@ -513,8 +658,16 @@ func (a app) publishPolicyAcceptance(ctx policyContext, item outbox.Event) (outb
 	if err != nil {
 		return appendOutboxFailure(ctx.root, item, err)
 	}
-	if attestation.SubjectID != actor.ID {
-		return appendOutboxFailure(ctx.root, item, fmt.Errorf("queued acceptance subject %d does not match current GitHub actor %d", attestation.SubjectID, actor.ID))
+	if requiresAdmin {
+		decision := access.ResolveGitHub(refreshed.doc.doc.Governance.Authorization.ManifestRepository, a.accessRunner)
+		if err := access.Require(decision, access.PermissionAdmin); err != nil {
+			return appendOutboxFailure(ctx.root, item, fmt.Errorf("publish policy supersession: %w", err))
+		}
+		if eventActorID != decision.Actor.ID {
+			return appendOutboxFailure(ctx.root, item, fmt.Errorf("supersession actor %d does not match current GitHub actor %d", eventActorID, decision.Actor.ID))
+		}
+	} else if subjectID != actor.ID {
+		return appendOutboxFailure(ctx.root, item, fmt.Errorf("queued acceptance subject %d does not match current GitHub actor %d", subjectID, actor.ID))
 	}
 	if out, err := gitPolicyBytes(ledger.LocalPath, "fetch", "--prune", "origin"); err != nil {
 		return appendOutboxFailure(ctx.root, item, fmt.Errorf("refresh attestation repository: %s", commandMessage(out, err)))
@@ -536,10 +689,10 @@ func (a app) publishPolicyAcceptance(ctx policyContext, item outbox.Event) (outb
 	result := a.publishPullRequest(ctx.home, syncer.PRRequest{
 		Entry: syncer.Entry{
 			Manifest: refreshed.doc.ref.Name, ID: ledger.ID, Role: "content", Kind: ledger.Kind,
-			GitURL: ledger.GitURL, LocalPath: ledger.LocalPath, ContentPaths: []string{item.RelativePath},
+			GitURL: ledger.GitURL, LocalPath: ledger.LocalPath, UmbrellaRoot: ctx.root, ContentPaths: []string{item.RelativePath},
 		},
 		Branch: pullRequestBaseBranch(upstream, "master"), Upstream: upstream, Head: baseCommit,
-		Dirty: []string{item.RelativePath}, Message: "Accept policy " + attestation.PolicyID,
+		Dirty: []string{item.RelativePath}, Message: "Update policy ledger for " + policyID,
 		PreserveCheckout: true,
 	}, false)
 	if result.Status != "pull request opened" {
@@ -587,10 +740,35 @@ func policyAcceptanceRows(ctx policyContext) ([]policyAcceptanceRow, []error, er
 		upstream, _ = gitPolicyText(ledger.LocalPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
 	}
 	rows := make([]policyAcceptanceRow, 0, len(paths))
+	superseded := map[string]bool{}
+	for _, relativePath := range paths {
+		data, readErr := readRegularPolicyFile(filepath.Join(ledger.LocalPath, filepath.FromSlash(relativePath)))
+		if readErr != nil {
+			rowIssues = append(rowIssues, readErr)
+			continue
+		}
+		var envelope struct {
+			EventType string `json:"event_type"`
+		}
+		if json.Unmarshal(data, &envelope) == nil && envelope.EventType == "supersession" {
+			event, eventErr := validatePolicySupersessionFile(ctx, relativePath, data, false)
+			if eventErr != nil {
+				rowIssues = append(rowIssues, eventErr)
+				continue
+			}
+			superseded[event.Supersedes] = true
+		}
+	}
 	for _, relativePath := range paths {
 		data, err := readRegularPolicyFile(filepath.Join(ledger.LocalPath, filepath.FromSlash(relativePath)))
 		if err != nil {
 			rowIssues = append(rowIssues, err)
+			continue
+		}
+		var envelope struct {
+			EventType string `json:"event_type"`
+		}
+		if json.Unmarshal(data, &envelope) == nil && envelope.EventType == "supersession" {
 			continue
 		}
 		attestation, err := validatePolicyAcceptanceFile(ctx, relativePath, data, false)
@@ -614,6 +792,9 @@ func policyAcceptanceRows(ctx policyContext) ([]policyAcceptanceRow, []error, er
 			if mergedData, showErr := gitPolicyBytes(ledger.LocalPath, "show", upstream+":"+relativePath); showErr == nil && string(mergedData) == string(data) {
 				state = "merged"
 			}
+		}
+		if superseded[relativePath] {
+			state = "superseded"
 		}
 		rows = append(rows, policyAcceptanceRow{
 			Organization: attestation.Organization, PolicyID: attestation.PolicyID,
@@ -696,6 +877,46 @@ func validatePolicyAcceptanceFile(ctx policyContext, relativePath string, data [
 	return attestation, nil
 }
 
+func validatePolicyPublicationFile(ctx policyContext, relativePath string, data []byte) (string, int64, int64, bool, error) {
+	var envelope struct {
+		EventType string `json:"event_type"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return "", 0, 0, false, err
+	}
+	if envelope.EventType == "supersession" {
+		event, err := validatePolicySupersessionFile(ctx, relativePath, data, true)
+		return event.PolicyID, event.SubjectID, event.ActorID, true, err
+	}
+	attestation, err := validatePolicyAcceptanceFile(ctx, relativePath, data, true)
+	return attestation.PolicyID, attestation.SubjectID, 0, false, err
+}
+
+func validatePolicySupersessionFile(ctx policyContext, relativePath string, data []byte, requireCurrentPolicy bool) (policySupersession, error) {
+	var event policySupersession
+	if err := json.Unmarshal(data, &event); err != nil {
+		return policySupersession{}, fmt.Errorf("invalid policy supersession %s: %w", relativePath, err)
+	}
+	if event.SchemaVersion != policyAttestationSchemaVersion || event.EventType != "supersession" ||
+		event.Organization != ctx.doc.doc.Organization.ID || event.SubjectProvider != "github" || event.SubjectID <= 0 ||
+		event.ActorProvider != "github" || event.ActorID <= 0 || event.ActorLogin == "" || strings.TrimSpace(event.Reason) == "" ||
+		!fullGitOID(event.ManifestCommit) {
+		return policySupersession{}, fmt.Errorf("policy supersession %s has invalid schema, organization, identity, or manifest provenance", relativePath)
+	}
+	if _, err := time.Parse(time.RFC3339Nano, event.SupersededAt); err != nil {
+		return policySupersession{}, fmt.Errorf("policy supersession %s has invalid superseded_at", relativePath)
+	}
+	policy, err := findGovernancePolicy(ctx.doc.doc, event.PolicyID)
+	if err != nil || (requireCurrentPolicy && (policy.Version != event.PolicyVersion || policy.SHA256 != event.PolicySHA256)) {
+		return policySupersession{}, fmt.Errorf("policy supersession %s does not match a current policy", relativePath)
+	}
+	if event.Supersedes != policyAttestationRelativePath(ctx.doc.doc, event.SubjectID, policy) ||
+		relativePath != policySupersessionRelativePath(ctx.doc.doc, event.SubjectID, policy) {
+		return policySupersession{}, fmt.Errorf("policy supersession path %s does not match its immutable evidence", relativePath)
+	}
+	return event, nil
+}
+
 func reconcilePolicyAcceptanceOutbox(ctx policyContext) ([]outbox.Event, []error) {
 	ledger, ok := ctx.mounts[ctx.doc.doc.Governance.Attestations.Mount]
 	if !ok {
@@ -714,7 +935,7 @@ func reconcilePolicyAcceptanceOutbox(ctx policyContext) ([]outbox.Event, []error
 			issues = append(issues, err)
 			continue
 		}
-		if _, err := validatePolicyAcceptanceFile(ctx, relativePath, data, true); err != nil {
+		if _, _, _, _, err := validatePolicyPublicationFile(ctx, relativePath, data); err != nil {
 			issues = append(issues, err)
 			continue
 		}
@@ -780,17 +1001,20 @@ func (a app) requireGovernedPolicyAcceptances(home string, doc registeredDoc, ro
 	if err != nil {
 		return err
 	}
-	var missing []manifest.Policy
+	var missing, superseded []manifest.Policy
 	for _, policy := range policies {
 		row, err := currentPolicyStatus(ctx, policy, actor)
 		if err != nil {
 			return fmt.Errorf("governed operation blocked while verifying required policy %q: %w", policy.ID, err)
 		}
-		if row.Status == "missing" {
+		switch row.Status {
+		case "missing":
 			missing = append(missing, policy)
+		case "superseded":
+			superseded = append(superseded, policy)
 		}
 	}
-	if len(missing) == 0 {
+	if len(missing) == 0 && len(superseded) == 0 {
 		return nil
 	}
 	var remediation strings.Builder
@@ -798,9 +1022,14 @@ func (a app) requireGovernedPolicyAcceptances(home string, doc registeredDoc, ro
 		fmt.Fprintf(&remediation, "\n  my policy show %s --manifest %s", policy.ID, doc.ref.Name)
 		fmt.Fprintf(&remediation, "\n  my policy accept %s --yes --manifest %s", policy.ID, doc.ref.Name)
 	}
-	fmt.Fprintf(&remediation, "\n  my record flush --manifest %s", doc.ref.Name)
-	fmt.Fprintf(&remediation, "\n  my policy acceptances --manifest %s", doc.ref.Name)
-	return fmt.Errorf("governed operation blocked: GitHub actor %d has not accepted %d required current policy document(s); review and accept each exact document:%s", actor.ID, len(missing), remediation.String())
+	if len(missing) != 0 {
+		fmt.Fprintf(&remediation, "\n  my record flush --manifest %s", doc.ref.Name)
+		fmt.Fprintf(&remediation, "\n  my policy acceptances --manifest %s", doc.ref.Name)
+	}
+	for _, policy := range superseded {
+		fmt.Fprintf(&remediation, "\n  policy %s: your acceptance was administratively superseded; re-running accept cannot restore it. Ask a manifest administrator; a new policy version is required before you can accept again.", policy.ID)
+	}
+	return fmt.Errorf("governed operation blocked: GitHub actor %d has not accepted %d required current policy document(s):%s", actor.ID, len(missing)+len(superseded), remediation.String())
 }
 
 func policyActorFromInventory(home string, doc registeredDoc) (access.Actor, error) {
@@ -906,6 +1135,29 @@ func samePolicyAcceptance(left, right policyAttestation) bool {
 		left.Organization == right.Organization && left.PolicyID == right.PolicyID &&
 		left.PolicyVersion == right.PolicyVersion && left.PolicySHA256 == right.PolicySHA256 &&
 		left.SubjectProvider == right.SubjectProvider && left.SubjectID == right.SubjectID
+}
+
+func samePolicySupersession(left, right policySupersession) bool {
+	return left.SchemaVersion == right.SchemaVersion && left.EventType == right.EventType &&
+		left.Organization == right.Organization && left.PolicyID == right.PolicyID &&
+		left.PolicyVersion == right.PolicyVersion && left.PolicySHA256 == right.PolicySHA256 &&
+		left.SubjectProvider == right.SubjectProvider && left.SubjectID == right.SubjectID &&
+		left.Supersedes == right.Supersedes && left.ActorProvider == right.ActorProvider &&
+		left.ActorID == right.ActorID && left.Reason == right.Reason
+}
+
+func policyAttestationRelativePath(doc manifest.Document, subjectID int64, policy manifest.Policy) string {
+	return filepath.ToSlash(filepath.Join(
+		doc.Governance.Attestations.Path, strconv.FormatInt(subjectID, 10), policy.ID,
+		strings.TrimPrefix(policy.SHA256, "sha256:")+".json",
+	))
+}
+
+func policySupersessionRelativePath(doc manifest.Document, subjectID int64, policy manifest.Policy) string {
+	return filepath.ToSlash(filepath.Join(
+		doc.Governance.Attestations.Path, "supersessions", strconv.FormatInt(subjectID, 10), policy.ID,
+		strings.TrimPrefix(policy.SHA256, "sha256:")+".json",
+	))
 }
 
 func readRegularPolicyFile(path string) ([]byte, error) {

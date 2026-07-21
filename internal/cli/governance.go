@@ -37,6 +37,9 @@ func (a app) runGovernanceCheck(args []string) error {
 	fs.StringVar(&input.ManifestRepo, "manifest-repo", "", "local manifest Git checkout")
 	fs.StringVar(&input.ManifestBaseRef, "manifest-base", "", "trusted manifest base commit/ref")
 	fs.StringVar(&input.ManifestPath, "manifest-path", "manifest.json", "manifest path within its repository")
+	fs.StringVar(&input.AttestationRepo, "attestation-repo", "", "local authoritative attestation repository checkout")
+	fs.StringVar(&input.AttestationRepository, "attestation-repository", "", "authoritative attestation GitHub owner/repository")
+	fs.StringVar(&input.AttestationBaseRef, "attestation-base", "", "trusted attestation default-branch commit/ref")
 	fs.StringVar(&input.Mount, "mount", "", "protected mount id or @manifest")
 	fs.Int64Var(&input.ActorID, "actor-id", 0, "immutable pull request author GitHub id")
 	fs.StringVar(&input.ActorLogin, "actor-login", "", "pull request author GitHub login")
@@ -47,7 +50,8 @@ func (a app) runGovernanceCheck(args []string) error {
 	}
 	rest, err := parseInterspersed(fs, args, map[string]bool{
 		"repo": true, "repository": true, "base": true, "head": true, "manifest-repo": true,
-		"manifest-base": true, "manifest-path": true, "mount": true,
+		"manifest-base": true, "manifest-path": true, "attestation-repo": true,
+		"attestation-repository": true, "attestation-base": true, "mount": true,
 		"actor-id": true, "actor-login": true,
 	})
 	if err != nil {
@@ -98,6 +102,7 @@ func (a app) printGovernanceUsage() {
 	fmt.Fprintln(a.stderr, `Usage:
   my governance check --repo DIR --repository OWNER/REPO --base SHA --head SHA \
     --manifest-repo DIR --manifest-base SHA --mount ID|@manifest \
+    [--attestation-repo DIR --attestation-repository OWNER/REPO --attestation-base SHA] \
     --actor-id GITHUB_NUMERIC_ID --actor-login LOGIN [--manifest-path PATH] [--json]
   my governance audit [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
 

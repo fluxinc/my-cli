@@ -15,6 +15,7 @@ import (
 	"github.com/fluxinc/my-cli/internal/manifest"
 	"github.com/fluxinc/my-cli/internal/safefs"
 	"github.com/fluxinc/my-cli/internal/syncer"
+	"github.com/fluxinc/my-cli/internal/workspace"
 )
 
 type prospectiveCommit struct {
@@ -91,13 +92,17 @@ func (a app) publishPullRequest(home string, request syncer.PRRequest, allowManu
 		mount = governancecheck.ManifestSurface
 	}
 	if manifest.GovernanceConfigured(doc.doc.Governance) {
-		report, err := governancecheck.Check(governancecheck.CheckInput{
+		checkInput := governancecheck.CheckInput{
 			Repo: request.Entry.LocalPath, Repository: repository,
 			BaseRef: request.Upstream, HeadRef: prospective.Commit,
 			ManifestRepo: doc.ref.LocalPath, ManifestBaseRef: manifestBase,
 			Mount: mount, ActorID: actor.ID, ActorLogin: actor.Login,
 			Runner: governancePRRunner(publishRunner, prospective),
-		})
+		}
+		if err := populateAttestationCheckInput(home, request.Entry.UmbrellaRoot, doc, repository, &checkInput); err != nil {
+			return fail("attestation_base_unavailable", err.Error(), "my refresh --manifest "+request.Entry.Manifest)
+		}
+		report, err := governancecheck.Check(checkInput)
 		if err != nil {
 			return fail("governance_check_error", err.Error(), governanceNextCommand(request, doc, repository, mount, actor))
 		}
@@ -192,6 +197,58 @@ func (a app) publishPullRequest(home string, request syncer.PRRequest, allowManu
 	}
 	message += "; auto-merge requested by manifest policy, still subject to required checks and reviews"
 	return syncer.PRResult{Status: "pull request opened", Message: message, ReasonCode: "governance_pr_opened", NextCommand: "gh pr view " + shellQuote(prURL), Changed: changed, PRURL: prURL, PRHeadSHA: prospective.Commit, PRBase: baseBranch}
+}
+
+func populateAttestationCheckInput(home, umbrellaRoot string, doc registeredDoc, protectedRepository string, input *governancecheck.CheckInput) error {
+	needsUniversalAcceptance := false
+	for _, policy := range doc.doc.Governance.Policies {
+		if policy.Acceptance == "required" && len(policy.Roles) == 0 {
+			needsUniversalAcceptance = true
+			break
+		}
+	}
+	if !needsUniversalAcceptance {
+		return nil
+	}
+	mount, ok := mountByID(doc.doc, doc.doc.Governance.Attestations.Mount)
+	if !ok {
+		return fmt.Errorf("attestation mount %q is missing", doc.doc.Governance.Attestations.Mount)
+	}
+	repository, ok := access.GitHubRepositoryName(mount.GitURL)
+	if !ok {
+		return fmt.Errorf("attestation mount does not name a GitHub repository")
+	}
+	if strings.EqualFold(repository, protectedRepository) {
+		return nil
+	}
+	if strings.TrimSpace(umbrellaRoot) == "" {
+		return fmt.Errorf("umbrella root is required to resolve the external attestation checkout")
+	}
+	entries, err := workspace.ListMounts(home, doc.ref.Name, umbrellaRoot)
+	if err != nil {
+		return err
+	}
+	var ledger workspace.Entry
+	for _, entry := range entries {
+		if entry.ID == mount.ID {
+			ledger = entry
+			break
+		}
+	}
+	if ledger.LocalPath == "" {
+		return fmt.Errorf("external attestation mount %q is not materialized", mount.ID)
+	}
+	if out, err := gitPRBytes(ledger.LocalPath, nil, "fetch", "--prune", "origin"); err != nil {
+		return fmt.Errorf("refresh external attestation repository: %s", commandMessage(out, err))
+	}
+	upstream, err := gitPRText(ledger.LocalPath, nil, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	if err != nil {
+		return fmt.Errorf("external attestation repository has no trusted upstream: %w", err)
+	}
+	input.AttestationRepo = ledger.LocalPath
+	input.AttestationRepository = repository
+	input.AttestationBaseRef = upstream
+	return nil
 }
 
 func changedRecordDomains(doc manifest.Document, mount string, paths []string) []manifest.RecordDomain {

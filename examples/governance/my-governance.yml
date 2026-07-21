@@ -35,6 +35,16 @@ jobs:
           path: manifest
           persist-credentials: false
 
+      - name: Check out authoritative policy acceptances
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: ${{ vars.MY_ATTESTATION_REPOSITORY }}
+          ref: ${{ vars.MY_ATTESTATION_BRANCH }}
+          token: ${{ secrets.MY_ATTESTATION_READ_TOKEN }}
+          fetch-depth: 0
+          path: attestations
+          persist-credentials: false
+
       - name: Check out the immutable trusted validator
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -70,9 +80,11 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PROTECTED_REPOSITORY: ${{ github.repository }}
           PROTECTED_MOUNT: ${{ vars.MY_GOVERNANCE_MOUNT }}
+          ATTESTATION_REPOSITORY: ${{ vars.MY_ATTESTATION_REPOSITORY }}
         run: |
           set -euo pipefail
           manifest_base="$(git -C manifest rev-parse HEAD^{commit})"
+          attestation_base="$(git -C attestations rev-parse HEAD^{commit})"
           "$RUNNER_TEMP/my-governance" governance check \
             --repo proposed \
             --repository "$PROTECTED_REPOSITORY" \
@@ -80,6 +92,9 @@ jobs:
             --head "$PR_HEAD" \
             --manifest-repo manifest \
             --manifest-base "$manifest_base" \
+            --attestation-repo attestations \
+            --attestation-repository "$ATTESTATION_REPOSITORY" \
+            --attestation-base "$attestation_base" \
             --mount "$PROTECTED_MOUNT" \
             --actor-id "$PR_AUTHOR_ID" \
             --actor-login "$PR_AUTHOR_LOGIN" \

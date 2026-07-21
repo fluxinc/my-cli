@@ -28,6 +28,7 @@ type Entry struct {
 	Kind         string   `json:"kind,omitempty"`
 	GitURL       string   `json:"git_url"`
 	LocalPath    string   `json:"local_path"`
+	UmbrellaRoot string   `json:"umbrella_root,omitempty"`
 	ContentPaths []string `json:"content_paths,omitempty"`
 }
 

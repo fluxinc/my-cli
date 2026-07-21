@@ -37,7 +37,9 @@ func TestGovernanceCITrustBoundary(t *testing.T) {
 	writeFile(t, filepath.Join(contentSource, "fleet", "asset.md"), "# Synthetic asset\n")
 	writeFile(t, filepath.Join(contentSource, "policy", "attestations", "18", "release-policy", governancePolicyDigest+".json"), attestationE2EJSON(18, manifestBase))
 	initGitRepo(t, contentSource)
-	contentBase := gitOutput(t, contentSource, "rev-parse", "HEAD")
+	unacceptedBase := gitOutput(t, contentSource, "rev-parse", "HEAD")
+	writeFile(t, filepath.Join(contentSource, "policy", "attestations", "17", "release-policy", governancePolicyDigest+".json"), attestationE2EJSON(17, manifestBase))
+	contentBase := commitAll(t, contentSource, "accept release policy")
 	contentBare := filepath.Join(testRoot, "content.git")
 	cloneBare(t, contentSource, contentBare)
 
@@ -47,7 +49,7 @@ func TestGovernanceCITrustBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 		head := commitAll(t, repo, "delete protected record")
-		runGovernanceCheck(t, bin, testPath, "write", false, "protected_path_deleted", repo, "example/records", contentBase, head, manifestSource, manifestBase, "handbook")
+		runGovernanceCheck(t, bin, testPath, "write", false, "protected_path_deleted", repo, "example/records", contentBase, head, manifestSource, manifestBase, "handbook", contentSource, contentBase)
 	})
 
 	t.Run("administrator override permits protected record deletion", func(t *testing.T) {
@@ -56,21 +58,22 @@ func TestGovernanceCITrustBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 		head := commitAll(t, repo, "administrator deletes protected record")
-		runGovernanceCheck(t, bin, testPath, "admin", true, "", repo, "example/records", contentBase, head, manifestSource, manifestBase, "handbook")
+		runGovernanceCheck(t, bin, testPath, "admin", true, "", repo, "example/records", contentBase, head, manifestSource, manifestBase, "handbook", contentSource, contentBase)
 	})
 
 	t.Run("pull request author may append his own attestation", func(t *testing.T) {
 		repo := cloneWork(t, contentBare, filepath.Join(testRoot, "own-attestation"))
+		runGit(t, repo, "checkout", "-q", unacceptedBase)
 		writeFile(t, filepath.Join(repo, "policy", "attestations", "17", "release-policy", governancePolicyDigest+".json"), attestationE2EJSON(17, manifestBase))
 		head := commitAll(t, repo, "append own acceptance")
-		runGovernanceCheck(t, bin, testPath, "write", true, "", repo, "example/records", contentBase, head, manifestSource, manifestBase, "handbook")
+		runGovernanceCheck(t, bin, testPath, "write", true, "", repo, "example/records", unacceptedBase, head, manifestSource, manifestBase, "handbook", contentSource, contentBase)
 	})
 
 	t.Run("forged attestation subject is denied", func(t *testing.T) {
 		repo := cloneWork(t, contentBare, filepath.Join(testRoot, "forged-attestation"))
 		writeFile(t, filepath.Join(repo, "policy", "attestations", "99", "release-policy", governancePolicyDigest+".json"), attestationE2EJSON(99, manifestBase))
 		head := commitAll(t, repo, "forge another subject")
-		runGovernanceCheck(t, bin, testPath, "write", false, "attestation_subject_mismatch", repo, "example/records", contentBase, head, manifestSource, manifestBase, "handbook")
+		runGovernanceCheck(t, bin, testPath, "write", false, "attestation_subject_mismatch", repo, "example/records", contentBase, head, manifestSource, manifestBase, "handbook", contentSource, contentBase)
 	})
 
 	t.Run("even an administrator cannot rewrite acceptance evidence", func(t *testing.T) {
@@ -78,17 +81,17 @@ func TestGovernanceCITrustBoundary(t *testing.T) {
 		path := filepath.Join(repo, "policy", "attestations", "18", "release-policy", governancePolicyDigest+".json")
 		writeFile(t, path, attestationE2EJSON(18, manifestBase)+"\n")
 		head := commitAll(t, repo, "rewrite immutable acceptance")
-		runGovernanceCheck(t, bin, testPath, "admin", false, "append_only_path_modified", repo, "example/records", contentBase, head, manifestSource, manifestBase, "handbook")
+		runGovernanceCheck(t, bin, testPath, "admin", false, "append_only_path_modified", repo, "example/records", contentBase, head, manifestSource, manifestBase, "handbook", contentSource, contentBase)
 	})
 
 	manifestHeadRepo := cloneWork(t, manifestBare, filepath.Join(testRoot, "manifest-change"))
 	writeFile(t, filepath.Join(manifestHeadRepo, "README.md"), "proposed control-plane change\n")
 	manifestHead := commitAll(t, manifestHeadRepo, "change manifest control plane")
 	t.Run("non-admin manifest change is denied", func(t *testing.T) {
-		runGovernanceCheck(t, bin, testPath, "write", false, "manifest_admin_required", manifestHeadRepo, "example/control", manifestBase, manifestHead, manifestSource, manifestBase, "@manifest")
+		runGovernanceCheck(t, bin, testPath, "write", false, "manifest_admin_required", manifestHeadRepo, "example/control", manifestBase, manifestHead, manifestSource, manifestBase, "@manifest", contentSource, contentBase)
 	})
 	t.Run("administrator manifest change is allowed", func(t *testing.T) {
-		runGovernanceCheck(t, bin, testPath, "admin", true, "", manifestHeadRepo, "example/control", manifestBase, manifestHead, manifestSource, manifestBase, "@manifest")
+		runGovernanceCheck(t, bin, testPath, "admin", true, "", manifestHeadRepo, "example/control", manifestBase, manifestHead, manifestSource, manifestBase, "@manifest", contentSource, contentBase)
 	})
 
 	t.Run("working-tree manifest cache edit cannot weaken CI", func(t *testing.T) {
@@ -100,7 +103,7 @@ func TestGovernanceCITrustBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 		head := commitAll(t, repo, "attempt cache bypass")
-		runGovernanceCheck(t, bin, testPath, "write", false, "protected_path_deleted", repo, "example/records", contentBase, head, cache, manifestBase, "handbook")
+		runGovernanceCheck(t, bin, testPath, "write", false, "protected_path_deleted", repo, "example/records", contentBase, head, cache, manifestBase, "handbook", contentSource, contentBase)
 	})
 }
 
@@ -182,12 +185,14 @@ func runtimeExeSuffix() string {
 	return ""
 }
 
-func runGovernanceCheck(t *testing.T, bin, path, permission string, wantAllowed bool, reason, repo, repository, base, head, manifestRepo, manifestBase, mount string) {
+func runGovernanceCheck(t *testing.T, bin, path, permission string, wantAllowed bool, reason, repo, repository, base, head, manifestRepo, manifestBase, mount, attestationRepo, attestationBase string) {
 	t.Helper()
 	cmd := exec.Command(bin,
 		"governance", "check", "--repo", repo, "--repository", repository,
 		"--base", base, "--head", head, "--manifest-repo", manifestRepo,
 		"--manifest-base", manifestBase, "--mount", mount,
+		"--attestation-repo", attestationRepo, "--attestation-repository", "example/records",
+		"--attestation-base", attestationBase,
 		"--actor-id", "17", "--actor-login", "operator", "--json",
 	)
 	cmd.Env = append(os.Environ(), "PATH="+path, "MY_E2E_PERMISSION="+permission)

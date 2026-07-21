@@ -355,6 +355,7 @@ my policy show <id>
 my policy accept <id> --yes
 my policy status [id]
 my policy acceptances [--json]
+my policy supersede <id> --subject-id <github-id> --reason <text> --yes
 my governance audit --json
 ```
 
@@ -363,11 +364,17 @@ Required current acceptances gate `my ai`, `my root`, and outbound sync, while
 pull request containing only that attestation path. Unrelated working-tree and
 index state is left in place; `my record flush` retries a failed submission.
 `my policy acceptances` reports local, submitted, and merge-proven ledger state
-per immutable subject and policy.
+per immutable subject and policy. A current manifest administrator can append a
+supersession event with `my policy supersede`; acceptance and supersession
+evidence are never rewritten or deleted. Supersession permanently blocks that
+subject's acceptance of the same policy version and digest; restoring access
+requires publishing a new policy version for the subject to accept.
 CI builds `my` from an explicitly configured 40-character trusted commit and
 runs `my governance check` against every commit-parent edge in the complete
 proposal history and reads its protections only from the trusted manifest base
-revision. See `examples/governance/` for the pinned base-owned workflow,
+revision. CI enforces universally required policies; role-scoped requirements
+remain local until the manifest has authoritative identity-to-role mapping.
+See `examples/governance/` for the pinned base-owned workflow,
 CODEOWNERS pattern, ruleset baseline, and immutable PR-author inputs.
 
 Governed manifests can also opt generic additive records into exact mount paths:
@@ -573,9 +580,10 @@ indexed in [docs/plans/](docs/plans/README.md):
   live GitHub enforcement audits. Manifest-routed generic records and the
   retryable publication outbox are hardened, and policy attestations now keep
   manifest commits as provenance without racing unrelated manifest advances.
-  Acceptance evidence now has isolated durable PR publication and
-  local/submitted/merge-proven reporting. Remote acceptance CI, umbrella-root
-  authoring, and private-manifest dogfood remain before release.
+  Acceptance evidence now has isolated durable PR publication,
+  local/submitted/merge-proven reporting, trusted-branch CI enforcement for
+  universal policies, and append-only administrative supersession.
+  Umbrella-root authoring and private-manifest dogfood remain before release.
   Plans: [governed organizations](docs/plans/2026-07-16-governed-organizations.md)
   and [completion gates](docs/plans/2026-07-21-governed-organizations-completion.md).
 - **Shipped (v0.35.0) — dogfood ergonomics audit.** A reviewed two-agent audit
