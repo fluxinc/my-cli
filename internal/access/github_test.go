@@ -47,6 +47,31 @@ func TestResolveGitHubReturnsImmutableActorAndPermission(t *testing.T) {
 	}
 }
 
+func TestResolveGitHubActorCanBeSharedAcrossRepositoryChecks(t *testing.T) {
+	var calls []string
+	runner := func(name string, args ...string) ([]byte, error) {
+		joined := strings.Join(args, " ")
+		calls = append(calls, joined)
+		if joined == "api user" {
+			return []byte(`{"id":17,"node_id":"U_actor","login":"operator"}`), nil
+		}
+		repo := strings.TrimPrefix(joined, "api -i repos/")
+		return githubResponse(200, "", fmt.Sprintf(`{"id":29,"node_id":"R_%s","full_name":%q,"private":true,"permissions":{"pull":true}}`, strings.ReplaceAll(repo, "/", "_"), repo)), nil
+	}
+	actorDecision := ResolveGitHubActor(runner)
+	if actorDecision.State != StateAllowed {
+		t.Fatalf("actor decision = %#v", actorDecision)
+	}
+	for _, repo := range []string{"example/one", "example/two"} {
+		if decision := ResolveGitHubForActor(repo, actorDecision.Actor, runner); !decision.Allows(PermissionRead) {
+			t.Fatalf("%s decision = %#v", repo, decision)
+		}
+	}
+	if got := strings.Join(calls, "|"); got != "api user|api -i repos/example/one|api -i repos/example/two" {
+		t.Fatalf("calls = %s", got)
+	}
+}
+
 func TestResolveGitHubClassifiesAmbiguousAndCredentialFailures(t *testing.T) {
 	tests := []struct {
 		name       string

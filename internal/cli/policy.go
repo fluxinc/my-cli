@@ -174,7 +174,7 @@ func (a app) runPolicyStatus(args []string) error {
 	if err != nil {
 		return err
 	}
-	actor, err := policyActor(ctx.doc.doc, a.accessRunner)
+	actor, err := a.governedPolicyActor(ctx.doc.doc)
 	if err != nil {
 		return err
 	}
@@ -225,7 +225,7 @@ func (a app) runPolicyAccept(args []string) error {
 	if _, _, err := verifiedPolicyBlob(ctx, policy); err != nil {
 		return err
 	}
-	actor, err := policyActor(ctx.doc.doc, a.accessRunner)
+	actor, err := a.governedPolicyActor(ctx.doc.doc)
 	if err != nil {
 		return err
 	}
@@ -655,7 +655,7 @@ func (a app) publishPolicyAcceptance(ctx policyContext, item outbox.Event) (outb
 	if err != nil {
 		return appendOutboxFailure(ctx.root, item, err)
 	}
-	actor, err := policyActor(refreshed.doc.doc, a.accessRunner)
+	actor, err := a.governedPolicyActor(refreshed.doc.doc)
 	if err != nil {
 		return appendOutboxFailure(ctx.root, item, err)
 	}
@@ -994,7 +994,7 @@ func (a app) requireGovernedPolicyAcceptances(home string, doc registeredDoc, ro
 	if len(policies) == 0 {
 		return nil
 	}
-	actor, err := policyActorForGate(home, doc, a.accessRunner)
+	actor, err := a.policyActorForGate(home, doc)
 	if err != nil {
 		return err
 	}
@@ -1035,7 +1035,7 @@ func (a app) printGovernedPolicyReviewNotice(home string, doc registeredDoc, roo
 	}
 }
 
-func policyActorForGate(home string, doc registeredDoc, runner access.Runner) (access.Actor, error) {
+func (a app) policyActorForGate(home string, doc registeredDoc) (access.Actor, error) {
 	inventory, err := access.LoadInventory(home)
 	if err != nil {
 		return access.Actor{}, err
@@ -1045,7 +1045,20 @@ func policyActorForGate(home string, doc registeredDoc, runner access.Runner) (a
 			return baseline.Actor, nil
 		}
 	}
-	return policyActor(doc.doc, runner)
+	return a.governedPolicyActor(doc.doc)
+}
+
+// governedPolicyActor resolves the live GitHub actor once per invocation and
+// reuses the positive result across every governance gate.
+func (a app) governedPolicyActor(doc manifest.Document) (access.Actor, error) {
+	decision := a.governedRepositoryDecision(doc.Governance.Authorization.ManifestRepository, access.Repository{})
+	if decision.Actor.ID == 0 || decision.Actor.NodeID == "" {
+		return access.Actor{}, fmt.Errorf("cannot establish immutable GitHub identity for policy acceptance: %s", decision.ReasonCode)
+	}
+	if decision.State != access.StateAllowed {
+		return access.Actor{}, fmt.Errorf("cannot establish readable manifest authority for policy acceptance: %s", decision.ReasonCode)
+	}
+	return decision.Actor, nil
 }
 
 func (a app) reviewRequiredPolicies(home string, doc registeredDoc, root string) (bool, error) {
@@ -1065,7 +1078,7 @@ func (a app) reviewRequiredPolicies(home string, doc registeredDoc, root string)
 	if err != nil {
 		return false, err
 	}
-	actor, err := policyActor(doc.doc, a.accessRunner)
+	actor, err := a.governedPolicyActor(doc.doc)
 	if err != nil {
 		return false, err
 	}

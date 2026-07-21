@@ -1,6 +1,6 @@
 # Governed organizations completion: hardening, acceptance CI, and dogfood
 
-Status: active — S1-S7, S8a, and S8b complete; S8 dogfood and S8c ergonomics follow-ups next
+Status: active — S1-S7, S8a, S8b, and S8d complete; S8 dogfood and S8c ergonomics follow-ups next
 
 Design source of truth: [2026-07-16-governed-organizations](2026-07-16-governed-organizations.md).
 This plan closes the gap between mechanism-complete code and a
@@ -282,6 +282,28 @@ commit, but resolve them before the governance release:
   state outside the sync-managed manifest cache. Document the state boundary
   and add a guard or diagnostic that prevents private runtime state from being
   mistaken for publishable manifest content.
+
+### S8d — Governed launch latency — complete
+
+The human-surface correction exposed repeated provider work hidden behind
+`my ai`: multiple launch gates each re-resolved the GitHub actor and every
+managed repository. Keep the live security checks automatic, but pay for each
+verified fact only once per CLI invocation:
+
+- resolve the immutable actor once and check distinct repositories concurrently
+  with a bounded fan-out;
+- reuse complete positive repository decisions across later launch and policy
+  gates, while never retaining denied or unknown results after their request;
+- persist the normal observation for an expired activated baseline even when a
+  later gate reuses that invocation's positive decision; and
+- expose no new employee workflow or required flag: the command remains
+  `my ai`.
+
+A representative governed launch dropped from about 15 seconds to 1.2-2.3
+seconds before the harness takes over. One 35-second provider stall was not
+reproduced in eight direct identity checks or ten subsequent governed launches.
+If that tail latency recurs, attribute the provider phase internally rather
+than adding governance controls to the employee command surface.
 
 ### Release gate (step 8)
 

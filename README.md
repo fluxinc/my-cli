@@ -642,10 +642,13 @@ indexed in [docs/plans/](docs/plans/README.md):
   gap with digest-safe isolated policy proposals. A subsequent product review
   restored the intended human surface: employees use `my ai`, which handles
   exact-document policy review and acceptance inline; the detailed governance
-  verbs remain agent/admin plumbing. Live verification reached that policy
-  prompt. Two small pre-release ergonomics follow-ups remain: bare
-  `my meetings`/`my support` list defaults and a stronger boundary keeping
-  organization-skill runtime state out of the managed manifest cache.
+  verbs remain agent/admin plumbing. Repeated live authorization work is now
+  collapsed inside each launch to one actor lookup and one bounded-concurrent
+  check per distinct repository, without adding an employee-facing control.
+  Live verification reached the policy prompt. Two small pre-release
+  ergonomics follow-ups remain: bare `my meetings`/`my support` list defaults
+  and a stronger boundary keeping organization-skill runtime state out of the
+  managed manifest cache.
   Plans: [governed organizations](docs/plans/2026-07-16-governed-organizations.md)
   and [completion gates](docs/plans/2026-07-21-governed-organizations-completion.md).
 - **Shipped (v0.35.0) — dogfood ergonomics audit.** A reviewed two-agent audit

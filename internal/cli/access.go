@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fluxinc/my-cli/internal/access"
@@ -404,22 +405,19 @@ func (a app) requireGovernedLaunchAccess(home string, doc registeredDoc, root st
 		return err
 	}
 	now := time.Now().UTC()
+	var liveTargets []accessTarget
 	for _, target := range targets {
 		if !pathExists(target.Path) {
 			continue
 		}
 		entry, ok := managedInventoryEntry(inventory, target.Path)
 		if !ok {
-			if err := requireLiveReadableAccess(target, inventory, a.accessRunner); err != nil {
-				return err
-			}
+			liveTargets = append(liveTargets, target)
 			continue
 		}
 		baseline, ok := newestPositiveBaseline(entry.Baselines)
 		if !ok {
-			if err := requireLiveReadableAccess(target, inventory, a.accessRunner); err != nil {
-				return err
-			}
+			liveTargets = append(liveTargets, target)
 			continue
 		}
 		checkedAt, err := time.Parse(time.RFC3339Nano, baseline.CheckedAt)
@@ -430,7 +428,7 @@ func (a app) requireGovernedLaunchAccess(home string, doc registeredDoc, root st
 			return fmt.Errorf("governed launch blocked: %s has a newer non-allowed access observation; run `my access enforce`", target.Repository)
 		}
 		if !now.Before(checkedAt.Add(ttl)) {
-			decision := access.ResolveGitHubKnown(target.Repository, entry.Repository, a.accessRunner)
+			decision := a.governedRepositoryDecision(target.Repository, entry.Repository)
 			if !hasPositiveBaseline(inventory, target.Path, decision) {
 				return fmt.Errorf("governed launch blocked: current GitHub actor has no positive baseline for %s", target.Repository)
 			}
@@ -457,7 +455,7 @@ func (a app) requireGovernedLaunchAccess(home string, doc registeredDoc, root st
 			}
 		}
 	}
-	return nil
+	return a.requireLiveReadableAccessAll(liveTargets, inventory)
 }
 
 func (a app) checkGovernedLaunchAccessReadOnly(home string, doc registeredDoc, root string) error {
@@ -477,6 +475,7 @@ func (a app) checkGovernedLaunchAccessReadOnly(home string, doc registeredDoc, r
 		return err
 	}
 	now := time.Now().UTC()
+	var liveTargets []accessTarget
 	for _, target := range targets {
 		if !pathExists(target.Path) {
 			continue
@@ -489,24 +488,65 @@ func (a app) checkGovernedLaunchAccessReadOnly(home string, doc registeredDoc, r
 				}
 			}
 		}
-		if err := requireLiveReadableAccess(target, inventory, a.accessRunner); err != nil {
-			return errors.New(strings.Replace(err.Error(), "governed launch blocked: ", "launch will be blocked: ", 1))
-		}
+		liveTargets = append(liveTargets, target)
+	}
+	if err := a.requireLiveReadableAccessAll(liveTargets, inventory); err != nil {
+		return errors.New(strings.Replace(err.Error(), "governed launch blocked: ", "launch will be blocked: ", 1))
 	}
 	return nil
 }
 
-func requireLiveReadableAccess(target accessTarget, inventory access.Inventory, runner access.Runner) error {
-	decision := resolveAccessTarget(target, inventory, runner)
+func (a app) requireLiveReadableAccess(target accessTarget, inventory access.Inventory, actor access.Actor) error {
+	known := access.Repository{}
+	if entry, ok := managedInventoryEntry(inventory, target.Path); ok {
+		known = entry.Repository
+	}
+	decision := a.governedRepositoryDecisionForActor(target.Repository, known, actor)
 	if decision.Allows(access.PermissionRead) {
 		// A live check permits this launch only. It deliberately does not write a
-		// positive baseline or activate monitoring/quarantine.
+		// positive baseline or activate monitoring/quarantine. Its full positive
+		// decision is memoized only for this invocation.
 		return nil
 	}
 	if decision.State == access.StateDenied {
 		return fmt.Errorf("governed launch blocked: current GitHub identity cannot read %s (%s)", target.Repository, decision.ReasonCode)
 	}
 	return fmt.Errorf("governed launch blocked: access to %s could not be verified because provider state is unknown (%s)", target.Repository, decision.ReasonCode)
+}
+
+// requireLiveReadableAccessAll resolves the given targets concurrently and
+// returns the first failure in stable target order. Provider calls dominate
+// governed launch latency, so unbaselined targets are checked in parallel.
+func (a app) requireLiveReadableAccessAll(targets []accessTarget, inventory access.Inventory) error {
+	if len(targets) == 0 {
+		return nil
+	}
+	actorDecision := a.governedActorDecision()
+	if actorDecision.State != access.StateAllowed {
+		return fmt.Errorf("governed launch blocked: access to managed repositories could not be verified because provider state is unknown (%s)", actorDecision.ReasonCode)
+	}
+	if len(targets) == 1 {
+		return a.requireLiveReadableAccess(targets[0], inventory, actorDecision.Actor)
+	}
+	errs := make([]error, len(targets))
+	sem := make(chan struct{}, 4)
+	var wg sync.WaitGroup
+	for i, target := range targets {
+		wg.Add(1)
+		go func(i int, target accessTarget) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			errs[i] = a.requireLiveReadableAccess(target, inventory, actorDecision.Actor)
+		}(i, target)
+	}
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func newestPositiveBaseline(baselines []access.PositiveBaseline) (access.PositiveBaseline, bool) {

@@ -27,6 +27,7 @@ func Run(args []string) int {
 		stderr:      os.Stderr,
 		stdin:       bufio.NewReader(os.Stdin),
 		interactive: isTerminal(os.Stdin) && isTerminal(os.Stdout),
+		memo:        newGovernedMemo(),
 	}
 	if err := a.run(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -74,6 +75,9 @@ type app struct {
 	accessMonitorRunner access.Runner
 	accessPlatform      string
 	accessExecutable    string
+	// memo caches positive governance lookups for one invocation; nil (the
+	// test default) disables caching so gate behavior stays exact.
+	memo *governedMemo
 }
 
 func (a app) runStartupMaintenance(args []string) {

@@ -117,10 +117,17 @@ func validOwnerRepo(value string) bool {
 // to quarantine local data; the access state machine applies baselines and
 // confirmation rules separately.
 func ResolveGitHub(repository string, runner Runner) Decision {
-	repoName, ok := GitHubRepositoryName(repository)
-	if !ok {
-		return Decision{State: StateUnknown, ReasonCode: "unsupported_repository", Message: "expected github.com owner/repository"}
+	actorDecision := ResolveGitHubActor(runner)
+	if actorDecision.State != StateAllowed {
+		return actorDecision
 	}
+	return ResolveGitHubForActor(repository, actorDecision.Actor, runner)
+}
+
+// ResolveGitHubActor resolves the immutable identity authenticated by gh.
+// Callers checking several repositories should resolve this once and pass the
+// result to ResolveGitHubForActor or ResolveGitHubKnownForActor.
+func ResolveGitHubActor(runner Runner) Decision {
 	if runner == nil {
 		if _, err := exec.LookPath("gh"); err != nil {
 			return Decision{State: StateUnknown, ReasonCode: "gh_missing", Message: "install GitHub CLI and run `gh auth login`"}
@@ -135,6 +142,25 @@ func ResolveGitHub(repository string, runner Runner) Decision {
 	var actor Actor
 	if err := json.Unmarshal(actorOut, &actor); err != nil || actor.ID == 0 || actor.NodeID == "" || actor.Login == "" {
 		return Decision{State: StateUnknown, ReasonCode: "invalid_actor_response", Message: "GitHub returned an incomplete immutable actor identity"}
+	}
+	return Decision{State: StateAllowed, ReasonCode: "positive_identity", Actor: actor}
+}
+
+// ResolveGitHubForActor checks one repository for an already-resolved actor.
+// It avoids repeating the actor API request when a caller checks a target set.
+func ResolveGitHubForActor(repository string, actor Actor, runner Runner) Decision {
+	repoName, ok := GitHubRepositoryName(repository)
+	if !ok {
+		return Decision{State: StateUnknown, ReasonCode: "unsupported_repository", Message: "expected github.com owner/repository", Actor: actor}
+	}
+	if actor.ID == 0 || actor.NodeID == "" || actor.Login == "" {
+		return Decision{State: StateUnknown, ReasonCode: "invalid_actor_response", Message: "GitHub actor identity is incomplete"}
+	}
+	if runner == nil {
+		if _, err := exec.LookPath("gh"); err != nil {
+			return Decision{State: StateUnknown, ReasonCode: "gh_missing", Message: "install GitHub CLI and run `gh auth login`", Actor: actor}
+		}
+		runner = execCommand
 	}
 
 	repoOut, repoErr := runner("gh", "api", "-i", "repos/"+repoName)
@@ -160,7 +186,18 @@ func ResolveGitHub(repository string, runner Runner) Decision {
 // from being misclassified as revocation merely because the old name stopped
 // resolving.
 func ResolveGitHubKnown(repository string, known Repository, runner Runner) Decision {
-	decision := ResolveGitHub(repository, runner)
+	actorDecision := ResolveGitHubActor(runner)
+	if actorDecision.State != StateAllowed {
+		return actorDecision
+	}
+	return ResolveGitHubKnownForActor(repository, known, actorDecision.Actor, runner)
+}
+
+// ResolveGitHubKnownForActor is ResolveGitHubKnown without a repeated actor
+// lookup. It retains immutable repository-id fallback for rename/transfer
+// ambiguity.
+func ResolveGitHubKnownForActor(repository string, known Repository, actor Actor, runner Runner) Decision {
+	decision := ResolveGitHubForActor(repository, actor, runner)
 	if decision.State != StateDenied || decision.ReasonCode != "repository_not_found" || known.ID == 0 || known.NodeID == "" {
 		return decision
 	}
