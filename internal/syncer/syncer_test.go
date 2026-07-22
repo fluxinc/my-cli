@@ -754,6 +754,24 @@ func TestRunAutoHoldsWhenGnitScopeWouldPublishUnselectedMember(t *testing.T) {
 	}
 }
 
+func TestRunAutoHoldsWhenRosterMemberCheckoutIsMissing(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	root := filepath.Dir(content)
+	writeFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers:\n- id: handbook\n  path: content\n  remote: "+remote+"\n- id: ghost\n  path: ghost\n  remote: https://github.com/acme/ghost.git\n")
+	setupGnitControlRoot(t, root)
+	writeFile(t, filepath.Join(content, "meetings", "new.md"), "new\n")
+	adoptFile(t, content, "meetings/new.md")
+
+	entry := Entry{ID: "handbook", Role: "content", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}}
+	for _, dryRun := range []bool{true, false} {
+		report := Run([]Entry{entry}, Options{Backend: "auto", GnitRoot: root, Publish: "auto", DryRun: dryRun, Visibility: privateVisibility})
+		result := findResult(t, report, "handbook")
+		if result.Status != "held back" || result.ReasonCode != "gnit_workspace_unhealthy" || !strings.Contains(result.Message, "ghost") {
+			t.Fatalf("dryRun=%v result=%#v, want gnit_workspace_unhealthy hold naming ghost", dryRun, result)
+		}
+	}
+}
+
 func TestRunAutoInvalidRosterFailsClosedForTargetUnderRoot(t *testing.T) {
 	remote, content, _ := setupTwoCheckoutRemote(t)
 	root := filepath.Dir(content)
