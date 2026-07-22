@@ -3,6 +3,7 @@ package syncer
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -120,4 +121,18 @@ func TestNormalizeGitRemoteMatchesHTTPSAndSSH(t *testing.T) {
 			t.Fatalf("normalizeGitRemote(%q) = %q", value, got)
 		}
 	}
+}
+
+func TestCheckGnitWorkspaceExplainsHealthyManagedMember(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	root := filepath.Dir(content)
+	writeFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers:\n- id: handbook\n  path: content\n  remote: "+remote+"\n")
+	setupGnitControlRoot(t, root)
+	checks := CheckGnitWorkspace(root, []Entry{{ID: "handbook", GitURL: remote, LocalPath: content}}, nil)
+	for _, check := range checks {
+		if check.Name == "handbook" && check.Status == "info" && strings.Contains(check.Message, "coordinated publication") {
+			return
+		}
+	}
+	t.Fatalf("checks = %#v", checks)
 }

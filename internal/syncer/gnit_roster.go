@@ -77,6 +77,8 @@ func CheckGnitWorkspace(root string, entries []Entry, runner Runner) []GnitWorks
 			checks = append(checks, GnitWorkspaceCheck{Name: route.Member.ID, Status: "error", Path: entry.LocalPath, Message: route.Message + "; run gnit doctor"})
 		case "gnit_workspace_unhealthy":
 			checks = append(checks, GnitWorkspaceCheck{Name: route.Member.ID, Status: "warning", Path: entry.LocalPath, Message: route.Message + "; run gnit doctor"})
+		case "":
+			checks = append(checks, GnitWorkspaceCheck{Name: route.Member.ID, Status: "info", Path: entry.LocalPath, Message: "exact roster member; My AI uses coordinated publication for this checkout"})
 		}
 	}
 	for _, member := range roster.Members {
@@ -201,7 +203,7 @@ func gnitScopePreflight(root string, roster gnitRoster, selected map[string]bool
 	if len(extra) != 0 {
 		return gnitRoute{
 			Code:    "gnit_scope_exceeds_selection",
-			Message: fmt.Sprintf("coordinated publish would also publish unselected workspace member(s): %s; widen the My AI sync scope or reconcile them first", strings.Join(extra, ", ")),
+			Message: fmt.Sprintf("coordinated publish would also publish workspace member(s) outside this publish plan: %s; widen the My AI sync scope or reconcile them first", strings.Join(extra, ", ")),
 		}
 	}
 	return gnitRoute{}
