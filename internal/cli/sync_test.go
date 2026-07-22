@@ -655,6 +655,26 @@ func TestSyncExplicitGnitBackendReportsMissingWorkspace(t *testing.T) {
 	}
 }
 
+func TestSyncAutoUsesBuiltinForUnrosteredContentInGnitUmbrella(t *testing.T) {
+	home, root, content, _ := setupCLITrackedContentWorkspace(t, "auto")
+	writeCLITestFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers: []\n")
+	writeCLITestFile(t, filepath.Join(content, "meetings", "target-aware.md"), "target aware\n")
+	runCLIGit(t, content, "add", "-N", "meetings/target-aware.md")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "sync", "--publish", "direct", "--scope", "content", "--print", "--json", "--home", home, "--umbrella", root}); err != nil {
+		t.Fatalf("sync: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	var report syncCommandReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	result := syncResultByID(t, report, "handbook")
+	if report.Backend != "auto" || result.Backend != "builtin" || result.Status != "dry-run" {
+		t.Fatalf("report = %#v result=%#v", report, result)
+	}
+}
+
 func TestSyncBareDefaultPullOnlyAndExplicitPublish(t *testing.T) {
 	root := t.TempDir()
 	remote, clone, _ := setupCLIRemoteRepo(t, root, "handbook", map[string]string{

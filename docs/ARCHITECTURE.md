@@ -67,7 +67,9 @@ manifests they control.
 My AI state, generated guidance, version-controlled mounts, opted-in catalog
 repositories, work sessions, and local-only scratch. When initialized as a
 Gnit control workspace, the umbrella's root records workspace metadata and
-pins, while the member repositories remain ordinary Git checkouts.
+pins, while the member repositories remain ordinary Git checkouts. Publication
+delegation is exact-member and target-aware: unrelated mounts under the same
+umbrella continue through My AI's guarded built-in path.
 
 ```
 ~/<org>/

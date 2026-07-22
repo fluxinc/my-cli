@@ -191,9 +191,10 @@ my compile --role <id> [--manifest NAME] [--home DIR]
 ```
 
 `my sync` is the routine pull/reconcile command. Bare `my sync` never publishes
-local changes. `--backend auto` prefers Gnit when the umbrella is initialized as
-a Gnit control workspace; My AI keeps the bootstrap, policy, duplicate-remote,
-and PR layers. `my sync --push` publishes eligible local changes per manifest
+local changes. `--backend auto` uses Gnit only for exact roster members and the
+guarded built-in path for unrostered checkouts; My AI keeps the bootstrap,
+policy, duplicate-remote, selected-scope, and PR layers. `my sync --push`
+publishes eligible local changes per manifest
 policy; `--publish direct` can publish existing local commits directly. For
 reviewed manifest control-plane edits, prefer `my publish --manifest NAME`;
 `my sync --publish direct --scope manifest` is the equivalent low-level sync

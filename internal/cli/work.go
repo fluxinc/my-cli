@@ -606,10 +606,6 @@ func (a app) syncFinishedSessionMounts(home, manifestName, root string, session 
 		return syncer.Report{}, fmt.Errorf("no content sync entries matched session %s", session.ID)
 	}
 	gnitRoot := findGnitWorkspaceRoot(root)
-	backend := "builtin"
-	if gnitRoot != "" {
-		backend = "gnit"
-	}
 	sessionHolds, err := collectSessionHolds(root)
 	if err != nil {
 		return syncer.Report{}, err
@@ -619,7 +615,7 @@ func (a app) syncFinishedSessionMounts(home, manifestName, root string, session 
 		return syncer.Report{}, err
 	}
 	report := syncer.Run(selected, syncer.Options{
-		Backend:      backend,
+		Backend:      "auto",
 		GnitRoot:     gnitRoot,
 		Publish:      publish,
 		Message:      message,

@@ -63,7 +63,7 @@ local scratch under `personal/`.
   umbrella-root `.mcp.json` materialized from local connection data only;
   doctor service checks.
 - Sync: bidirectional reconcile with auto-publish policy for adopted private
-  content, Gnit backend when the umbrella is a Gnit control workspace,
+  content, target-aware Gnit delegation for exact roster members,
   `.my-cli/last-sync.json` audit, `my doctor [--fix]`.
 - Self-update (`my update`) from GitHub releases with checksum
   verification; TTL-gated startup refresh and stderr-only update notices.

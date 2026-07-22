@@ -371,6 +371,7 @@ func TestRunGnitDryRunPlansApprovedContentThroughGnit(t *testing.T) {
 	remote, content, _ := setupTwoCheckoutRemote(t)
 	gnitRoot := filepath.Dir(content)
 	writeFile(t, filepath.Join(gnitRoot, ".gnit", "roster.yaml"), "version: 1\nmode: shared\nmembers:\n- id: handbook\n  path: content\n")
+	setupGnitControlRoot(t, gnitRoot)
 	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
 	adoptFile(t, content, "meetings/2026-06-08-sync.md")
 
@@ -392,7 +393,7 @@ func TestRunGnitDryRunPlansApprovedContentThroughGnit(t *testing.T) {
 	if result.Status != "dry-run" || result.Direction != "outbound" {
 		t.Fatalf("result = %#v, want outbound dry-run", result)
 	}
-	for _, want := range []string{"gnit add", "gnit commit", "gnit push"} {
+	for _, want := range []string{"commit My AI-approved", "publish with gnit"} {
 		if !strings.Contains(result.Message, want) {
 			t.Fatalf("message = %q, missing %q", result.Message, want)
 		}
@@ -401,6 +402,7 @@ func TestRunGnitDryRunPlansApprovedContentThroughGnit(t *testing.T) {
 
 func TestRunGnitPublishesWithWorkspaceRelativePathsAndCommit(t *testing.T) {
 	remote, gnitRoot, content, _ := setupGnitWorkspaceWithDuplicateRemote(t)
+	setupGnitControlRoot(t, gnitRoot)
 	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
 	adoptFile(t, content, "meetings/2026-06-08-sync.md")
 	var calls []string
@@ -439,6 +441,7 @@ func TestRunGnitPublishesWithWorkspaceRelativePathsAndCommit(t *testing.T) {
 
 func TestRunGnitStagesApprovedRootsForRenames(t *testing.T) {
 	remote, gnitRoot, content, _ := setupGnitWorkspaceWithDuplicateRemote(t)
+	setupGnitControlRoot(t, gnitRoot)
 	writeFile(t, filepath.Join(content, "meetings", "old.md"), "old\n")
 	runGit(t, content, "add", "meetings/old.md")
 	runGit(t, content, "commit", "-q", "-m", "seed old meeting")
@@ -517,8 +520,8 @@ func TestRunGnitHoldsWhenWorkspaceIsNotInitialized(t *testing.T) {
 	if result.ReasonCode != "gnit_not_control_workspace" {
 		t.Fatalf("reason code = %q, want gnit_not_control_workspace", result.ReasonCode)
 	}
-	if result.NextCommand != "my sync --backend builtin --push --print" {
-		t.Fatalf("next command = %q, want built-in sync dry-run", result.NextCommand)
+	if result.NextCommand != "my doctor" {
+		t.Fatalf("next command = %q, want doctor diagnosis", result.NextCommand)
 	}
 }
 
@@ -539,8 +542,8 @@ func TestRunGnitHoldsCheckoutOutsideWorkspaceWithNextCommand(t *testing.T) {
 	})
 
 	result := findResult(t, report, "handbook")
-	if result.Status != "held back" || result.ReasonCode != "outside_gnit_workspace" {
-		t.Fatalf("result = %#v, want outside_gnit_workspace hold", result)
+	if result.Status != "held back" || result.ReasonCode != "gnit_not_member" {
+		t.Fatalf("result = %#v, want gnit_not_member hold", result)
 	}
 	if result.NextCommand != "my doctor" {
 		t.Fatalf("next command = %q, want my doctor", result.NextCommand)
@@ -549,6 +552,7 @@ func TestRunGnitHoldsCheckoutOutsideWorkspaceWithNextCommand(t *testing.T) {
 
 func TestRunGnitAllowsCanonicalContentWithCleanDuplicateSibling(t *testing.T) {
 	remote, gnitRoot, content, manifest := setupGnitWorkspaceWithDuplicateRemote(t)
+	setupGnitControlRoot(t, gnitRoot)
 	writeFile(t, filepath.Join(content, "meetings", "2026-06-08-sync.md"), "sync\n")
 	adoptFile(t, content, "meetings/2026-06-08-sync.md")
 
@@ -567,7 +571,7 @@ func TestRunGnitAllowsCanonicalContentWithCleanDuplicateSibling(t *testing.T) {
 		t.Fatalf("backend message = %q, want clean duplicate to be tolerated", report.BackendMessage)
 	}
 	result := findResult(t, report, "handbook")
-	if result.Status != "dry-run" || result.Direction != "outbound" || !strings.Contains(result.Message, "gnit commit") {
+	if result.Status != "dry-run" || result.Direction != "outbound" || !strings.Contains(result.Message, "commit My AI-approved") {
 		t.Fatalf("result = %#v, want canonical outbound dry-run", result)
 	}
 	sibling := findResult(t, report, "manifest")
@@ -592,14 +596,11 @@ func TestRunGnitHoldsWhenDuplicateSiblingHasPendingChanges(t *testing.T) {
 		Visibility: privateVisibility,
 	})
 
-	if !strings.Contains(report.BackendMessage, "unsafe duplicate checkouts") {
-		t.Fatalf("backend message = %q, want unsafe duplicate warning", report.BackendMessage)
+	if result := findResult(t, report, "handbook"); result.Status != "held back" || result.ReasonCode != "gnit_preflight_failed" {
+		t.Fatalf("handbook result = %#v, want forced-backend preflight hold", result)
 	}
-	for _, id := range []string{"handbook", "manifest"} {
-		result := findResult(t, report, id)
-		if result.Status != "held back" || !strings.Contains(result.Message, "same remote sibling has pending changes") {
-			t.Fatalf("%s result = %#v, want unsafe duplicate hold", id, result)
-		}
+	if result := findResult(t, report, "manifest"); result.Status != "held back" || result.ReasonCode != "gnit_not_member" {
+		t.Fatalf("manifest result = %#v, want exact-membership hold", result)
 	}
 }
 
@@ -654,6 +655,147 @@ func TestRunGnitHoldsDivergedCheckoutWithDoctorNextCommand(t *testing.T) {
 	}
 	if result.NextCommand != "my doctor" {
 		t.Fatalf("next command = %q, want my doctor", result.NextCommand)
+	}
+}
+
+func TestRunAutoUsesBuiltinForUnrosteredTargetWithUnrelatedGnitMember(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	root := filepath.Dir(content)
+	otherRemote, _ := setupGnitMemberRepo(t, root, "other")
+	writeFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers:\n- id: other\n  path: other\n  remote: "+otherRemote+"\n")
+	writeFile(t, filepath.Join(content, "meetings", "new.md"), "new\n")
+	adoptFile(t, content, "meetings/new.md")
+
+	report := Run([]Entry{{ID: "handbook", Role: "content", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}}}, Options{
+		Backend: "auto", GnitRoot: root, Publish: "auto", DryRun: true, Visibility: privateVisibility,
+	})
+	result := findResult(t, report, "handbook")
+	if result.Status != "dry-run" || result.Backend != "builtin" || strings.Contains(result.Message, "gnit") || strings.Contains(result.Message, "coordinated") {
+		t.Fatalf("result = %#v, want quiet built-in dry-run", result)
+	}
+}
+
+func TestRunAutoNeverMarksUnrosteredTargetPushedByGnitWithPublishableRoot(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	root := filepath.Dir(content)
+	otherRemote, _ := setupGnitMemberRepo(t, root, "other")
+	writeFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers:\n- id: other\n  path: other\n  remote: "+otherRemote+"\n")
+	setupGnitControlRoot(t, root)
+	writeFile(t, filepath.Join(content, "meetings", "new.md"), "new\n")
+	adoptFile(t, content, "meetings/new.md")
+	var gnitCalls int
+
+	report := Run([]Entry{{ID: "handbook", Role: "content", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}}}, Options{
+		Backend: "auto", GnitRoot: root, Publish: "auto", Visibility: privateVisibility,
+		DirRunner: func(string, string, ...string) ([]byte, error) {
+			gnitCalls++
+			return []byte("unexpected"), nil
+		},
+	})
+	result := findResult(t, report, "handbook")
+	if result.Status != "pushed" || result.Backend != "builtin" || gnitCalls != 0 {
+		t.Fatalf("result = %#v calls=%d, want built-in publication only", result, gnitCalls)
+	}
+	if out, err := exec.Command("git", "--git-dir", remote, "show", "master:meetings/new.md").CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "new" {
+		t.Fatalf("remote content = %q err=%v", out, err)
+	}
+}
+
+func TestRunAutoHoldsRosteredTargetWhenRootHasNoOrigin(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	root := filepath.Dir(content)
+	writeFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers:\n- id: handbook\n  path: content\n  remote: "+remote+"\n")
+	runGit(t, root, "init", "-q")
+	writeFile(t, filepath.Join(content, "meetings", "new.md"), "new\n")
+	adoptFile(t, content, "meetings/new.md")
+
+	entry := Entry{ID: "handbook", Role: "content", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}}
+	for _, dryRun := range []bool{true, false} {
+		report := Run([]Entry{entry}, Options{Backend: "auto", GnitRoot: root, Publish: "auto", DryRun: dryRun, Visibility: privateVisibility})
+		result := findResult(t, report, "handbook")
+		if result.Status != "held back" || result.ReasonCode != "gnit_root_unpublishable" || result.NextCommand != "my doctor" {
+			t.Fatalf("dryRun=%v result=%#v", dryRun, result)
+		}
+	}
+}
+
+func TestRunAutoHoldsRosteredTargetOnRemoteIdentityMismatch(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	root := filepath.Dir(content)
+	writeFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers:\n- id: handbook\n  path: content\n  remote: https://github.com/acme/different.git\n")
+	writeFile(t, filepath.Join(content, "meetings", "new.md"), "new\n")
+	adoptFile(t, content, "meetings/new.md")
+
+	report := Run([]Entry{{ID: "handbook", Role: "content", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}}}, Options{
+		Backend: "auto", GnitRoot: root, Publish: "auto", DryRun: true, Visibility: privateVisibility,
+	})
+	if result := findResult(t, report, "handbook"); result.Status != "held back" || result.ReasonCode != "gnit_member_identity_mismatch" {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestRunAutoHoldsWhenGnitScopeWouldPublishUnselectedMember(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	root := filepath.Dir(content)
+	otherRemote, other := setupGnitMemberRepo(t, root, "other")
+	writeFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers:\n- id: handbook\n  path: content\n  remote: "+remote+"\n- id: other\n  path: other\n  remote: "+otherRemote+"\n")
+	setupGnitControlRoot(t, root)
+	writeFile(t, filepath.Join(content, "meetings", "new.md"), "new\n")
+	adoptFile(t, content, "meetings/new.md")
+	writeFile(t, filepath.Join(other, "ahead.txt"), "ahead\n")
+	runGit(t, other, "add", "ahead.txt")
+	runGit(t, other, "commit", "-q", "-m", "Ahead outside selection")
+
+	report := Run([]Entry{{ID: "handbook", Role: "content", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}}}, Options{
+		Backend: "auto", GnitRoot: root, Publish: "auto", DryRun: true, Visibility: privateVisibility,
+	})
+	if result := findResult(t, report, "handbook"); result.Status != "held back" || result.ReasonCode != "gnit_scope_exceeds_selection" || !strings.Contains(result.Message, "other") {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestRunAutoInvalidRosterFailsClosedForTargetUnderRoot(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	root := filepath.Dir(content)
+	writeFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 2\nmode: control\nmembers: []\n")
+	writeFile(t, filepath.Join(content, "meetings", "new.md"), "new\n")
+	adoptFile(t, content, "meetings/new.md")
+	report := Run([]Entry{{ID: "handbook", Role: "content", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}}}, Options{
+		Backend: "auto", GnitRoot: root, Publish: "auto", DryRun: true, Visibility: privateVisibility,
+	})
+	if result := findResult(t, report, "handbook"); result.ReasonCode != "gnit_roster_invalid" {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestRunBuiltinExplicitlyAllowsRosteredTargetWithWarning(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	root := filepath.Dir(content)
+	writeFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers:\n- id: handbook\n  path: content\n  remote: "+remote+"\n")
+	writeFile(t, filepath.Join(content, "meetings", "new.md"), "new\n")
+	adoptFile(t, content, "meetings/new.md")
+	report := Run([]Entry{{ID: "handbook", Role: "content", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}}}, Options{
+		Backend: "builtin", GnitRoot: root, Publish: "auto", DryRun: true, Visibility: privateVisibility,
+	})
+	result := findResult(t, report, "handbook")
+	if result.Status != "dry-run" || result.Backend != "builtin" || !strings.Contains(report.BackendMessage, "bypassed") {
+		t.Fatalf("report = %#v result=%#v", report, result)
+	}
+}
+
+func TestRunAutoKeepsPRPublicationInMyPolicyLayerInsideGnitUmbrella(t *testing.T) {
+	remote, content, _ := setupTwoCheckoutRemote(t)
+	root := filepath.Dir(content)
+	writeFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers:\n- id: handbook\n  path: content\n  remote: "+remote+"\n")
+	writeFile(t, filepath.Join(content, "meetings", "pr.md"), "pr\n")
+	adoptFile(t, content, "meetings/pr.md")
+	report := Run([]Entry{{ID: "handbook", Role: "content", GitURL: remote, LocalPath: content, ContentPaths: []string{"meetings"}}}, Options{
+		Backend: "auto", GnitRoot: root, Publish: "pr", DryRun: true,
+		PRPublisher: func(PRRequest) PRResult { return PRResult{Status: "dry-run", Message: "would open governed PR"} },
+	})
+	result := findResult(t, report, "handbook")
+	if report.Backend != "builtin" || result.Backend != "builtin" || result.Status != "dry-run" {
+		t.Fatalf("report = %#v result=%#v", report, result)
 	}
 }
 
@@ -758,6 +900,33 @@ func setupGnitWorkspaceWithDuplicateRemote(t *testing.T) (string, string, string
 	}
 	writeFile(t, filepath.Join(gnitRoot, ".gnit", "roster.yaml"), "version: 1\nmode: shared\nmembers:\n- id: handbook\n  path: handbook\n")
 	return remote, gnitRoot, gnitContent, manifest
+}
+
+func setupGnitControlRoot(t *testing.T, root string) string {
+	t.Helper()
+	remote := filepath.Join(t.TempDir(), "gnit-control.git")
+	runGit(t, filepath.Dir(remote), "init", "--bare", "-q", remote)
+	runGit(t, root, "init", "-q")
+	configGitUser(t, root)
+	runGit(t, root, "add", ".gnit/roster.yaml")
+	runGit(t, root, "commit", "-q", "-m", "Initialize Gnit control workspace")
+	runGit(t, root, "remote", "add", "origin", remote)
+	runGit(t, root, "push", "-q", "-u", "origin", "HEAD:master")
+	return remote
+}
+
+func setupGnitMemberRepo(t *testing.T, root, id string) (string, string) {
+	t.Helper()
+	remote := filepath.Join(t.TempDir(), id+".git")
+	runGit(t, filepath.Dir(remote), "init", "--bare", "-q", remote)
+	repo := filepath.Join(root, id)
+	runGit(t, root, "clone", "-q", remote, repo)
+	configGitUser(t, repo)
+	writeFile(t, filepath.Join(repo, "README.md"), id+"\n")
+	runGit(t, repo, "add", "README.md")
+	runGit(t, repo, "commit", "-q", "-m", "Initialize "+id)
+	runGit(t, repo, "push", "-q", "-u", "origin", "HEAD:master")
+	return remote, repo
 }
 
 func privateVisibility(string) (string, error) {

@@ -1,6 +1,6 @@
 # Target-aware Gnit publishing
 
-Status: planned — joint Claude/Codex design converged 2026-07-22; implementation not started
+Status: implemented — joint Claude/Codex design converged 2026-07-22; adversarial review and release gates pending
 
 Fixes [issue #32](https://github.com/fluxinc/my-cli/issues/32): the presence of
 `<umbrella>/.gnit/roster.yaml` currently routes all eligible publication
@@ -124,7 +124,9 @@ outcome — never re-suggest the same print command.
 
 1. **Roster parser** — `internal/syncer/gnit_roster.go` (stdlib only, strict):
    require `version: 1` (unknown version ⇒ invalid), `members[]` need
-   `id`/`path`/`remote`; tolerate unknown extra keys; any structural failure ⇒
+   `id`/`path` and may carry Gnit's optional `remote`; when it is absent,
+   identity is still proven from the member checkout's actual `origin` against
+   the My AI entry. Tolerate unknown extra keys; any structural failure ⇒
    `gnit_roster_invalid`, never best-effort. Tests: valid roster, unknown
    version, malformed YAML, extra keys tolerated, https and ssh remote forms.
 2. **Planner** — shared eligibility function producing the three-way

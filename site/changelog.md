@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Automatic publication is target-aware in partial Gnit umbrellas: exact roster
+  members use coordinated publishing, while unrostered My AI checkouts use the
+  guarded built-in path. Session publication uses the same planner, previews
+  run the same local preflight, and only rostered targets can be reported as
+  published by Gnit.
+- Coordinated publication now holds before mutation when the roster is invalid,
+  a member identity or control root is unpublishable, a member checkout is
+  missing, or whole-workspace Gnit push would exceed the selected My AI scope.
+
+### Changed
+
+- `my doctor` reports partial Gnit topology, unmanaged or missing members,
+  invalid rosters, and unpublishable control roots without turning supported
+  unrostered content mounts into operator errors.
+
 ## 0.35.0 - 2026-07-01
 
 ### Added

@@ -132,14 +132,10 @@ func (a app) runSync(args []string) error {
 	effectiveBackend := backend
 	backendMessage := ""
 	if effectiveBackend == "auto" {
-		if publish != "pr" && gnitRoot != "" {
-			effectiveBackend = "gnit"
-		} else {
+		if publish == "pr" || gnitRoot == "" {
 			effectiveBackend = "builtin"
 			if publish == "pr" {
 				backendMessage = "PR mode is handled by My AI/gh; Gnit remains the publish substrate after PR support lands"
-			} else if publish != "never" {
-				backendMessage = "using built-in sync backend; initialize this umbrella as a Gnit control workspace only when coordinated multi-repo publishing is needed"
 			}
 		}
 	}
@@ -276,8 +272,8 @@ func (a app) printSyncUsage() {
   my sync [--backend auto|gnit|builtin] [--push|--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--verbose] [--json]
 
 Synchronizes registered My AI repositories in both directions. The default
-backend uses Gnit when the umbrella is a Gnit workspace; otherwise My AI uses a
-guarded Git fallback until bootstrap/canonicalization is complete. Bare my sync
+backend chooses the correct guarded publication path for each checkout;
+workspace coordination remains internal machinery. Bare my sync
 pulls/reconciles only and never publishes local changes. Use --push to publish
 eligible changes with the manifest policy (or auto policy when none is set), or
 --publish to choose an explicit publish mode. Direct mode can push existing

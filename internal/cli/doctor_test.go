@@ -47,6 +47,50 @@ func TestDoctorReportsFreshnessNoFetch(t *testing.T) {
 	}
 }
 
+func TestDoctorExplainsPartialGnitTopologyWithoutMakingItAnOperatorFailure(t *testing.T) {
+	home, root, content, _ := setupCLITrackedContentWorkspace(t, "auto")
+	writeCLITestFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers: []\n")
+	runCLIGit(t, root, "init", "-q")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "doctor", "--home", home, "--umbrella", root, "--no-fetch", "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	var report doctorReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	var rootWarning, contentInfo bool
+	for _, item := range report.Coordination {
+		if item.Name == "root" && item.Status == "warning" && strings.Contains(item.Message, "no origin") {
+			rootWarning = true
+		}
+		if item.Name == "handbook" && item.Status == "info" && item.Path == content && strings.Contains(item.Message, "guarded built-in") {
+			contentInfo = true
+		}
+	}
+	if !rootWarning || !contentInfo {
+		t.Fatalf("coordination = %#v", report.Coordination)
+	}
+}
+
+func TestDoctorReportsInvalidGnitRosterAsError(t *testing.T) {
+	home, root, _, _ := setupCLITrackedContentWorkspace(t, "auto")
+	writeCLITestFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 99\nmode: control\nmembers: []\n")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "doctor", "--home", home, "--umbrella", root, "--no-fetch", "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	var report doctorReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Coordination) != 1 || report.Coordination[0].Status != "error" || !strings.Contains(report.Coordination[0].Message, "unsupported Gnit roster version") {
+		t.Fatalf("coordination = %#v", report.Coordination)
+	}
+}
+
 func TestDoctorReportsLocalMountURLRequiresPublish(t *testing.T) {
 	home := t.TempDir()
 	var stdout, stderr bytes.Buffer
