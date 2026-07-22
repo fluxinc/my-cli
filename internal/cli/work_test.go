@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1023,6 +1024,42 @@ func TestWorkFinishPublishLandsAndReportsLocalOnlySync(t *testing.T) {
 	}
 	if got := strings.TrimSpace(readCLITestFile(t, filepath.Join(workspaceRoot, "meetings", "publish.md"))); got != "publish" {
 		t.Fatalf("landed file = %q", got)
+	}
+}
+
+func TestWorkFinishPublishUsesSameAutoRoutingForUnrosteredContent(t *testing.T) {
+	home, root, _, remote := setupCLITrackedContentWorkspace(t, "auto")
+	installCLIPrivateGHStub(t)
+	writeCLITestFile(t, filepath.Join(root, ".gnit", "roster.yaml"), "version: 1\nmode: control\nmembers: []\n")
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "session", "start", "--home", home, "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	var session worksession.Session
+	if err := json.Unmarshal(stdout.Bytes(), &session); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(session.Mounts[0].WorktreePath, "meetings", "session-routing.md"), "session routing\n")
+	runCLIGit(t, session.Mounts[0].WorktreePath, "add", "-N", "meetings/session-routing.md")
+	stdout.Reset()
+	stderr.Reset()
+	if err := a.run([]string{"my", "session", "finish", session.ID, "--publish", "--home", home, "--json"}); err != nil {
+		t.Fatalf("finish: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	var report workFinishCommandReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Sync == nil || len(report.Sync.Results) != 1 {
+		t.Fatalf("report = %#v", report)
+	}
+	result := report.Sync.Results[0]
+	if report.Sync.Backend != "auto" || result.Backend != "builtin" || result.Status != "pushed" {
+		t.Fatalf("sync = %#v result=%#v", report.Sync, result)
+	}
+	if out, err := exec.Command("git", "--git-dir", remote, "show", "master:meetings/session-routing.md").CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "session routing" {
+		t.Fatalf("remote content = %q err=%v", out, err)
 	}
 }
 

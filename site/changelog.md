@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.36.0 - 2026-07-21
+
+### Fixed
+
+- Automatic publication is target-aware in partial Gnit umbrellas: exact roster
+  members use coordinated publishing, while unrostered My AI checkouts use the
+  guarded built-in path. Session publication uses the same planner, previews
+  run the same local preflight, and only rostered targets can be reported as
+  published by Gnit.
+- Coordinated publication now holds before mutation when the roster is invalid,
+  a member identity or control root is unpublishable, a member checkout is
+  missing, or whole-workspace Gnit push would exceed the selected My AI scope.
+
+### Changed
+
+- `my doctor` reports partial Gnit topology, unmanaged or missing members,
+  invalid rosters, and unpublishable control roots without turning supported
+  unrostered content mounts into operator errors.
+
+### Added
+
+- An opt-in beta governed-organization foundation: manifest governance
+  declarations, GitHub-backed authorization, digest-bound policy acceptance and
+  launch gates, PR-only governed publication, trusted-base CI validation, and
+  live enforcement audits. Governance completion, record-domain/outbox work,
+  and organization dogfood remain on their active plan and are not claimed
+  complete by this release.
+- Experimental access monitoring, recovery capsules, and quarantine machinery
+  behind explicit per-machine activation. Policy and publication flows never
+  activate it; it remains not recommended for real umbrellas until its separate
+  disposable-private-repository revocation drill passes.
+
 ## 0.35.0 - 2026-07-01
 
 ### Added

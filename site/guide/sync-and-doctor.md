@@ -46,9 +46,11 @@ my sync --push --message TEXT # commit message for published content
 
 A manifest can set `sync.publish_policy` as the mode used by `--push`; an
 explicit `--publish` flag always wins. Bare `my sync` ignores that policy and
-stays pull-only. `--backend auto` prefers Gnit when the umbrella is a Gnit
-control workspace, with a guarded built-in Git path otherwise. Every non-print
-sync writes an audit to `.my-cli/last-sync.json`.
+stays pull-only. `--backend auto` is target-aware: exact Gnit roster members
+use coordinated publication, while unrostered checkouts use the guarded
+built-in Git path. Before delegating, My AI verifies that whole-workspace Gnit
+push cannot exceed the selected scope. Every non-print sync writes an audit to
+`.my-cli/last-sync.json`.
 
 ## my doctor
 
@@ -59,7 +61,8 @@ my doctor [--no-fetch] [--fix] [--json]
 The dry run for workspace repair. It reports manifest validity, per-checkout
 Git freshness (fetching refs first unless `--no-fetch`), derived
 guidance/MCP drift, legacy global org-skill drift, service materialization health,
-session health, legacy session layout migration, and the last sync audit. Every
+session health, partial Gnit topology, legacy session layout migration, and the
+last sync audit. Every
 repairable finding is marked
 `would ...` with a closing fixable count; nothing changes until you re-run
 with `--fix`, which applies exactly that plan. Findings `--fix` cannot repair

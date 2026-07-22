@@ -429,9 +429,12 @@ umbrella exists or for multi-manifest administration; when exactly one
 manifest changes and an umbrella is known, it also reconciles generated
 guidance, umbrella `.mcp.json`, and launch-scoped skill notices.
 
-`my sync --push` uses **Gnit** as its multi-repo publish backend once the
-umbrella is a Gnit control workspace; otherwise it uses a guarded built-in Git
-path. Run `my sync --push --print` first to see the explicit publish plan.
+`my sync --push` chooses publication per checkout. Exact **Gnit** roster members
+use coordinated multi-repo publishing; unrostered checkouts use a guarded
+built-in Git path, even when the umbrella contains unrelated Gnit metadata.
+Before delegating, My AI holds if whole-workspace Gnit push would exceed the
+selected scope. Run `my sync --push --print` first to see the explicit publish
+plan; do not ask employees to choose a backend.
 GitHub PR creation is a My AI policy layer planned on top of Gnit and `gh`; it
 is not implemented in the current CLI yet. A manifest can set top-level
 `sync.publish_policy` to `auto`, `never`, or `pr` as the default mode for

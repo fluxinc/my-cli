@@ -121,6 +121,7 @@ type Result struct {
 	Kind      string `json:"kind,omitempty"`
 	GitURL    string `json:"git_url"`
 	LocalPath string `json:"local_path"`
+	Backend   string `json:"backend,omitempty"`
 	Branch    string `json:"branch,omitempty"`
 	Head      string `json:"head,omitempty"`
 	Status    string `json:"status"`
@@ -167,7 +168,7 @@ type inspectMode struct {
 
 // Run inspects and optionally reconciles repositories.
 func Run(entries []Entry, opts Options) Report {
-	if opts.Backend == "gnit" {
+	if opts.Backend == "gnit" || (opts.Backend == "auto" && opts.Publish != "never" && opts.Publish != "pr" && hasGnitWorkspace(opts.GnitRoot)) {
 		return runGnit(entries, opts)
 	}
 	if opts.Backend == "" || opts.Backend == "auto" {
@@ -234,10 +235,25 @@ func runBuiltin(entries []Entry, opts Options) Report {
 		inspections = append(inspections, inspect(entry, opts, runner))
 	}
 	markDuplicatePending(inspections)
+	var forcedOutsideGnit []string
+	var roster gnitRoster
+	if opts.Backend == "builtin" && hasGnitWorkspace(opts.GnitRoot) {
+		roster, _ = readGnitRoster(opts.GnitRoot)
+	}
 	for i := range inspections {
+		if inspections[i].result.Status == "pending" {
+			inspections[i].result.Backend = "builtin"
+			if exactGnitMember(opts.GnitRoot, roster, inspections[i].entry.LocalPath) != nil {
+				forcedOutsideGnit = append(forcedOutsideGnit, inspections[i].entry.ID)
+			}
+		}
 		reconcile(&inspections[i], inspections, opts, runner)
 	}
-	return Report{Publish: opts.Publish, Backend: "builtin", DryRun: opts.DryRun, Results: collectResults(inspections)}
+	report := Report{Publish: opts.Publish, Backend: "builtin", DryRun: opts.DryRun, Results: collectResults(inspections)}
+	if len(forcedOutsideGnit) != 0 {
+		report.BackendMessage = "explicit built-in publication bypassed coordinated workspace handling for: " + strings.Join(forcedOutsideGnit, ", ")
+	}
+	return report
 }
 
 func runGnit(entries []Entry, opts Options) Report {
@@ -251,7 +267,12 @@ func runGnit(entries []Entry, opts Options) Report {
 	if runner == nil {
 		runner = execCommand
 	}
-	report := Report{Publish: opts.Publish, Backend: "gnit", GnitRoot: opts.GnitRoot, DryRun: opts.DryRun}
+	forced := opts.Backend == "gnit"
+	backend := "auto"
+	if forced {
+		backend = "gnit"
+	}
+	report := Report{Publish: opts.Publish, Backend: backend, GnitRoot: opts.GnitRoot, DryRun: opts.DryRun}
 	if opts.GnitRoot == "" || !hasGnitWorkspace(opts.GnitRoot) {
 		report.BackendMessage = "umbrella is not a Gnit control workspace; use the built-in sync backend or initialize Gnit before forcing --backend gnit"
 		report.Results = heldResults(entries, "umbrella is not a Gnit control workspace")
@@ -272,24 +293,59 @@ func runGnit(entries []Entry, opts Options) Report {
 		reconcileInbound(&inspections[i], opts, runner)
 	}
 
-	unsafeDuplicateRemotes := unsafeDuplicateRemoteReasons(inspections, opts.GnitRoot)
-	if len(unsafeDuplicateRemotes) != 0 {
-		for i := range inspections {
-			reason, ok := unsafeDuplicateRemotes[inspections[i].remoteKey]
-			if ok && inspections[i].result.Status == "pending" {
-				hold(&inspections[i], reason)
-			}
-		}
-		report.BackendMessage = "My AI must reconcile unsafe duplicate checkouts before delegating those remotes to Gnit"
-	}
-
-	var stagePaths []string
-	var publishable []*inspection
+	roster, rosterErr := readGnitRoster(opts.GnitRoot)
+	routes := make([]gnitRoute, len(inspections))
+	var gnitIndexes []int
+	var builtinIndexes []int
+	preflightFailed := false
 	for i := range inspections {
 		in := &inspections[i]
 		if in.result.Status != "pending" {
 			continue
 		}
+		if rosterErr != nil {
+			if forced || canonicalPathWithin(in.entry.LocalPath, opts.GnitRoot) {
+				routes[i] = gnitRoute{Code: "gnit_roster_invalid", Message: "coordinated workspace roster is invalid; run my doctor"}
+				preflightFailed = true
+			} else {
+				routes[i] = gnitRoute{Backend: "builtin"}
+			}
+		} else {
+			routes[i] = classifyGnitEntry(opts.GnitRoot, roster, in.entry, runner)
+			if forced && routes[i].Backend == "builtin" {
+				routes[i] = gnitRoute{Code: "gnit_not_member", Message: "selected checkout is not an exact coordinated workspace member"}
+			}
+			if routes[i].Code != "" {
+				preflightFailed = true
+			}
+		}
+		switch {
+		case routes[i].Backend == "gnit":
+			gnitIndexes = append(gnitIndexes, i)
+		case routes[i].Backend == "builtin":
+			builtinIndexes = append(builtinIndexes, i)
+		default:
+			holdWithCode(in, routes[i].Message, routes[i].Code, "my doctor")
+		}
+	}
+	if forced && preflightFailed {
+		for _, idx := range gnitIndexes {
+			if inspections[idx].result.Status == "pending" {
+				holdWithCode(&inspections[idx], "coordinated publish preflight failed for another selected checkout", "gnit_preflight_failed", "my doctor")
+			}
+		}
+		report.Results = collectResults(inspections)
+		return report
+	}
+
+	var stagePaths []string
+	var publishable []int
+	for _, idx := range gnitIndexes {
+		in := &inspections[idx]
+		if in.result.Status != "pending" {
+			continue
+		}
+		in.result.Backend = "gnit"
 		if in.result.Behind > 0 {
 			holdRemoteBehind(in)
 			continue
@@ -319,8 +375,8 @@ func runGnit(entries []Entry, opts Options) Report {
 		if holdUnadoptedContent(in) {
 			continue
 		}
-		if !pathWithin(in.entry.LocalPath, opts.GnitRoot) {
-			hold(in, "checkout is outside the Gnit workspace; canonicalize or adopt it before Gnit publish")
+		if hasDuplicatePendingSibling(in, inspections) {
+			hold(in, "another checkout of the same remote has pending changes")
 			continue
 		}
 		entryStagePaths := stagePathsWithin(in.dirty, in.entry.ContentPaths)
@@ -337,45 +393,69 @@ func runGnit(entries []Entry, opts Options) Report {
 		}
 		if in.result.Status == "pending" {
 			stagePaths = append(stagePaths, entryStagePaths...)
-			publishable = append(publishable, in)
+			publishable = append(publishable, idx)
 		}
 	}
 	stagePaths = unique(stagePaths)
-	if len(publishable) == 0 {
-		report.Results = collectResults(inspections)
-		return report
-	}
-	if opts.DryRun {
-		message := gnitDryRunMessage(len(stagePaths) != 0)
-		for _, in := range publishable {
-			in.result.Status = "dry-run"
-			in.result.Direction = "outbound"
-			in.result.Message = message
+	if len(publishable) != 0 {
+		selected := map[string]bool{}
+		for _, idx := range publishable {
+			if path, err := canonicalPath(inspections[idx].entry.LocalPath); err == nil {
+				selected[path] = true
+			}
 		}
-		report.Results = collectResults(inspections)
-		return report
-	}
-
-	out, err := runGnitPublish(opts, stagePaths)
-	if err != nil {
-		msg := commandError(out, err)
-		for _, in := range publishable {
-			in.result.Status = "failed"
-			in.result.Direction = "outbound"
-			in.result.Error = msg
+		issue := gnitRootPublishability(opts.GnitRoot, roster, runner)
+		if issue.Code == "" {
+			issue = gnitScopePreflight(opts.GnitRoot, roster, selected, runner)
 		}
-		report.Results = collectResults(inspections)
-		return report
-	}
-	msg := strings.TrimSpace(string(out))
-	for _, in := range publishable {
-		in.result.Status = "pushed"
-		in.result.Direction = "outbound"
-		in.result.Message = "published by gnit"
-		if msg != "" {
-			in.result.Message += ": " + msg
+		if issue.Code != "" {
+			for _, idx := range publishable {
+				holdWithCode(&inspections[idx], issue.Message, issue.Code, "my doctor")
+			}
+			publishable = nil
 		}
-		pullCleanSiblings(in, inspections, runner)
+	}
+	if len(publishable) != 0 {
+		if opts.DryRun {
+			message := gnitDryRunMessage(len(stagePaths) != 0, forced)
+			for _, idx := range publishable {
+				in := &inspections[idx]
+				in.result.Status = "dry-run"
+				in.result.Direction = "outbound"
+				in.result.Message = message
+			}
+		} else {
+			out, err := runGnitPublish(opts, stagePaths)
+			if err != nil {
+				msg := commandError(out, err)
+				for _, idx := range publishable {
+					in := &inspections[idx]
+					in.result.Status = "failed"
+					in.result.Direction = "outbound"
+					in.result.Error = msg
+				}
+			} else {
+				msg := strings.TrimSpace(string(out))
+				for _, idx := range publishable {
+					in := &inspections[idx]
+					in.result.Status = "pushed"
+					in.result.Direction = "outbound"
+					in.result.Message = "published by coordinated workspace"
+					if msg != "" {
+						in.result.Message += ": " + msg
+					}
+					pullCleanSiblings(in, inspections, runner)
+				}
+			}
+		}
+	}
+	for _, idx := range builtinIndexes {
+		in := &inspections[idx]
+		if in.result.Status != "pending" {
+			continue
+		}
+		in.result.Backend = "builtin"
+		reconcile(in, inspections, opts, runner)
 	}
 	report.Results = collectResults(inspections)
 	return report
@@ -650,6 +730,13 @@ func hold(in *inspection, reason string) {
 	in.result.NextCommand = holdNextCommand(*in, in.result.ReasonCode)
 }
 
+func holdWithCode(in *inspection, reason, code, next string) {
+	in.result.Status = "held back"
+	in.result.Message = reason
+	in.result.ReasonCode = code
+	in.result.NextCommand = next
+}
+
 func holdRemoteBehind(in *inspection) {
 	if in.result.Ahead != 0 && in.result.Behind != 0 {
 		hold(in, fmt.Sprintf("local and remote both have commits (ahead %d, behind %d); run my doctor and reconcile divergent history before publishing", in.result.Ahead, in.result.Behind))
@@ -741,7 +828,7 @@ func holdNextCommand(in inspection, reasonCode string) string {
 	case "detached_head", "duplicate_remote", "outside_content_paths", "not_content_only", "not_fast_forward", "outside_gnit_workspace":
 		return "my doctor"
 	case "gnit_not_control_workspace":
-		return "my sync --backend builtin --push --print"
+		return "my doctor"
 	case "pr_mode_unimplemented", "pr_publisher_unavailable":
 		return "my doctor"
 	case "pr_outside_content_paths":
@@ -1162,10 +1249,7 @@ func commandError(out []byte, err error) string {
 }
 
 func normalizeRemote(value string) string {
-	value = strings.TrimSpace(strings.ToLower(value))
-	value = strings.TrimSuffix(value, ".git")
-	value = strings.TrimSuffix(value, "/")
-	return value
+	return normalizeGitRemote(value)
 }
 
 func execCommand(name string, args ...string) ([]byte, error) {
@@ -1206,13 +1290,16 @@ func duplicateRemoteKeys(inspections []inspection) map[string]bool {
 	return out
 }
 
-func gnitDryRunMessage(hasDirty bool) string {
+func gnitDryRunMessage(hasDirty, forced bool) string {
 	var steps []string
 	if hasDirty {
-		steps = append(steps, "would run gnit add for My AI-approved content paths")
-		steps = append(steps, "would run gnit commit -m")
+		steps = append(steps, "would commit My AI-approved content paths")
 	}
-	steps = append(steps, "would run gnit push")
+	if forced {
+		steps = append(steps, "would publish with gnit")
+	} else {
+		steps = append(steps, "would publish with coordinated workspace")
+	}
 	return strings.Join(steps, "; ")
 }
 
@@ -1249,4 +1336,13 @@ func pathWithin(path, root string) bool {
 	}
 	rel = filepath.ToSlash(rel)
 	return rel == "." || (!strings.HasPrefix(rel, "../") && !filepath.IsAbs(rel))
+}
+
+func canonicalPathWithin(path, root string) bool {
+	canonicalCandidate, candidateErr := canonicalPath(path)
+	canonicalRoot, rootErr := canonicalPath(root)
+	if candidateErr == nil && rootErr == nil {
+		return pathWithin(canonicalCandidate, canonicalRoot)
+	}
+	return pathWithin(path, root)
 }

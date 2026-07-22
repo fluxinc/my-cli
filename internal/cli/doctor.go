@@ -69,19 +69,20 @@ type doctorOptions struct {
 }
 
 type doctorReport struct {
-	Version    []doctorItem `json:"version,omitempty"`
-	Legacy     []doctorItem `json:"legacy,omitempty"`
-	Umbrella   []doctorItem `json:"umbrella,omitempty"`
-	Manifests  []doctorItem `json:"manifests"`
-	Freshness  []doctorItem `json:"freshness,omitempty"`
-	Derived    []doctorItem `json:"derived,omitempty"`
-	Fixes      []doctorItem `json:"fixes,omitempty"`
-	LastSync   []doctorItem `json:"last_sync,omitempty"`
-	Sessions   []doctorItem `json:"sessions,omitempty"`
-	Workspaces []doctorItem `json:"workspaces"`
-	Tools      []doctorItem `json:"tools"`
-	Services   []doctorItem `json:"services,omitempty"`
-	Access     []doctorItem `json:"access,omitempty"`
+	Version      []doctorItem `json:"version,omitempty"`
+	Legacy       []doctorItem `json:"legacy,omitempty"`
+	Umbrella     []doctorItem `json:"umbrella,omitempty"`
+	Manifests    []doctorItem `json:"manifests"`
+	Freshness    []doctorItem `json:"freshness,omitempty"`
+	Derived      []doctorItem `json:"derived,omitempty"`
+	Fixes        []doctorItem `json:"fixes,omitempty"`
+	LastSync     []doctorItem `json:"last_sync,omitempty"`
+	Sessions     []doctorItem `json:"sessions,omitempty"`
+	Workspaces   []doctorItem `json:"workspaces"`
+	Tools        []doctorItem `json:"tools"`
+	Services     []doctorItem `json:"services,omitempty"`
+	Access       []doctorItem `json:"access,omitempty"`
+	Coordination []doctorItem `json:"coordination,omitempty"`
 }
 
 type doctorItem struct {
@@ -178,6 +179,14 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 	if root != "" {
 		report.LastSync = append(report.LastSync, doctorLastSync(root))
 		report.Sessions = append(report.Sessions, doctorSessions(root)...)
+		entries, entriesErr := a.collectSyncEntries(home, manifestName, root, "all")
+		if entriesErr != nil {
+			report.Coordination = append(report.Coordination, doctorItem{Name: "gnit", Status: "error", Path: root, Message: entriesErr.Error()})
+		} else {
+			for _, check := range syncer.CheckGnitWorkspace(root, entries, nil) {
+				report.Coordination = append(report.Coordination, doctorItem{Name: check.Name, Status: check.Status, Path: check.Path, Message: check.Message})
+			}
+		}
 	}
 	return report
 }
@@ -1087,6 +1096,7 @@ func (a app) printDoctorReport(report doctorReport) {
 	printItems("tool", report.Tools)
 	printItems("service", report.Services)
 	printItems("access", report.Access)
+	printItems("coordination", report.Coordination)
 	if fixable > 0 {
 		fmt.Fprintf(a.stdout, "fixable\t%d\trun `my doctor --fix` to apply\n", fixable)
 	}

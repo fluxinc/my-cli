@@ -485,6 +485,63 @@ func setupCLITrackedManifestBody(t *testing.T, body string) (string, string, str
 	return home, filepath.Join(home, "acme"), manifestCache, remote, writer
 }
 
+func setupCLITrackedContentWorkspace(t *testing.T, publishPolicy string) (string, string, string, string) {
+	t.Helper()
+	home := t.TempDir()
+	isolateCLITestHome(t, home)
+	contentRemote, contentClone, _ := setupCLIRemoteRepo(t, home, "handbook", map[string]string{"README.md": "seed\n"})
+	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")
+	writeCLITestFile(t, filepath.Join(manifestCache, "manifest.json"), `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "sync": { "publish_policy": "`+publishPolicy+`" },
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": "https://github.com/acme/acme-handbook.git", "mode": "required" }
+  ]
+}`)
+	initCLIGitRepo(t, manifestCache)
+	manifestRemote := filepath.Join(home, "manifest.git")
+	runCLIGit(t, home, "init", "--bare", "-q", manifestRemote)
+	runCLIGit(t, manifestCache, "remote", "add", "origin", manifestRemote)
+	runCLIGit(t, manifestCache, "branch", "-M", "master")
+	runCLIGit(t, manifestCache, "push", "-q", "-u", "origin", "master")
+
+	umbrellaRoot := filepath.Join(home, "acme")
+	contentPath := filepath.Join(umbrellaRoot, "handbook")
+	if err := os.MkdirAll(umbrellaRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(contentClone, contentPath); err != nil {
+		t.Fatal(err)
+	}
+	_, state, err := umbrella.Ensure(umbrellaRoot, "acme", "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state = umbrella.UpsertMount(state, umbrella.MountStatus{ID: "handbook", Kind: "handbook", SourceRef: "manifest:acme:handbook", Status: "synced"})
+	if err := umbrella.SaveState(umbrellaRoot, state); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "manifests", "add", "acme", manifestRemote, "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	return home, umbrellaRoot, contentPath, contentRemote
+}
+
+func installCLIPrivateGHStub(t *testing.T) {
+	t.Helper()
+	binDir := t.TempDir()
+	path := filepath.Join(binDir, "gh")
+	writeCLITestFile(t, path, "#!/bin/sh\nprintf 'PRIVATE\\n'\n")
+	if err := os.Chmod(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
 func initCLIGitRepo(t *testing.T, dir string) {
 	t.Helper()
 	runCLIGit(t, dir, "init", "-q")

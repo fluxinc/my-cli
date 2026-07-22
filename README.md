@@ -304,7 +304,7 @@ in the umbrella; legacy `products/` checkouts migrate automatically at
 my sync                                   # pull/reconcile only; never publishes local changes
 my sync --print                           # plan the pull-only default
 my sync --push --print                    # preview explicit publish work
-my sync --push [--backend auto|gnit|builtin]  # publish eligible local changes per policy
+my sync --push                            # publish eligible local changes per policy
 my sync --publish auto|never|direct|pr    # governed organizations force PR mode
 my sync --scope all|local|content|manifest|repos  # limit to one repo class; repos = catalog repo clones
 my sync --no-derived                      # skip derived guidance/MCP/skill reconcile after manifest changes
@@ -315,10 +315,12 @@ updates and never publishes local changes. Use `my sync --push` to publish
 eligible local changes according to the manifest policy, or `--publish` to
 choose an explicit mode. My AI classifies changes, handles private/public and
 content/admin policy, and blocks duplicate checkouts of the same remote until
-they are collapsed to one canonical checkout. Gnit is the intended backend for
-real multi-repo Change creation, ordered push, and resume; Pins are reserved for
-intentional recorded workspace states. The My AI backend is a guarded bootstrap
-fallback when a workspace has not been initialized as a Gnit control workspace.
+they are collapsed to one canonical checkout. Exact Gnit roster members use
+coordinated multi-repo Change creation, ordered push, and resume; unrostered
+checkouts use My AI's guarded built-in publisher. A partial Gnit migration does
+not change unrelated checkout behavior, and a scoped My AI publish never
+delegates when Gnit would also publish an unselected member. `--backend` remains
+an expert diagnostic escape hatch, not part of the employee workflow.
 `--publish direct` can publish existing local commits directly in an
 ungoverned organization. Governed organizations refuse direct publication and
 route outbound changes through a dedicated branch and pull request. Before the
@@ -651,6 +653,12 @@ indexed in [docs/plans/](docs/plans/README.md):
   managed manifest cache.
   Plans: [governed organizations](docs/plans/2026-07-16-governed-organizations.md)
   and [completion gates](docs/plans/2026-07-21-governed-organizations-completion.md).
+- **Shipped (v0.36.0) — target-aware coordinated publishing.** Automatic sync and session
+  publication route each exact Gnit roster member through coordinated publish
+  while leaving unrostered checkouts on the guarded built-in path. The shared
+  planner, scope preflight, dry-run parity, and doctor topology report were
+  jointly reviewed and dogfooded. Plan:
+  [target-aware Gnit publishing](docs/plans/2026-07-22-target-aware-gnit-publishing.md).
 - **Shipped (v0.35.0) — dogfood ergonomics audit.** A reviewed two-agent audit
   of real operator transcripts produced small self-healing CLI fixes: clearer
   held-back sync reasons, publish-path warnings, session dead-end recovery,
@@ -768,9 +776,9 @@ indexed in [docs/plans/](docs/plans/README.md):
   remains stable and managed legacy `my` installs migrate automatically.
   Plan:
   [skill rename](docs/plans/2026-06-16-skill-rename-my-to-my-cli.md).
-- **Later — substrate upgrades.** A gnit backend for sessions once umbrellas
-  bootstrap as gnit control workspaces, and managed read-only base mounts
-  for contained launches. Plan:
+- **Later — substrate upgrades.** Managed read-only base mounts for contained
+  launches. Target-aware Gnit publishing for sessions and ordinary sync is now
+  implemented in the active issue #32 plan above. Plan:
   [execution plane](docs/plans/2026-06-10-execution-plane.md).
 
 This section is kept current with every release and direction change; the

@@ -126,8 +126,9 @@ private manifest or workspace repo. Public fixtures should stay generic:
 
 `my` is the organization layer of a broader agentic toolchain: it owns
 manifest semantics, workspace materialization, and safe publish. Multi-repo
-publish delegates to [gnit](https://github.com/mostlydev/gnit) when the
-umbrella is a gnit control workspace. For unattended fleet agents, manifest
+publish delegates to [gnit](https://github.com/mostlydev/gnit) only for exact
+roster members after a selected-scope preflight; unrelated checkouts use My
+AI's guarded publisher. For unattended fleet agents, manifest
 roles compile into [clawdapus](https://github.com/mostlydev/clawdapus)
 containers whose model and tool access is mediated by the cllama governance
 proxy — the `my` CLI rides inside as a governed work surface, with only the
