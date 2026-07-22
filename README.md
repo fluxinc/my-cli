@@ -527,13 +527,15 @@ indexed in [docs/plans/](docs/plans/README.md):
   provider-backed authorization, lossless revocation quarantine, digest-bound
   policy acceptance, launch gates, PR-only publication, trusted-base CI, and
   live GitHub enforcement audits. Manifest-declared record-domain routing and
-  the durable publication outbox remain before this plan is shipped. Plan:
+  the durable publication outbox remain before this plan is shipped. The
+  mechanism is opt-in beta; automatic quarantine remains experimental,
+  unactivated by policy flows, and gated on its separate revocation drill. Plan:
   [governed organizations](docs/plans/2026-07-16-governed-organizations.md).
-- **Active — target-aware coordinated publishing.** Automatic sync and session
+- **Shipped (v0.36.0) — target-aware coordinated publishing.** Automatic sync and session
   publication route each exact Gnit roster member through coordinated publish
   while leaving unrostered checkouts on the guarded built-in path. The shared
-  planner, scope preflight, dry-run parity, and doctor topology report are
-  implemented and under adversarial review before release. Plan:
+  planner, scope preflight, dry-run parity, and doctor topology report were
+  jointly reviewed and dogfooded. Plan:
   [target-aware Gnit publishing](docs/plans/2026-07-22-target-aware-gnit-publishing.md).
 - **Shipped (v0.35.0) — dogfood ergonomics audit.** A reviewed two-agent audit
   of real operator transcripts produced small self-healing CLI fixes: clearer

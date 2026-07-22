@@ -1,6 +1,6 @@
 # Target-aware Gnit publishing
 
-Status: implemented — joint Claude/Codex design converged 2026-07-22; adversarial review and release gates pending
+Status: shipped in v0.36.0 — jointly designed, implemented, adversarially reviewed, and dogfooded
 
 Fixes [issue #32](https://github.com/fluxinc/my-cli/issues/32): the presence of
 `<umbrella>/.gnit/roster.yaml` currently routes all eligible publication

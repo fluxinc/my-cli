@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.36.0 - 2026-07-21
 
 ### Fixed
 
@@ -18,6 +18,19 @@
 - `my doctor` reports partial Gnit topology, unmanaged or missing members,
   invalid rosters, and unpublishable control roots without turning supported
   unrostered content mounts into operator errors.
+
+### Added
+
+- An opt-in beta governed-organization foundation: manifest governance
+  declarations, GitHub-backed authorization, digest-bound policy acceptance and
+  launch gates, PR-only governed publication, trusted-base CI validation, and
+  live enforcement audits. Governance completion, record-domain/outbox work,
+  and organization dogfood remain on their active plan and are not claimed
+  complete by this release.
+- Experimental access monitoring, recovery capsules, and quarantine machinery
+  behind explicit per-machine activation. Policy and publication flows never
+  activate it; it remains not recommended for real umbrellas until its separate
+  disposable-private-repository revocation drill passes.
 
 ## 0.35.0 - 2026-07-01
 
