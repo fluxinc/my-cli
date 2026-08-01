@@ -449,6 +449,14 @@ Promised onboarding review and data cleanup.
 	}
 
 	stdout.Reset()
+	if err := a.run([]string{"my", "meetings", "--manifest", "acme", "--home", home, "--customer", "sampleco"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "2026-03-12-sampleco-implementation") {
+		t.Fatalf("bare meetings stdout = %q, want default list action", stdout.String())
+	}
+
+	stdout.Reset()
 	if err := a.run([]string{"my", "meetings", "search", "data cleanup", "--manifest", "acme", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
@@ -816,6 +824,14 @@ The delivery failed with a clear timeout.
 	}
 	if fields := strings.Split(strings.TrimSpace(stdout.String()), "\t"); len(fields) != 13 {
 		t.Fatalf("support list fields = %#v, want 13 fixed columns", fields)
+	}
+
+	stdout.Reset()
+	if err := a.run([]string{"my", "support", "--manifest", "acme", "--home", home, "--customer", "sampleco", "--identifier", "ws-12"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "2026-06-10-routing-timeout") {
+		t.Fatalf("bare support stdout = %q, want default list action", stdout.String())
 	}
 
 	stdout.Reset()

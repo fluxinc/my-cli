@@ -11,7 +11,7 @@ import (
 
 func (a app) runMeetings(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("missing meetings subcommand")
+		return a.runMeetingsList(nil)
 	}
 	switch args[0] {
 	case "list":
@@ -26,6 +26,9 @@ func (a app) runMeetings(args []string) error {
 		a.printMeetingsUsage()
 		return nil
 	default:
+		if strings.HasPrefix(args[0], "-") {
+			return a.runMeetingsList(args)
+		}
 		return fmt.Errorf("unknown meetings subcommand %q", args[0])
 	}
 }

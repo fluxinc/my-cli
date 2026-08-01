@@ -10,7 +10,7 @@ import (
 
 func (a app) runSupport(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("missing support subcommand")
+		return a.runSupportList(nil)
 	}
 	switch args[0] {
 	case "list":
@@ -25,6 +25,9 @@ func (a app) runSupport(args []string) error {
 		a.printSupportUsage()
 		return nil
 	default:
+		if strings.HasPrefix(args[0], "-") {
+			return a.runSupportList(args)
+		}
 		return fmt.Errorf("unknown support subcommand %q", args[0])
 	}
 }
