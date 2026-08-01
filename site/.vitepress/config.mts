@@ -65,6 +65,7 @@ export default defineConfig({
         text: 'Administer',
         items: [
           { text: 'Admin', link: '/guide/admin' },
+          { text: 'Governance', link: '/guide/governance' },
         ],
       },
       {
