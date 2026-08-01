@@ -76,7 +76,7 @@ func (a app) printAdminUsage() {
   my admin contract add "RULE TEXT" [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my admin contract remove <index|"RULE TEXT"> [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my admin contract add|remove ... --manifest-dir DIR [--force] [--json]  (compatibility)
-  my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION --acceptance required|optional [--role ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+  my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION --acceptance required|optional [--summary TEXT] [--topic TEXT] [--role ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my admin policy add <id> ... --manifest-dir DIR --sha256 sha256:HEX [--force] [--json]  (compatibility)
   my admin policy remove <id> [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my admin policy remove <id> --manifest-dir DIR [--force] [--json]  (compatibility)

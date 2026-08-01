@@ -661,6 +661,8 @@ func TestValidateManifestAllowsGovernance(t *testing.T) {
         "version": "2026-01",
         "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "acceptance": "required",
+        "summary": "Rules for preparing and approving a release.",
+        "topics": ["releases", "deployment approval"],
         "roles": ["operator"]
       }
     ],
@@ -710,6 +712,10 @@ func TestValidateManifestAllowsGovernance(t *testing.T) {
 	if len(doc.Governance.Policies) != 1 || doc.Governance.Policies[0].ID != "release-policy" {
 		t.Fatalf("governance = %#v", doc.Governance)
 	}
+	if doc.Governance.Policies[0].Summary != "Rules for preparing and approving a release." ||
+		!containsString(doc.Governance.Policies[0].Topics, "deployment approval") {
+		t.Fatalf("policy context metadata = %#v", doc.Governance.Policies[0])
+	}
 	protections := GovernanceProtections(doc.Governance)
 	if len(doc.Governance.RecordDomains) != 1 || len(protections) != 3 || protections[2].Paths[0] != "decisions" {
 		t.Fatalf("record domains/protections = %#v / %#v", doc.Governance.RecordDomains, protections)
@@ -734,6 +740,73 @@ func TestValidateManifestAllowsGovernance(t *testing.T) {
 	})
 	if got := ValidateDocument("", overlap); !containsValidationError(got.Errors, "overlaps the reserved attestation path") {
 		t.Fatalf("attestation overlap errors = %#v", got.Errors)
+	}
+}
+
+func TestValidateManifestRejectsInvalidPolicyContextMetadata(t *testing.T) {
+	doc := Document{
+		ManifestVersion: 1,
+		Organization:    Organization{ID: "acme", Name: "Acme Example"},
+		Mounts: []Mount{{
+			ID: "handbook", Kind: "handbook", GitURL: "https://github.com/example/acme-handbook.git", Mode: "required",
+		}},
+		Governance: Governance{
+			Authorization: GovernanceAuthorization{Provider: "github", ManifestRepository: "example/acme-manifest", AdminPermission: "admin"},
+			Policies: []Policy{{
+				ID: "release-policy", Title: "Release policy", Mount: "handbook", Path: "policy/release.md",
+				Version: "2026-01", SHA256: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				Acceptance: "optional",
+			}},
+		},
+	}
+	tests := []struct {
+		name   string
+		mutate func(*Policy)
+		want   string
+	}{
+		{name: "multiline summary", mutate: func(policy *Policy) { policy.Summary = "Release rules.\nRead carefully." }, want: "summary must be one line"},
+		{name: "oversized summary", mutate: func(policy *Policy) { policy.Summary = strings.Repeat("x", 241) }, want: "summary must be at most 240 characters"},
+		{name: "blank topic", mutate: func(policy *Policy) { policy.Topics = []string{"releases", " "} }, want: "topics[1] must be non-empty"},
+		{name: "padded topic", mutate: func(policy *Policy) { policy.Topics = []string{" releases "} }, want: "topics[0] must not have surrounding whitespace"},
+		{name: "multiline topic", mutate: func(policy *Policy) { policy.Topics = []string{"release\napproval"} }, want: "topics[0] must be one line"},
+		{name: "oversized topic", mutate: func(policy *Policy) { policy.Topics = []string{strings.Repeat("x", 81)} }, want: "topics[0] must be at most 80 characters"},
+		{name: "duplicate topic", mutate: func(policy *Policy) { policy.Topics = []string{"releases", "releases"} }, want: "topics duplicates \"releases\""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			candidate := doc
+			candidate.Governance.Policies = append([]Policy(nil), doc.Governance.Policies...)
+			tt.mutate(&candidate.Governance.Policies[0])
+			result := ValidateDocument("", candidate)
+			if !containsValidationError(result.Errors, tt.want) {
+				t.Fatalf("errors = %#v, want %q", result.Errors, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadDocumentRejectsNonListPolicyTopics(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "governance": {
+    "policies": [
+      {
+        "id": "release-policy",
+        "title": "Release policy",
+        "mount": "handbook",
+        "path": "policy/release.md",
+        "version": "2026-01",
+        "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "acceptance": "optional",
+        "topics": "releases"
+      }
+    ]
+  }
+}`)
+	if _, _, err := LoadDocument(dir); err == nil || !strings.Contains(err.Error(), "cannot unmarshal string") {
+		t.Fatalf("LoadDocument error = %v, want non-list topics rejection", err)
 	}
 }
 

@@ -22,6 +22,9 @@ const (
 	appDir                         = "my-cli"
 	manifestFile                   = "manifest.json"
 	ReservedPolicyAcceptanceDomain = "policy-acceptances"
+	policySummaryMaxCharacters     = 240
+	policyTopicMaxCharacters       = 80
+	policyTopicsMaxItems           = 32
 )
 
 // Registry records configured organization manifests on this machine.
@@ -118,6 +121,8 @@ type Policy struct {
 	Version    string   `json:"version"`
 	SHA256     string   `json:"sha256"`
 	Acceptance string   `json:"acceptance"`
+	Summary    string   `json:"summary,omitempty"`
+	Topics     []string `json:"topics,omitempty"`
 	Roles      []string `json:"roles,omitempty"`
 }
 
@@ -1058,6 +1063,41 @@ func validateGovernance(g Governance, mounts []Mount, mountIDs map[string]bool, 
 		}
 		if policy.Acceptance != "required" && policy.Acceptance != "optional" {
 			result.Errors = append(result.Errors, prefix+".acceptance must be required or optional")
+		}
+		if policy.Summary != "" {
+			if strings.TrimSpace(policy.Summary) != policy.Summary {
+				result.Errors = append(result.Errors, prefix+".summary must not have surrounding whitespace")
+			}
+			if strings.ContainsAny(policy.Summary, "\r\n") {
+				result.Errors = append(result.Errors, prefix+".summary must be one line")
+			}
+			if len([]rune(policy.Summary)) > policySummaryMaxCharacters {
+				result.Errors = append(result.Errors, fmt.Sprintf("%s.summary must be at most %d characters", prefix, policySummaryMaxCharacters))
+			}
+		}
+		if len(policy.Topics) > policyTopicsMaxItems {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s.topics must contain at most %d entries", prefix, policyTopicsMaxItems))
+		}
+		seenTopics := map[string]bool{}
+		for topicIndex, topic := range policy.Topics {
+			topicPrefix := fmt.Sprintf("%s.topics[%d]", prefix, topicIndex)
+			if strings.TrimSpace(topic) == "" {
+				result.Errors = append(result.Errors, topicPrefix+" must be non-empty")
+				continue
+			}
+			if strings.TrimSpace(topic) != topic {
+				result.Errors = append(result.Errors, topicPrefix+" must not have surrounding whitespace")
+			}
+			if strings.ContainsAny(topic, "\r\n") {
+				result.Errors = append(result.Errors, topicPrefix+" must be one line")
+			}
+			if len([]rune(topic)) > policyTopicMaxCharacters {
+				result.Errors = append(result.Errors, fmt.Sprintf("%s must be at most %d characters", topicPrefix, policyTopicMaxCharacters))
+			}
+			if seenTopics[topic] {
+				result.Errors = append(result.Errors, fmt.Sprintf("%s.topics duplicates %q", prefix, topic))
+			}
+			seenTopics[topic] = true
 		}
 		if policy.Acceptance == "required" {
 			requiresAcceptance = true

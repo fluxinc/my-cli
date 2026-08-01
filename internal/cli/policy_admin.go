@@ -25,6 +25,8 @@ type adminPolicyOpts struct {
 	version      string
 	sha256       string
 	acceptance   string
+	summary      string
+	topics       stringListFlag
 	roles        stringListFlag
 	force        bool
 	jsonOut      bool
@@ -66,7 +68,7 @@ func (a app) runAdminPolicyAdd(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION --acceptance required|optional [--role ID] [--manifest NAME --umbrella DIR | --manifest-dir DIR --sha256 sha256:HEX]")
+		return fmt.Errorf("usage: my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION --acceptance required|optional [--summary TEXT] [--topic TEXT] [--role ID] [--manifest NAME --umbrella DIR | --manifest-dir DIR --sha256 sha256:HEX]")
 	}
 	if err := validateAdminPolicyAddOpts(opts); err != nil {
 		return err
@@ -133,8 +135,10 @@ func parseAdminPolicyOpts(name string, stderr io.Writer, args []string, add bool
 		fs.StringVar(&opts.version, "version", "", "policy version")
 		fs.StringVar(&opts.sha256, "sha256", "", "explicit sha256: digest for --manifest-dir compatibility")
 		fs.StringVar(&opts.acceptance, "acceptance", "", "required or optional")
+		fs.StringVar(&opts.summary, "summary", "", "one-line policy summary for agent consultation")
+		fs.Var(&opts.topics, "topic", "topic that requires policy consultation (repeatable)")
 		fs.Var(&opts.roles, "role", "selected local role requiring the policy (repeatable)")
-		for _, key := range []string{"title", "mount", "path", "version", "sha256", "acceptance", "role"} {
+		for _, key := range []string{"title", "mount", "path", "version", "sha256", "acceptance", "summary", "topic", "role"} {
 			known[key] = true
 		}
 	}
@@ -205,7 +209,7 @@ func (a app) adminPolicyRegistered(action, id string, opts adminPolicyOpts) (adm
 		if err != nil {
 			return adminPolicyResult{}, err
 		}
-		changed = manifest.Policy{ID: strings.TrimSpace(id), Title: strings.TrimSpace(opts.title), Mount: strings.TrimSpace(opts.mount), Path: filepath.ToSlash(strings.TrimSpace(opts.path)), Version: strings.TrimSpace(opts.version), SHA256: digest, Acceptance: strings.TrimSpace(opts.acceptance), Roles: append([]string(nil), opts.roles...)}
+		changed = manifest.Policy{ID: strings.TrimSpace(id), Title: strings.TrimSpace(opts.title), Mount: strings.TrimSpace(opts.mount), Path: filepath.ToSlash(strings.TrimSpace(opts.path)), Version: strings.TrimSpace(opts.version), SHA256: digest, Acceptance: strings.TrimSpace(opts.acceptance), Summary: strings.TrimSpace(opts.summary), Topics: trimmedPolicyTopics(opts.topics), Roles: append([]string(nil), opts.roles...)}
 		doc.Governance.Policies = append(doc.Governance.Policies, changed)
 	case "remove":
 		idx, ok := adminPolicyIndex(doc.Governance.Policies, id)
@@ -324,7 +328,7 @@ func (a app) adminPolicyExplicit(action, id string, opts adminPolicyOpts) (admin
 		if _, ok := adminPolicyIndex(doc.Governance.Policies, id); ok {
 			return adminPolicyResult{}, fmt.Errorf("governance policy %q already exists", id)
 		}
-		changed = manifest.Policy{ID: strings.TrimSpace(id), Title: strings.TrimSpace(opts.title), Mount: strings.TrimSpace(opts.mount), Path: filepath.ToSlash(strings.TrimSpace(opts.path)), Version: strings.TrimSpace(opts.version), SHA256: strings.TrimSpace(opts.sha256), Acceptance: strings.TrimSpace(opts.acceptance), Roles: append([]string(nil), opts.roles...)}
+		changed = manifest.Policy{ID: strings.TrimSpace(id), Title: strings.TrimSpace(opts.title), Mount: strings.TrimSpace(opts.mount), Path: filepath.ToSlash(strings.TrimSpace(opts.path)), Version: strings.TrimSpace(opts.version), SHA256: strings.TrimSpace(opts.sha256), Acceptance: strings.TrimSpace(opts.acceptance), Summary: strings.TrimSpace(opts.summary), Topics: trimmedPolicyTopics(opts.topics), Roles: append([]string(nil), opts.roles...)}
 		doc.Governance.Policies = append(doc.Governance.Policies, changed)
 	case "remove":
 		idx, ok := adminPolicyIndex(doc.Governance.Policies, id)
@@ -360,6 +364,17 @@ func adminPolicyIndex(policies []manifest.Policy, id string) (int, bool) {
 		}
 	}
 	return -1, false
+}
+
+func trimmedPolicyTopics(topics []string) []string {
+	if len(topics) == 0 {
+		return nil
+	}
+	out := make([]string, len(topics))
+	for i, topic := range topics {
+		out[i] = strings.TrimSpace(topic)
+	}
+	return out
 }
 
 func (a app) printAdminPolicyResult(result adminPolicyResult, jsonOut bool) error {

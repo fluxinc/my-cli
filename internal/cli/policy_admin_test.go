@@ -55,6 +55,8 @@ func TestAdminPolicyRegisteredPublishesCommittedBlobDigestAndPreservesCache(t *t
 		"my", "admin", "policy", "add", "handling-policy",
 		"--title", "Workspace handling policy", "--mount", "workspace", "--path", "policy/handling.md",
 		"--version", "2026-07", "--acceptance", "required",
+		"--summary", "Rules for handling governed workspace content.",
+		"--topic", "workspace handling", "--topic", " customer data ",
 		"--manifest", "acme", "--home", home, "--umbrella", umbrellaRoot, "--json",
 	}); err != nil {
 		t.Fatalf("registered policy add: %v\nstdout=%s\nstderr=%s", err, stdout.String(), stderr.String())
@@ -65,7 +67,10 @@ func TestAdminPolicyRegisteredPublishesCommittedBlobDigestAndPreservesCache(t *t
 	}
 	wantDigest := fmt.Sprintf("sha256:%x", sha256.Sum256(committed))
 	dirtyDigest := fmt.Sprintf("sha256:%x", sha256.Sum256(dirty))
-	if result.Action != "added" || result.Policy.SHA256 != wantDigest || result.Policy.SHA256 == dirtyDigest || result.Publication != "pull request opened" || result.PRURL == "" {
+	if result.Action != "added" || result.Policy.SHA256 != wantDigest || result.Policy.SHA256 == dirtyDigest ||
+		result.Policy.Summary != "Rules for handling governed workspace content." ||
+		len(result.Policy.Topics) != 2 || result.Policy.Topics[1] != "customer data" ||
+		result.Publication != "pull request opened" || result.PRURL == "" {
 		t.Fatalf("result = %#v, want committed digest %s", result, wantDigest)
 	}
 	after, err := os.ReadFile(filepath.Join(cache, "manifest.json"))
@@ -76,7 +81,9 @@ func TestAdminPolicyRegisteredPublishesCommittedBlobDigestAndPreservesCache(t *t
 		t.Fatal("registered policy authoring modified the sync-managed manifest cache")
 	}
 	proposal := gitCLIOutput(t, manifestRemote, "show", state.commit+":manifest.json")
-	if !strings.Contains(proposal, `"id": "handling-policy"`) || !strings.Contains(proposal, wantDigest) || strings.Contains(proposal, dirtyDigest) {
+	if !strings.Contains(proposal, `"id": "handling-policy"`) || !strings.Contains(proposal, wantDigest) ||
+		!strings.Contains(proposal, `"summary": "Rules for handling governed workspace content."`) ||
+		!strings.Contains(proposal, `"customer data"`) || strings.Contains(proposal, dirtyDigest) {
 		t.Fatalf("proposal does not bind committed policy bytes:\n%s", proposal)
 	}
 }
@@ -226,6 +233,7 @@ func TestAdminPolicyExplicitAddAndRemove(t *testing.T) {
 		"my", "admin", "policy", "add", "handling-policy",
 		"--title", "Workspace handling policy", "--mount", "workspace", "--path", "policy/handling.md",
 		"--version", "2026-07", "--acceptance", "required", "--role", "admin",
+		"--summary", "Rules for handling governed workspace content.", "--topic", "workspace handling",
 		"--manifest-dir", dir, "--sha256", digest, "--json",
 	}); err != nil {
 		t.Fatal(err)
@@ -234,7 +242,9 @@ func TestAdminPolicyExplicitAddAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(doc.Governance.Policies) != 1 || doc.Governance.Policies[0].ID != "handling-policy" || doc.Governance.Policies[0].SHA256 != digest || len(doc.Governance.Policies[0].Roles) != 1 {
+	if len(doc.Governance.Policies) != 1 || doc.Governance.Policies[0].ID != "handling-policy" ||
+		doc.Governance.Policies[0].SHA256 != digest || doc.Governance.Policies[0].Summary == "" ||
+		len(doc.Governance.Policies[0].Topics) != 1 || len(doc.Governance.Policies[0].Roles) != 1 {
 		t.Fatalf("policies = %#v", doc.Governance.Policies)
 	}
 	stdout.Reset()
