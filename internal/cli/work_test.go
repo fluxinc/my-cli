@@ -144,6 +144,114 @@ func TestWorkStartSessionGuidanceIncludesConcreteContextAndContract(t *testing.T
 	}
 }
 
+func TestSessionStartGuidanceIncludesApplicablePolicy(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	f.makePrimaryPolicyOptional(t)
+	f.selectGovernedOperator(t)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "session", "start", "--slug", "policy", "--json",
+		"--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
+	}); err != nil {
+		t.Fatalf("session start: %v\nstderr: %s", err, stderr.String())
+	}
+	var report sessionStartCommandReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	assertSessionPolicyGuidance(t, report.Path, "release-policy", "Release approval policy")
+}
+
+func TestSessionResumeRefreshesPolicyAddedAfterStart(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	f.makePrimaryPolicyOptional(t)
+	f.selectGovernedOperator(t)
+	session := startGovernedPolicySession(t, f, "resume-policy")
+	policy := f.addOptionalPolicyFromWriter(t)
+	runCLIGit(t, f.manifestCache, "pull", "-q", "--ff-only")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "session", "resume", session.ID,
+		"--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
+	}); err != nil {
+		t.Fatalf("session resume: %v\nstderr: %s", err, stderr.String())
+	}
+	if stdout.String() != "cd "+shellQuote(session.Path)+"\n" {
+		t.Fatalf("session resume stdout = %q", stdout.String())
+	}
+	assertSessionPolicyGuidance(t, session.Path, policy.ID, policy.Title)
+}
+
+func TestSessionJoinRefreshesPolicyAddedAfterStartBeforeHarness(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	f.makePrimaryPolicyOptional(t)
+	f.configureGovernedOperator(t)
+	session := startGovernedPolicySession(t, f, "join-policy")
+	policy := f.addOptionalPolicyFromWriter(t)
+
+	var stdout, stderr bytes.Buffer
+	launched := false
+	a := app{
+		stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+		lookPath: func(string) (string, error) { return "/bin/true", nil },
+		execHarness: func(string, []string, string) error {
+			assertSessionPolicyGuidance(t, session.Path, policy.ID, policy.Title)
+			launched = true
+			return nil
+		},
+	}
+	if err := a.run([]string{
+		"my", "session", "join", session.ID, "codex",
+		"--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
+	}); err != nil {
+		t.Fatalf("session join: %v\nstderr: %s", err, stderr.String())
+	}
+	if !launched {
+		t.Fatal("session join did not launch harness")
+	}
+}
+
+func startGovernedPolicySession(t *testing.T, f policyTestFixture, slug string) worksession.Session {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "session", "start", "--slug", slug, "--json",
+		"--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
+	}); err != nil {
+		t.Fatalf("session start: %v\nstderr: %s", err, stderr.String())
+	}
+	var report sessionStartCommandReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	return report.Session
+}
+
+func assertSessionPolicyGuidance(t *testing.T, sessionPath, policyID, title string) {
+	t.Helper()
+	agents, err := os.ReadFile(filepath.Join(sessionPath, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"## Organization Policies", "**" + title + "**", "`my policy show " + policyID + "`"} {
+		if !strings.Contains(string(agents), want) {
+			t.Fatalf("session guidance missing %q:\n%s", want, agents)
+		}
+	}
+	claude, err := os.ReadFile(filepath.Join(sessionPath, "CLAUDE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(claude) != string(agents) {
+		t.Fatal("CLAUDE.md does not match refreshed AGENTS.md")
+	}
+}
+
 func TestActiveSessionForPathExplainsFinishedSession(t *testing.T) {
 	root := t.TempDir()
 	sessionPath := filepath.Join(root, worksession.WorkDirName, "2026-06-18-example-7426")

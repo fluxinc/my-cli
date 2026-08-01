@@ -428,6 +428,19 @@ Options:
 	if session.Status != worksession.StatusActive {
 		return a.maybeJSONError(opts.jsonOut, fmt.Errorf("session %s is %s", session.ID, session.Status))
 	}
+	if harnessName == "" {
+		doc, err := launchGuidanceDoc(opts.home, opts.manifestName, root)
+		if err != nil {
+			return a.maybeJSONError(opts.jsonOut, err)
+		}
+		guidanceCtx, err := sessionGuidanceContext(root, doc)
+		if err != nil {
+			return a.maybeJSONError(opts.jsonOut, err)
+		}
+		if err := worksession.EnsureGuidance(session, guidanceCtx); err != nil {
+			return a.maybeJSONError(opts.jsonOut, err)
+		}
+	}
 	if opts.jsonOut {
 		return printJSON(a.stdout, session)
 	}

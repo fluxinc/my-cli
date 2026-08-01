@@ -171,6 +171,51 @@ func (f policyTestFixture) selectGovernedOperator(t *testing.T) {
 	}
 }
 
+func (f policyTestFixture) makePrimaryPolicyOptional(t *testing.T) {
+	t.Helper()
+	manifestPath := filepath.Join(f.manifestCache, "manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := strings.Replace(string(data), `"acceptance": "required"`, `"acceptance": "optional"`, 1)
+	if updated == string(data) {
+		t.Fatal("test manifest did not contain required policy acceptance")
+	}
+	writeCLITestFile(t, manifestPath, updated)
+	commitAndPushCLIGit(t, f.manifestCache, "Make policy consultation-only")
+}
+
+func (f policyTestFixture) addOptionalPolicyFromWriter(t *testing.T) manifest.Policy {
+	t.Helper()
+	runCLIGit(t, f.manifestWriter, "pull", "-q", "--ff-only")
+	manifestPath := filepath.Join(f.manifestWriter, "manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc manifest.Document
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	policy := doc.Governance.Policies[0]
+	policy.ID = "operations-policy"
+	policy.Title = "Operations policy"
+	policy.Version = "2026-08"
+	policy.Acceptance = "optional"
+	policy.Summary = "Rules for routine operations."
+	policy.Topics = []string{"routine operations"}
+	policy.Roles = []string{"operator"}
+	doc.Governance.Policies = append(doc.Governance.Policies, policy)
+	updated, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, manifestPath, string(append(updated, '\n')))
+	commitAndPushCLIGit(t, f.manifestWriter, "Add operations policy")
+	return policy
+}
+
 func TestPolicyListShowStatusAndAcceptanceLifecycle(t *testing.T) {
 	f := newPolicyTestFixture(t)
 
@@ -719,17 +764,7 @@ func TestMyAIVerifiesEveryApplicablePolicyBlobBeforeLaunch(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newPolicyTestFixture(t)
-			manifestPath := filepath.Join(f.manifestCache, "manifest.json")
-			data, err := os.ReadFile(manifestPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			updated := strings.Replace(string(data), `"acceptance": "required"`, `"acceptance": "optional"`, 1)
-			if updated == string(data) {
-				t.Fatal("test manifest did not contain required policy acceptance")
-			}
-			writeCLITestFile(t, manifestPath, updated)
-			commitAndPushCLIGit(t, f.manifestCache, "Make policy consultation-only")
+			f.makePrimaryPolicyOptional(t)
 			f.configureGovernedOperator(t)
 			if tt.changeBlob != nil {
 				tt.changeBlob(t, f)
@@ -742,7 +777,7 @@ func TestMyAIVerifiesEveryApplicablePolicyBlobBeforeLaunch(t *testing.T) {
 				lookPath:    func(string) (string, error) { return "/bin/true", nil },
 				execHarness: func(string, []string, string) error { launched = true; return nil },
 			}
-			err = a.run([]string{
+			err := a.run([]string{
 				"my", "ai", "--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
 				"--no-session", "--no-refresh", "--no-update-check", "codex",
 			})
