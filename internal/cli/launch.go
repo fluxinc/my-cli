@@ -504,7 +504,7 @@ func (a app) ensureLaunchGuidance(root string, doc registeredDoc) error {
 	if err != nil {
 		return err
 	}
-	guidanceOpts := guidance.Options{RoleGuidancePaths: role.GuidancePaths}
+	guidanceOpts := guidance.Options{Role: selectedRole, RoleGuidancePaths: role.GuidancePaths}
 	check, err := guidance.CheckWithOptions(root, doc.ref.LocalPath, doc.doc, guidanceOpts)
 	if err != nil {
 		return err

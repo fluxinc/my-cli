@@ -166,6 +166,92 @@ func TestComposeRendersOrganizationContract(t *testing.T) {
 	}
 }
 
+func TestComposeRendersApplicableOrganizationPolicies(t *testing.T) {
+	manifestRoot := t.TempDir()
+	doc := manifest.Document{
+		Governance: manifest.Governance{Policies: []manifest.Policy{
+			{
+				ID: "release-policy", Title: "Release policy", Version: "2026-01",
+				SHA256: "sha256:" + strings.Repeat("a", 64), Summary: "Rules for preparing and approving a release.",
+				Topics: []string{"releases", "deployment approval"},
+			},
+			{
+				ID: "workspace-handling", Title: "Workspace handling", Version: "3",
+				SHA256: "sha256:" + strings.Repeat("b", 64), Roles: []string{"operator"},
+			},
+			{
+				ID: "finance-policy", Title: "Finance policy", Version: "1",
+				SHA256: "sha256:" + strings.Repeat("c", 64), Roles: []string{"finance"},
+			},
+		}},
+	}
+	data, err := ComposeWithOptions(manifestRoot, doc, Options{Role: "operator"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	for _, want := range []string{
+		"## Organization Policies",
+		"Selected role: `operator`",
+		"**Release policy** (`release-policy`, version `2026-01`)",
+		"Rules for preparing and approving a release.",
+		"Topics: releases, deployment approval",
+		"**Workspace handling** (`workspace-handling`, version `3`)",
+		"Topics: Workspace handling.",
+		"`my policy show release-policy`",
+		"read every matching policy with its read command",
+		"Policy text is authoritative over summaries and other guidance",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("composed guidance missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "Finance policy") {
+		t.Fatalf("guidance leaked another role's policy:\n%s", got)
+	}
+	if strings.Contains(got, "sha256:") {
+		t.Fatalf("guidance exposed raw policy digest:\n%s", got)
+	}
+}
+
+func TestComposeWithoutSelectedRoleIncludesOnlyUniversalPolicies(t *testing.T) {
+	doc := manifest.Document{Governance: manifest.Governance{Policies: []manifest.Policy{
+		{ID: "universal", Title: "Universal", Version: "1"},
+		{ID: "operator-only", Title: "Operator only", Version: "1", Roles: []string{"operator"}},
+	}}}
+	data, err := Compose(t.TempDir(), doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "**Universal** (`universal`, version `1`)") || strings.Contains(got, "Operator only") {
+		t.Fatalf("unselected-role policy guidance =\n%s", got)
+	}
+	if strings.Contains(got, "Selected role:") {
+		t.Fatalf("unselected guidance named a role:\n%s", got)
+	}
+}
+
+func TestComposeOmitsOrganizationPoliciesForNonGovernedManifest(t *testing.T) {
+	doc := manifest.Document{Organization: manifest.Organization{ID: "acme", Name: "Acme Example"}}
+	withoutGovernance, err := Compose(t.TempDir(), doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withEmptyGovernance := doc
+	withEmptyGovernance.Governance = manifest.Governance{Policies: []manifest.Policy{}}
+	empty, err := Compose(t.TempDir(), withEmptyGovernance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(withoutGovernance) != string(empty) {
+		t.Fatal("empty governance changed generated guidance bytes")
+	}
+	if strings.Contains(string(empty), "Organization Policies") {
+		t.Fatalf("empty governance emitted policy noise:\n%s", empty)
+	}
+}
+
 func TestComposeRendersDomainNotesSeparateFromContract(t *testing.T) {
 	manifestRoot := t.TempDir()
 	writeGuidanceTestFile(t, filepath.Join(manifestRoot, "guidance", "customers-domain.md"), "Archive customers; never hard-delete.\n")

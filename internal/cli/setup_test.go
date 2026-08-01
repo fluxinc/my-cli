@@ -272,6 +272,100 @@ func TestSetupRolePersistsStateAndFiltersGuidance(t *testing.T) {
 	}
 }
 
+func TestSetupRoleRendersApplicablePolicyConsultation(t *testing.T) {
+	home := t.TempDir()
+	umbrellaRoot := writeRoleSetupManifest(t, home)
+	manifestPath := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme", "manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	governance := `
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": "https://github.com/acme/handbook.git", "mode": "optional" }
+  ],
+  "governance": {
+    "authorization": {
+      "provider": "github",
+      "manifest_repository": "acme/control",
+      "admin_permission": "admin"
+    },
+    "policies": [
+      {
+        "id": "workspace-policy",
+        "title": "Workspace policy",
+        "mount": "handbook",
+        "path": "policy/workspace.md",
+        "version": "1",
+        "sha256": "sha256:` + strings.Repeat("a", 64) + `",
+        "acceptance": "optional",
+        "summary": "Rules for working in the shared workspace.",
+        "topics": ["workspace changes"]
+      },
+      {
+        "id": "operator-policy",
+        "title": "Operator policy",
+        "mount": "handbook",
+        "path": "policy/operator.md",
+        "version": "2",
+        "sha256": "sha256:` + strings.Repeat("b", 64) + `",
+        "acceptance": "optional",
+        "roles": ["operator"]
+      },
+      {
+        "id": "auditor-policy",
+        "title": "Auditor policy",
+        "mount": "handbook",
+        "path": "policy/auditor.md",
+        "version": "3",
+        "sha256": "sha256:` + strings.Repeat("c", 64) + `",
+        "acceptance": "optional",
+        "roles": ["auditor"]
+      }
+    ]
+  },`
+	updated := strings.Replace(string(data),
+		`  "agent_guidance": { "paths": ["guidance/base.md"] },`,
+		governance+"\n"+`  "agent_guidance": { "paths": ["guidance/base.md"] },`, 1)
+	if updated == string(data) {
+		t.Fatal("test manifest did not contain expected agent_guidance block")
+	}
+	writeCLITestFile(t, manifestPath, updated)
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "setup",
+		"--manifest", "acme",
+		"--home", home,
+		"--role", "operator",
+		"--no-refresh",
+		"--no-update-check",
+	}); err != nil {
+		t.Fatalf("setup --role: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	agents, err := os.ReadFile(filepath.Join(umbrellaRoot, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(agents)
+	for _, want := range []string{
+		"## Organization Policies",
+		"Selected role: `operator`",
+		"**Workspace policy**",
+		"`my policy show workspace-policy`",
+		"**Operator policy**",
+		"`my policy show operator-policy`",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("AGENTS.md missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "Auditor policy") {
+		t.Fatalf("AGENTS.md included another role's policy:\n%s", got)
+	}
+}
+
 func TestSetupRoleRejectsUnknownRole(t *testing.T) {
 	home := t.TempDir()
 	writeRoleSetupManifest(t, home)

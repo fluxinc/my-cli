@@ -1220,6 +1220,7 @@ func doctorGuidance(home, root, manifestName string) doctorItem {
 			return item
 		}
 		opts.RoleGuidancePaths = role.GuidancePaths
+		opts.Role = state.SelectedRole
 	} else if !errors.Is(err, os.ErrNotExist) {
 		item.Status = "error"
 		item.Message = err.Error()

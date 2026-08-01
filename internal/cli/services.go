@@ -173,7 +173,7 @@ func guidanceOptionsForSelectedRole(root string, doc manifest.Document) (guidanc
 	if err != nil {
 		return guidance.Options{}, err
 	}
-	return guidance.Options{RoleGuidancePaths: role.GuidancePaths}, nil
+	return guidance.Options{Role: selectedRole, RoleGuidancePaths: role.GuidancePaths}, nil
 }
 
 func selectedRoleForRoot(root string) (string, error) {
@@ -193,7 +193,7 @@ func setupGuidanceOptions(root string, doc manifest.Document, opts skillsCommand
 		if err != nil {
 			return guidance.Options{}, err
 		}
-		return guidance.Options{RoleGuidancePaths: role.GuidancePaths}, nil
+		return guidance.Options{Role: opts.role, RoleGuidancePaths: role.GuidancePaths}, nil
 	}
 	return guidanceOptionsForSelectedRole(root, doc)
 }

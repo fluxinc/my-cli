@@ -266,6 +266,7 @@ func (a app) runSetup(args []string) error {
 	guidanceResult, err := guidance.Ensure(root, doc.ref.LocalPath, doc.doc, guidance.Options{
 		Force:             opts.force,
 		DryRun:            opts.print,
+		Role:              guidanceOpts.Role,
 		RoleGuidancePaths: guidanceOpts.RoleGuidancePaths,
 	})
 	if err != nil {

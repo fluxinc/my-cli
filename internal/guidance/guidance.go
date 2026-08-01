@@ -27,6 +27,7 @@ const (
 type Options struct {
 	Force             bool
 	DryRun            bool
+	Role              string
 	RoleGuidancePaths []string
 }
 
@@ -165,6 +166,7 @@ func ComposeWithOptions(manifestRoot string, doc manifest.Document, opts Options
 			out.WriteString("\n")
 		}
 	}
+	writeOrganizationPolicies(&out, doc.Governance.Policies, opts.Role)
 	paths := append([]string{}, doc.AgentGuidance.Paths...)
 	paths = append(paths, opts.RoleGuidancePaths...)
 	paths = uniqueGuidancePaths(paths)
@@ -187,6 +189,53 @@ func ComposeWithOptions(manifestRoot string, doc manifest.Document, opts Options
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+func writeOrganizationPolicies(out *bytes.Buffer, policies []manifest.Policy, role string) {
+	applicable := applicablePolicies(policies, role)
+	if len(applicable) == 0 {
+		return
+	}
+	out.WriteString("\n## Organization Policies\n\n")
+	if role != "" {
+		out.WriteString("Selected role: `")
+		out.WriteString(role)
+		out.WriteString("`.\n\n")
+	}
+	out.WriteString("These policy references are binding consultation triggers in this workspace:\n\n")
+	for _, policy := range applicable {
+		summary := policy.Summary
+		if summary == "" {
+			summary = policy.Title
+		}
+		topics := policy.Topics
+		topicLabel := strings.Join(topics, ", ")
+		if topicLabel == "" {
+			topicLabel = policy.Title
+		}
+		fmt.Fprintf(out, "- **%s** (`%s`, version `%s`) — %s\n", policy.Title, policy.ID, policy.Version, summary)
+		fmt.Fprintf(out, "  Topics: %s. Read: `my policy show %s`.\n", topicLabel, policy.ID)
+	}
+	out.WriteString("\nPolicy text is authoritative over summaries and other guidance. Before acting on a covered topic, read every matching policy with its read command, then follow all applicable requirements. Never treat the summary as the policy text.\n")
+}
+
+func applicablePolicies(policies []manifest.Policy, role string) []manifest.Policy {
+	var out []manifest.Policy
+	for _, policy := range policies {
+		if len(policy.Roles) == 0 || stringSliceContains(policy.Roles, role) {
+			out = append(out, policy)
+		}
+	}
+	return out
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func uniqueGuidancePaths(paths []string) []string {
