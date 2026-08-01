@@ -1,15 +1,14 @@
 # Policy at invocation
 
-Status: converged 2026-07-31 — joint Claude (architect/reviewer) + Codex
-(implementer/tester) debate complete; implementation owned by Codex with
-Claude review before each commit
+Status: shipped in v0.37.0 — jointly designed and independently verified by
+Claude (architect/reviewer) and Codex (implementer/tester)
 
 Operator goal: any invoked bot must have organization policy available/loaded
 at invocation, plus a standing instruction to consult the policy when the
 topic demands it. Plan together, debate, edge-case, reconcile with invocation
 context and user stories, implement, test, optimize, test again.
 
-## Current state (verified 2026-07-31)
+## Pre-implementation state (verified 2026-07-31)
 
 - `my policy show <id>` prints digest-verified policy content
   (`verifiedPolicyBlob`); it fails closed on digest mismatch, so a bot can
@@ -156,6 +155,6 @@ the resolutions are final for this slice.
 
 ## Release
 
-Ships in the next minor release together with the governance-core beta per
+Shipped in v0.37.0 together with the governance-core beta per
 the release-boundary decision of 2026-07-31 recorded in
 [2026-07-21-governed-organizations-completion](2026-07-21-governed-organizations-completion.md).

@@ -1,6 +1,7 @@
 # Governed organizations: policy, authorization, acceptance, and retention
 
-Status: active — mechanism and docs implemented; private-manifest dogfood and separate revocation drill pending
+Status: shipped in v0.37.0 as beta — governance core dogfooded and released;
+automatic revocation quarantine remains experimental and drill-gated
 
 ## Objective
 

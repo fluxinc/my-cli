@@ -647,7 +647,7 @@ rationale.
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
-- **Active — governed organizations.** The reviewed security core is implemented:
+- **Shipped (v0.37.0, beta) — governed organizations.** The reviewed security core includes:
   provider-backed authorization, lossless revocation quarantine, digest-bound
   policy acceptance, launch gates, PR-only publication, trusted-base CI, and
   live GitHub enforcement audits. Manifest-routed generic records and the
@@ -657,8 +657,7 @@ indexed in [docs/plans/](docs/plans/README.md):
   local/submitted/merge-proven reporting, trusted-branch CI enforcement for
   universal policies, and append-only administrative supersession.
   Umbrella-root contract authoring now proposes isolated manifest PRs without
-  dirtying the sync-managed cache. Reciprocal linked-record CI is implemented
-  and remains conditional on private-manifest dogfood before release.
+  dirtying the sync-managed cache. Reciprocal linked-record CI is implemented.
   The documentation truth pass is complete: automatic revocation quarantine is
   explicitly an experimental endpoint-security plane with separate activation
   and real-world drill gates. Policy/record dogfood does not activate it.
@@ -669,13 +668,14 @@ indexed in [docs/plans/](docs/plans/README.md):
   verbs remain agent/admin plumbing. Repeated live authorization work is now
   collapsed inside each launch to one actor lookup and one bounded-concurrent
   check per distinct repository, without adding an employee-facing control.
-  Live verification reached the policy prompt. The 2026-07-31 remainder plan
-  of record governs the beta release cut: the S8c ergonomics follow-ups (bare
-  `my meetings`/`my support` list defaults; a runtime-state boundary keeping
-  organization-skill state out of the managed manifest cache),
-  policy-at-invocation guidance/projection, an approachable site walkthrough,
-  and the beta-labeled release. Automatic revocation quarantine stays
-  experimental behind its own unmet drill gate and is not part of the beta.
+  The completed 2026-07-31 release plan added bare `my meetings`/`my support`
+  list defaults, a safe runtime-state boundary for organization skills,
+  policy-at-invocation guidance and projection, session refresh, and an
+  approachable site walkthrough centered on the employee's `my ai` command.
+  Sandbox BDD plus independent live read-only checks proved governed behavior,
+  fail-closed digest drift, role scoping, and non-governed zero noise.
+  Automatic revocation quarantine stays experimental behind its own unmet
+  drill gate and is not part of the recommended beta surface.
   Plans: [governed organizations](docs/plans/2026-07-16-governed-organizations.md),
   [completion gates](docs/plans/2026-07-21-governed-organizations-completion.md),
   and [policy at invocation](docs/plans/2026-07-22-policy-at-invocation.md).

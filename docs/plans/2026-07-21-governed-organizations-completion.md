@@ -1,8 +1,8 @@
 # Governed organizations completion: hardening, acceptance CI, and dogfood
 
-Status: active — S1-S7, S8a, S8b, and S8d complete; remainder plan of record
-below (2026-07-31) governs S8c, policy-at-invocation, docs/walkthrough, and
-the beta release cut
+Status: complete for the v0.37.0 governance beta — implementation, S8c,
+policy-at-invocation, docs, dogfood, and release gates passed; automatic
+revocation quarantine remains experimental under its separate unmet drill gate
 
 Design source of truth: [2026-07-16-governed-organizations](2026-07-16-governed-organizations.md).
 This plan closes the gap between mechanism-complete code and a
@@ -272,7 +272,7 @@ Restore the intended noun-simple interaction:
 - employee-facing docs lead with `my ai`, while detailed policy/admin verbs are
   explicitly agent and automation plumbing.
 
-### S8c — Dogfood ergonomics follow-ups — pending
+### S8c — Dogfood ergonomics follow-ups — complete
 
 The live S8b verification reached the real policy prompt and exposed two
 separate, smaller product issues. Keep them out of the security-sensitive S8b
@@ -309,9 +309,9 @@ than adding governance controls to the employee command surface.
 
 ### Release gate (step 8)
 
-- All S1–S5 merged with green CI; S6 merged or explicitly deferred; S7 docs
-  accurate; S8a policy authoring complete; S8 dogfood and drill evidence
-  recorded.
+- All S1–S7 and S8a–S8d merged with green tests; governance dogfood evidence
+  recorded. The automatic revocation/quarantine drill remains independent and
+  blocks recommending that experimental plane, not the governance beta.
 - Then: plan statuses updated, `CHANGELOG.md` + `site/changelog.md` stamped,
   release tagged per repository release process with policy/record governance
   explicitly labeled beta, staff-Flux enablement considered separately by the
