@@ -166,7 +166,7 @@ silently skips ones that are not present.
 ## Admin
 
 ```sh
-my admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
+my admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--require TYPE:ID] [--keep-original|--remove-original] [--force] [--json]
 my admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
 my admin setup ...
 my admin manifests add|sync|validate ...

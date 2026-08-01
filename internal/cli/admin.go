@@ -66,7 +66,7 @@ func (a app) runAdmin(args []string) error {
 
 func (a app) printAdminUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
-  my admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
+  my admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--require TYPE:ID] [--keep-original|--remove-original] [--force] [--json]
   my admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
   my admin setup ...                      (alias of my setup)
   my admin manifests add|sync|validate ...   (alias of my manifests ...)
@@ -542,6 +542,7 @@ func (a app) runAdminSkillsAdd(args []string) error {
 	var id string
 	var manifestDir string
 	var installSlug string
+	var requires stringListFlag
 	var keepOriginal bool
 	var removeOriginal bool
 	var force bool
@@ -550,6 +551,7 @@ func (a app) runAdminSkillsAdd(args []string) error {
 	fs.StringVar(&id, "id", "", "canonical skill id namespace:name")
 	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
 	fs.StringVar(&installSlug, "install-slug", "", "portable harness install slug")
+	fs.Var(&requires, "require", "manifest dependency type:id (repeatable)")
 	fs.BoolVar(&keepOriginal, "keep-original", false, "explicitly keep a harness-visible original skill directory")
 	fs.BoolVar(&removeOriginal, "remove-original", false, "delete the original skill directory after import")
 	fs.BoolVar(&force, "force", false, "allow dirty checkout or replace an existing declaration/source")
@@ -558,6 +560,7 @@ func (a app) runAdminSkillsAdd(args []string) error {
 		"id":           true,
 		"manifest-dir": true,
 		"install-slug": true,
+		"require":      true,
 	})
 	if err != nil {
 		return err
@@ -568,7 +571,7 @@ func (a app) runAdminSkillsAdd(args []string) error {
 	if keepOriginal && removeOriginal {
 		return fmt.Errorf("--keep-original and --remove-original are mutually exclusive")
 	}
-	result, err := a.adminSkillsAdd(rest[0], id, installSlug, manifestDir, keepOriginal, removeOriginal, force)
+	result, err := a.adminSkillsAdd(rest[0], id, installSlug, requires, manifestDir, keepOriginal, removeOriginal, force)
 	if err != nil {
 		return err
 	}
@@ -583,7 +586,7 @@ func (a app) runAdminSkillsAdd(args []string) error {
 	return nil
 }
 
-func (a app) adminSkillsAdd(skillDir, id, installSlug, manifestDir string, keepOriginal, removeOriginal, force bool) (adminSkillResult, error) {
+func (a app) adminSkillsAdd(skillDir, id, installSlug string, requires []string, manifestDir string, keepOriginal, removeOriginal, force bool) (adminSkillResult, error) {
 	source, err := filepath.Abs(skillDir)
 	if err != nil {
 		return adminSkillResult{}, err
@@ -645,6 +648,7 @@ func (a app) adminSkillsAdd(skillDir, id, installSlug, manifestDir string, keepO
 		InstallSlug: installSlug,
 		Path:        relPath,
 		Source:      manifest.Source{Type: "static"},
+		Requires:    uniqueStrings(requires),
 	})
 	if result := manifest.ValidateDocument(root, doc); len(result.Errors) != 0 {
 		return adminSkillResult{}, fmt.Errorf("updated manifest is invalid: %s", strings.Join(result.Errors, "; "))

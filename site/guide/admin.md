@@ -14,18 +14,21 @@ Admin skill commands write a maintainer checkout through `--manifest-dir`
 ```sh
 my admin skills add ./my-skill \
   --id acme:my-skill \
+  --require service:docs \
   --manifest-dir ~/src/acme-manifest
 
 my admin skills remove acme:my-skill \
   --manifest-dir ~/src/acme-manifest
 ```
 
-On `add`, `--install-slug SLUG` renames the install directory inside the
-manifest, and `--keep-original`/`--remove-original` decides whether the
-imported source directory stays or is deleted. On `remove`, `--delete-source`
-also deletes the skill's source directory; `--prune-related` drops catalog
-`related_skills` references to the removed skill; `--prune-orphans` removes
-tools and allowed namespaces left orphaned by the removal.
+On `add`, repeatable `--require TYPE:ID` records a `workspace:`, `tool:`, or
+`service:` dependency and routes it through normal manifest validation;
+`--install-slug SLUG` renames the install directory inside the manifest, and
+`--keep-original`/`--remove-original` decides whether the imported source
+directory stays or is deleted. On `remove`, `--delete-source` also deletes the
+skill's source directory; `--prune-related` drops catalog `related_skills`
+references to the removed skill; `--prune-orphans` removes tools and allowed
+namespaces left orphaned by the removal.
 
 They refuse dirty checkouts unless `--force` is supplied, never commit or push,
 and print follow-up `git status` and `git diff` commands. Removal reports

@@ -235,7 +235,10 @@ func governedAdminRunner(permission string) func(string, ...string) ([]byte, err
 
 func TestAdminSkillsAddCopiesAndDeclares(t *testing.T) {
 	manifestDir := t.TempDir()
-	writeAdminManifest(t, manifestDir, "")
+	writeAdminManifest(t, manifestDir, `,
+  "services": [
+    { "id": "docs-search", "kind": "http", "purpose": "Search documentation", "describe_ref": "https://example.com/.claw-describe.json", "auth_ref": "none" }
+  ]`)
 	sourceRoot := makeCLISkill(t, "demo-skill")
 	skillDir := filepath.Join(sourceRoot, "demo-skill")
 
@@ -245,6 +248,8 @@ func TestAdminSkillsAddCopiesAndDeclares(t *testing.T) {
 		"my", "admin", "skills", "add", skillDir,
 		"--id", "acme:demo-skill",
 		"--manifest-dir", manifestDir,
+		"--require", "service:docs-search",
+		"--require", "service:docs-search",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -261,8 +266,40 @@ func TestAdminSkillsAddCopiesAndDeclares(t *testing.T) {
 	if len(doc.Skills) != 1 || doc.Skills[0].ID != "acme:demo-skill" || doc.Skills[0].Path != "skills/demo-skill" {
 		t.Fatalf("manifest skills = %#v", doc.Skills)
 	}
+	if got := strings.Join(doc.Skills[0].Requires, ","); got != "service:docs-search" {
+		t.Fatalf("manifest skill requires = %q", got)
+	}
 	if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err != nil {
 		t.Fatalf("original skill should remain by default: %v", err)
+	}
+}
+
+func TestAdminSkillsAddRejectsInvalidRequirementWithoutWriting(t *testing.T) {
+	manifestDir := t.TempDir()
+	writeAdminManifest(t, manifestDir, "")
+	sourceRoot := makeCLISkill(t, "demo-skill")
+	skillDir := filepath.Join(sourceRoot, "demo-skill")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{
+		"my", "admin", "skills", "add", skillDir,
+		"--id", "acme:demo-skill",
+		"--manifest-dir", manifestDir,
+		"--require", "service:missing",
+	})
+	if err == nil || !strings.Contains(err.Error(), `requires unknown service "missing"`) {
+		t.Fatalf("admin add err = %v, want validator refusal", err)
+	}
+	doc, _, loadErr := manifest.LoadDocument(manifestDir)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if len(doc.Skills) != 0 {
+		t.Fatalf("invalid skill was written: %#v", doc.Skills)
+	}
+	if _, statErr := os.Stat(filepath.Join(manifestDir, "skills", "demo-skill")); !os.IsNotExist(statErr) {
+		t.Fatalf("invalid skill source was copied, err=%v", statErr)
 	}
 }
 

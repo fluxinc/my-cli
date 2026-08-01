@@ -239,7 +239,7 @@ Usage:
   my skills list [--json] [--source DIR] [--manifest NAME] [--home DIR]
   my skills show <id|slug> [--json] [--source DIR] [--manifest NAME] [--home DIR]
   my skills status [--skill ID_OR_SLUG] [--json] [--source DIR] [--manifest NAME] [--home DIR]
-  my admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--keep-original|--remove-original] [--force] [--json]
+  my admin skills add <skill-dir> --id namespace:name --manifest-dir DIR [--install-slug SLUG] [--require TYPE:ID] [--keep-original|--remove-original] [--force] [--json]
   my admin skills remove <id|slug> --manifest-dir DIR [--delete-source] [--prune-related] [--prune-orphans] [--force] [--json]
   my admin setup ...                      (alias of my setup)
   my admin manifests add|sync|validate ...   (alias of my manifests ...)

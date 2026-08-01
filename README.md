@@ -250,7 +250,7 @@ holds unadopted skill-source files unless a reviewed source change was staged.
 Manifest authoring is explicit admin work:
 
 ```sh
-my admin skills add <skill-dir> --id org:name --manifest-dir <checkout>
+my admin skills add <skill-dir> --id org:name --manifest-dir <checkout> [--require TYPE:ID]
 my admin skills remove <id|slug> --manifest-dir <checkout> [--prune-orphans]
 my admin tools add <id> --manifest-dir <checkout> --mode required|optional --purpose "..."
 my admin tools edit <id> --manifest-dir <checkout> [--purpose "..."]
