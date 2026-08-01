@@ -610,6 +610,11 @@ func gitCLIOutput(t *testing.T, dir string, args ...string) string {
 	return string(out)
 }
 
+func gitCLIOutputErr(dir string, args ...string) ([]byte, error) {
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	return cmd.CombinedOutput()
+}
+
 func writeServicesRolesManifest(t *testing.T, home string) {
 	t.Helper()
 	manifestCache := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme")

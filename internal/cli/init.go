@@ -537,7 +537,8 @@ func (a app) publishOrg(home string, doc registeredDoc, printOnly bool) (publish
 	}
 	orgID := doc.doc.Organization.ID
 	result := publishResult{Manifest: doc.ref.Name}
-	if step, blocked, err := manifestControlPublishStep(doc.ref.LocalPath, printOnly); blocked || err != nil {
+	skillAdoptionPaths := manifestSkillAdoptionPaths(doc.doc)
+	if step, blocked, err := manifestControlPublishStep(doc.ref.LocalPath, printOnly, skillAdoptionPaths); blocked || err != nil {
 		if step.Action != "" {
 			result.Steps = append(result.Steps, step)
 		}
@@ -585,7 +586,7 @@ func (a app) publishOrg(home string, doc registeredDoc, printOnly bool) (publish
 			result.Steps = append(result.Steps, publishStep{Target: "manifest", Action: "rewrote-mounts"})
 		}
 	}
-	if step, blocked, err := commitManifestControlChanges(doc.ref.LocalPath, printOnly, plannedControlFiles); blocked || err != nil {
+	if step, blocked, err := commitManifestControlChanges(doc.ref.LocalPath, printOnly, plannedControlFiles, skillAdoptionPaths); blocked || err != nil {
 		if step.Action != "" {
 			result.Steps = append(result.Steps, step)
 		}
@@ -612,7 +613,17 @@ func (a app) publishOrg(home string, doc registeredDoc, printOnly bool) (publish
 	return result, nil
 }
 
-func manifestControlPublishStep(root string, printOnly bool) (publishStep, bool, error) {
+func manifestControlPublishStep(root string, printOnly bool, skillAdoptionPaths []string) (publishStep, bool, error) {
+	if localFiles, err := manifestSkillUnadoptedFiles(root, skillAdoptionPaths); err != nil {
+		return publishStep{Target: "manifest", Action: "failed", Message: err.Error()}, true, err
+	} else if len(localFiles) != 0 {
+		message := fmt.Sprintf("untracked files inside sync-managed skill source (%d); keep runtime state outside the manifest cache or explicitly git add reviewed skill source files; run my doctor", len(localFiles))
+		step := publishStep{Target: "manifest", Action: "held back", Message: message}
+		if printOnly {
+			return step, true, nil
+		}
+		return step, true, errors.New(message)
+	}
 	_, blocked, err := manifestControlDirtyFiles(root)
 	if err != nil {
 		return publishStep{Target: "manifest", Action: "failed", Message: err.Error()}, true, err
@@ -631,7 +642,17 @@ func manifestControlPublishStep(root string, printOnly bool) (publishStep, bool,
 	return step, true, fmt.Errorf("manifest checkout has dirty files outside manifest control paths: %s", strings.Join(blocked, ", "))
 }
 
-func commitManifestControlChanges(root string, printOnly bool, plannedAllowed []string) (publishStep, bool, error) {
+func commitManifestControlChanges(root string, printOnly bool, plannedAllowed, skillAdoptionPaths []string) (publishStep, bool, error) {
+	if localFiles, err := manifestSkillUnadoptedFiles(root, skillAdoptionPaths); err != nil {
+		return publishStep{Target: "manifest", Action: "failed", Message: err.Error()}, true, err
+	} else if len(localFiles) != 0 {
+		message := fmt.Sprintf("untracked files inside sync-managed skill source (%d); keep runtime state outside the manifest cache or explicitly git add reviewed skill source files; run my doctor", len(localFiles))
+		step := publishStep{Target: "manifest", Action: "held back", Message: message}
+		if printOnly {
+			return step, true, nil
+		}
+		return step, true, errors.New(message)
+	}
 	allowed, blocked, err := manifestControlDirtyFiles(root)
 	if err != nil {
 		return publishStep{Target: "manifest", Action: "failed", Message: err.Error()}, true, err
@@ -673,6 +694,23 @@ func commitManifestControlChanges(root string, printOnly bool, plannedAllowed []
 		}
 	}
 	return step, false, nil
+}
+
+func manifestSkillUnadoptedFiles(root string, skillAdoptionPaths []string) ([]string, error) {
+	args := []string{"-C", root, "ls-files", "--others", "--exclude-standard", "-z", "--"}
+	args = append(args, skillAdoptionPaths...)
+	cmd := exec.Command("git", args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("inspect manifest skill source: %s", strings.TrimSpace(string(out)))
+	}
+	var files []string
+	for _, file := range strings.Split(string(out), "\x00") {
+		if file != "" {
+			files = append(files, filepath.ToSlash(file))
+		}
+	}
+	return files, nil
 }
 
 func manifestControlDirtyFiles(root string) ([]string, []string, error) {

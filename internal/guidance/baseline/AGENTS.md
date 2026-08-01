@@ -54,6 +54,9 @@ Fleet work contract:
 Default layout:
 
 - `.my-cli/` contains workspace identity and local state.
+- `~/.local/state/my-cli/skills/<manifest>/<install-slug>/` contains mutable
+  runtime state for organization skills. Keep credentials, cookies, caches,
+  and other local artifacts there, never beside a sync-managed `SKILL.md`.
 - `handbook/` and other mounts contain scoped organization content.
 - `repos/` contains detached clones of catalog repositories.
 - `sessions/` contains isolated My AI sessions created by `my session start`

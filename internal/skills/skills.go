@@ -247,6 +247,27 @@ const (
 	StatusBlocked      = "blocked"
 )
 
+// RuntimeStateRoot returns the local-only root for one manifest's skill
+// runtime state. Static skill source directories are sync-managed input and
+// must never be used for credentials, cookies, caches, or other mutable state.
+func RuntimeStateRoot(homeOverride, manifestName string) (string, error) {
+	home, err := resolveHome(homeOverride)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".local", "state", "my-cli", "skills", manifestName), nil
+}
+
+// RuntimeStatePath returns the local-only runtime directory for one installed
+// organization skill.
+func RuntimeStatePath(homeOverride, manifestName, installSlug string) (string, error) {
+	root, err := RuntimeStateRoot(homeOverride, manifestName)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, installSlug), nil
+}
+
 // Install places the skill into the harness. Returns the outcome.
 func Install(s Skill, h harness.Harness, opts InstallOpts) Result {
 	home, err := resolveHome(opts.Home)

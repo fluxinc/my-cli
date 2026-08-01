@@ -144,6 +144,7 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 			continue
 		}
 		report.Manifests = append(report.Manifests, doctorLocalMountURLs(ref, doc)...)
+		report.Derived = append(report.Derived, doctorManifestSkillRuntimeState(home, ref, doc)...)
 		report.Workspaces = append(report.Workspaces, doctorWorkspaces(home, ref.Name, doc.Workspaces)...)
 		report.Tools = append(report.Tools, doctorTools(ref.Name, doc.Tools)...)
 		report.Services = append(report.Services, doctorServices(ref.Name, ref.LocalPath, doc.Services)...)
@@ -189,6 +190,74 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 		}
 	}
 	return report
+}
+
+func doctorManifestSkillRuntimeState(home string, ref manifest.Ref, doc manifest.Document) []doctorItem {
+	var items []doctorItem
+	for _, skill := range doc.Skills {
+		if skill.Source.Type != "" && skill.Source.Type != "static" {
+			continue
+		}
+		untracked, err := gitLocalOnlyPathCount(ref.LocalPath, skill.Path, false)
+		if err != nil {
+			items = append(items, doctorItem{
+				Name:    ref.Name + ":skill-state:" + skill.ID,
+				Status:  "error",
+				Path:    filepath.Join(ref.LocalPath, filepath.FromSlash(skill.Path)),
+				Message: err.Error(),
+			})
+			continue
+		}
+		ignored, err := gitLocalOnlyPathCount(ref.LocalPath, skill.Path, true)
+		if err != nil {
+			items = append(items, doctorItem{
+				Name:    ref.Name + ":skill-state:" + skill.ID,
+				Status:  "error",
+				Path:    filepath.Join(ref.LocalPath, filepath.FromSlash(skill.Path)),
+				Message: err.Error(),
+			})
+			continue
+		}
+		if untracked == 0 && ignored == 0 {
+			continue
+		}
+		stateRoot, err := skills.RuntimeStatePath(home, ref.Name, skill.InstallSlug)
+		if err != nil {
+			items = append(items, doctorItem{Name: ref.Name + ":skill-state:" + skill.ID, Status: "error", Message: err.Error()})
+			continue
+		}
+		items = append(items, doctorItem{
+			Name:    ref.Name + ":skill-state:" + skill.ID,
+			Status:  "warning",
+			Path:    filepath.Join(ref.LocalPath, filepath.FromSlash(skill.Path)),
+			Message: "unexpected local files in sync-managed skill source; keep runtime state in the local skill state directory",
+			Details: []string{
+				fmt.Sprintf("untracked=%d", untracked),
+				fmt.Sprintf("ignored=%d", ignored),
+				"state_root=" + stateRoot,
+			},
+		})
+	}
+	return items
+}
+
+func gitLocalOnlyPathCount(repo, path string, ignored bool) (int, error) {
+	args := []string{"-C", repo, "ls-files", "--others", "-z"}
+	if ignored {
+		args = append(args, "--ignored")
+	}
+	args = append(args, "--exclude-standard", "--", filepath.ToSlash(path))
+	out, err := exec.Command("git", args...).CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("inspect local skill state: %s", strings.TrimSpace(string(out)))
+	}
+	count := 0
+	for _, entry := range strings.Split(string(out), "\x00") {
+		if entry != "" {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func doctorLocalMountURLs(ref manifest.Ref, doc manifest.Document) []doctorItem {

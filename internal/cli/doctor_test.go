@@ -190,6 +190,60 @@ func TestDoctorReportsLegacyGlobalOrgSkill(t *testing.T) {
 	}
 }
 
+func TestDoctorReportsLocalStateInsideManagedSkillSource(t *testing.T) {
+	home, _, manifestCache, _, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-handbook", "SKILL.md"), "---\nname: acme-handbook\ndescription: Example skill.\n---\n")
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-handbook", ".gitignore"), "runtime/\n")
+	commitAndPushCLIGit(t, manifestCache, "Seed static skill")
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-handbook", "local-state.json"), "{}\n")
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-handbook", "runtime", "session.json"), "{}\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "doctor", "--manifest", "acme", "--home", home, "--no-fetch", "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	var report doctorReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	var found *doctorItem
+	for i := range report.Derived {
+		if report.Derived[i].Name == "acme:skill-state:acme:handbook" {
+			found = &report.Derived[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("derived = %#v, want skill-state warning", report.Derived)
+	}
+	if found.Status != "warning" || !strings.Contains(found.Message, "runtime state") {
+		t.Fatalf("skill-state item = %#v", *found)
+	}
+	wantStateRoot := filepath.Join(home, ".local", "state", "my-cli", "skills", "acme", "acme-handbook")
+	if !containsDoctorDetail(found.Details, "untracked=1") ||
+		!containsDoctorDetail(found.Details, "ignored=1") ||
+		!containsDoctorDetail(found.Details, "state_root="+wantStateRoot) {
+		t.Fatalf("skill-state details = %#v", found.Details)
+	}
+}
+
+func containsDoctorDetail(details []string, want string) bool {
+	for _, detail := range details {
+		if detail == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestDoctorFixPreservesManualGlobalOrgSkill(t *testing.T) {
 	home := setupCLISkillsManifestFixture(t)
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {

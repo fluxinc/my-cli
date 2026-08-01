@@ -492,6 +492,97 @@ func TestSyncDirectPublishesUntrackedManifestControlChanges(t *testing.T) {
 	}
 }
 
+func TestSyncDirectHoldsUntrackedFilesInsideManagedSkillSource(t *testing.T) {
+	home, _, manifestCache, remote, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-handbook", "SKILL.md"), "---\nname: acme-handbook\ndescription: Example skill.\n---\n")
+	commitAndPushCLIGit(t, manifestCache, "Seed static skill")
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-handbook", "local-state.json"), "{}\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "sync", "--backend", "builtin", "--publish", "direct", "--scope", "manifest",
+		"--manifest", "acme", "--home", home, "--json",
+	}); err != nil {
+		t.Fatalf("sync --publish direct: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"status": "held back"`) ||
+		!strings.Contains(out, `"reason_code": "unadopted_skill_source"`) ||
+		!strings.Contains(out, `"next_command": "my doctor"`) {
+		t.Fatalf("sync stdout = %q, want managed-skill runtime-state hold", out)
+	}
+	if _, err := gitCLIOutputErr(remote, "show", "master:skills/acme-handbook/local-state.json"); err == nil {
+		t.Fatal("sync published untracked local skill state")
+	}
+}
+
+func TestSyncDirectHoldsUntrackedFilesInsideNonstandardManagedSkillSource(t *testing.T) {
+	home, _, manifestCache, remote, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "guidance/acme-handbook" }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "guidance", "acme-handbook", "SKILL.md"), "---\nname: acme-handbook\ndescription: Example skill.\n---\n")
+	commitAndPushCLIGit(t, manifestCache, "Seed nonstandard static skill")
+	writeCLITestFile(t, filepath.Join(manifestCache, "guidance", "acme-handbook", "local-state.json"), "{}\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "sync", "--backend", "builtin", "--publish", "direct", "--scope", "manifest",
+		"--manifest", "acme", "--home", home, "--json",
+	}); err != nil {
+		t.Fatalf("sync --publish direct: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"status": "held back"`) ||
+		!strings.Contains(out, `"reason_code": "unadopted_skill_source"`) {
+		t.Fatalf("sync stdout = %q, want declared nonstandard skill-source hold", out)
+	}
+	if _, err := gitCLIOutputErr(remote, "show", "master:guidance/acme-handbook/local-state.json"); err == nil {
+		t.Fatal("sync published local state from a declared nonstandard skill path")
+	}
+}
+
+func TestSyncDirectPublishesExplicitlyStagedManagedSkillSource(t *testing.T) {
+	home, _, manifestCache, remote, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-handbook", "SKILL.md"), "---\nname: acme-handbook\ndescription: Reviewed example skill.\n---\n")
+	runCLIGit(t, manifestCache, "add", "skills/acme-handbook/SKILL.md")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "sync", "--backend", "builtin", "--publish", "direct", "--scope", "manifest",
+		"--manifest", "acme", "--home", home, "--json",
+	}); err != nil {
+		t.Fatalf("sync --publish direct: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"status": "pushed"`) {
+		t.Fatalf("sync stdout = %q, want explicitly staged skill source published", stdout.String())
+	}
+	if got := gitCLIOutput(t, remote, "show", "master:skills/acme-handbook/SKILL.md"); !strings.Contains(got, "Reviewed example skill") {
+		t.Fatalf("remote skill = %q", got)
+	}
+}
+
 func TestSyncDirectPublishesManifestControlRename(t *testing.T) {
 	home, _, manifestCache, remote, _ := setupCLITrackedManifestBody(t, `{
   "manifest_version": 1,

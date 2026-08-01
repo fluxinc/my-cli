@@ -9,6 +9,18 @@ import (
 	"github.com/fluxinc/my-cli/internal/harness"
 )
 
+func TestRuntimeStatePathIsOutsideManagedSkillSource(t *testing.T) {
+	home := t.TempDir()
+	got, err := RuntimeStatePath(home, "acme", "acme-handbook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(home, ".local", "state", "my-cli", "skills", "acme", "acme-handbook")
+	if got != want {
+		t.Fatalf("RuntimeStatePath() = %q, want %q", got, want)
+	}
+}
+
 func TestDiscoverFrontmatterAndWarnings(t *testing.T) {
 	root := t.TempDir()
 	writeSkill(t, root, "plain", "plain", "Plain description")

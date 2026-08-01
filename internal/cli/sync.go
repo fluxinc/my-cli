@@ -391,14 +391,15 @@ func (a app) collectSyncEntries(home, manifestName, umbrellaRoot, scope string) 
 		contentWanted := scope == "all" || scope == "local" || scope == "content"
 		if manifestWanted {
 			entries = append(entries, syncer.Entry{
-				Manifest:     doc.ref.Name,
-				ID:           doc.ref.Name,
-				Role:         "manifest",
-				Kind:         "manifest",
-				GitURL:       doc.ref.GitURL,
-				LocalPath:    doc.ref.LocalPath,
-				UmbrellaRoot: umbrellaRoot,
-				ContentPaths: manifestControlPaths(),
+				Manifest:         doc.ref.Name,
+				ID:               doc.ref.Name,
+				Role:             "manifest",
+				Kind:             "manifest",
+				GitURL:           doc.ref.GitURL,
+				LocalPath:        doc.ref.LocalPath,
+				UmbrellaRoot:     umbrellaRoot,
+				ContentPaths:     manifestControlPaths(),
+				AdoptedOnlyPaths: manifestSkillAdoptionPaths(doc.doc),
 			})
 		}
 		if contentWanted {
@@ -474,6 +475,19 @@ func syncContentPaths(entry workspace.Entry) []string {
 
 func manifestControlPaths() []string {
 	return []string{"manifest.json", "catalog", "skills", "guidance", "agent-guidance"}
+}
+
+func manifestSkillAdoptionPaths(doc manifest.Document) []string {
+	paths := []string{"skills"}
+	for _, skill := range doc.Skills {
+		if skill.Source.Type != "" && skill.Source.Type != "static" {
+			continue
+		}
+		if path := strings.Trim(filepath.ToSlash(skill.Path), "/"); path != "" {
+			paths = append(paths, path)
+		}
+	}
+	return uniqueStrings(paths)
 }
 
 func mountContentPaths(kind string, includePaths []string) []string {

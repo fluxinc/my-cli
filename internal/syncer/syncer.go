@@ -22,14 +22,15 @@ type VisibilityFunc func(gitURL string) (string, error)
 
 // Entry is one local repository My AI knows how to sync.
 type Entry struct {
-	Manifest     string   `json:"manifest,omitempty"`
-	ID           string   `json:"id"`
-	Role         string   `json:"role"`
-	Kind         string   `json:"kind,omitempty"`
-	GitURL       string   `json:"git_url"`
-	LocalPath    string   `json:"local_path"`
-	UmbrellaRoot string   `json:"umbrella_root,omitempty"`
-	ContentPaths []string `json:"content_paths,omitempty"`
+	Manifest         string   `json:"manifest,omitempty"`
+	ID               string   `json:"id"`
+	Role             string   `json:"role"`
+	Kind             string   `json:"kind,omitempty"`
+	GitURL           string   `json:"git_url"`
+	LocalPath        string   `json:"local_path"`
+	UmbrellaRoot     string   `json:"umbrella_root,omitempty"`
+	ContentPaths     []string `json:"content_paths,omitempty"`
+	AdoptedOnlyPaths []string `json:"-"`
 }
 
 // SessionHold names one active work session with pending state on a mount
@@ -649,6 +650,9 @@ func reconcile(in *inspection, all []inspection, opts Options, runner Runner) {
 		hold(in, "dirty changes are outside declared content paths")
 		return
 	}
+	if holdUnadoptedManifestSkillSource(in) {
+		return
+	}
 	if holdUnadoptedContent(in) {
 		return
 	}
@@ -696,6 +700,28 @@ func reconcile(in *inspection, all []inspection, opts Options, runner Runner) {
 		}
 	}
 	pullCleanSiblings(in, all, runner)
+}
+
+func holdUnadoptedManifestSkillSource(in *inspection) bool {
+	if in.entry.Role != "manifest" {
+		return false
+	}
+	count := 0
+	for _, file := range in.dirtyDetails {
+		if file.status == "??" && pathsWithin([]string{file.path}, in.entry.AdoptedOnlyPaths) {
+			count++
+		}
+	}
+	if count == 0 {
+		return false
+	}
+	holdWithCode(
+		in,
+		fmt.Sprintf("untracked files inside sync-managed skill source (%d); keep runtime state outside the manifest cache or explicitly git add reviewed skill source files; run my doctor", count),
+		"unadopted_skill_source",
+		"my doctor",
+	)
+	return true
 }
 
 func reconcileInbound(in *inspection, opts Options, runner Runner) bool {

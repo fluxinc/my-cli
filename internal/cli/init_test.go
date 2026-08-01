@@ -480,6 +480,30 @@ func TestPublishManifestCommitsControlPlaneChanges(t *testing.T) {
 	}
 }
 
+func TestPublishManifestHoldsUntrackedFilesInsideManagedSkillSource(t *testing.T) {
+	home, _, manifestCache, remote, _ := setupCLITrackedManifestBody(t, `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }
+  ]
+}`)
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-handbook", "SKILL.md"), "---\nname: acme-handbook\ndescription: Example skill.\n---\n")
+	commitAndPushCLIGit(t, manifestCache, "Seed static skill")
+	writeCLITestFile(t, filepath.Join(manifestCache, "skills", "acme-handbook", "local-state.json"), "{}\n")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{"my", "publish", "--manifest", "acme", "--home", home})
+	if err == nil || !strings.Contains(err.Error(), "untracked files inside sync-managed skill source") {
+		t.Fatalf("publish error = %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+	if _, showErr := gitCLIOutputErr(remote, "show", "master:skills/acme-handbook/local-state.json"); showErr == nil {
+		t.Fatal("publish swept untracked local skill state")
+	}
+}
+
 func TestPublishManifestCommitsControlPlanePathWithSpaces(t *testing.T) {
 	home, _, manifestCache, remote, _ := setupCLITrackedManifestBody(t, `{
   "manifest_version": 1,
