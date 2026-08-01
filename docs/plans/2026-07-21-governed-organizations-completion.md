@@ -1,6 +1,8 @@
 # Governed organizations completion: hardening, acceptance CI, and dogfood
 
-Status: active — S1-S7, S8a, S8b, and S8d complete; S8 dogfood and S8c ergonomics follow-ups next
+Status: active — S1-S7, S8a, S8b, and S8d complete; remainder plan of record
+below (2026-07-31) governs S8c, policy-at-invocation, docs/walkthrough, and
+the beta release cut
 
 Design source of truth: [2026-07-16-governed-organizations](2026-07-16-governed-organizations.md).
 This plan closes the gap between mechanism-complete code and a
@@ -314,3 +316,50 @@ than adding governance controls to the employee command surface.
   release tagged per repository release process with policy/record governance
   explicitly labeled beta, staff-Flux enablement considered separately by the
   operator, and revocation still subject to its independent experimental gate.
+
+## Remainder plan of record (2026-07-31)
+
+Joint Claude/Codex assessment under the operator's ship-this-branch goal
+(Claude architect/reviewer, Codex implementer/tester, BDD/TDD, Talking Stick
+throughout). Both agents assessed independently and reconciled; the decisions
+below are final for this cut.
+
+**Release-boundary decision.** The operator's 2026-07-31 direction to plan
+the remainder of this branch, ship, document, and release supersedes the
+earlier step-7/8 hold for the governance core. Policy, acceptance, durable PR
+publication, records, and policy-at-invocation ship together as an explicitly
+**beta**-labeled governance release. The automatic revocation/quarantine
+plane keeps disposition H unchanged and is *not* covered by this decision:
+it remains experimental, requires explicit `my access activate`, is not
+recommended for any real umbrella, and its disposable-repository
+second-identity drill remains its own unmet release gate. The drill blocks
+quarantine recommendation only — not the governance beta. A real human
+acceptance on the Flux Admin umbrella stays the recommended post-release
+validation; agents never perform or fabricate an acceptance.
+
+**Ordered slices** (Codex implements each TDD; Claude reviews before each
+commit; `go build ./... && go vet ./... && go test ./...` plus
+`git diff --check` before every handoff):
+
+1. S8c-a — bare `my meetings` and `my support` default to their list action.
+2. S8c-b — skill runtime-state boundary: documented state location outside
+   the sync-managed manifest cache, plus a doctor diagnostic that flags
+   unexpected untracked runtime state under sync-managed mounts; publish
+   paths must never sweep such files.
+3. Policy-at-invocation tasks 1–5 per the converged
+   [2026-07-22-policy-at-invocation](2026-07-22-policy-at-invocation.md)
+   plan (schema → guidance → projection → launch digest proof → session
+   regen).
+4. Docs: self-skill, CLI reference, README/roadmap, and an approachable site
+   walkthrough centered on `my ai` — admin publishes policy, employee just
+   launches, acceptance ledger, agents consult at invocation, honest
+   experimental framing for revocation. No plumbing wall.
+5. Verification: full test suite, vet, `-race` where feasible, site build;
+   stress evidence (focused `-count` runs) for the
+   `TestRecoveryCapsuleCapturesEmbeddedGitRepository` flake candidate — fix
+   first if reproducible.
+6. Dogfood: sandbox BDD matrix with a stub `gh` (never real GitHub); live
+   read-only checks on the governed umbrella; zero-noise proof on a
+   non-governed umbrella.
+7. Release: merge to master, stamp both changelogs, bump site nav, tag, and
+   audit artifacts/site per the repository release process.

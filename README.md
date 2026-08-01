@@ -647,12 +647,16 @@ indexed in [docs/plans/](docs/plans/README.md):
   verbs remain agent/admin plumbing. Repeated live authorization work is now
   collapsed inside each launch to one actor lookup and one bounded-concurrent
   check per distinct repository, without adding an employee-facing control.
-  Live verification reached the policy prompt. Two small pre-release
-  ergonomics follow-ups remain: bare `my meetings`/`my support` list defaults
-  and a stronger boundary keeping organization-skill runtime state out of the
-  managed manifest cache.
-  Plans: [governed organizations](docs/plans/2026-07-16-governed-organizations.md)
-  and [completion gates](docs/plans/2026-07-21-governed-organizations-completion.md).
+  Live verification reached the policy prompt. The 2026-07-31 remainder plan
+  of record governs the beta release cut: the S8c ergonomics follow-ups (bare
+  `my meetings`/`my support` list defaults; a runtime-state boundary keeping
+  organization-skill state out of the managed manifest cache),
+  policy-at-invocation guidance/projection, an approachable site walkthrough,
+  and the beta-labeled release. Automatic revocation quarantine stays
+  experimental behind its own unmet drill gate and is not part of the beta.
+  Plans: [governed organizations](docs/plans/2026-07-16-governed-organizations.md),
+  [completion gates](docs/plans/2026-07-21-governed-organizations-completion.md),
+  and [policy at invocation](docs/plans/2026-07-22-policy-at-invocation.md).
 - **Shipped (v0.36.0) — target-aware coordinated publishing.** Automatic sync and session
   publication route each exact Gnit roster member through coordinated publish
   while leaving unrostered checkouts on the guarded built-in path. The shared
