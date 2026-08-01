@@ -27,8 +27,13 @@ func TestCompileCommandPrintsLaunchProjection(t *testing.T) {
 		t.Fatalf("compile: %v\nstderr:\n%s", err, stderr.String())
 	}
 	var projection struct {
-		Target       string `json:"target"`
-		Role         string `json:"role"`
+		Target   string `json:"target"`
+		Role     string `json:"role"`
+		Policies []struct {
+			ID      string   `json:"id"`
+			Summary string   `json:"summary"`
+			Topics  []string `json:"topics"`
+		} `json:"policies"`
 		DataBindings map[string]struct {
 			Surface string `json:"surface"`
 		} `json:"data_bindings"`
@@ -41,6 +46,11 @@ func TestCompileCommandPrintsLaunchProjection(t *testing.T) {
 	}
 	if got := projection.DataBindings["customers"].Surface; got != "mount:handbook" {
 		t.Fatalf("customers surface = %q", got)
+	}
+	if len(projection.Policies) != 1 || projection.Policies[0].ID != "workspace-policy" ||
+		projection.Policies[0].Summary != "Rules for shared workspace changes." ||
+		len(projection.Policies[0].Topics) != 1 || projection.Policies[0].Topics[0] != "workspace changes" {
+		t.Fatalf("compile policy projection = %#v", projection.Policies)
 	}
 }
 
@@ -89,6 +99,27 @@ func writeCompileManifest(t *testing.T, home string) {
   "data_bindings": {
     "customers": { "surface": "mount:handbook" }
   },
+	"governance": {
+		"authorization": {
+			"provider": "github",
+			"manifest_repository": "acme/control",
+			"admin_permission": "admin"
+		},
+		"policies": [
+			{
+				"id": "workspace-policy",
+				"title": "Workspace policy",
+				"mount": "handbook",
+				"path": "policy/workspace.md",
+				"version": "1",
+				"sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				"acceptance": "optional",
+				"summary": "Rules for shared workspace changes.",
+				"topics": ["workspace changes"],
+				"roles": ["operator"]
+			}
+		]
+	},
   "skills": [
     {
       "id": "acme:handbook",

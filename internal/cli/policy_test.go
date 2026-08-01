@@ -663,6 +663,126 @@ func TestRequiredPolicyScopeUsesSelectedRoleAndEmptyMeansEveryone(t *testing.T) 
 	}
 }
 
+func TestApplicablePolicyScopeIncludesOptionalAndSelectedRole(t *testing.T) {
+	doc := manifest.Document{Governance: manifest.Governance{Policies: []manifest.Policy{
+		{ID: "everyone-required", Acceptance: "required"},
+		{ID: "everyone-optional", Acceptance: "optional"},
+		{ID: "operators", Acceptance: "optional", Roles: []string{"operator"}},
+		{ID: "auditors", Acceptance: "optional", Roles: []string{"auditor"}},
+	}}}
+	for role, want := range map[string]string{
+		"":         "everyone-required,everyone-optional",
+		"operator": "everyone-required,everyone-optional,operators",
+		"auditor":  "everyone-required,everyone-optional,auditors",
+	} {
+		policies := applicablePoliciesForRole(doc, role)
+		ids := make([]string, 0, len(policies))
+		for _, policy := range policies {
+			ids = append(ids, policy.ID)
+		}
+		if got := strings.Join(ids, ","); got != want {
+			t.Fatalf("role %q applicable policies = %q, want %q", role, got, want)
+		}
+	}
+}
+
+func TestMyAIVerifiesEveryApplicablePolicyBlobBeforeLaunch(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		changeBlob func(*testing.T, policyTestFixture)
+		wantLaunch bool
+		wantError  []string
+	}{
+		{name: "healthy", wantLaunch: true},
+		{
+			name: "missing",
+			changeBlob: func(t *testing.T, f policyTestFixture) {
+				t.Helper()
+				if err := os.Remove(filepath.Join(f.handbook, "policy", "release.md")); err != nil {
+					t.Fatal(err)
+				}
+				runCLIGit(t, f.handbook, "add", "-A")
+				runCLIGit(t, f.handbook, "commit", "-m", "Remove policy fixture")
+			},
+			wantError: []string{`AI launch blocked: policy "release-policy" version "2026-07"`, "not locally available at its declared digest", "run `my setup`", "retry `my ai`"},
+		},
+		{
+			name: "digest drift",
+			changeBlob: func(t *testing.T, f policyTestFixture) {
+				t.Helper()
+				writeCLITestFile(t, filepath.Join(f.handbook, "policy", "release.md"), "# Changed policy\n")
+				runCLIGit(t, f.handbook, "add", "policy/release.md")
+				runCLIGit(t, f.handbook, "commit", "-m", "Change policy fixture")
+			},
+			wantError: []string{`AI launch blocked: policy "release-policy" version "2026-07"`, "digest mismatch", "run `my setup`", "retry `my ai`"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newPolicyTestFixture(t)
+			manifestPath := filepath.Join(f.manifestCache, "manifest.json")
+			data, err := os.ReadFile(manifestPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			updated := strings.Replace(string(data), `"acceptance": "required"`, `"acceptance": "optional"`, 1)
+			if updated == string(data) {
+				t.Fatal("test manifest did not contain required policy acceptance")
+			}
+			writeCLITestFile(t, manifestPath, updated)
+			commitAndPushCLIGit(t, f.manifestCache, "Make policy consultation-only")
+			f.configureGovernedOperator(t)
+			if tt.changeBlob != nil {
+				tt.changeBlob(t, f)
+			}
+
+			var stdout, stderr bytes.Buffer
+			launched := false
+			a := app{
+				stdout: &stdout, stderr: &stderr, accessRunner: governedAccessRunner(false),
+				lookPath:    func(string) (string, error) { return "/bin/true", nil },
+				execHarness: func(string, []string, string) error { launched = true; return nil },
+			}
+			err = a.run([]string{
+				"my", "ai", "--manifest", "acme", "--home", f.home, "--umbrella", f.umbrellaRoot,
+				"--no-session", "--no-refresh", "--no-update-check", "codex",
+			})
+			if tt.wantLaunch {
+				if err != nil {
+					t.Fatalf("healthy launch: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+				}
+				if !launched {
+					t.Fatal("healthy policy did not launch AI")
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("invalid policy blob did not block launch")
+			}
+			if launched {
+				t.Fatal("AI launched with an invalid policy blob")
+			}
+			if _, statErr := os.Stat(filepath.Join(f.umbrellaRoot, "AGENTS.md")); !os.IsNotExist(statErr) {
+				t.Fatalf("invalid policy emitted launch guidance: %v", statErr)
+			}
+			for _, want := range tt.wantError {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("launch error missing %q: %v", want, err)
+				}
+			}
+		})
+	}
+}
+
+func TestLaunchPolicyBlobProofIsNoOpWithoutPolicies(t *testing.T) {
+	a := app{accessRunner: func(string, ...string) ([]byte, error) {
+		t.Fatal("non-governed policy proof called provider")
+		return nil, nil
+	}}
+	if err := a.requireApplicablePolicyBlobs("", registeredDoc{}, ""); err != nil {
+		t.Fatalf("non-governed policy proof = %v", err)
+	}
+}
+
 func TestGovernedPolicyGateUsesBaselineIdentityAndExactRemediation(t *testing.T) {
 	f := newPolicyTestFixture(t)
 	f.configureGovernedOperator(t)

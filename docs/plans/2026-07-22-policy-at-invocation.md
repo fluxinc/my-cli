@@ -142,7 +142,8 @@ the resolutions are final for this slice.
    naming, topic fallback.
 3. Launch projection: role-scoped `policies[]` refs in launchplan and
    `my compile`; mount-visibility proof; parity tests against guidance
-   content; `my ai --print` JSON parity.
+   content; `my ai --print` retains shell-command stdout with governance
+   notices confined to stderr.
 4. Launch-time local digest proof: fail-closed check of every applicable
    policy blob before harness start; remediation text; tests for missing,
    drifted, and healthy blobs.

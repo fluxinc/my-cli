@@ -1,12 +1,14 @@
 package launchplan
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/fluxinc/my-cli/internal/guidance"
 	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
@@ -204,6 +206,118 @@ func TestCompileDedupesRoleGuidancePaths(t *testing.T) {
 	}
 	if paths["agent-guidance/operator.md"] != 1 {
 		t.Fatalf("operator guidance count = %d, want 1: %#v", paths["agent-guidance/operator.md"], projection.Guidance)
+	}
+}
+
+func TestCompileProjectsApplicablePoliciesForRole(t *testing.T) {
+	doc := baseDocument()
+	doc.Roles = []manifest.Role{
+		{ID: "operator", Purpose: "Operate", Mounts: []string{"handbook"}},
+		{ID: "auditor", Purpose: "Audit", Mounts: []string{"fleet"}},
+	}
+	doc.Governance.Policies = []manifest.Policy{
+		{
+			ID: "workspace-policy", Title: "Workspace policy", Version: "1", SHA256: "sha256:" + strings.Repeat("a", 64),
+			Mount: "handbook", Path: "policy/workspace.md", Summary: "Rules for shared work.", Topics: []string{"workspace changes"},
+		},
+		{
+			ID: "operator-policy", Title: "Operator policy", Version: "2", SHA256: "sha256:" + strings.Repeat("b", 64),
+			Mount: "handbook", Path: "policy/operator.md", Roles: []string{"operator"},
+		},
+		{
+			ID: "auditor-policy", Title: "Auditor policy", Version: "3", SHA256: "sha256:" + strings.Repeat("c", 64),
+			Mount: "fleet", Path: "policy/auditor.md", Roles: []string{"auditor"},
+		},
+	}
+
+	projection, err := Compile(doc, Options{Role: "operator"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projection.Policies) != 2 {
+		t.Fatalf("projected policies = %#v, want universal and operator", projection.Policies)
+	}
+	if got := projection.Policies[0]; got.ID != "workspace-policy" || got.Title != "Workspace policy" || got.Version != "1" ||
+		got.SHA256 != "sha256:"+strings.Repeat("a", 64) || got.Mount != "handbook" || got.Path != "policy/workspace.md" ||
+		got.Summary != "Rules for shared work." || !reflect.DeepEqual(got.Topics, []string{"workspace changes"}) {
+		t.Fatalf("universal policy projection = %#v", got)
+	}
+	if projection.Policies[1].ID != "operator-policy" {
+		t.Fatalf("selected-role policy projection = %#v", projection.Policies[1])
+	}
+	for _, policy := range projection.Policies {
+		if policy.ID == "auditor-policy" {
+			t.Fatalf("projection leaked another role's policy: %#v", projection.Policies)
+		}
+	}
+}
+
+func TestCompileRejectsApplicablePolicyMountOutsideRole(t *testing.T) {
+	doc := baseDocument()
+	doc.Roles = []manifest.Role{{ID: "operator", Purpose: "Operate", Mounts: []string{"handbook"}}}
+	doc.Governance.Policies = []manifest.Policy{{
+		ID: "fleet-policy", Title: "Fleet policy", Version: "1", SHA256: "sha256:" + strings.Repeat("a", 64),
+		Mount: "fleet", Path: "policy/fleet.md",
+	}}
+	_, err := Compile(doc, Options{Role: "operator"})
+	if err == nil || !strings.Contains(err.Error(), `policy "fleet-policy" requires mount "fleet" outside selected role scope`) {
+		t.Fatalf("Compile policy mount visibility err = %v", err)
+	}
+}
+
+func TestCompilePolicyProjectionMatchesGuidanceScopeAndMetadata(t *testing.T) {
+	doc := baseDocument()
+	doc.AgentGuidance.Paths = nil
+	doc.Roles = []manifest.Role{
+		{ID: "operator", Purpose: "Operate", Mounts: []string{"handbook"}},
+		{ID: "auditor", Purpose: "Audit", Mounts: []string{"fleet"}},
+	}
+	doc.Governance.Policies = []manifest.Policy{
+		{
+			ID: "workspace-policy", Title: "Workspace policy", Version: "1", SHA256: "sha256:" + strings.Repeat("a", 64),
+			Mount: "handbook", Path: "policy/workspace.md", Summary: "Rules for shared work.", Topics: []string{"workspace changes"},
+		},
+		{
+			ID: "auditor-policy", Title: "Auditor policy", Version: "1", SHA256: "sha256:" + strings.Repeat("b", 64),
+			Mount: "fleet", Path: "policy/auditor.md", Roles: []string{"auditor"},
+		},
+	}
+	projection, err := Compile(doc, Options{Role: "operator"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	composed, err := guidance.ComposeWithOptions(t.TempDir(), doc, guidance.Options{Role: "operator"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projection.Policies) != 1 {
+		t.Fatalf("projected policies = %#v", projection.Policies)
+	}
+	for _, want := range []string{"Workspace policy", "workspace-policy", "version `1`", "Rules for shared work.", "workspace changes"} {
+		if !strings.Contains(string(composed), want) {
+			t.Fatalf("guidance missing projected policy metadata %q:\n%s", want, composed)
+		}
+	}
+	if strings.Contains(string(composed), "Auditor policy") {
+		t.Fatalf("guidance leaked policy omitted by projection:\n%s", composed)
+	}
+}
+
+func TestMarshalOmitsPoliciesForNonGovernedManifest(t *testing.T) {
+	projection, err := Compile(baseDocument(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := Marshal(projection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw["policies"]; ok {
+		t.Fatalf("non-governed projection emitted policies: %s", data)
 	}
 }
 

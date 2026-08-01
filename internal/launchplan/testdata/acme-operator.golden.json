@@ -41,6 +41,16 @@
       "surface": "mount:handbook"
     }
   ],
+  "policies": [
+    {
+      "id": "release-policy",
+      "title": "Release policy",
+      "version": "2026-01",
+      "sha256": "sha256:d540eb677d59ed9c722592bcaf3b22d593f763c13a72854c7d4256d376716235",
+      "mount": "handbook",
+      "path": "policy/release.md"
+    }
+  ],
   "mounts": [
     {
       "id": "handbook",

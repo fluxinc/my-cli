@@ -242,6 +242,9 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) err
 	if err := a.requireGovernedLaunchAccess(opts.home, doc, root); err != nil {
 		return err
 	}
+	if err := a.requireApplicablePolicyBlobs(opts.home, doc, root); err != nil {
+		return err
+	}
 	if a.interactive {
 		complete, err := a.reviewRequiredPolicies(opts.home, doc, root)
 		if err != nil {

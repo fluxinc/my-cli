@@ -962,15 +962,23 @@ func reconcilePolicyAcceptanceOutbox(ctx policyContext) ([]outbox.Event, []error
 
 func requiredPoliciesForRole(doc manifest.Document, role string) []manifest.Policy {
 	var required []manifest.Policy
-	for _, policy := range doc.Governance.Policies {
+	for _, policy := range applicablePoliciesForRole(doc, role) {
 		if policy.Acceptance != "required" {
 			continue
 		}
-		if len(policy.Roles) == 0 || stringSliceContains(policy.Roles, role) {
-			required = append(required, policy)
-		}
+		required = append(required, policy)
 	}
 	return required
+}
+
+func applicablePoliciesForRole(doc manifest.Document, role string) []manifest.Policy {
+	var applicable []manifest.Policy
+	for _, policy := range doc.Governance.Policies {
+		if len(policy.Roles) == 0 || stringSliceContains(policy.Roles, role) {
+			applicable = append(applicable, policy)
+		}
+	}
+	return applicable
 }
 
 func stringSliceContains(values []string, value string) bool {
@@ -1027,6 +1035,30 @@ func (a app) requireGovernedPolicyAcceptances(home string, doc registeredDoc, ro
 		fmt.Fprintf(&remediation, "\n  policy %s: your acceptance was administratively superseded; re-running accept cannot restore it. Ask a manifest administrator; a new policy version is required before you can accept again.", policy.ID)
 	}
 	return fmt.Errorf("governed operation blocked: GitHub actor %d has not accepted %d required current policy document(s):%s", actor.ID, len(missing)+len(superseded), remediation.String())
+}
+
+func (a app) requireApplicablePolicyBlobs(home string, doc registeredDoc, root string) error {
+	if len(doc.doc.Governance.Policies) == 0 {
+		return nil
+	}
+	role, err := selectedRoleForRoot(root)
+	if err != nil {
+		return err
+	}
+	policies := applicablePoliciesForRole(doc.doc, role)
+	if len(policies) == 0 {
+		return nil
+	}
+	ctx, err := loadPolicyContext(home, doc.ref.Name, root)
+	if err != nil {
+		return err
+	}
+	for _, policy := range policies {
+		if _, _, err := verifiedPolicyBlob(ctx, policy); err != nil {
+			return fmt.Errorf("AI launch blocked: policy %q version %q is not locally available at its declared digest: %w\nrun `my setup` to refresh organization policy files, then retry `my ai`", policy.ID, policy.Version, err)
+		}
+	}
+	return nil
 }
 
 func (a app) printGovernedPolicyReviewNotice(home string, doc registeredDoc, root string) {

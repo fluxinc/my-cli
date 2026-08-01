@@ -40,6 +40,7 @@ type Projection struct {
 	Role           string                 `json:"role,omitempty"`
 	Contract       []ContractBlock        `json:"contract"`
 	Guidance       []GuidanceRef          `json:"guidance"`
+	Policies       []PolicyRef            `json:"policies,omitempty"`
 	Mounts         []Mount                `json:"mounts"`
 	DataBindings   map[string]DataBinding `json:"data_bindings"`
 	Services       []Service              `json:"services"`
@@ -62,6 +63,20 @@ type GuidanceRef struct {
 	Mode    string `json:"mode"`
 	Path    string `json:"path"`
 	Surface string `json:"surface,omitempty"`
+}
+
+// PolicyRef binds a role-visible policy reference to the exact document bytes
+// a downstream harness must make available. Policy content remains out of the
+// projection and is verified locally before launch.
+type PolicyRef struct {
+	ID      string   `json:"id"`
+	Title   string   `json:"title"`
+	Version string   `json:"version"`
+	SHA256  string   `json:"sha256"`
+	Mount   string   `json:"mount"`
+	Path    string   `json:"path"`
+	Summary string   `json:"summary,omitempty"`
+	Topics  []string `json:"topics,omitempty"`
 }
 
 // Mount projects one manifest mount. Kind remains the manifest's semantic kind.
@@ -155,6 +170,10 @@ func Compile(doc manifest.Document, opts Options) (Projection, error) {
 	if err != nil {
 		return Projection{}, err
 	}
+	policies, err := projectPolicies(doc.Governance.Policies, opts.Role, mountSet)
+	if err != nil {
+		return Projection{}, err
+	}
 
 	projection := Projection{
 		CompileVersion: compileVersion,
@@ -163,6 +182,7 @@ func Compile(doc manifest.Document, opts Options) (Projection, error) {
 		Role:           opts.Role,
 		Contract:       projectContract(doc.Contract),
 		Guidance:       projectGuidance(doc, role, hasRole, bindings),
+		Policies:       policies,
 		Mounts:         mounts,
 		DataBindings:   bindings,
 		Services:       projectServices(visibleServices),
@@ -170,6 +190,38 @@ func Compile(doc manifest.Document, opts Options) (Projection, error) {
 		Tools:          projectTools(visibleTools),
 	}
 	return projection, nil
+}
+
+func projectPolicies(policies []manifest.Policy, role string, visibleMounts map[string]bool) ([]PolicyRef, error) {
+	var out []PolicyRef
+	for _, policy := range policies {
+		if len(policy.Roles) != 0 && !containsString(policy.Roles, role) {
+			continue
+		}
+		if !visibleMounts[policy.Mount] {
+			return nil, fmt.Errorf("policy %q requires mount %q outside selected role scope", policy.ID, policy.Mount)
+		}
+		out = append(out, PolicyRef{
+			ID:      policy.ID,
+			Title:   policy.Title,
+			Version: policy.Version,
+			SHA256:  policy.SHA256,
+			Mount:   policy.Mount,
+			Path:    policy.Path,
+			Summary: policy.Summary,
+			Topics:  append([]string(nil), policy.Topics...),
+		})
+	}
+	return out, nil
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 // Marshal returns the stable JSON encoding used by the CLI and golden tests.
