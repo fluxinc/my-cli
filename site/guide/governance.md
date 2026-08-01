@@ -42,12 +42,14 @@ my policy show <id>
 
 If the local bytes do not match the digest the organization published, the
 read fails closed with remediation instead of showing stale text. The same
-proof runs before every launch, so an agent never starts with a policy it
+proof runs before every real launch, so an agent never starts with a policy it
 cannot verifiably consult.
 
-The same inventory rides machine-readably in `my ai --print` and
-`my compile` output as role-scoped `policies[]` references, so contained
-runners and custom harnesses see exactly what interactive launches see.
+The same inventory rides machine-readably in `my compile` output as
+role-scoped `policies[]` references, so contained runners can see exactly what
+interactive launches see. `my ai --print` intentionally remains a plain shell
+command on stdout; pending governance checks appear only as concise stderr
+notices.
 
 ## Publishing a policy (admins and their agents)
 
@@ -73,13 +75,14 @@ consultable-but-ungated with `--acceptance optional`.
 
 ## The acceptance ledger
 
-Acceptances are not local state. Each one is published as an append-only
-attestation through a durable PR, which makes the ledger inspectable and
+An acceptance is first recorded locally, then queued and submitted as an
+append-only attestation through a durable PR. The ledger distinguishes local,
+submitted, and merge-proven evidence so publication state stays explicit and
 CI-enforceable:
 
 ```sh
-my policy acceptances          # who has accepted what, at which version
-my policy status               # this machine's view: current, pending, missing
+my policy acceptances          # local, submitted, and merge-proven evidence
+my policy status               # this identity's status for each policy version
 ```
 
 Organizations that enforce acceptance in CI get a trusted-branch check:

@@ -80,6 +80,39 @@ rules in force with `my contract list`, and edit them with
 `agent_guidance.paths` fragments. See
 [Guidance and Contract](./guidance-and-contract.md) for the full picture.
 
+## Governance policy declarations
+
+Governance is opt-in. Each policy points at one committed document in a mount
+and binds its version to a digest:
+
+```json
+{
+  "governance": {
+    "policies": [
+      {
+        "id": "release-policy",
+        "title": "Release policy",
+        "mount": "handbook",
+        "path": "policy/release.md",
+        "version": "2026-08",
+        "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "acceptance": "required",
+        "summary": "Rules for preparing and approving a release.",
+        "topics": ["releases", "deployment approval"],
+        "roles": ["operator"]
+      }
+    ]
+  }
+}
+```
+
+An empty `roles` list is universal. `summary` is optional, one line, and at
+most 240 characters; `topics` is an optional deduplicated list of at most 32
+one-line entries of at most 80 characters each. Prefer
+`my admin policy add` over hand editing: registered authoring derives the
+digest from committed upstream bytes and proposes an isolated manifest PR.
+See [Governance](./governance.md).
+
 ## Mount lifecycle
 
 ```sh

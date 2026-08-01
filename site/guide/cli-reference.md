@@ -90,10 +90,31 @@ document and asks once for acceptance. A yes records the acceptance, starts its
 durable publication, and continues into the AI. A decline or EOF does not
 launch. Non-interactive callers fail closed.
 
+Generated `AGENTS.md` carries a role-scoped `## Organization Policies` index
+with summaries, topics, and exact `my policy show <id>` read actions. Every
+real launch verifies all applicable required and optional policy blobs locally
+before writing launch context or executing the harness. `my compile` exposes
+the same inventory as digest-bound `policies[]` references and rejects a policy
+whose mount is outside the selected role.
+
 Without an explicitly activated access baseline, launch uses a read-only live
 GitHub access check. It does not write access state or enable quarantine.
-`my root` and `my ai --print` never prompt; they preserve machine-readable
-stdout and emit a short pending-policy or pending-access notice on stderr.
+`my root` and `my ai --print` never prompt; they preserve stdout (`my root` is
+a path and `my ai --print` is a shell command) and emit a short pending-policy
+or pending-access notice on stderr.
+
+```sh
+my policy list
+my policy show <id> [--json]
+my policy status [id] [--json]
+my policy accept <id> --yes
+my policy acceptances [--json]
+```
+
+Employees do not need these commands for routine launch: interactive `my ai`
+owns required review and acceptance. Agents use `show` when the generated
+consultation contract identifies a covered topic. Never accept on a person's
+behalf.
 
 The detailed policy, record, audit, and authoring verbs remain available to
 agents and administrative automation. They are intentionally not a human setup
@@ -155,7 +176,7 @@ my admin support add ...
 my admin tools add|edit|remove <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
 my admin contract add "RULE TEXT" --manifest-dir DIR [--force] [--json]
 my admin contract remove <index|"RULE TEXT"> --manifest-dir DIR [--force] [--json]
-my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION --acceptance required|optional [--role ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
+my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION --acceptance required|optional [--summary TEXT] [--topic TEXT] [--role ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
 my admin policy add <id> ... --manifest-dir DIR --sha256 sha256:HEX [--force] [--json]
 my admin policy remove <id> [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
 ```
@@ -237,6 +258,9 @@ my contract list [--manifest NAME] [--home DIR] [--json]
 my compile --role <id> [--manifest NAME] [--home DIR]
 ```
 
+Bare `my meetings` and `my support` are aliases for their `list` forms,
+including list filters. They do not create records or open interactive menus.
+
 `my sync` is the routine pull/reconcile command. Bare `my sync` never publishes
 local changes. `--backend auto` uses Gnit only for exact roster members and the
 guarded built-in path for unrostered checkouts; My AI keeps the bootstrap,
@@ -289,7 +313,10 @@ role. Services and roles are manifest vocabulary: inspect them with
 `my services list|get` and `my roles list|get`; they do not prune mounts.
 `my compile --role <id>` prints the deterministic contained-runner launch
 projection JSON for that role without launching containers, resolving
-credentials, or fetching service descriptors.
+credentials, or fetching service descriptors. Governed projections include
+only universal and exact-role `policies[]` references with id, title, version,
+digest, mount, path, summary, and topics. Compile fails if an applicable policy
+mount is not visible to the role; non-governed projections omit the field.
 
 Those startup commands also emit a stderr-only notice when a newer My AI release
 is available. Stdout remains clean for command substitutions such as

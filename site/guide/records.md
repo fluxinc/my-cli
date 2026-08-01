@@ -26,6 +26,10 @@ my fleet add <id> [--customer ID] [--status TEXT] [--device TEXT] [--serial TEXT
 my fleet set <id> KEY=VALUE...
 ```
 
+Bare `my meetings` and `my support` use their safest useful action: they list
+records and accept the same filters as `list`. Subcommands remain available
+for search, retrieval, and creation.
+
 When the `qmd` tool is installed, `search` uses it for higher-quality
 retrieval; otherwise a built-in scan applies. Single keywords match best.
 

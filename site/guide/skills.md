@@ -106,6 +106,14 @@ matching umbrella unless `--no-derived` is passed.
 `my` records what it installed. It refuses to clobber a directory it did not
 place unless the command explicitly allows replacement.
 
+Manifest skill directories are immutable source, not working storage. A skill
+that needs credentials, cookies, caches, downloads, or other mutable state uses
+`~/.local/state/my-cli/skills/<manifest>/<install-slug>/`. `my doctor` warns
+when unexpected files appear under any declared skill source, and publish/sync
+holds them with `unadopted_skill_source` unless a reviewed source change was
+explicitly staged. This prevents runtime state from leaking into a manifest
+commit.
+
 By default, filesystem harnesses receive symlinks. Use `--copy` to vendor a
 copy into the harness skill directory.
 

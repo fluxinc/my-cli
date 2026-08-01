@@ -1,6 +1,6 @@
 # The Model
 
-`my` has eight concepts. Every command works against one of them.
+`my` has nine concepts. Every command works against one of them.
 
 ## Manifest
 
@@ -54,6 +54,11 @@ These are the two skill sources, split by a public/private line: the self-skill
 is public and ships in the binary; organization skills are private to a manifest
 you control and appear only once that manifest is synced. Nothing
 organization-specific is baked into the public CLI.
+
+Static skill source stays immutable. Mutable credentials, cookies, caches,
+downloads, and other runtime state live under
+`~/.local/state/my-cli/skills/<manifest>/<install-slug>/`, outside the manifest
+checkout.
 
 ## Umbrella
 
@@ -110,6 +115,22 @@ built-in fleet work contract (start fleet work from `my fleet get`, record it
 in support records). A manifest can add its own short, binding rules with a
 top-level `contract` list of strings, rendered as an `## Organization
 Contract` section between the baseline and manifest guidance fragments.
+
+Governed manifests add an `## Organization Policies` consultation index after
+the organization contract. It contains universal plus selected-role policy
+pointers, never raw policy bodies or digests. Session start, join, and resume
+regenerate the same guidance for the session root.
+
+## Governance
+
+An opt-in policy layer binding versioned human-readable documents to exact
+committed digests, durable GitHub-identity acceptance evidence, protected
+content paths, PR-only publication, and trusted-base CI. Required policies add
+the employee acceptance gate; optional policies remain binding consultation
+material. Every real AI launch locally verifies all applicable policy blobs,
+and `my compile` projects the same role-scoped references for contained runners.
+Automatic access-revocation quarantine is a separate experimental system and
+is never enabled merely by declaring governance.
 
 ## Tool
 

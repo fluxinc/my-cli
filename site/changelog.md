@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Policy-at-invocation for governed organizations: generated guidance now
+  carries a compact, role-scoped `## Organization Policies` consultation index
+  with policy summaries, topics, and digest-verifying `my policy show` actions.
+  Real AI launches prove every applicable required or optional committed policy
+  blob locally before emitting launch context or starting a harness.
+- `my compile` projects applicable policies as digest-bound `policies[]`
+  references and fails when a policy's mount is outside the selected role.
+  Non-governed projections and guidance remain unchanged.
+- Policy declarations accept optional one-line `summary` and repeatable `topics`
+  metadata, including `my admin policy add --summary/--topic` authoring.
+- An approachable governance walkthrough documents the employee `my ai`
+  experience, agent consultation contract, admin authoring, durable acceptance
+  ledger, and the beta versus experimental boundary.
+
+### Changed
+
+- Bare `my meetings` and `my support` now list records, including list filters,
+  instead of requiring employees or agents to spell out the default action.
+- Active session guidance is regenerated from current organization policy when
+  a session starts, joins a harness, or resumes; harness paths retain governed
+  freshness and digest proof immediately before execution.
+- Organization skills keep mutable runtime state under
+  `~/.local/state/my-cli/skills/<manifest>/<install-slug>/`. Doctor warns about
+  unexpected skill-source files, and publish/sync holds unadopted files under
+  every declared skill source to prevent credentials or caches entering the
+  manifest.
+
 ## 0.36.0 - 2026-07-21
 
 ### Fixed

@@ -188,7 +188,9 @@ umbrella-root `.mcp.json` for locally described MCP services visible to the
 role. `my compile --role <id>` is the read-only Mode B handoff: it prints a
 deterministic manifest-to-Clawdapus launch projection as JSON, without
 launching containers or resolving credentials. A role is required when the
-manifest declares roles; manifests with no roles compile unscoped.
+manifest declares roles; manifests with no roles compile unscoped. Governed
+projections include universal plus exact-role `policies[]` references and fail
+if an applicable policy mount is outside the selected role.
 
 ### Contract rules
 
@@ -239,6 +241,12 @@ pass `--no-prune` to only install/update. Skill commands only refresh harness
 skill directories; run `my setup` when manifest guidance or the generated
 umbrella `AGENTS.md` should change without a manifest sync.
 
+Organization skill source directories are immutable. Mutable credentials,
+cookies, caches, and downloads belong under
+`~/.local/state/my-cli/skills/<manifest>/<install-slug>/`. `my doctor` warns
+about unexpected files under every declared skill source, and publish/sync
+holds unadopted skill-source files unless a reviewed source change was staged.
+
 Manifest authoring is explicit admin work:
 
 ```sh
@@ -255,10 +263,13 @@ my admin roles edit <id> --manifest-dir <checkout> [--purpose "..."]
 my admin roles remove <id> --manifest-dir <checkout>
 my admin contract add "RULE TEXT" [--manifest <name>] [--umbrella <root>]
 my admin contract remove <index|"RULE TEXT"> [--manifest <name>] [--umbrella <root>]
+my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION \
+  --acceptance required|optional [--summary TEXT] [--topic TEXT] [--role ID]
+my admin policy remove <id> [--manifest <name>] [--umbrella <root>]
 ```
 
-Admin commands other than registered-manifest contract authoring write a
-maintainer checkout, not the synced cache. They refuse dirty git checkouts
+Admin commands other than registered contract and policy authoring write a
+maintainer checkout, not the synced cache. Those commands refuse dirty git checkouts
 unless `--force` is supplied, never commit or push, and require explicit flags
 for duplicate-prone or destructive cleanup such as
 `--keep-original`, `--remove-original`, `--delete-source`, or product
@@ -358,6 +369,13 @@ the answer, starts durable publication of the evidence, and then launches the
 AI. Declining or reaching EOF leaves the policy unaccepted and does not launch.
 Non-interactive callers fail closed so an agent or harness cannot silently
 accept for a person.
+
+Generated guidance gives every launched agent a compact, role-scoped
+`## Organization Policies` index: title, id, version, summary, consultation
+topics, and the exact digest-verifying `my policy show <id>` action. Policy text
+is authoritative over summaries and other guidance. Before every real launch,
+`my ai` locally verifies every applicable required or optional committed policy
+blob before writing launch context or executing the harness.
 
 The same launch performs a read-only live GitHub access check when the optional
 revocation system has not been activated. That check writes no baseline and
@@ -488,6 +506,8 @@ my meetings add    <slug> [--date DATE] [--title TEXT] [--customer ID]
                      [--attendees NAME] [--partner ID] [--source-id ID]
 ```
 
+Bare `my meetings` performs the same safe list action and accepts list filters.
+
 A markdown-first operational record (YAML frontmatter), resolved against the
 umbrella by default, including the configured umbrella from the registered
 manifest when the command is run outside the umbrella. Search uses `qmd` when it
@@ -504,6 +524,8 @@ my support add    <slug> [--date DATE] [--title TEXT] [--customer ID]
                     [--status open|workaround|resolved] [--feature-candidate]
                     [--print] [--json]
 ```
+
+Bare `my support` performs the same safe list action and accepts list filters.
 
 An anonymized problem-solving record under `support/`. Use optional canonical
 customer IDs in frontmatter when recurrence evidence matters, and keep the body

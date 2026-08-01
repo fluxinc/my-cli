@@ -8,7 +8,7 @@ changes, and checked for drift by `my doctor`.
 
 ## How AGENTS.md is composed
 
-Generated guidance stacks five layers, in order:
+Generated guidance stacks six layers, in order:
 
 1. **The public baseline** — ships inside the CLI binary. It teaches any agent
    the workspace layout, the operational command surface, and the built-in
@@ -16,13 +16,17 @@ Generated guidance stacks five layers, in order:
 2. **The organization contract** — short, binding rules from the manifest's
    `contract` list, rendered as an `## Organization Contract` section. Present
    only when the manifest declares rules.
-3. **Manifest guidance fragments** — longer narrative content from
+3. **Organization policies** — compact consultation pointers for universal
+   policies plus policies matching the selected role. Each pointer carries
+   title, id, version, summary, topics, and `my policy show <id>`; raw digests
+   and policy bodies stay out of prose. Present only for governed manifests.
+4. **Manifest guidance fragments** — longer narrative content from
    `agent_guidance.paths`, each rendered as a `## Manifest Guidance: <path>`
    section.
-4. **Role guidance fragments** — appended only when the local umbrella has a
+5. **Role guidance fragments** — appended only when the local umbrella has a
    selected role (`my setup --role <id>`), from that role's
    `guidance_paths`.
-5. **Domain notes** — per-data-binding norms from `data_bindings[*].guidance`,
+6. **Domain notes** — per-data-binding norms from `data_bindings[*].guidance`,
    rendered as labeled, source-attributed `## Domain Notes: <data type>`
    sections (below). Present only when a binding declares guidance fragments.
 
@@ -103,6 +107,29 @@ These rules are binding in this workspace:
   when working on any fleet member.
 ```
 
+## Organization policies
+
+Governed manifests add a pointer-only policy index immediately after the
+organization contract. Universal policies and policies matching the selected
+role are listed; another role's policies are never exposed. Each entry tells
+the agent when to consult the policy and gives the digest-verifying read action:
+
+```markdown
+## Organization Policies
+
+Selected role: `operator`.
+
+- **Release policy** (`release-policy`, version `2026-08`) — Rules for
+  preparing and approving a release.
+  Topics: releases, deployment approval. Read: `my policy show release-policy`.
+```
+
+The generated contract makes policy text authoritative over summaries and
+requires every matching policy to be read before acting on a covered topic.
+Real `my ai` launches also prove each applicable committed policy blob exists
+and matches its declared digest before writing launch context or starting the
+harness. See [Governance](./governance.md).
+
 ## Domain notes
 
 A [data binding](./the-model) can attach domain-specific norms to the
@@ -147,6 +174,8 @@ permissions.
   fragment.
 - **Role-specific instructions** → role `guidance_paths`, activated by
   `my setup --role`.
+- **Versioned rules that must be consulted by topic and may require durable
+  acceptance** → governance policy.
 - **Norms for one data type, tied to its backing surface** →
   `data_bindings[*].guidance` domain notes.
 - **Generic My AI workflow** → already in the baseline; if something generic
@@ -154,9 +183,10 @@ permissions.
 
 ## Drift and reconcile
 
-Because contract rules change the composed bytes, the existing machinery
-covers them with no extra steps: `my doctor` reports guidance drift after a
-manifest change, `my doctor --fix` and `my sync` regenerate, and
+Because contract rules and policy references change the composed bytes, the
+existing machinery covers them with no extra steps: `my doctor` reports
+guidance drift after a manifest change, `my doctor --fix` and `my sync`
+regenerate, and
 `my manifests sync` reconciles derived state when the manifest cache
 changes. Hand-written `AGENTS.md` files are never overwritten: generation
 refuses to clobber a file it did not produce.

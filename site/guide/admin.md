@@ -117,6 +117,37 @@ my admin contract remove 2 --manifest-dir ~/src/acme-manifest
 rule text. Validation rejects empty, multiline, and duplicate rules. See
 [Guidance and Contract](./guidance-and-contract.md).
 
+## Governance policies
+
+Registered policy authoring hashes the committed policy blob from its declared
+mount and opens an isolated manifest PR without dirtying the sync-managed
+manifest cache:
+
+```sh
+my admin policy add security-baseline \
+  --title "Security Baseline" \
+  --mount handbook \
+  --path policy/security-baseline.md \
+  --version 2026-08 \
+  --acceptance required \
+  --summary "How we handle credentials, access, and customer data." \
+  --topic credentials \
+  --topic "customer data" \
+  --role operator
+```
+
+`--summary` is a one-line agent-facing description. Repeatable `--topic` values
+are consultation triggers, and repeatable `--role` values scope the policy;
+with no role it applies universally. `required` adds the human acceptance gate,
+while `optional` remains available and binding for consultation without that
+gate. Both forms are verified locally before every real AI launch.
+
+The compatibility `--manifest-dir DIR --sha256 sha256:...` form is for an
+explicit maintainer checkout. Prefer registered authoring because it derives
+the digest from committed upstream bytes. Removing a policy proposes another
+isolated PR and never rewrites historical acceptance evidence. See
+[Governance](./governance.md) for the employee and agent experience.
+
 ## Admin aliases
 
 Use `my init` to create a new local manifest repo. Mutating or configuration

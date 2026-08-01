@@ -66,13 +66,18 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
 - **Guidance** — the generated root `AGENTS.md` (and `CLAUDE.md` pointer) built
   from a public baseline plus manifest and selected-role fragments. A manifest
   `contract` list adds short, binding org rules rendered as an
-  `## Organization Contract` section; treat those rules as obligations.
+  `## Organization Contract` section. Governed manifests also add a compact,
+  role-scoped `## Organization Policies` consultation index; treat both
+  sections as obligations.
 - **Tool** — an external executable the org depends on; `my` reports presence
   and install hints, it never silently installs tools.
 - **Governance** — optional manifest policy that binds exact policy documents,
   immutable GitHub acceptance evidence, repository access baselines, protected
   append-only/no-delete paths, pull-request publication, and trusted-base CI.
-  Local roles never grant provider permissions.
+  Local roles never grant provider permissions. Before acting on a topic named
+  by an applicable policy, read every matching policy with
+  `my policy show <id>`; the exact policy text overrides summaries and other
+  guidance.
 
 ## Operational vs Admin
 
@@ -85,6 +90,7 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
   `my customers list`,
   `my products list`, `my repos list/add/remove`, `my tools list/info`,
   `my services list/get`, `my roles list/get`, `my contract list`,
+  `my policy list/show/status/acceptances`,
   `my compile`, `my root`,
   `my ai`, `my doctor`, `my manifests list`, `my mounts list`,
   `my session start/join/status/list/resume/finish` (sessions are local execution-plane
@@ -98,6 +104,7 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
   (`my admin skills add/remove`, `my admin tools add/edit/remove`,
   `my admin roles add/edit/remove`, `my admin services add/edit/remove`,
   `my admin contract add/remove`,
+  `my admin policy add/remove`,
   `my admin manifests/mounts/meetings/support/setup`) and require explicit
   intent.
   Do not run them to "fix" something unless the user asked to change the
@@ -126,7 +133,7 @@ my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--ski
                                     # --skills / --profile pick the org skill loadout (mutually exclusive); see the Skill model above
                                     # --setup reconciles the umbrella first when guidance is stale or missing
 my compile --role ROLE [--manifest NAME] [--home DIR]
-                                    # print deterministic manifest-to-Clawdapus launch projection JSON
+                                    # print deterministic role-scoped launch JSON, including applicable policy refs
 my doctor [--no-fetch] [--fix]   # git freshness, sessions, services, derived drift, last sync, manifests, tools
 ```
 
@@ -176,7 +183,18 @@ role. It is read-only and prints deterministic JSON only: no container launch,
 no service invocation, no credential resolution, and no descriptor fetch.
 When a manifest declares roles, `--role` is required; a manifest with no roles
 compiles an unscoped full projection. A local mount `git_url` is a compile
-error because contained launches must not leak host paths.
+error because contained launches must not leak host paths. Governed projections
+carry universal plus exact-role `policies[]` references; compilation fails if
+an applicable policy's mount is outside the selected role.
+
+For a governed launch, generated guidance already names every applicable
+policy and its topics. When the current task touches a named topic, run every
+matching `my policy show <id>` before acting and follow the exact text. Do not
+infer policy from its summary, do not accept a policy for the operator, and do
+not bypass a launch-time missing/digest-mismatch failure. Real `my ai` launches
+prove required and optional policy blobs locally before guidance or harness
+execution; `my ai --print` remains a shell-command preview with governance
+notices on stderr.
 
 By default, `my ai` starts the harness from the base umbrella, or from the
 current active session when run inside `<umbrella>/sessions/<id>`. Treat the base
@@ -223,7 +241,10 @@ shortcut is `my ai --session <id> <harness>`. With exactly one active session,
 `my session resume codex` or `my ai -r codex` auto-selects it. With multiple
 active sessions, an interactive terminal gets a picker; non-interactive agent
 use must pass an explicit id and never waits on a prompt. `my session resume`
-with no harness is a shell helper that prints `cd <path>`.
+with no harness refreshes generated session guidance from the current local
+manifest, then prints `cd <path>` without making a network call. Join and
+resume-with-harness use the governed launch path, including freshness and
+policy-blob proof immediately before exec.
 
 If you are running inside a session (the working directory is under
 `<umbrella>/sessions/<id>`), keep all edits in the session's mount worktrees and
@@ -282,6 +303,9 @@ my customers list  [--json]      # mounted customer IDs, aliases, partners
 my customers add   <domain|slug> [--name TEXT] [--domain DOMAIN] [--domain-confirmed] [--alias TEXT] [--partner ID] [--print] [--json]
 ```
 
+Bare `my meetings` and `my support` perform their `list` action and accept the
+same filters. They never create a record or open an interactive command menu.
+
 Manage skills on this machine:
 
 ```sh
@@ -295,6 +319,13 @@ my services list|get             # manifest-declared remote surfaces
 my roles list|get                # manifest-declared operating roles
 my contract list                 # binding organization contract rules
 ```
+
+Keep organization skill source directories immutable. Store mutable runtime
+state — credentials, cookies, caches, and downloads — under
+`~/.local/state/my-cli/skills/<manifest>/<install-slug>/`. `my doctor` warns
+about unexpected files in any declared skill source, and publish/sync holds
+them as `unadopted_skill_source` unless a reviewed source change was explicitly
+staged.
 
 ## Sync: reconcile, review, and publish
 
@@ -331,7 +362,7 @@ my policy accept <id> --yes      # queue evidence and attempt an attestation-onl
 my policy acceptances [--json]   # report local, submitted, and merge-proven acceptances
 my policy supersede <id> --subject-id <github-id> --reason <text> --yes # append an admin-authorized supersession
 my governance audit --json       # audit live GitHub rulesets/workflow enforcement
-my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION --acceptance required|optional [--role ID] # propose an isolated manifest PR
+my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION --acceptance required|optional [--summary TEXT] [--topic TEXT] [--role ID] # propose an isolated manifest PR
 my admin policy remove <id>       # propose removal without rewriting old acceptance evidence
 my admin contract add "RULE" [--manifest NAME] [--umbrella DIR] # propose an isolated manifest PR
 my admin contract remove <index|"RULE"> [--manifest NAME] [--umbrella DIR]
