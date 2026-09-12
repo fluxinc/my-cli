@@ -4,8 +4,9 @@
 
 - `my onboarding` is the guided first-run experience. In an interactive
   terminal it launches a harness and starts a learn-by-example walkthrough. The
-  operator opens a second terminal or split pane, runs small sets of validated
-  `my` commands, and confirms each set before the model continues.
+  assistant runs routine validated `my` commands while explaining, and pauses
+  for authentication, privileges, policy acceptance, and meaningful decisions.
+  A manual walkthrough is available when the operator wants to practice.
 - `my onboarding --no-agent` is the deterministic walkthrough. It explains the
   model and points at `my setup --interactive` without launching a harness.
 - `my setup` is the machine configurator. It remains deterministic and safe for
@@ -43,38 +44,35 @@ harness. If the choice is ambiguous, `my` asks which harness to use. Pass
 `--harness antigravity`, `--harness grok`, or `--harness cursor` to skip
 detection.
 
-The launched model starts by greeting the operator and immediately sets up the
-split-pane workflow. It gives a small first command set, waits for the operator
-to confirm whether it worked, and then continues one set at a time. The normal
-path is conversational: ask whether the command worked, answer questions, and
-move on. If something fails or the operator is unsure, the model can offer
-read-only checks such as `my doctor`, but verification is support, not a hard
-gate.
+The assistant starts in a fresh temporary workspace with the bundled My CLI
+skill. This happens before Git, `gh`, manifest sync, or setup is required, even
+when resuming with a cached manifest. The temporary directory is retained for
+scratch files and harness conversation resumption. My does not enter the umbrella
+or materialize organization skills/MCP here; global harness settings still apply.
 
-The walkthrough detects whether this machine is authoring a new organization or
-joining an existing one:
+The model greets the operator, explains each meaningful step, runs routine local
+commands, inspects the results, and retries recoverable failures. The operator
+handles login, privilege prompts, policy acceptance, and material choices. The
+model never asks for passwords in chat or accepts policies on the operator's
+behalf. Optional tools remain opt-in. Ask for a manual walkthrough to type and
+practice commands instead.
 
-- With no registered manifest, the harness starts from the current directory
-  and takes the AUTHOR branch. The model interviews the operator, asks for
-  approval before presenting `my init`, then walks through the smallest useful
-  local setup and verification path: `my setup`, `my doctor`, harness launch,
-  work sessions, and sync.
-- With a registered manifest, the launcher reuses the normal
-  `my ai --setup --no-session` path and takes the JOIN branch. The model helps
-  pick a role when needed, has the operator run setup, pulls workspace content,
-  and teaches the basic daily loop: launch a harness, start/resume/finish a
-  work session, run pull-only `my sync`, preview publish with
-  `my sync --push --print`, publish with `my sync --push`, and run `my doctor`.
-- With a registered but unsynced manifest, the harness starts safely from the
-  current directory and takes the JOIN_BOOTSTRAP branch. It resolves Git and
-  GitHub CLI availability/authentication, reruns `my manifests sync`, then
-  continues into the ordinary JOIN path. This partial state is resumable and is
-  never mistaken for a request to create a new organization.
+The flow adapts to local state:
 
-After setup exposes the manifest's tool declarations, the guide checks required
-tools separately from optional tools. It walks one missing required tool at a
-time using `my tools info <name>` and asks the operator before running any
-installer. Optional tools are explained but never silently installed.
+- **AUTHOR:** no manifest is registered. The assistant confirms the intent to
+  create an organization before running `my init`, then verifies local setup.
+- **JOIN_BOOTSTRAP:** a manifest is registered but not cloned. The assistant
+  resolves missing Git/GitHub CLI, guides authentication, and runs
+  `my manifests sync <name>` before setup.
+- **JOIN:** a readable manifest exists. The assistant helps choose a role,
+  configures the workspace, resolves required tools, and verifies with doctor.
+- **JOIN_REPAIR:** the local checkout cannot be read. The assistant preserves
+  recoverable state, diagnoses the failure, and retries the named continuation.
+
+Normal organization work starts through `my ai`, with its existing access and
+policy gates. The guide teaches that first launch, work sessions, sync, and
+publication previews after setup. Moving onboarding earlier does not bypass
+those checks.
 
 When the operator confirms the walkthrough worked, the guide finishes with
 `my onboarding --complete` and verifies `my onboarding --status`. Completion is
@@ -87,14 +85,9 @@ fleet/support context, notes, screenshots, or issue details, the human should
 paste the raw context into the harness chat. Agents are the primary operators
 and can choose the right deeper `my` commands when records need to be created.
 
-If a selected launch skill already exists from a manual install or old
-workspace rename, interactive onboarding asks whether to replace or skip that
-entry and then continues launching the harness.
-
-The launcher itself does not publish anything. The onboarding guidance keeps
-publish at the end: the model must have the operator run `my publish --print`,
-review the planned remotes and pushes, and get explicit human approval before
-the real `my publish`.
+The launcher does not publish anything. Publication remains a separate step:
+the assistant shows `my publish --print` and obtains explicit approval before
+running `my publish`.
 
 ## Deterministic Walkthrough
 

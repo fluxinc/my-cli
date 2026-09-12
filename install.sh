@@ -213,6 +213,7 @@ pkg_hint() {
 
 echo ""
 info "Checking prerequisites..."
+info "Git and gh are needed for workspace setup; the onboarding assistant can help install them."
 if command -v git >/dev/null 2>&1; then
   info "[ok] git"
 else
@@ -269,13 +270,45 @@ if [ "$RUN_ONBOARDING" = "1" ]; then
   if [ -n "$HARNESS_NAME" ]; then
     set -- "$@" --harness "$HARNESS_NAME"
   fi
-  if [ -r /dev/tty ] && [ -w /dev/tty ] && ( : </dev/tty ) 2>/dev/null; then
+  # Preserve real terminal descriptors. /dev/tty is a controlling-terminal
+  # alias, not an event-pollable device on every OS (macOS kqueue rejects it).
+  # In the curl pipeline stdin belongs to the script; find the real device
+  # through a terminal output descriptor instead.
+  ONBOARD_TTY=""
+  if [ -t 0 ]; then
+    ONBOARD_TTY="inherited"
+  elif command -v tty >/dev/null 2>&1; then
+    # Save the descriptor before command substitution replaces stdout with a
+    # pipe. Redirecting tty from fd 1 inside $(...) would inspect that pipe.
+    if [ -t 1 ]; then
+      exec 3<&1
+      ONBOARD_TTY="$(tty <&3)" || ONBOARD_TTY=""
+      exec 3<&-
+    elif [ -t 2 ]; then
+      exec 3<&2
+      ONBOARD_TTY="$(tty <&3)" || ONBOARD_TTY=""
+      exec 3<&-
+    fi
+  fi
+  if [ "$ONBOARD_TTY" != "inherited" ] && [ -n "$ONBOARD_TTY" ] && [ ! -c "$ONBOARD_TTY" ]; then
+    ONBOARD_TTY=""
+  fi
+  if [ -n "$ONBOARD_TTY" ]; then
     echo ""
     info "Starting guided onboarding..."
-    if ! "${INSTALL_DIR}/my" "$@" </dev/tty; then
+    ONBOARD_RESULT=0
+    if [ "$ONBOARD_TTY" = "inherited" ]; then
+      "${INSTALL_DIR}/my" "$@" || ONBOARD_RESULT=$?
+    else
+      "${INSTALL_DIR}/my" "$@" <"$ONBOARD_TTY" || ONBOARD_RESULT=$?
+    fi
+    if [ "$ONBOARD_RESULT" != "0" ]; then
       echo ""
-      info "My AI is installed; onboarding paused before setup completed."
-      info "After resolving the message above, run: my onboarding${MANIFEST_NAME:+ --manifest $MANIFEST_NAME}"
+      info "My AI is installed; the onboarding harness exited with status ${ONBOARD_RESULT}."
+      info "Onboarding paused; existing setup progress is preserved."
+      info "After resolving the message above, run: my onboarding${MANIFEST_NAME:+ --manifest $MANIFEST_NAME}${HARNESS_NAME:+ --harness $HARNESS_NAME}"
+      info "To choose another installed agent: my onboarding${MANIFEST_NAME:+ --manifest $MANIFEST_NAME} --harness <name>"
+      info "For an explicit manual walkthrough: my onboarding${MANIFEST_NAME:+ --manifest $MANIFEST_NAME} --no-agent"
     fi
   else
     echo ""

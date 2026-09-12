@@ -598,6 +598,13 @@ func (a app) runOnboardCompletion(opts onboardOptions) error {
 }
 
 func (a app) runOnboardAgent(opts onboardOptions) error {
+	if opts.umbrellaRoot != "" {
+		root, err := resolveUmbrellaRoot(opts.home, opts.umbrellaRoot)
+		if err != nil {
+			return err
+		}
+		opts.umbrellaRoot = root
+	}
 	if opts.manifestName == "" {
 		if name, ok, err := defaultManifestNameIfAny(opts.home, "", opts.umbrellaRoot); err != nil {
 			return err
@@ -642,8 +649,8 @@ func (a app) runOnboardAgent(opts onboardOptions) error {
 		return err
 	}
 	prompt := onboardAgentPrompt("JOIN", doc.ref.Name, root)
-	args := onboardAgentLaunchArgs(opts, doc.ref.Name, root, h)
-	return a.runLaunchWithInitialPrompt(args, prompt)
+	opts.umbrellaRoot = root
+	return a.runOnboardAgentDirect(opts, h, prompt)
 }
 
 func (a app) runOnboardAgentAuthor(opts onboardOptions, h harness.Harness) error {
@@ -654,10 +661,34 @@ func (a app) runOnboardAgentDirect(opts onboardOptions, h harness.Harness, promp
 	if err := a.ensureLaunchSelfSkill(h, opts.home); err != nil {
 		return err
 	}
-	cwd, err := os.Getwd()
+	// Onboarding must start before Git, provider authentication, setup, and
+	// policy acceptance. Never inherit an umbrella's organization instructions
+	// or MCP configuration by launching the bootstrap assistant inside it.
+	// Keep this directory after exit: a harness may have written useful scratch
+	// files or recorded its working directory for conversation resumption.
+	cwd, err := os.MkdirTemp("", "my-onboarding-")
 	if err != nil {
 		return err
 	}
+	home, err := resolveHome(opts.home)
+	if err != nil {
+		return err
+	}
+	prompt += "\nThis is a neutral onboarding workspace, not the organization umbrella or a security sandbox. Run routine local setup commands yourself and explain what each step teaches. Use --home " + shellQuote(home) + " on my commands"
+	if opts.manifestName != "" {
+		prompt += " and --manifest " + shellQuote(opts.manifestName)
+	}
+	if opts.umbrellaRoot != "" {
+		prompt += "; preserve the requested --umbrella " + shellQuote(opts.umbrellaRoot)
+	}
+	if opts.noRefresh {
+		prompt += "; preserve --no-refresh on commands that support it"
+	}
+	if opts.noUpdateCheck {
+		prompt += "; preserve --no-update-check on commands that support it"
+	}
+	prompt += ". Apply selectors only to commands that support them: manifests sync takes the manifest name positionally, not --manifest; manifests list takes --home. Do not run organization work or load organization skills here. After setup, guide the operator through the normal my ai launch, including its authentication and policy gates."
+	fmt.Fprintf(a.stdout, "Onboarding workspace (kept for resume): %s\n", cwd)
 	args, err := initialPromptArgs(h, prompt)
 	if err != nil {
 		return err
@@ -784,24 +815,10 @@ func (a app) harnessHasLogin(h harness.Harness, home string) bool {
 	return false
 }
 
-func onboardAgentLaunchArgs(opts onboardOptions, manifestName, root string, h harness.Harness) []string {
-	args := []string{"--manifest", manifestName, "--umbrella", root, "--setup", "--no-session"}
-	if opts.home != "" {
-		args = append(args, "--home", opts.home)
-	}
-	if opts.noRefresh {
-		args = append(args, "--no-refresh")
-	}
-	if opts.noUpdateCheck {
-		args = append(args, "--no-update-check")
-	}
-	return append(args, string(h))
-}
-
 func onboardAgentPrompt(branch, manifestName, root string) string {
 	var b strings.Builder
 	b.WriteString("You are this person's My AI onboarding assistant. Start by greeting them in one or two warm sentences, introduce yourself, and immediately begin a learn-by-example walkthrough.\n")
-	b.WriteString("Use the bundled `my-cli` skill, section `Agent-Operated Onboarding`, as the source of truth. Tell the operator to open another terminal window or split pane, explicitly move it to the umbrella root with `cd \"$(my root)\"` or the provided umbrella path, give them small command sets to run there, and pause after every set to ask whether it worked, whether there were errors, and whether they have questions before continuing. The human runs the commands; you guide and explain. Offer read-only verification only when the operator reports trouble or uncertainty, never as a hard gate.\n")
+	b.WriteString("Use the bundled `my-cli` skill, section `Agent-Operated Onboarding`, as the source of truth. Run routine local checks and setup commands yourself, explain what they do and teach as you go, diagnose failures and retry the continuation command. Pause only for authentication, privilege/password prompts, policy acceptance, material choices, destructive actions, or publication. Never ask for secrets in chat. Optional tools are opt-in. Offer a manual learn-by-example walkthrough when requested.\n")
 	b.WriteString("Keep the walkthrough focused on basic human workflows: setup, launching harnesses, starting/resuming/finishing work sessions, `my sync`, `my sync --push --print`/`my sync --push`, and `my doctor`. Do not teach content-record, fleet, catalog, or full admin command surfaces during onboarding; humans can paste transcripts or raw context into harness chat and let agents operate deeper CLI surfaces.\n")
 	switch branch {
 	case "AUTHOR":
@@ -818,7 +835,7 @@ func onboardAgentPrompt(branch, manifestName, root string) string {
 			b.WriteString(root)
 			b.WriteString(".")
 		}
-		b.WriteString(" Set up this person against the existing organization through the split-pane walkthrough; offer AUTHOR-style admin edits only if the operator asks.\n")
+		b.WriteString(" Set up this person against the existing organization with an agent-operated learn-by-example walkthrough; offer AUTHOR-style admin edits only if the operator asks.\n")
 	case "JOIN_BOOTSTRAP":
 		b.WriteString("Branch: JOIN_BOOTSTRAP. An existing organization manifest is registered")
 		if manifestName != "" {
@@ -872,10 +889,10 @@ func (a app) printOnboardUsage() {
 
 Run interactively, my onboarding launches a harness with the bundled my-cli self-skill
 and an agent-operated onboarding prompt: the model greets the operator, starts a
-split-pane learn-by-example walkthrough, and has the operator run validated my
-commands in small sets. With no registered manifest the harness starts from the
-current directory and drives the AUTHOR branch; with a registered manifest it
-reuses the normal my ai launch path for the JOIN branch. A harness is
+learn-by-example walkthrough, and runs routine validated my commands itself.
+All branches start in a neutral temporary workspace before Git, gh, setup, or
+policy acceptance is required. Organization work starts later through normal
+my ai, with its usual access and policy gates. A harness is
 auto-detected (preferring one that is logged in); pass --harness to choose.
 
 --agent forces the harness launch even when stdout is not a TTY. --no-agent (and

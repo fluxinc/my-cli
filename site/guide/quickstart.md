@@ -2,15 +2,17 @@
 
 ## Prerequisites
 
-Install Git, `curl`, `tar`, and either `sha256sum` or `shasum`. Install and
-authenticate one supported agent harness (for example Codex, Claude Code, Grok,
-or Cursor) first; it will guide the remaining machine setup. The GitHub CLI
-(`gh`, logged in) is required for any manifest or mount hosted on github.com —
-`my` resolves repository access through `gh` and clones private HTTPS URLs
-with its credentials — and when `my publish` creates repositories. The
-installer and `my doctor` (`prereq` rows) report what is missing with the
-install command for your platform; guided onboarding checks it again before
-attempting private Git work.
+Start with a POSIX shell and standard utilities (including `tty`), `curl`,
+gzip-capable `tar` (`gzip` on GNU systems), and a SHA256 verifier (`sha256sum`
+or `shasum`). Install and authenticate a supported agent harness first, such as
+Codex, Claude Code, Grok, or Cursor. It performs and explains the remaining setup.
+
+Git is needed for manifest/workspace operations. Authenticated GitHub CLI (`gh`)
+is additionally required for GitHub-backed repositories and `my publish`.
+Neither Git nor `gh` is needed to start the onboarding assistant. The guide
+checks them before private Git work and helps resolve missing installations.
+Authentication, privilege prompts, policy acceptance, and material choices
+remain human steps.
 
 On Windows, use [WSL](./windows-wsl): install and run the Linux `my` binary,
 Git, and your harness inside the same WSL distribution. Keep the umbrella

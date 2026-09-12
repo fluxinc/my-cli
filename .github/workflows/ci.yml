@@ -24,3 +24,16 @@ jobs:
       - run: go build ./...
       - run: go test ./...
       - run: git diff --check
+
+  onboarding-terminal:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build -o "$RUNNER_TEMP/my-terminal-candidate" ./cmd/my
+      - run: python3 tests/onboarding/terminal.py --binary "$RUNNER_TEMP/my-terminal-candidate"

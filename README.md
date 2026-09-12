@@ -13,12 +13,13 @@ those capabilities onto every agent surface, the same way, every time.
 
 Documentation: https://my-cli.com/
 
-Prerequisites: Git, `curl`, `tar`, and either `sha256sum` or `shasum`, plus one
-installed and authenticated agent harness. Install the agent first so it can
-guide the rest of first-machine setup. The GitHub CLI (`gh`, logged in) is
-required for any manifest or mount hosted on github.com and when `my publish`
-creates repositories; the installer and `my doctor` report it, and the guide
-checks it before attempting private Git operations. Windows users should
+Bootstrap prerequisites: a POSIX shell and standard utilities (including `tty`),
+`curl`, gzip-capable `tar` (`gzip` on GNU systems), a SHA256 verifier (`sha256sum`
+or `shasum`), and an installed, authenticated agent harness. Install the agent
+first so it can handle and explain the remaining setup. Git is needed for
+manifest/workspace operations; authenticated GitHub CLI (`gh`) is additionally
+required for GitHub-backed repositories and `my publish`. Neither Git nor `gh`
+is needed before the onboarding assistant starts. Windows users should
 run the Linux CLI and Git together inside
 [WSL](https://my-cli.com/guide/windows-wsl), with the umbrella under the WSL
 home directory.
@@ -43,8 +44,11 @@ manifest sync, setup, role selection, required organization tools, verification,
 and first launch. An authenticated `gh` session is supplied to HTTPS Git only
 for the current invocation; My AI does not rewrite global Git configuration.
 Creating a new organization remains a guided `my init` path. `my onboarding`
-can be rerun at any point and starts a split-pane walkthrough where the operator
-runs small sets of validated `my` commands while the model explains and pauses.
+can be rerun at any point. It starts the assistant in a neutral temporary
+workspace before Git, `gh`, or setup is required. The assistant runs routine
+validated commands while explaining, pausing for login, privileges, policy
+acceptance, and meaningful choices. A manual walkthrough remains available on
+request. Normal organization work still starts through the governed `my ai` path.
 Use `my onboarding --no-agent` for the deterministic walkthrough that explains
 the model and points at `my setup --interactive`. `my setup` remains the
 scriptable machine configurator. `my ai codex` resolves the umbrella, verifies
@@ -681,6 +685,12 @@ rationale.
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
+- **Shipped (v0.42.0) — reliable fresh-system onboarding.** Preserve real terminal input,
+  launch the assistant before Git/GitHub/setup prerequisites on every retry,
+  and let it operate while teaching. Native terminal and offline clean-system
+  spikes cover the one-line handoff. Plan:
+  [fresh-system onboarding](docs/plans/2026-09-12-fresh-system-onboarding.md).
+
 - **Shipped (v0.41.0) — open-issue simplicity sweep.** This release
   adds push/PR CI, refreshes manifest-derived reads before serving them,
   handles deliberately local Gnit control roots without blocking member
@@ -865,9 +875,9 @@ indexed in [docs/plans/](docs/plans/README.md):
   `my onboarding [--harness NAME]` launches a harness with the bundled `my-cli`
   self-skill's Agent-Operated Onboarding guidance, and `my onboard` remains a
   compatibility alias. The launcher chooses AUTHOR vs JOIN from manifest state,
-  uses direct harness exec for zero-manifest bootstrap, reuses `my ai --setup`
-  when a manifest exists, and now teaches through split-pane command sets
-  instead of an `OK` handshake. Onboarding stays focused on basic human
+  originally used direct launch for zero-manifest bootstrap and `my ai --setup`
+  for existing manifests. The active fresh-system plan below replaces that
+  sequencing and the manual command relay with agent-operated teaching. Onboarding stays focused on basic human
   workflows: launch harnesses, start/resume/finish sessions, check sync/doctor,
   and paste raw context into harness chat for agents to operate deeper record
   and admin commands. Publish remains behind `my publish --print` plus explicit

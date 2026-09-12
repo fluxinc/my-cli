@@ -108,7 +108,7 @@ complete_join() {
   my onboarding --complete --manifest acme
   my onboarding --status --manifest acme
 }
-if [[ "$prompt" == *"Branch: JOIN_BOOTSTRAP"* ]]; then
+if [[ "$prompt" == *"Branch: JOIN_BOOTSTRAP"* || "$prompt" == *"Branch: JOIN by default"* ]]; then
   my manifests sync acme
   complete_join
 elif [[ "$prompt" == *"Branch: AUTHOR"* ]]; then
@@ -154,6 +154,51 @@ install_join() {
 
 make_release_fixture
 case "$scenario" in
+  minimal-join|minimal-cached|minimal-governed)
+    make_manifest_remote
+    if [[ "$scenario" == minimal-governed ]]; then
+     jq '. + {governance:{authorization:{provider:"github",manifest_repository:"acme/acme-manifest",admin_permission:"admin"}}}' /tmp/manifest-work/manifest.json >/tmp/m.json
+     cp /tmp/m.json /tmp/manifest-work/manifest.json
+     git -C /tmp/manifest-work add manifest.json
+     git -C /tmp/manifest-work -c user.name=Fixture -c user.email=fixture@example.invalid commit -qm governed
+     git -C /tmp/manifest-work push -q /tmp/manifest.git master
+    fi
+    make_codex
+    make_gh
+    mv /tmp/stubs/gh /tmp/evidence/gh.adapter
+    cp /candidate/my "$HOME/.local/bin/my"
+    my manifests add acme https://github.com/acme/acme-manifest.git
+    if [[ "$scenario" == minimal-cached || "$scenario" == minimal-governed ]]; then
+      mkdir -p "$HOME/.local/share/my-cli/manifests/acme"
+      git clone -q /tmp/manifest.git "$HOME/.local/share/my-cli/manifests/acme"
+    fi
+    mv /usr/bin/git /tmp/evidence/git.real
+    mv /tmp/stubs/codex /tmp/evidence/codex.adapter
+    cat >/tmp/stubs/codex <<'SH'
+#!/bin/bash
+set -eu
+if [[ "$*" != *--daily-smoke* ]]; then
+  if command -v git || command -v gh; then
+    echo "bootstrap unexpectedly has Git or gh" >&2; exit 1
+  fi
+  printf 'HARNESS_ENTRY git=absent gh=absent stdin_tty=%s stdout_tty=%s\n' "$(test -t 0 && echo yes || echo no)" "$(test -t 1 && echo yes || echo no)" >>/tmp/evidence/entry.log
+  printf '%s\n' "$*" >>/tmp/evidence/entry.log
+  mv /tmp/evidence/git.real /usr/bin/git
+  cp /tmp/evidence/gh.adapter /tmp/stubs/gh
+fi
+exec /tmp/evidence/codex.adapter "$@"
+SH
+    chmod +x /tmp/stubs/codex
+    # Serve the stable wrapper and canonical script through the same offline curl adapter.
+    # shellcheck disable=SC2016 # Variables belong to the generated adapter.
+    sed -i '/case "$url" in/a\  https://my-cli.com/install.sh) cat /candidate/stable-install.sh ;;\n  *raw.githubusercontent.com*/install.sh) cp /candidate/install.sh "$out" ;;' /tmp/stubs/curl
+    export GIT_CONFIG_COUNT=1
+    export GIT_CONFIG_KEY_0=url.file:///tmp/manifest.git.insteadOf
+    export GIT_CONFIG_VALUE_0=https://github.com/acme/acme-manifest.git
+    record piped_bootstrap script -qec 'curl -fsSL https://my-cli.com/install.sh | sh -s -- --manifest acme https://github.com/acme/acme-manifest.git --harness codex' /dev/null
+    cat /tmp/evidence/entry.log
+    record final_status my onboarding --status --manifest acme
+    ;;
   join)
     make_manifest_remote
     make_codex

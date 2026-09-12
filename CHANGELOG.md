@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.42.0 - 2026-09-12
+
+### Fixed
+
+- Start every agent onboarding branch before Git/GitHub authentication, setup,
+  or organization policy gates, using a neutral temporary workspace. Normal
+  `my ai` launches retain their access and policy checks.
+- Preserve actual terminal input through piped installation, avoiding the
+  macOS Codex event-reader crash caused by reopening `/dev/tty`. Failed harness
+  launches now report their exit status and explicit retry/alternate/manual
+  options without silently switching away from the assistant.
+- Let the onboarding assistant execute routine local setup while explaining,
+  retaining human authentication, privilege, policy, and publication boundaries.
+
+### Tests
+
+- Add native terminal/input tests to macOS and Linux CI and offline clean-system
+  cases with both Git and GitHub CLI absent at assistant entry.
+
 ## 0.41.1 - 2026-08-27
 
 ### Fixed

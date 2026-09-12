@@ -1,5 +1,5 @@
 {
-  "run_date": "2026-08-25",
+  "run_date": "2026-09-12",
   "results": [
     {"scenario":"join","platform":"linux/arm64","status":"pass","events":"join-arm64-events.jsonl"},
     {"scenario":"author","platform":"linux/arm64","status":"pass","events":"author-arm64-events.jsonl"},
@@ -11,6 +11,9 @@
     {"scenario":"repair","platform":"linux/arm64","status":"pass","events":"repair-arm64-events.jsonl"},
     {"scenario":"deterministic","platform":"linux/arm64","status":"pass","events":"deterministic-arm64-events.jsonl"},
     {"scenario":"wrapper","platform":"linux/arm64","status":"pass","events":"wrapper-arm64-events.jsonl"},
+    {"scenario":"minimal-join","platform":"linux/arm64","status":"pass","events":"minimal-join-arm64-events.jsonl"},
+    {"scenario":"minimal-cached","platform":"linux/arm64","status":"pass","events":"minimal-cached-arm64-events.jsonl"},
+    {"scenario":"minimal-governed","platform":"linux/arm64","status":"pass","events":"minimal-governed-arm64-events.jsonl"},
     {"scenario":"join","platform":"linux/amd64","status":"pass","events":"join-amd64-events.jsonl"},
     {"scenario":"author","platform":"linux/amd64","status":"pass","events":"author-amd64-events.jsonl"},
     {"scenario":"resume","platform":"linux/amd64","status":"pass","events":"resume-amd64-events.jsonl"},
@@ -20,6 +23,9 @@
     {"scenario":"conflict","platform":"linux/amd64","status":"pass","events":"conflict-amd64-events.jsonl"},
     {"scenario":"repair","platform":"linux/amd64","status":"pass","events":"repair-amd64-events.jsonl"},
     {"scenario":"deterministic","platform":"linux/amd64","status":"pass","events":"deterministic-amd64-events.jsonl"},
-    {"scenario":"wrapper","platform":"linux/amd64","status":"pass","events":"wrapper-amd64-events.jsonl"}
+    {"scenario":"wrapper","platform":"linux/amd64","status":"pass","events":"wrapper-amd64-events.jsonl"},
+    {"scenario":"minimal-join","platform":"linux/amd64","status":"pass","events":"minimal-join-amd64-events.jsonl"},
+    {"scenario":"minimal-cached","platform":"linux/amd64","status":"pass","events":"minimal-cached-amd64-events.jsonl"},
+    {"scenario":"minimal-governed","platform":"linux/amd64","status":"pass","events":"minimal-governed-amd64-events.jsonl"}
   ]
 }

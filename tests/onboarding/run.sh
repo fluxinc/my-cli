@@ -4,7 +4,7 @@ set -eu
 ROOT="$(cd -- "$(dirname "$0")/../.." && pwd)"
 IMAGE="${MYCLI_ONBOARDING_IMAGE:-my-cli-onboarding-candidate}"
 OUT="${MYCLI_ONBOARDING_OUT:-$ROOT/tests/onboarding/transcripts}"
-SCENARIOS="${MYCLI_ONBOARDING_SCENARIOS:-join author resume missing-git https-auth path conflict repair deterministic wrapper}"
+SCENARIOS="${MYCLI_ONBOARDING_SCENARIOS:-join author resume missing-git https-auth path conflict repair deterministic wrapper minimal-join minimal-cached minimal-governed}"
 PLATFORMS="${MYCLI_ONBOARDING_PLATFORMS:-linux/arm64 linux/amd64}"
 
 mkdir -p "$OUT"
@@ -21,7 +21,7 @@ for platform in $PLATFORMS; do
   for scenario in $SCENARIOS; do
     log="$OUT/${scenario}-${arch}.log"
     printf 'Running %s on %s...\n' "$scenario" "$platform"
-    if docker run --rm --platform "$platform" -v "$OUT:/transcripts" "$platform_image" "$scenario-$arch" >"$log" 2>&1; then
+    if docker run --rm --network none --platform "$platform" -v "$OUT:/transcripts" "$platform_image" "$scenario-$arch" >"$log" 2>&1; then
       printf '  PASS %s\n' "$log"
       status=pass
     else

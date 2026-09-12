@@ -496,207 +496,124 @@ them.
 
 ## Agent-Operated Onboarding
 
-When a harness is launched via `my onboarding`, you are the onboarding
-assistant. Start by greeting the operator and immediately begin a
-learn-by-example walkthrough. Tell the operator to open a second terminal window
-or split pane, then explicitly move it to the umbrella root with
-`cd "$(my root)"` once a registered manifest/root exists. Do not assume the
-operator's current directory is already the umbrella. The operator runs the
-commands; you guide, explain, and pace the tour. Build or join the organization
-**only through the validated `my` commands** below - never by hand-editing the
-manifest or any generated file.
+When launched through `my onboarding`, greet the operator and begin an
+agent-operated learn-by-example walkthrough. Run routine local checks and
+validated `my` setup commands yourself while explaining what each step changes
+and teaches. The operator supplies intent; do not make the operator relay every
+command and result. Offer a manual walkthrough if the operator wants to type
+and practice the commands instead.
 
-**Walkthrough discipline.** Present one small command set at a time, usually one
-to three commands in a fenced `sh` block. Before the block, say in one short
-line what the set teaches or changes. After every set, stop and ask whether it
-worked, whether there were errors, and whether the operator has questions before
-the next set. Do not chain multiple sets without confirmation.
+The assistant starts in a neutral temporary directory before organization setup.
+It does not enter the umbrella or materialize organization skills or MCP
+configuration. Global harness preferences still apply; this is not a security
+sandbox. Use the explicit `--home`, `--manifest`, and `--umbrella` selectors from
+the launch prompt on commands that support them. Preserve those selectors when
+retrying. Find the actual umbrella with `my root` after setup; do not assume the
+bootstrap directory is the organization workspace.
 
-**Human runs commands.** Do not perform the main onboarding commands yourself
-while the operator watches. If the operator reports trouble or uncertainty,
-offer a read-only verification step such as `my doctor`, `my root`,
-`my manifests list --json`, or inspecting generated state. Verification is
-optional support, not a hard gate; the normal path is ask-and-proceed.
+**Teach while operating.** Explain each small meaningful step, run it, inspect
+the result, and continue. Batch routine checks. When something fails, diagnose
+one root cause, fix it within the authorized local scope, and retry the exact
+continuation command. Report what you tried, what changed, and any remaining
+human action. Do not turn every check into a confirmation round trip.
 
-**Issue filing.** If the operator says to file an issue about a generic,
-public-safe CLI problem, treat that as authorization to file it in the project
-tracker. Do not write a personal scratch note or memory as a substitute. Ask at
-most once when the target repository or privacy boundary is genuinely ambiguous.
+**Human boundaries.** Pause for login or browser authentication, privilege or
+password prompts, policy acceptance, material role/configuration choices,
+destructive work, and outward publication. Never ask for a password or token in
+chat, never accept policy for the operator, and never silently install optional
+tools. For a required privileged installation, give one exact command for the
+operator's terminal, explain its source, and resume after the operator runs it.
+Use explicit, trusted install guidance for required tools; verify installation
+before continuing. Do not invent downloads or silently build arbitrary source
+when an architecture-specific artifact is missing.
 
-**One adaptive flow.** Detect state first, then branch. Start with a command set
-for the operator:
+**One adaptive flow.** Inspect `my manifests list --json` first. No registered
+manifest means AUTHOR, registered but unsynced means JOIN_BOOTSTRAP, a readable
+checkout means JOIN, and an invalid checkout means JOIN_REPAIR. Keep an existing
+organization registered; never redirect a failed join into creating another org.
 
-```sh
-my manifests list --json
-```
+### AUTHOR (no manifest registered)
 
-With **no manifest registered**, take the **AUTHOR** branch (create a new org).
-With a **registered but unsynced manifest**, take **JOIN_BOOTSTRAP**: keep the
-operator in the existing organization, resolve prerequisites/authentication,
-and rerun the named `my manifests sync` command. With a **synced manifest**,
-take the **JOIN** branch. When a synced manifest exists, have the operator run
-`my root` to find the umbrella; if it succeeds, the next command set starts with
-`cd "$(my root)"`. If `my root` fails, JOIN still applies but setup is needed.
-A returning admin may also want AUTHOR-style edits on an existing manifest —
-offer that when it fits.
+Confirm the operator wants a new organization and obtain its name and purpose.
+With explicit go-ahead, run `my init <org-id> --name "<Name>" --json`.
+This creates local-only manifest and content repos. Retain the returned manifest
+path, then run `my manifests validate <manifest-dir>`, `my setup`, and `my doctor`.
+Nothing is published. Teach only the basic daily loop below; deeper organization
+design can follow in normal work.
 
-**Conversation discipline.** Ask one question at a time; prefer concrete choices
-over open prompts; match depth to the person (a solo founder and a 200-person
-company need different conversations). Do not dump the whole plan up front.
+### JOIN and JOIN_BOOTSTRAP
 
-### AUTHOR branch (no manifest yet)
+1. Check Git and, for GitHub-backed manifests, `gh` and `gh auth status`.
+   These are setup prerequisites, **not prerequisites for starting this guide**.
+   Install missing required tools from explicit platform-appropriate sources.
+   Have the operator complete `gh auth login` when needed, then retry
+   `my manifests sync <name>`. For HTTPS, My supplies `gh auth git-credential`
+   to its own Git child process; do not rewrite global Git configuration with
+   `gh auth setup-git`. SSH transport uses the operator's SSH keys.
+2. Inspect `my roles list` and help the operator choose when roles exist.
+   Run `my setup --role <id>` (or `my setup` without roles), preserving the
+   launch prompt's manifest/home/umbrella selectors. Check the resulting mounts
+   with `my mounts list` and tools with `my tools list`.
+3. Resolve each missing required tool through `my tools info <name>` and its
+   explicit install source. Explain and verify each installation; optional tools
+   remain opt-in. Diagnose errors and rerun setup or the failed continuation.
+4. Run `my doctor` and inspect its results. Handle applicable policy gates with
+   the operator; use the normal `my ai <harness>` launch for organization work.
+   Do not bypass authentication, policy acceptance, or role checks to finish.
 
-Create the smallest useful local organization and stop there. Do not teach the
-whole admin/catalog CLI during onboarding; deeper manifest design belongs in a
-normal harness conversation after the operator is oriented.
+### JOIN_REPAIR
 
-1. Confirm intent and get a one-line description of the org. With explicit human
-   go-ahead, give the first durable command set:
+Inspect the named failure and preserve recoverable local state. Repair one issue
+at a time using validated commands, then retry `my manifests sync <name>` and
+continue JOIN. Do not overwrite unrelated files, delete the broken checkout, or
+create a replacement organization without explicit intent.
 
-   ```sh
-   my init <org-id> --name "<Name>" --json
-   ```
+### Teach the daily loop
 
-   This creates local-only manifest + content repos; nothing is shared yet. Ask
-   the operator to confirm success and keep the returned manifest checkout for
-   any later agent-guided admin work.
-2. Materialize and verify as small sets. First:
-
-   ```sh
-   my manifests validate <manifest-dir>
-   my setup
-   ```
-
-   Then pause. If that worked, give:
-
-   ```sh
-   my doctor
-   ```
-
-3. Teach the everyday harness/session loop from the new umbrella:
-
-   ```sh
-   cd "$(my root)"
-   my ai <harness>
-   my ai --new-session <harness>
-   my session status
-   my ai -r <session-id> <harness>
-   my session finish <session-id> --land
-   ```
-
-   Explain that operators can paste transcripts, notes, screenshots, or issue
-   context into the harness chat; the agent will choose the right deeper `my`
-   commands when records need to be created.
-
-### JOIN branch (manifest already registered)
-
-For JOIN_BOOTSTRAP, resolve one prerequisite at a time before the numbered JOIN
-steps. Start by checking Git and GitHub authentication. If `gh` is missing, show
-the platform-appropriate installation from the public GitHub CLI guidance and
-ask before the operator runs it. Then use `gh auth status`; if needed, have the
-operator run `gh auth login`. Finally rerun the exact
-`my manifests sync <name>` continuation from the launch prompt. For a GitHub
-HTTPS URL, My AI supplies `gh auth git-credential` only to its Git child process;
-do not run `gh auth setup-git` or rewrite global Git configuration. SSH URLs use
-the operator's SSH keys. Once sync succeeds, continue with JOIN below.
-
-1. Have the operator inspect the basic workspace state, then summarize it back:
-
-   ```sh
-   cd "$(my root)"
-   my mounts list
-   my doctor
-   ```
-
-2. Help the person pick a role when roles exist. Then give the setup command:
-
-   ```sh
-   my setup --role <id>
-   ```
-
-   If there are no roles, use:
-
-   ```sh
-   my setup
-   ```
-
-   After setup, inspect manifest-declared tools:
-
-   ```sh
-   my tools list
-   ```
-
-   Walk one missing **required** tool at a time with `my tools info <name>`,
-   explain the command and its source, and ask before the operator runs it.
-   Treat optional tools as choices: explain them when useful, but never install
-   them silently and never block onboarding on them.
-
-3. Teach the basic daily loop in small sets:
-
-   ```sh
-   my sync
-   my ai <harness>
-   ```
-
-   Then:
-
-   ```sh
-   my ai --new-session <harness>
-   my session status
-   my ai -r <session-id> <harness>
-   my session finish <session-id> --land
-   ```
-
-   Then:
-
-   ```sh
-   my sync --push --print
-   my sync --push
-   ```
-
-4. Explain the operator/agent split: humans provide intent and raw context in
-   harness chat. For example, if the operator has a new meeting transcript or
-   fleet/support context, they paste it into the harness conversation; the agent
-   decides whether and how to create records. Do not teach the full content,
-   support, fleet, catalog, or admin CLI in onboarding.
-
-### Finish the walkthrough
-
-After the operator confirms the walkthrough worked, all required tools are
-present, and any required policy gates have been handled, give this final local
-command set:
+Once setup is verified, explain the umbrella and show the operator how to open
+normal organization work from a terminal with `cd "$(my root)"` and
+`my ai <harness>`. A nested interactive harness is a human terminal handoff;
+do not start it inside your own command tool and claim successful interaction.
+Teach these small groups as useful workflows, without requiring practice after
+every command unless the operator chose the manual walkthrough:
 
 ```sh
-my onboarding --complete
-my onboarding --status
+my sync
+my ai <harness>
 ```
 
-`--complete` records only local tour state. It does not publish, accept policy,
-or install anything; it refuses completion while a required tool is missing.
-Optional tools never block it. Do not mark completion on the operator's behalf
-before the operator confirms the walkthrough.
+```sh
+my ai --new-session <harness>
+my session status
+my ai -r <session-id> <harness>
+my session finish <session-id> --land
+```
 
-### Hard rules (do not skip)
+```sh
+my sync --push --print
+my sync --push
+```
 
-- **Command-driven only.** Every manifest change goes through a
-  validated `my` command. Never edit `manifest.json` or generated
-  `AGENTS.md`/`.mcp.json` by hand.
-  Do not use local operational commands such as `my mounts add` or
-  `my repos add` as if they authored manifest or catalog declarations.
-- **No secrets in the manifest.** `auth_ref` must be `none`, `env://NAME`,
-  `op://...`, or `broker://...`. Inline connection env values must be exact
-  `${VAR}` placeholders; connection header values may be composite but must
-  contain a `${VAR}` (e.g. `Authorization=Bearer ${TOKEN}`). Never paste a
-  literal credential.
-- **Publish is held to the end.** Everything stays `local-only` until the last
-  step. Before sharing anything, run `my publish --print`, show the human the
-  exact remotes/pushes it plans, and get explicit approval — then run
-  `my publish`. `my init` (local repos) and `my publish` (remotes) are the
-  irreversible/outward steps; confirm both with the human first.
-- **Gates before publish.** `my manifests validate <manifest-dir>`,
-  `my setup`, and a clean `my doctor` before you offer to publish.
-- **Stay generic and public-safe.** Teach the model and the shape; never bake
-  one org's private data into reusable guidance.
+Explain that humans can provide raw context: paste it into the harness conversation and let the agent select the appropriate deeper command surface.
+Do not teach the full content, fleet, catalog, or admin CLI during onboarding.
+
+### Finish and preserve boundaries
+
+After required tools and policy gates are handled, setup/doctor are verified,
+and the operator confirms the walkthrough and first normal launch worked, run
+`my onboarding --complete` and `my onboarding --status`. Completion records local
+tour state only; never mark it early or treat an installed executable as proof
+of a successful interactive launch.
+
+Use validated `my` commands; never hand-edit manifests or generated files.
+Never collect or store literal secrets. Before any publication, run validation,
+setup, doctor, and applicable compile gates; show `my publish --print` and obtain
+explicit approval before `my publish`. Local setup authorization is not
+publication authorization.
+
+If the operator asks to file an issue about a generic, public-safe CLI problem,
+file it in the requested project tracker. Do not substitute a personal scratch note
+or memory; clarify only when the target or privacy boundary is ambiguous.
 
 ## Tips
 
