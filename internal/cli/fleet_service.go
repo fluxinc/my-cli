@@ -321,6 +321,9 @@ func describeServiceError(svc *fleetService, err error) error {
 		}
 		if apiErr.ReviewURL != "" {
 			msg += "\nreview them in " + svc.service.ID + ": " + apiErr.ReviewURL
+		}
+		if len(apiErr.Affected) != 0 {
+			msg += "\nto apply it to all of them, run the same set again with --confirm " + strings.Join(apiErr.Affected, ",")
 		} else {
 			msg += "\nmake the change in " + svc.service.ID + "'s own UI"
 		}
@@ -384,7 +387,7 @@ func renderServiceFleetRecord(rec fleet.Record, raw recordsvc.Record) string {
 
 // setServiceFleet writes every update in one request against the revisions
 // the record was read at. There is nothing local to publish afterwards.
-func (a app) setServiceFleet(svc *fleetService, current recordsvc.Record, updates map[string]string, jsonOut bool) error {
+func (a app) setServiceFleet(svc *fleetService, current recordsvc.Record, updates map[string]string, confirmed []string, jsonOut bool) error {
 	changes, err := svc.serviceChanges(updates)
 	if err != nil {
 		return a.maybeJSONError(jsonOut, err)
@@ -395,7 +398,7 @@ func (a app) setServiceFleet(svc *fleetService, current recordsvc.Record, update
 	}
 	ctx, cancel := serviceContext()
 	defer cancel()
-	updated, err := client.Patch(ctx, current.ID(), changes, current.Revisions())
+	updated, err := client.Patch(ctx, current.ID(), changes, current.Revisions(), confirmed)
 	if err != nil {
 		return a.maybeJSONError(jsonOut, describeServiceError(svc, err))
 	}
@@ -474,4 +477,17 @@ func (a app) runFleetTransition(args []string) error {
 	}
 	fmt.Fprintf(a.stdout, "%s: %s -> %s in %s\n", rec.ID, rest[1], rec.Status, svc.service.ID)
 	return nil
+}
+
+// splitConfirm accepts --confirm repeated or comma-separated.
+func splitConfirm(values []string) []string {
+	var out []string
+	for _, value := range values {
+		for _, id := range strings.Split(value, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				out = append(out, id)
+			}
+		}
+	}
+	return out
 }

@@ -135,6 +135,7 @@ Then `my fleet` reads and writes the service live, through the
 - **`list` and `search`**: merge both surfaces.
 - **`set`**: sends every `KEY=VALUE` in one request, against the revisions just read. The service saves all of them or none. A conflict, a refused field or a change that needs confirmation is reported as such.
   - Nothing is left to publish.
+  - A change the service shares across other records (one order number on several instances) is refused at first, listing them. Run the same `set` again with `--confirm <ids>` to apply it to exactly those records.
   - `field_aliases` maps fleet names to the service's names.
 - **`transition`**: `my fleet transition <id> <operation> [KEY=VALUE...]` changes workflow state. `set status=` is refused for a service record.
 - **`add`**: creates markdown only, and needs `--workspace` once fleet is service-backed.

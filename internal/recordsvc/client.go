@@ -155,9 +155,14 @@ func (c *Client) Search(ctx context.Context, q string, includeArchived bool) ([]
 }
 
 // Patch writes several fields at once. The service saves all of them or
-// none, against the revisions given.
-func (c *Client) Patch(ctx context.Context, id string, changes map[string]string, revisions map[string]any) (Record, error) {
+// none, against the revisions given. confirmed names the other records a
+// shared change also touches, exactly as a confirmation_required refusal
+// listed them; nil when nothing was confirmed.
+func (c *Client) Patch(ctx context.Context, id string, changes map[string]string, revisions map[string]any, confirmed []string) (Record, error) {
 	body := map[string]any{"changes": changes}
+	if len(confirmed) != 0 {
+		body["confirmed_ids"] = confirmed
+	}
 	for key, value := range revisions {
 		body[key] = value
 	}

@@ -135,10 +135,15 @@ func (f *fakeRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			reply(200, rec)
 		case r.Method == http.MethodPatch && action == "":
 			changes, _ := body["changes"].(map[string]any)
-			if _, ok := changes["so"]; ok {
-				reply(409, map[string]any{"error": "confirmation_required", "message": "SO is shared by 2 records",
-					"affected": []string{"reg:box:1", "reg:box:9"}, "review_url": "https://registry.example.test/?q=SO-1001"})
-				return
+			if so, ok := changes["so"]; ok {
+				confirmed := fmt.Sprint(body["confirmed_ids"])
+				if confirmed != "[reg:box:1 reg:box:9]" {
+					reply(409, map[string]any{"error": "confirmation_required", "message": "SO is shared by 2 records",
+						"affected": []string{"reg:box:1", "reg:box:9"}, "review_url": "https://registry.example.test/?q=SO-1001"})
+					return
+				}
+				rec["order"].(map[string]any)["so_number"] = so
+				delete(changes, "so")
 			}
 			for field := range changes {
 				if _, ok := f.fields[field]; !ok {
@@ -375,6 +380,23 @@ func TestServiceBackedFleetWritesAtomicallyAndThroughTransitions(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "confirmation required") || strings.Contains(err.Error(), "someone changed") ||
 		!strings.Contains(err.Error(), "reg:box:1, reg:box:9") || !strings.Contains(err.Error(), "https://registry.example.test/?q=SO-1001") {
 		t.Fatalf("shared field err = %v", err)
+	}
+
+	// A wrong confirmation is refused again; the listed ids apply it.
+	err = a.run([]string{"my", "fleet", "set", "SO-1001", "so=SO-2000", "--confirm", "reg:box:1", "--home", home, "--manifest", "acme"})
+	if err == nil || !strings.Contains(err.Error(), "confirmation required") || !strings.Contains(err.Error(), "--confirm reg:box:1,reg:box:9") {
+		t.Fatalf("partial confirm err = %v", err)
+	}
+	stdout.Reset()
+	if err := a.run([]string{"my", "fleet", "set", "SO-1001", "so=SO-2000", "--confirm", "reg:box:1,reg:box:9", "--home", home, "--manifest", "acme"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := registry.records["reg:box:1"]["order"].(map[string]any)["so_number"]; got != "SO-2000" {
+		t.Fatalf("confirmed shared change: so = %v", got)
+	}
+	err = a.run([]string{"my", "fleet", "set", "printer-7", "status=x", "--confirm", "reg:box:1", "--home", home, "--manifest", "acme"})
+	if err == nil || !strings.Contains(err.Error(), "markdown record") {
+		t.Fatalf("confirm on markdown err = %v", err)
 	}
 
 	// Workflow state changes only through transition.

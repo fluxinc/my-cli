@@ -1,6 +1,6 @@
 # Service-backed fleet records
 
-Status: first slice implemented (2026-10-12); fan-out confirmation and semantic search follow
+Status: first slice and fan-out confirmation implemented (2026-10-12); semantic search follows
 
 This plan delivers Slice 4 of the data-surfaces plan
 (`2026-06-13-data-surfaces.md`) for the `fleet` data type. It applies once an
@@ -109,7 +109,7 @@ The service's JSON is projected into `fleet.Record`. Every field is named; nothi
 ## Required follow-ups
 
 The integration is not complete until both of these ship:
-- **Fan-out confirmation:** until it lands, a write that changes other records (a shared order number) is refused with "confirmation required", the ids it would affect and a link to the service's UI. It is never labelled stale.
+- **Fan-out confirmation** (done): a write that changes other records, such as a shared order number, is refused with "confirmation required", the ids it would affect and a link to the service's UI. It is never labelled stale. `my fleet set ... --confirm <ids>` sends those ids as `confirmed_ids`. The service applies the change only if they are exactly the records it covers, so nothing is confirmed implicitly.
 - **Semantic search** (below).
 
 ## Later slices

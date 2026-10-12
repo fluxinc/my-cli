@@ -42,7 +42,7 @@ func (a app) printFleetUsage() {
   my fleet search <text> [--manifest NAME] [--workspace ID] [--status TEXT] [--customer ID] [--partner ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
   my fleet get <id|identifier|path> [--manifest NAME] [--workspace ID] [--json]
   my fleet add <id> [--manifest NAME] [--workspace ID] [--customer ID] [--partner ID] [--status TEXT] [--device TEXT] [--serial TEXT] [--identifier ID] [--config-repo NAME] [--config-branch NAME] [--deployed-site TEXT] [--ship-to TEXT] [--contact TEXT] [--install-date DATE] [--print] [--json]
-  my fleet set <id|identifier> KEY=VALUE... [--manifest NAME] [--workspace ID] [--json]
+  my fleet set <id|identifier> KEY=VALUE... [--confirm IDS] [--manifest NAME] [--workspace ID] [--json]
   my fleet transition <id|identifier> <operation> [KEY=VALUE...] [--manifest NAME] [--json]
 
 Fleet commands use local markdown files under workspace fleet/ directories:
@@ -321,9 +321,13 @@ func (a app) runFleetAdd(args []string) error {
 
 func (a app) runFleetSet(args []string) error {
 	var opts meetingCommonOpts
+	var confirm stringListFlag
 	fs := newFlagSet("my fleet set", a.stderr)
 	bindMeetingCommonFlags(fs, &opts)
-	rest, err := parseInterspersed(fs, args, meetingValueFlags())
+	fs.Var(&confirm, "confirm", "confirm a shared change: the ids a confirmation_required refusal listed (repeatable or comma-separated)")
+	valueFlags := meetingValueFlags()
+	valueFlags["confirm"] = true
+	rest, err := parseInterspersed(fs, args, valueFlags)
 	if err != nil {
 		return err
 	}
@@ -352,7 +356,10 @@ func (a app) runFleetSet(args []string) error {
 		return a.maybeJSONError(opts.jsonOut, describeServiceError(svc, err))
 	}
 	if match.local == nil {
-		return a.setServiceFleet(svc, match.remote, updates, opts.jsonOut)
+		return a.setServiceFleet(svc, match.remote, updates, splitConfirm(confirm), opts.jsonOut)
+	}
+	if len(confirm) != 0 {
+		return fmt.Errorf("--confirm applies to records in a bound service; %s is a markdown record", match.local.ID)
 	}
 	rec, changes, err := fleet.Set(roots, match.local.Path, updates)
 	if err != nil {
