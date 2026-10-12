@@ -136,7 +136,8 @@ func (f *fakeRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case r.Method == http.MethodPatch && action == "":
 			changes, _ := body["changes"].(map[string]any)
 			if _, ok := changes["so"]; ok {
-				reply(409, map[string]any{"error": "confirmation_required", "message": "SO is shared by 2 records"})
+				reply(409, map[string]any{"error": "confirmation_required", "message": "SO is shared by 2 records",
+					"affected": []string{"reg:box:1", "reg:box:9"}, "review_url": "https://registry.example.test/?q=SO-1001"})
 				return
 			}
 			for field := range changes {
@@ -371,7 +372,8 @@ func TestServiceBackedFleetWritesAtomicallyAndThroughTransitions(t *testing.T) {
 
 	// A shared field reports confirmation, not staleness.
 	err = a.run([]string{"my", "fleet", "set", "SO-1001", "so=SO-2000", "--home", home, "--manifest", "acme"})
-	if err == nil || !strings.Contains(err.Error(), "confirmation required") || strings.Contains(err.Error(), "someone changed") {
+	if err == nil || !strings.Contains(err.Error(), "confirmation required") || strings.Contains(err.Error(), "someone changed") ||
+		!strings.Contains(err.Error(), "reg:box:1, reg:box:9") || !strings.Contains(err.Error(), "https://registry.example.test/?q=SO-1001") {
 		t.Fatalf("shared field err = %v", err)
 	}
 

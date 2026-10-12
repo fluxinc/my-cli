@@ -74,6 +74,10 @@ type Error struct {
 	Field     string
 	Messages  []string
 	Record    Record // the current record, when the service sent it (a stale write)
+	// For confirmation_required: the other records the change would touch,
+	// and where people can review them.
+	Affected  []string
+	ReviewURL string
 }
 
 func (e *Error) Error() string {
@@ -176,8 +180,13 @@ func (c *Client) Transition(ctx context.Context, id, operation string, params ma
 	return rec, err
 }
 
+// do sends one request. path is relative to the base and already escaped
+// (ids go through url.PathEscape once, here and nowhere else).
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body any, out any) error {
-	target := c.base.ResolveReference(&url.URL{Path: path})
+	target, err := url.Parse(c.base.String() + path)
+	if err != nil {
+		return err
+	}
 	if query != nil {
 		target.RawQuery = query.Encode()
 	}
@@ -224,19 +233,28 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 // and strips the credential from anything it echoes.
 func (c *Client) apiError(status int, data []byte) error {
 	var parsed struct {
-		Error    string   `json:"error"`
-		Message  string   `json:"message"`
-		Field    string   `json:"field"`
-		Messages []string `json:"messages"`
-		Record   Record   `json:"record"`
+		Error     string   `json:"error"`
+		Message   string   `json:"message"`
+		Field     string   `json:"field"`
+		Messages  []string `json:"messages"`
+		Record    Record   `json:"record"`
+		Affected  []string `json:"affected"`
+		ReviewURL string   `json:"review_url"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
 	_ = decoder.Decode(&parsed)
-	e := &Error{ServiceID: c.ServiceID, Status: status, Code: parsed.Error, Field: c.scrub(parsed.Field),
-		Message: c.scrub(parsed.Message), Record: parsed.Record}
+	e := &Error{ServiceID: c.ServiceID, Status: status, Code: c.scrub(parsed.Error), Field: c.scrub(parsed.Field),
+		Message: c.scrub(parsed.Message), ReviewURL: c.scrub(parsed.ReviewURL)}
+	if parsed.Record != nil {
+		scrubbed, _ := c.scrubValue(map[string]any(parsed.Record)).(map[string]any)
+		e.Record = Record(scrubbed)
+	}
 	for _, m := range parsed.Messages {
 		e.Messages = append(e.Messages, c.scrub(m))
+	}
+	for _, id := range parsed.Affected {
+		e.Affected = append(e.Affected, c.scrub(id))
 	}
 	if e.Code == "" {
 		e.Code = strings.ToLower(strings.ReplaceAll(http.StatusText(status), " ", "_"))
@@ -245,6 +263,31 @@ func (c *Client) apiError(status int, data []byte) error {
 		e.Message = "the credential was not accepted; check the service's auth_ref"
 	}
 	return e
+}
+
+// scrubValue strips the credential from every string in a decoded JSON
+// value, map keys included.
+func (c *Client) scrubValue(value any) any {
+	switch v := value.(type) {
+	case string:
+		return c.scrub(v)
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, item := range v {
+			out[c.scrub(key)] = c.scrubValue(item)
+		}
+		return out
+	case Record:
+		return c.scrubValue(map[string]any(v))
+	case []any:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = c.scrubValue(item)
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 func (c *Client) scrub(text string) string {

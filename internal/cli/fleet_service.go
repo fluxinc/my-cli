@@ -315,7 +315,16 @@ func describeServiceError(svc *fleetService, err error) error {
 	}
 	switch {
 	case apiErr.Code == "confirmation_required":
-		return fmt.Errorf("%v\nconfirmation required: this change also applies to other records; make it in %s's own UI", apiErr, svc.service.ID)
+		msg := fmt.Sprintf("%v\nconfirmation required: this change also applies to other records; nothing was saved", apiErr)
+		if len(apiErr.Affected) != 0 {
+			msg += "\naffected: " + strings.Join(apiErr.Affected, ", ")
+		}
+		if apiErr.ReviewURL != "" {
+			msg += "\nreview them in " + svc.service.ID + ": " + apiErr.ReviewURL
+		} else {
+			msg += "\nmake the change in " + svc.service.ID + "'s own UI"
+		}
+		return errors.New(msg)
 	case apiErr.Stale():
 		msg := fmt.Sprintf("%v\nsomeone changed this record first; nothing was saved", apiErr)
 		if apiErr.Record != nil {

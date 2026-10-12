@@ -101,7 +101,7 @@ The service's JSON is projected into `fleet.Record`. Every field is named; nothi
 | `Device`, `Serial` | `box.device_model`, `box.serial_number` |
 | `ConfigRepo`, `ConfigBranch` | `box.config_repo`, `box.config_branch` |
 | `Contacts` | `contacts[]`, as `role: name` |
-| `Source` | `service:<id>` |
+| `Source`, `Surface` | `service`, and `service:<id>` |
 | `URL` (new) | `url` when the service gives one |
 
 `get` also prints notes and provenance. `set` keys go through an alias table from fleet keys to service fields: `serial`, `device`→`model`, `ship_to`, `config_branch`, `install_date`→`installed`, and `deployed_site`→`site_name`. Other keys pass through as service field names, and the atomic backend refuses unknown ones (422 names the field), so nothing is saved. `my` keeps no copy of the service's field list.

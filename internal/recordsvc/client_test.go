@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os/exec"
 	"strings"
 	"testing"
@@ -157,5 +158,53 @@ func TestRevisionsAndProjection(t *testing.T) {
 	if f.ID != "reg:box:7" || f.Customer != "sampleco" || f.Partner != "integratorco" || f.Status != "install" ||
 		f.ShipTo != "Dock 4" || f.DeployedSite != "Main campus" || f.Surface != "service:registry" || f.Contacts[0] != "pm: Alex Doe" {
 		t.Fatalf("projection = %+v", f)
+	}
+}
+
+func TestOpaqueIDsAreEscapedExactlyOnce(t *testing.T) {
+	id := "asset A/B%é"
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.EscapedPath())
+		json.NewEncoder(w).Encode(map[string]any{"id": id})
+	}))
+	defer server.Close()
+	client, _ := NewClient("registry", server.URL+"/api", "")
+	ctx := context.Background()
+	if _, err := client.Get(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	client.Patch(ctx, id, map[string]string{"serial": "1"}, map[string]any{"revision": 1})
+	client.Transition(ctx, id, "advance", nil, map[string]any{"revision": 1})
+	want := "/api/records/" + url.PathEscape(id)
+	if len(paths) != 3 || paths[0] != want || paths[1] != want || paths[2] != want+"/transitions" {
+		t.Fatalf("paths = %v, want %s (escaped once)", paths, want)
+	}
+}
+
+func TestEveryStructuredErrorValueIsScrubbed(t *testing.T) {
+	for _, code := range []string{"echo-" + testToken, "confirmation_required"} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]any{
+				"error": code, "affected": []string{"reg:" + testToken}, "review_url": "https://registry.example.test/?q=" + testToken,
+				"record": map[string]any{"id": "reg:1", testToken: "key", "order": map[string]any{"so_number": testToken},
+					"notes": []any{map[string]any{"body": testToken}}},
+			})
+		}))
+		client, _ := NewClient("registry", server.URL+"/api", testToken)
+		_, err := client.Get(context.Background(), "reg:1")
+		server.Close()
+		var apiErr *Error
+		if !errors.As(err, &apiErr) {
+			t.Fatal(err)
+		}
+		raw, _ := json.Marshal(apiErr)
+		if strings.Contains(err.Error(), testToken) || strings.Contains(string(raw), testToken) {
+			t.Fatalf("%s: the credential survives in %s", code, raw)
+		}
+		if code == "confirmation_required" && (len(apiErr.Affected) != 1 || apiErr.ReviewURL == "") {
+			t.Fatalf("affected/review_url dropped: %+v", apiErr)
+		}
 	}
 }
