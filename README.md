@@ -829,6 +829,11 @@ indexed in [docs/plans/](docs/plans/README.md):
   `my contract list` plus `my admin contract add|remove` for the standard
   inspect/review-commit-push workflow. Plan:
   [contract rules](docs/plans/2026-06-12-contract-rules.md).
+- **Active — service-backed fleet records (first slice implemented; unreleased).**
+  Fleet reads and revision-checked writes can use a manifest-bound HTTP service
+  alongside Markdown mounts. Explicit fan-out confirmation and hydrated
+  semantic search remain. Plan:
+  [service-backed fleet](docs/plans/2026-10-12-service-backed-fleet.md).
 - **Shipped — customer records move to the data plane (v0.22.0).**
   `my customers list` now reads mounted `customers/*.md` records, customer
   alias resolution still feeds meetings/support/fleet filters, and
@@ -838,13 +843,13 @@ indexed in [docs/plans/](docs/plans/README.md):
 - **Shipped — data bindings over surfaces (v0.23.0).** Manifest `data_bindings`
   maps stable operational data nouns (`customers`, `meetings`, `support`,
   `fleet`) to existing `mount:<id>` or `service:<id>` surfaces. Mount-backed
-  bindings narrow today's local record commands; service-backed domain
-  invocation remains deferred. Plan:
+  bindings narrow local record commands. Service-backed fleet invocation
+  now proceeds through the active service-backed fleet plan. Plan:
   [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 2.
 - **Shipped — domain notes over bound surfaces (v0.24.0).** Data bindings can
   carry labeled guidance fragments for their backing surfaces without changing
-  the top-level org contract. This completes the near-term data-surface scope;
-  service-backed domain invocation and contained runners remain future/YAGNI.
+  the top-level org contract. This completed the initial data-surface scope;
+  service-backed fleet invocation now proceeds through its active plan.
   Plan:
   [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 3.
 - **Shipped — contained runner launch projection (v0.25.0).** Org-side
