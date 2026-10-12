@@ -1124,7 +1124,7 @@ func TestValidateManifestCatchesInvalidServicesRolesAndServiceRequirements(t *te
 		`service "Bad Service" purpose is required`,
 		`service "Bad Service" auth_ref "secret-value" must use op://, env://, broker://, or none`,
 		`service "Bad Service" describe_ref "../server.json" must be an http(s) URL or a relative path inside the manifest repo`,
-		`service "status-api" connection is only supported for kind "mcp"`,
+		`service "status-api" is http; its connection takes only type and url`,
 		`data_bindings.customers.surface references unknown mount "missing-mount"`,
 		`data_bindings.customers.guidance[0] "../private.md" must be a relative path that stays inside the manifest repo`,
 		`data_bindings.meetings.surface references unknown service "missing-service"`,
@@ -1363,5 +1363,59 @@ func writeFile(t *testing.T, path, body string) {
 	}
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestValidateHTTPServiceBindingsAndBaseURLs(t *testing.T) {
+	for _, tc := range []struct {
+		url  string
+		ok   bool
+		want string
+	}{
+		{"https://registry.example.test/api/v1", true, ""},
+		{"http://127.0.0.1:8080/api", true, ""},
+		{"http://registry.example.test/api", false, "must use https"},
+		{"https://user:secret@registry.example.test/api", false, "must not contain credentials"},
+		{"https://registry.example.test/api?token=x", false, "must not contain a query"},
+		{"registry.example.test/api", false, "absolute https URL"},
+	} {
+		err := ValidateAPIBaseURL(tc.url)
+		if tc.ok != (err == nil) || (err != nil && !strings.Contains(err.Error(), tc.want)) {
+			t.Fatalf("ValidateAPIBaseURL(%q) = %v, want ok=%v containing %q", tc.url, err, tc.ok, tc.want)
+		}
+	}
+
+	dir := t.TempDir()
+	writeManifest(t, dir, `{
+  "manifest_version": 1,
+  "organization": {"id": "acme", "name": "Acme"},
+  "mounts": [{"id": "workspace", "kind": "handbook", "git_url": "https://example.test/acme/workspace.git"}],
+  "services": [
+    {"id": "registry", "kind": "http", "purpose": "Instance registry", "auth_ref": "env://REGISTRY_TOKEN",
+     "connection": {"type": "http", "url": "https://registry.example.test/api/v1"}},
+    {"id": "other", "kind": "http", "purpose": "Other", "auth_ref": "none",
+     "connection": {"url": "https://other.example.test/api"}}
+  ],
+  "data_bindings": {
+    "fleet": {"surfaces": ["service:registry", "mount:workspace"]},
+    "support": {"surfaces": ["service:registry", "service:other"]},
+    "meetings": {"surface": "mount:workspace", "surfaces": ["mount:workspace"]},
+    "customers": {"surfaces": ["mount:workspace", "mount:workspace"]}
+  }
+}`)
+	result := ValidateFile(dir)
+	for _, want := range []string{
+		"data_bindings.support names 2 services; at most one service may back a data type",
+		"data_bindings.meetings sets both surface and surfaces; use one",
+		`data_bindings.customers.surfaces lists "mount:workspace" twice`,
+	} {
+		if !containsString(result.Errors, want) {
+			t.Fatalf("errors missing %q:\n%#v", want, result.Errors)
+		}
+	}
+	for _, err := range result.Errors {
+		if strings.Contains(err, "fleet") || strings.Contains(err, "registry") {
+			t.Fatalf("valid fleet binding or registry service reported: %q", err)
+		}
 	}
 }

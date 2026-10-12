@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Serve fleet records from a service: `data_bindings` may name several
+  `surfaces` (one service plus mounts) and `field_aliases`. An `http` service
+  takes its API base from `connection.url` (https, no credentials or query).
+  `my fleet get/list/search/set` read and write it live through
+  `records-http/v1`. Writes save all fields or none. Workflow moves go through
+  the new `my fleet transition`. Markdown records with `managed_by` become
+  pointers. A service that cannot answer fails the command. Credentials from
+  `env://` or `op://` never leave the service's origin or reach output.
+
 ## 0.42.0 - 2026-09-12
 
 ### Fixed

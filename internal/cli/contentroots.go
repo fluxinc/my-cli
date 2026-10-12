@@ -110,24 +110,30 @@ func applyDataBinding(home, manifestName, noun string, roots []record.Root) ([]r
 		if !ok {
 			continue
 		}
-		kind, id, ok := manifest.ParseSurfaceRef(binding.Surface)
-		if !ok {
-			// loadRegisteredDocs validates manifests before returning them, so this
-			// path only protects against tests or future callers bypassing validation.
-			return nil, fmt.Errorf("data binding %s has invalid surface %q", dataType, binding.Surface)
-		}
-		switch kind {
-		case "mount":
-			mountIDs[id] = true
-		case "service":
-			serviceRefs = append(serviceRefs, doc.ref.Name+":"+id)
+		for _, ref := range binding.SurfaceRefs() {
+			kind, id, ok := manifest.ParseSurfaceRef(ref)
+			if !ok {
+				// loadRegisteredDocs validates manifests before returning them, so this
+				// path only protects against tests or future callers bypassing validation.
+				return nil, fmt.Errorf("data binding %s has invalid surface %q", dataType, ref)
+			}
+			switch kind {
+			case "mount":
+				mountIDs[id] = true
+			case "service":
+				serviceRefs = append(serviceRefs, doc.ref.Name+":"+id)
+			}
 		}
 	}
-	if len(serviceRefs) != 0 {
+	if len(serviceRefs) != 0 && !serviceBackedDataType(dataType) {
 		sort.Strings(serviceRefs)
 		return nil, fmt.Errorf("%s is bound to service surface(s) %s; service-backed data domains are not implemented yet", dataType, strings.Join(serviceRefs, ", "))
 	}
 	if len(mountIDs) == 0 {
+		if len(serviceRefs) != 0 {
+			// Only the service holds this data type's records; no local roots.
+			return []record.Root{}, nil
+		}
 		return roots, nil
 	}
 	filtered := make([]record.Root, 0, len(roots))

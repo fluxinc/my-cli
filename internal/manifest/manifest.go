@@ -171,9 +171,29 @@ type ChangeRecordRule struct {
 // lists optional domain-notes markdown fragments (paths relative to the
 // manifest root) rendered into AGENTS.md under a labeled, source-attributed
 // "## Domain Notes: <data type>" section, separate from the org contract.
+//
+// Surfaces names several surfaces in order, for a data type that is partly
+// served by a service and partly kept in a mount (records not yet moved).
+// A binding sets Surface or Surfaces, never both.
+//
+// FieldAliases maps the data type's own field names (for example fleet's
+// device) to the bound service's names, for writes through the service.
 type DataBinding struct {
-	Surface  string   `json:"surface"`
-	Guidance []string `json:"guidance,omitempty"`
+	Surface      string            `json:"surface,omitempty"`
+	Surfaces     []string          `json:"surfaces,omitempty"`
+	Guidance     []string          `json:"guidance,omitempty"`
+	FieldAliases map[string]string `json:"field_aliases,omitempty"`
+}
+
+// SurfaceRefs returns the binding's surfaces in order.
+func (b DataBinding) SurfaceRefs() []string {
+	if len(b.Surfaces) != 0 {
+		return b.Surfaces
+	}
+	if b.Surface != "" {
+		return []string{b.Surface}
+	}
+	return nil
 }
 
 // Organization identifies the organization owning this manifest.
@@ -941,27 +961,53 @@ func validateDataBindings(bindings map[string]DataBinding, mountIDs, serviceIDs 
 			result.Errors = append(result.Errors, fmt.Sprintf("data_bindings key %q is unsupported; supported data types are customers, fleet, meetings, support", dataType))
 			continue
 		}
-		kind, id, ok := ParseSurfaceRef(binding.Surface)
-		if strings.TrimSpace(binding.Surface) == "" {
+		if binding.Surface != "" && len(binding.Surfaces) != 0 {
+			result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s sets both surface and surfaces; use one", dataType))
+			continue
+		}
+		refs := binding.SurfaceRefs()
+		if len(refs) == 0 || strings.TrimSpace(refs[0]) == "" {
 			result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface is required", dataType))
 			continue
 		}
-		if !ok {
-			result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface %q must be mount:<id> or service:<id>", dataType, binding.Surface))
-			continue
-		}
-		if !portableID(id) {
-			result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface %s id %q must be lowercase kebab-case", dataType, kind, id))
-			continue
-		}
-		switch kind {
-		case "mount":
-			if !mountIDs[id] {
-				result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface references unknown mount %q", dataType, id))
+		seenRefs := map[string]bool{}
+		services := 0
+		for _, ref := range refs {
+			kind, id, ok := ParseSurfaceRef(ref)
+			if !ok {
+				result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface %q must be mount:<id> or service:<id>", dataType, ref))
+				continue
 			}
-		case "service":
-			if !serviceIDs[id] {
-				result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface references unknown service %q", dataType, id))
+			if !portableID(id) {
+				result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface %s id %q must be lowercase kebab-case", dataType, kind, id))
+				continue
+			}
+			if seenRefs[ref] {
+				result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surfaces lists %q twice", dataType, ref))
+				continue
+			}
+			seenRefs[ref] = true
+			switch kind {
+			case "mount":
+				if !mountIDs[id] {
+					result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface references unknown mount %q", dataType, id))
+				}
+			case "service":
+				services++
+				if !serviceIDs[id] {
+					result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.surface references unknown service %q", dataType, id))
+				}
+			}
+		}
+		if services > 1 {
+			result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s names %d services; at most one service may back a data type", dataType, services))
+		}
+		if len(binding.FieldAliases) != 0 && services == 0 {
+			result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.field_aliases needs a service surface", dataType))
+		}
+		for from, to := range binding.FieldAliases {
+			if strings.TrimSpace(from) == "" || strings.TrimSpace(to) == "" || strings.TrimSpace(from) != from || strings.TrimSpace(to) != to {
+				result.Errors = append(result.Errors, fmt.Sprintf("data_bindings.%s.field_aliases %q: %q must be non-empty names", dataType, from, to))
 			}
 		}
 		for i, path := range binding.Guidance {
@@ -1492,10 +1538,12 @@ func validateService(service Service, result *ValidationResult) {
 		result.Errors = append(result.Errors, fmt.Sprintf("service %q describe_ref %q must be an http(s) URL or a relative path inside the manifest repo", service.ID, service.DescribeRef))
 	}
 	if !service.Connection.IsZero() {
-		if service.Kind != "mcp" {
-			result.Errors = append(result.Errors, fmt.Sprintf("service %q connection is only supported for kind %q", service.ID, "mcp"))
+		switch service.Kind {
+		case "mcp":
+			validateServiceConnection(service.ID, service.Connection, result)
+		case "http":
+			validateHTTPServiceConnection(service.ID, service.Connection, result)
 		}
-		validateServiceConnection(service.ID, service.Connection, result)
 	}
 }
 
@@ -1573,6 +1621,46 @@ func (c ServiceConnection) IsZero() bool {
 		len(c.Env) == 0 &&
 		c.URL == "" &&
 		len(c.Headers) == 0
+}
+
+// An http service's connection is only its API base URL. Credentials come
+// from auth_ref at invocation, so the URL may not carry any: no userinfo, no
+// query. Plain http is allowed only for loopback (local tests).
+func validateHTTPServiceConnection(serviceID string, connection ServiceConnection, result *ValidationResult) {
+	if connection.Command != "" || len(connection.Args) != 0 || len(connection.Env) != 0 || len(connection.Headers) != 0 {
+		result.Errors = append(result.Errors, fmt.Sprintf("service %q is http; its connection takes only type and url", serviceID))
+	}
+	if connection.Type != "" && connection.Type != "http" {
+		result.Errors = append(result.Errors, fmt.Sprintf("service %q connection.type %q must be http for an http service", serviceID, connection.Type))
+	}
+	if err := ValidateAPIBaseURL(connection.URL); err != nil {
+		result.Errors = append(result.Errors, fmt.Sprintf("service %q connection.url: %v", serviceID, err))
+	}
+}
+
+// ValidateAPIBaseURL checks an http service's API base URL.
+func ValidateAPIBaseURL(value string) error {
+	u, err := url.Parse(value)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("%q must be an absolute https URL", value)
+	}
+	if u.User != nil {
+		return fmt.Errorf("must not contain credentials")
+	}
+	if u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return fmt.Errorf("must not contain a query or fragment")
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if host := u.Hostname(); host == "localhost" || host == "127.0.0.1" || host == "::1" {
+			return nil
+		}
+		return fmt.Errorf("%q must use https (http is allowed only for loopback)", value)
+	default:
+		return fmt.Errorf("%q must be an absolute https URL", value)
+	}
 }
 
 func validateServiceConnection(serviceID string, connection ServiceConnection, result *ValidationResult) {

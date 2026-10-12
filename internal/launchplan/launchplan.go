@@ -89,10 +89,14 @@ type Mount struct {
 }
 
 // DataBinding projects one in-scope data binding.
+//
+// Surface, Kind and Ref name the first visible surface. Surfaces lists every
+// visible surface, in order, when the binding names more than one.
 type DataBinding struct {
-	Surface string `json:"surface"`
-	Kind    string `json:"kind"`
-	Ref     string `json:"ref"`
+	Surface  string   `json:"surface"`
+	Kind     string   `json:"kind"`
+	Ref      string   `json:"ref"`
+	Surfaces []string `json:"surfaces,omitempty"`
 }
 
 // Service projects one non-secret service declaration.
@@ -318,7 +322,7 @@ func projectGuidance(doc manifest.Document, role manifest.Role, hasRole bool, bi
 				Source:  "domain:" + dataType,
 				Mode:    "reference",
 				Path:    p,
-				Surface: binding.Surface,
+				Surface: strings.Join(binding.SurfaceRefs(), ", "),
 			})
 		}
 	}
@@ -354,31 +358,41 @@ func projectDataBindings(bindings map[string]manifest.DataBinding, allMounts map
 	sort.Strings(dataTypes)
 	for _, dataType := range dataTypes {
 		binding := bindings[dataType]
-		kind, id, ok := manifest.ParseSurfaceRef(binding.Surface)
-		if !ok {
-			return nil, fmt.Errorf("data binding %s has invalid surface %q", dataType, binding.Surface)
+		var visible []string
+		var first DataBinding
+		for _, ref := range binding.SurfaceRefs() {
+			kind, id, ok := manifest.ParseSurfaceRef(ref)
+			if !ok {
+				return nil, fmt.Errorf("data binding %s has invalid surface %q", dataType, ref)
+			}
+			switch kind {
+			case "mount":
+				if _, ok := allMounts[id]; !ok {
+					return nil, fmt.Errorf("data binding %s references unknown mount %q", dataType, id)
+				}
+				if !visibleMounts[id] {
+					continue
+				}
+			case "service":
+				if _, ok := allServices[id]; !ok {
+					return nil, fmt.Errorf("data binding %s references unknown service %q", dataType, id)
+				}
+				if !visibleServices[id] {
+					continue
+				}
+			}
+			if len(visible) == 0 {
+				first = DataBinding{Surface: ref, Kind: kind, Ref: id}
+			}
+			visible = append(visible, ref)
 		}
-		switch kind {
-		case "mount":
-			if _, ok := allMounts[id]; !ok {
-				return nil, fmt.Errorf("data binding %s references unknown mount %q", dataType, id)
-			}
-			if !visibleMounts[id] {
-				continue
-			}
-		case "service":
-			if _, ok := allServices[id]; !ok {
-				return nil, fmt.Errorf("data binding %s references unknown service %q", dataType, id)
-			}
-			if !visibleServices[id] {
-				continue
-			}
+		if len(visible) == 0 {
+			continue
 		}
-		out[dataType] = DataBinding{
-			Surface: binding.Surface,
-			Kind:    kind,
-			Ref:     id,
+		if len(binding.SurfaceRefs()) > 1 {
+			first.Surfaces = visible
 		}
+		out[dataType] = first
 	}
 	return out, nil
 }
