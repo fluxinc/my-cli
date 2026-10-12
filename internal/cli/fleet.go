@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/fluxinc/my-cli/internal/fleet"
@@ -25,6 +26,8 @@ func (a app) runFleet(args []string) error {
 		return a.runFleetAdd(args[1:])
 	case "set":
 		return a.runFleetSet(args[1:])
+	case "transition":
+		return a.runFleetTransition(args[1:])
 	case "-h", "--help", "help":
 		a.printFleetUsage()
 		return nil
@@ -40,6 +43,7 @@ func (a app) printFleetUsage() {
   my fleet get <id|identifier|path> [--manifest NAME] [--workspace ID] [--json]
   my fleet add <id> [--manifest NAME] [--workspace ID] [--customer ID] [--partner ID] [--status TEXT] [--device TEXT] [--serial TEXT] [--identifier ID] [--config-repo NAME] [--config-branch NAME] [--deployed-site TEXT] [--ship-to TEXT] [--contact TEXT] [--install-date DATE] [--print] [--json]
   my fleet set <id|identifier> KEY=VALUE... [--manifest NAME] [--workspace ID] [--json]
+  my fleet transition <id|identifier> <operation> [KEY=VALUE...] [--manifest NAME] [--json]
 
 Fleet commands use local markdown files under workspace fleet/ directories:
 one registry record per deployed instance, keyed by a stable id (use the
@@ -49,7 +53,15 @@ and reports related support records that share an identifier. set updates
 scalar frontmatter fields in place (for example status=live) and preserves
 every other line; state history is the record's git history, so publish each
 	meaningful transition with my sync --push --message. status vocabulary is
-organization-defined. --where filters on any top-level frontmatter field.`)
+organization-defined. --where filters on any top-level frontmatter field.
+
+When the manifest binds fleet to a service (data_bindings.fleet), records in
+that service are read and written live: get resolves the reference there,
+set saves every KEY=VALUE together or none of them against the record's
+revisions, workflow states change only with transition, and there is
+nothing to publish. Markdown records with managed_by: service:<id> are
+pointers to the service. A service that cannot answer fails the command;
+no local copy stands in for it.`)
 }
 
 func (a app) runFleetList(args []string) error {
@@ -73,6 +85,18 @@ func (a app) runFleetList(args []string) error {
 	if err != nil {
 		return err
 	}
+	svc, err := boundFleetService(opts.home, opts.manifestName, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	if svc != nil {
+		remote, err := serviceFleetRecords(svc, "", filter)
+		if err != nil {
+			return a.maybeJSONError(opts.jsonOut, describeServiceError(svc, err))
+		}
+		found = append(remote, withoutPointers(found)...)
+		sort.SliceStable(found, func(i, j int) bool { return found[i].ID < found[j].ID })
+	}
 	return a.printFleet(found, opts.jsonOut)
 }
 
@@ -93,9 +117,22 @@ func (a app) runFleetSearch(args []string) error {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
 	filter = a.resolveFleetFilter(opts.home, opts.manifestName, opts.umbrellaRoot, filter)
-	found, err := fleetSearch(roots, rest[0], filter)
+	svc, err := boundFleetService(opts.home, opts.manifestName, opts.umbrellaRoot)
 	if err != nil {
-		return err
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	var found []fleet.Record
+	if len(roots) != 0 {
+		if found, err = fleetSearch(roots, rest[0], filter); err != nil {
+			return err
+		}
+	}
+	if svc != nil {
+		remote, err := serviceFleetRecords(svc, rest[0], filter)
+		if err != nil {
+			return a.maybeJSONError(opts.jsonOut, describeServiceError(svc, err))
+		}
+		found = append(remote, withoutPointers(found)...)
 	}
 	return a.printFleet(found, opts.jsonOut)
 }
@@ -115,17 +152,31 @@ func (a app) runFleetGet(args []string) error {
 	if err != nil {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
-	rec, content, err := fleet.Get(roots, rest[0])
+	svc, err := boundFleetService(opts.home, opts.manifestName, opts.umbrellaRoot)
 	if err != nil {
-		return err
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	match, err := resolveOneFleet(roots, svc, rest[0])
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, describeServiceError(svc, err))
+	}
+	rec := match.record(svc)
+	content := ""
+	if match.local != nil {
+		if content, err = fleet.Content(rec); err != nil {
+			return err
+		}
+	} else {
+		content = renderServiceFleetRecord(rec, match.remote)
 	}
 	related := a.relatedSupportRecords(opts.home, opts.manifestName, opts.umbrellaRoot, rec)
 	if opts.jsonOut {
 		return printJSON(a.stdout, struct {
 			Record         fleet.Record     `json:"record"`
 			Content        string           `json:"content"`
+			ServiceRecord  map[string]any   `json:"service_record,omitempty"`
 			RelatedSupport []support.Record `json:"related_support,omitempty"`
-		}{Record: rec, Content: content, RelatedSupport: related})
+		}{Record: rec, Content: content, ServiceRecord: match.remote, RelatedSupport: related})
 	}
 	fmt.Fprint(a.stdout, content)
 	if len(related) != 0 {
@@ -217,6 +268,11 @@ func (a app) runFleetAdd(args []string) error {
 	if len(rest) != 1 {
 		return fmt.Errorf("usage: my fleet add <id>")
 	}
+	if svc, err := boundFleetService(opts.home, opts.manifestName, opts.umbrellaRoot); err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	} else if svc != nil && opts.workspaceID == "" {
+		return a.maybeJSONError(opts.jsonOut, fmt.Errorf("fleet is backed by service %s: create its records there; for a markdown record of another kind, pass --workspace <mount>", svc.service.ID))
+	}
 	roots, err := fleetRoots(opts.home, opts.manifestName, opts.workspaceID, opts.umbrellaRoot)
 	if err != nil {
 		return a.maybeJSONError(opts.jsonOut, err)
@@ -287,7 +343,18 @@ func (a app) runFleetSet(args []string) error {
 	if err != nil {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
-	rec, changes, err := fleet.Set(roots, rest[0], updates)
+	svc, err := boundFleetService(opts.home, opts.manifestName, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	match, err := resolveOneFleet(roots, svc, rest[0])
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, describeServiceError(svc, err))
+	}
+	if match.local == nil {
+		return a.setServiceFleet(svc, match.remote, updates, opts.jsonOut)
+	}
+	rec, changes, err := fleet.Set(roots, match.local.Path, updates)
 	if err != nil {
 		return err
 	}
@@ -349,10 +416,6 @@ func (a app) relatedSupportRecords(home, manifestName, umbrellaRoot string, rec 
 // warnUnknownFleetIdentifiers notes identifiers absent from the fleet
 // registry. The registry may legitimately lag reality, so this warns and
 // never blocks; without a populated registry it stays silent.
-
-// warnUnknownFleetIdentifiers notes identifiers absent from the fleet
-// registry. The registry may legitimately lag reality, so this warns and
-// never blocks; without a populated registry it stays silent.
 func (a app) warnUnknownFleetIdentifiers(opts meetingCommonOpts, identifiers []string) {
 	if len(identifiers) == 0 {
 		return
@@ -362,7 +425,11 @@ func (a app) warnUnknownFleetIdentifiers(opts meetingCommonOpts, identifiers []s
 		return
 	}
 	all, err := fleet.List(roots, fleet.Filter{})
-	if err != nil || len(all) == 0 {
+	if err != nil {
+		return
+	}
+	svc, err := boundFleetService(opts.home, opts.manifestName, opts.umbrellaRoot)
+	if err != nil || (svc == nil && len(all) == 0) {
 		return
 	}
 	known := map[string]bool{}
@@ -373,9 +440,18 @@ func (a app) warnUnknownFleetIdentifiers(opts meetingCommonOpts, identifiers []s
 		}
 	}
 	for _, id := range identifiers {
-		if !known[strings.ToLower(id)] {
-			fmt.Fprintf(a.stderr, "note: identifier %q is not in the fleet registry; it may be new or misspelled\n", id)
+		if known[strings.ToLower(id)] {
+			continue
 		}
+		if svc != nil {
+			// Ask the service; if it cannot answer, say nothing rather than
+			// warn about an identifier it may well know.
+			matches, err := resolveFleet(nil, svc, id)
+			if err != nil || len(matches) != 0 {
+				continue
+			}
+		}
+		fmt.Fprintf(a.stderr, "note: identifier %q is not in the fleet registry; it may be new or misspelled\n", id)
 	}
 }
 

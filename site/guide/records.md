@@ -25,6 +25,7 @@ my fleet search <text>
 my fleet get <id|identifier|path>
 my fleet add <id> [--customer ID] [--status TEXT] [--device TEXT] [--serial TEXT] [--identifier ID]...
 my fleet set <id> KEY=VALUE...
+my fleet transition <id> <operation> [KEY=VALUE...]
 ```
 
 Bare `my meetings` and `my support` use their safest useful action: they list
@@ -106,6 +107,40 @@ a readable git commit.
 
 The built-in fleet work contract ties these together — see
 [Guidance and Contract](./guidance-and-contract.md).
+
+### Service-backed fleet
+
+When an organization's registry lives in a service with an API, the manifest
+binds fleet to it. Records of other kinds can stay in a mount:
+
+```json
+"services": [{
+  "id": "registry", "kind": "http", "purpose": "Instance registry",
+  "connection": { "type": "http", "url": "https://registry.example.test/api/v1" },
+  "auth_ref": "op://Example/registry-api/token"
+}],
+"data_bindings": {
+  "fleet": { "surfaces": ["service:registry", "mount:workspace"],
+             "field_aliases": { "device": "model" } }
+}
+```
+
+Then `my fleet` reads and writes the service live, through the
+`records-http/v1` protocol:
+
+- **`get`**: the reference resolves in the service and in the mount.
+  - One match is shown with its notes and provenance.
+  - Several matches, on either surface, are listed and the command exits non-zero.
+  - Related support records match every identifier the live record carries.
+- **`list` and `search`**: merge both surfaces.
+- **`set`**: sends every `KEY=VALUE` in one request, against the revisions just read. The service saves all of them or none. A conflict, a refused field or a change that needs confirmation is reported as such.
+  - Nothing is left to publish.
+  - `field_aliases` maps fleet names to the service's names.
+- **`transition`**: `my fleet transition <id> <operation> [KEY=VALUE...]` changes workflow state. `set status=` is refused for a service record.
+- **`add`**: creates markdown only, and needs `--workspace` once fleet is service-backed.
+- **Pointers**: a markdown record with `managed_by: service:registry` (and optionally `managed_id`) points to the service. It is hidden from lists, `get` follows it, and its old values are never shown as current.
+- **Failures**: if the service cannot answer, the command fails and names it. No local copy stands in.
+- **Credentials**: `auth_ref` (`env://` or `op://`) is resolved per invocation, sent only to the service's own origin, and never printed.
 
 ## Adoption: why your file did not publish
 

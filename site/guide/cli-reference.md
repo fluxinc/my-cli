@@ -254,6 +254,7 @@ my fleet search <text>
 my fleet get <id|identifier|path>
 my fleet add <id>
 my fleet set <id> KEY=VALUE...
+my fleet transition <id> <operation> [KEY=VALUE...]
 
 my record adopt <path>
 

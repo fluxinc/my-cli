@@ -48,9 +48,22 @@ type Record struct {
 	InstallDate  string   `json:"install_date,omitempty"`
 	Source       string   `json:"source,omitempty"`
 	Snippet      string   `json:"snippet,omitempty"`
+	// Surface is where the record lives: mount:<workspace> for markdown, or
+	// service:<id> for a record read live from a bound service.
+	Surface  string `json:"surface,omitempty"`
+	URL      string `json:"url,omitempty"`
+	Archived bool   `json:"archived,omitempty"`
+	// ManagedBy marks a markdown record whose instance moved to a service
+	// (service:<id>). It is a pointer, never shown as current values;
+	// ManagedID is the service's stable id for it, when known.
+	ManagedBy string `json:"managed_by,omitempty"`
+	ManagedID string `json:"managed_id,omitempty"`
 
 	fields map[string]string
 }
+
+// Managed reports whether the record is a pointer to a service record.
+func (r Record) Managed() bool { return r.ManagedBy != "" }
 
 // AddOptions controls fleet record scaffold creation.
 type AddOptions struct {
@@ -128,17 +141,41 @@ func Get(roots []Root, key string) (Record, string, error) {
 }
 
 func resolve(roots []Root, key string) (Record, error) {
+	matches, err := Matches(roots, key)
+	if err != nil {
+		return Record{}, err
+	}
+	if len(matches) == 0 {
+		return Record{}, fmt.Errorf("fleet record %q not found", key)
+	}
+	if len(matches) > 1 {
+		var ids []string
+		for _, match := range matches {
+			ids = append(ids, match.ID)
+		}
+		return Record{}, fmt.Errorf("fleet record %q is ambiguous (matches %s); pass the record id", key, strings.Join(ids, ", "))
+	}
+	return matches[0], nil
+}
+
+// Matches returns every local record key names: a path, an id or filename
+// stem, else any identifier (exact, then case-insensitive). No match is an
+// empty result, not an error.
+func Matches(roots []Root, key string) ([]Record, error) {
 	key = strings.TrimSpace(key)
 	if key == "" {
-		return Record{}, fmt.Errorf("fleet record id, identifier, or path is required")
+		return nil, fmt.Errorf("fleet record id, identifier, or path is required")
 	}
 	if info, err := os.Stat(key); err == nil && !info.IsDir() {
 		rec, err := parseRecord(Root{}, key)
-		return rec, err
+		if err != nil {
+			return nil, err
+		}
+		return []Record{rec}, nil
 	}
 	all, err := scan(roots)
 	if err != nil {
-		return Record{}, err
+		return nil, err
 	}
 	var matches []Record
 	for _, rec := range all {
@@ -165,17 +202,16 @@ func resolve(roots []Root, key string) (Record, error) {
 			}
 		}
 	}
-	if len(matches) == 0 {
-		return Record{}, fmt.Errorf("fleet record %q not found", key)
+	return matches, nil
+}
+
+// Content reads a local record's markdown.
+func Content(rec Record) (string, error) {
+	data, err := os.ReadFile(rec.Path)
+	if err != nil {
+		return "", err
 	}
-	if len(matches) > 1 {
-		var ids []string
-		for _, match := range matches {
-			ids = append(ids, match.ID)
-		}
-		return Record{}, fmt.Errorf("fleet record %q is ambiguous (matches %s); pass the record id", key, strings.Join(ids, ", "))
-	}
-	return matches[0], nil
+	return string(data), nil
 }
 
 // Add creates a markdown fleet record scaffold in root/fleet.
@@ -274,10 +310,23 @@ func parseRecord(root Root, path string) (Record, error) {
 		Contacts:     record.Values(frontmatter, "contacts"),
 		InstallDate:  record.FirstValue(frontmatter, "install_date"),
 		Source:       record.FirstValue(frontmatter, "source"),
+		Surface:      surfaceFor(root),
+		ManagedBy:    record.FirstValue(frontmatter, "managed_by"),
+		ManagedID:    record.FirstValue(frontmatter, "managed_id"),
 		fields:       record.ScalarFields(frontmatter),
 	}
 	return rec, nil
 }
+
+func surfaceFor(root Root) string {
+	if root.Workspace == "" {
+		return ""
+	}
+	return "mount:" + root.Workspace
+}
+
+// FilterRecords applies a filter to records from any surface.
+func FilterRecords(records []Record, filter Filter) []Record { return applyFilter(records, filter) }
 
 func applyFilter(records []Record, filter Filter) []Record {
 	var out []Record
