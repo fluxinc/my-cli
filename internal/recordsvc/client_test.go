@@ -111,7 +111,7 @@ func TestErrorsKeepStructuredFieldsAndScrubTheCredential(t *testing.T) {
 	defer server.Close()
 	client, _ := NewClient("registry", server.URL+"/api/v1", testToken)
 
-	_, err := client.Patch(context.Background(), "reg:1", map[string]string{"serial": "1"}, map[string]any{"revision": 3})
+	_, err := client.Patch(context.Background(), "reg:1", map[string]string{"serial": "1"}, map[string]any{"revision": 3}, nil)
 	var apiErr *Error
 	if !errors.As(err, &apiErr) || !apiErr.Stale() || apiErr.Record.ID() != "reg:1" {
 		t.Fatalf("stale err = %#v", err)
@@ -174,7 +174,7 @@ func TestOpaqueIDsAreEscapedExactlyOnce(t *testing.T) {
 	if _, err := client.Get(ctx, id); err != nil {
 		t.Fatal(err)
 	}
-	client.Patch(ctx, id, map[string]string{"serial": "1"}, map[string]any{"revision": 1})
+	client.Patch(ctx, id, map[string]string{"serial": "1"}, map[string]any{"revision": 1}, nil)
 	client.Transition(ctx, id, "advance", nil, map[string]any{"revision": 1})
 	want := "/api/records/" + url.PathEscape(id)
 	if len(paths) != 3 || paths[0] != want || paths[1] != want || paths[2] != want+"/transitions" {

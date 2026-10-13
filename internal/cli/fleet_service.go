@@ -321,6 +321,13 @@ func describeServiceError(svc *fleetService, err error) error {
 		}
 		if apiErr.ReviewURL != "" {
 			msg += "\nreview them in " + svc.service.ID + ": " + apiErr.ReviewURL
+		}
+		if len(apiErr.Affected) != 0 {
+			var flags []string
+			for _, id := range apiErr.Affected {
+				flags = append(flags, "--confirm "+shellQuote(id))
+			}
+			msg += "\nto apply it to all of them, run the same set again with " + strings.Join(flags, " ")
 		} else {
 			msg += "\nmake the change in " + svc.service.ID + "'s own UI"
 		}
@@ -384,7 +391,7 @@ func renderServiceFleetRecord(rec fleet.Record, raw recordsvc.Record) string {
 
 // setServiceFleet writes every update in one request against the revisions
 // the record was read at. There is nothing local to publish afterwards.
-func (a app) setServiceFleet(svc *fleetService, current recordsvc.Record, updates map[string]string, jsonOut bool) error {
+func (a app) setServiceFleet(svc *fleetService, current recordsvc.Record, updates map[string]string, confirmed []string, jsonOut bool) error {
 	changes, err := svc.serviceChanges(updates)
 	if err != nil {
 		return a.maybeJSONError(jsonOut, err)
@@ -395,7 +402,7 @@ func (a app) setServiceFleet(svc *fleetService, current recordsvc.Record, update
 	}
 	ctx, cancel := serviceContext()
 	defer cancel()
-	updated, err := client.Patch(ctx, current.ID(), changes, current.Revisions())
+	updated, err := client.Patch(ctx, current.ID(), changes, current.Revisions(), confirmed)
 	if err != nil {
 		return a.maybeJSONError(jsonOut, describeServiceError(svc, err))
 	}
@@ -473,5 +480,16 @@ func (a app) runFleetTransition(args []string) error {
 		}{Record: rec, ServiceRecord: updated})
 	}
 	fmt.Fprintf(a.stdout, "%s: %s -> %s in %s\n", rec.ID, rest[1], rec.Status, svc.service.ID)
+	return nil
+}
+
+// rawListFlag collects a repeated flag's values exactly as given: ids are
+// opaque, so nothing is trimmed or split.
+type rawListFlag []string
+
+func (f *rawListFlag) String() string { return strings.Join(*f, " ") }
+
+func (f *rawListFlag) Set(value string) error {
+	*f = append(*f, value)
 	return nil
 }
