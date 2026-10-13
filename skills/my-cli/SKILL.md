@@ -641,8 +641,11 @@ or memory; clarify only when the target or privacy boundary is ambiguous.
   continue a relevant support record from that list or create a new dated
   anonymized one with `my support add`; put the fleet record id and every
   useful device, order, or asset identifier on the support record with repeated
-  `--identifier` flags. Record workflow transitions with `my fleet set <id>
-  status=<value>`, then publish with the suggested `my sync --push --message`
-  command so each transition stays a readable git commit.
+  `--identifier` flags. For markdown fleet records, record workflow
+  transitions with `my fleet set <id> status=<value>`, then publish with the
+  suggested `my sync --push --message` command so each transition stays a
+  readable git commit. For service-backed records (`get` shows a
+  `service:` surface), use `my fleet transition <id> <operation>`; the change
+  is live and there is nothing to publish.
 - This skill is installed and kept current by the `my` CLI itself; do not
   hand-edit the installed copy.

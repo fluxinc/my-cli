@@ -48,8 +48,11 @@ Fleet work contract:
   record with repeated `--identifier` flags, plus customer, product, and area
   frontmatter when known.
 - Treat support records as the incident/work log. Fleet records hold registry
-  state; use `my fleet set` only for meaningful state transitions.
-- Publish the resulting content with `my sync --push`.
+  state; change it only for meaningful state transitions: `my fleet set` for
+  markdown records, `my fleet transition` for service-backed ones (refused
+  `set status=` means the record is service-backed).
+- Publish the resulting content with `my sync --push`. Service-backed fleet
+  changes are already live and have nothing to publish.
 
 Default layout:
 

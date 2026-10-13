@@ -3,7 +3,8 @@
 Workspace content is markdown records with frontmatter, living in mounted
 content repos. Customer identities are read from mounted `customers/*.md`
 records, and each record domain exposes write-oriented commands. `my sync
---push` publishes adopted changes.
+--push` publishes adopted changes. Fleet can instead be served live by a
+service (see [Service-backed fleet](#service-backed-fleet)).
 
 ```sh
 my customers list [--json]
@@ -96,7 +97,8 @@ frontmatter:
 ## Fleet records
 
 The fleet is a registry, not a journal: one record per deployed instance,
-keyed by a stable id, updated in place. State history is the record's git log.
+keyed by a stable id, updated in place. For markdown records, state history is
+the record's git log; for service-backed records, the service keeps it.
 
 `my fleet get` resolves *any* identifier — sales order, functional location,
 serial, hostname — and lists related support records found by shared

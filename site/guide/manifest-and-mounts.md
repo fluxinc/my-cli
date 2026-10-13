@@ -133,7 +133,9 @@ support. A support mount is intended for private anonymized records that capture
 problem, context, solution, validation, and feature signals for later search.
 A fleet mount is a registry rather than a journal: one record per deployed
 instance, keyed by a stable id, updated in place with `my fleet set`, with
-state history carried by the record's git log. Its own repo gives
+state history carried by the record's git log. (When fleet is bound to a
+service, the service holds the records and their history; see
+[Records](./records.md#service-backed-fleet).) Its own repo gives
 remote-access and commercial fields a tighter access boundary than the
 handbook.
 
