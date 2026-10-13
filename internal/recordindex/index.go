@@ -347,6 +347,18 @@ func (ix *Index) store(st *state, rec recordsvc.Record) (bool, error) {
 		return false, nil
 	}
 	file := fileFor(id)
+	if st.Complete {
+		// Write ahead: record that this document is being rewritten (an
+		// empty fingerprint matches nothing) before touching it, so if the
+		// process dies after the rewrite but before the page's checkpoint,
+		// the next run rewrites it from the service rather than trusting
+		// the file.
+		st.Docs[id] = document{File: file}
+		st.Pending = true
+		if err := ix.save(st); err != nil {
+			return false, err
+		}
+	}
 	body := "---\nrecord_id: " + quoteYAML(id) + "\n---\n\n" + ix.render(rec)
 	if err := writePrivate(filepath.Join(ix.genDir(st.Generation), "docs", file), []byte(body)); err != nil {
 		return false, err
