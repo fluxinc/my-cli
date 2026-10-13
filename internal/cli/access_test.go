@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -234,7 +235,7 @@ func TestGovernanceUsesLiveAccessWithoutImplicitlyActivatingAccessPlane(t *testi
 		t.Fatalf("unactivated access plane blocked governance: %v", err)
 	}
 	if after := snapshotAccessTestTree(t, home); !reflect.DeepEqual(before, after) {
-		t.Fatal("live launch check activated access state or changed files")
+		t.Fatalf("live launch check activated access state or changed files: %s", describeTreeChanges(before, after))
 	}
 	path, err := access.InventoryPath(home)
 	if err != nil {
@@ -447,4 +448,26 @@ func testAccessMonitorApp(a app, home string) app {
 	a.accessExecutable = filepath.Join(home, "bin", "my")
 	a.accessMonitorRunner = func(name string, args ...string) ([]byte, error) { return []byte("active"), nil }
 	return a
+}
+
+// describeTreeChanges names the paths that appeared, disappeared or changed
+// between two snapshots (paths only, never contents).
+func describeTreeChanges(before, after map[string]string) string {
+	var added, removed, changed []string
+	for path, value := range after {
+		if old, ok := before[path]; !ok {
+			added = append(added, path)
+		} else if old != value {
+			changed = append(changed, path)
+		}
+	}
+	for path := range before {
+		if _, ok := after[path]; !ok {
+			removed = append(removed, path)
+		}
+	}
+	sort.Strings(added)
+	sort.Strings(removed)
+	sort.Strings(changed)
+	return fmt.Sprintf("added %v, removed %v, changed %v", added, removed, changed)
 }

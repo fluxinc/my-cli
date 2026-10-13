@@ -123,7 +123,7 @@ func Open(root string, source Source, service Service, q QMD, render func(record
 // complete index for this exact source (or rebuild is set), otherwise up to
 // maxPages pages of the change feed (0 means all).
 func (ix *Index) Sync(ctx context.Context, maxPages int, rebuild bool) (Result, error) {
-	unlock, err := lockDir(ix.dir)
+	unlock, err := lockDir(ctx, ix.dir)
 	if err != nil {
 		return Result{}, err
 	}
@@ -135,7 +135,7 @@ func (ix *Index) Sync(ctx context.Context, maxPages int, rebuild bool) (Result, 
 // backlog it returns no hits and Result.Backlog set; it never queries an
 // index it knows is behind.
 func (ix *Index) Search(ctx context.Context, text string, maxPages, limit int) ([]Hit, Result, error) {
-	unlock, err := lockDir(ix.dir)
+	unlock, err := lockDir(ctx, ix.dir)
 	if err != nil {
 		return nil, Result{}, err
 	}
@@ -154,7 +154,7 @@ func (ix *Index) Search(ctx context.Context, text string, maxPages, limit int) (
 	if st, err = ix.load(); err != nil {
 		return nil, res, err
 	}
-	hits, err := ix.query(st, text, limit)
+	hits, err := ix.query(ctx, st, text, limit)
 	return hits, res, err
 }
 
@@ -212,7 +212,7 @@ func (ix *Index) rebuild(ctx context.Context) (res Result, err error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if err := ix.qmd.Build(ix.genDir(gen)); err != nil {
+	if err := ix.qmd.Build(ctx, ix.genDir(gen)); err != nil {
 		return Result{}, fmt.Errorf("building the semantic index: %w", err)
 	}
 	st.Complete = true
@@ -232,7 +232,7 @@ func (ix *Index) follow(ctx context.Context, st *state, maxPages int) (Result, e
 		return res, err
 	}
 	if st.Pending {
-		if err := ix.qmd.Update(ix.genDir(st.Generation)); err != nil {
+		if err := ix.qmd.Update(ctx, ix.genDir(st.Generation)); err != nil {
 			// The documents changed but the index didn't take them: say so
 			// rather than answer from the old vectors. Pending stays set.
 			return res, fmt.Errorf("updating the semantic index: %w", err)
@@ -261,6 +261,16 @@ func (ix *Index) applyFeed(ctx context.Context, st *state, maxPages int) (Result
 		before := res
 		for _, change := range dedupe(changes) {
 			if err := ix.applyChange(ctx, st, change, &res); err != nil {
+				// Some documents of this page may already be rewritten. Record
+				// them (their fingerprints now match the files) without moving
+				// the cursor, so the retried page compares against what is on
+				// disk and rewrites anything that has changed back since.
+				if st.Complete {
+					st.Pending = true
+					if saveErr := ix.save(st); saveErr != nil {
+						return res, errors.Join(err, saveErr)
+					}
+				}
 				return res, err
 			}
 		}
@@ -355,8 +365,8 @@ func (ix *Index) remove(st *state, id string) bool {
 	return true
 }
 
-func (ix *Index) query(st *state, text string, limit int) ([]Hit, error) {
-	results, err := ix.qmd.Query(ix.genDir(st.Generation), text, limit)
+func (ix *Index) query(ctx context.Context, st *state, text string, limit int) ([]Hit, error) {
+	results, err := ix.qmd.Query(ctx, ix.genDir(st.Generation), text, limit)
 	if err != nil {
 		return nil, err
 	}

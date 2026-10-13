@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fluxinc/my-cli/internal/recordsvc"
 )
@@ -91,7 +92,7 @@ type fakeQMD struct {
 	failUpdate      bool
 }
 
-func (q *fakeQMD) Build(genDir string) error {
+func (q *fakeQMD) Build(_ context.Context, genDir string) error {
 	q.builds++
 	if q.failBuild {
 		return errors.New("embedding failed")
@@ -99,7 +100,7 @@ func (q *fakeQMD) Build(genDir string) error {
 	return nil
 }
 
-func (q *fakeQMD) Update(genDir string) error {
+func (q *fakeQMD) Update(_ context.Context, genDir string) error {
 	q.updates++
 	if q.failUpdate {
 		return errors.New("embedding failed")
@@ -107,7 +108,7 @@ func (q *fakeQMD) Update(genDir string) error {
 	return nil
 }
 
-func (q *fakeQMD) Query(genDir, text string, limit int) ([]QueryResult, error) {
+func (q *fakeQMD) Query(_ context.Context, genDir, text string, limit int) ([]QueryResult, error) {
 	entries, _ := os.ReadDir(filepath.Join(genDir, "docs"))
 	var out []QueryResult
 	for _, e := range entries {
@@ -336,10 +337,10 @@ func TestCommandQMDRunsIsolated(t *testing.T) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	gen := t.TempDir()
 	q := CommandQMD{ModelCache: filepath.Join(userHome, ".cache", "qmd", "models")}
-	if err := q.Build(gen); err != nil {
+	if err := q.Build(context.Background(), gen); err != nil {
 		t.Fatal(err)
 	}
-	results, err := q.Query(gen, "anything", 5)
+	results, err := q.Query(context.Background(), gen, "anything", 5)
 	if err != nil || len(results) != 1 || results[0].File != "abc.md" {
 		t.Fatalf("query = %v, %v", results, err)
 	}
@@ -417,4 +418,48 @@ func snapshot(path string) string {
 	info, _ := os.Stat(path)
 	sum := sha256.Sum256(data)
 	return fmt.Sprintf("%d %o %x", len(data), info.Mode().Perm(), sum)
+}
+
+// A search waiting on a busy index gives up when its context does.
+func TestABusyIndexRespectsTheSearchDeadline(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix lock")
+	}
+	svc := newFakeService()
+	svc.put("a", "alpha")
+	ix := openTest(t, t.TempDir(), svc, &fakeQMD{}, "https://registry.example.test/api")
+	if _, err := ix.Sync(context.Background(), 0, false); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := lockDir(context.Background(), ix.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, _, err = ix.Search(ctx, "alpha", 5, 10)
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 3*time.Second {
+		t.Fatalf("busy search = %v after %v", err, time.Since(start))
+	}
+}
+
+// A hung qmd is stopped when the context ends.
+func TestAHungQMDRespectsTheDeadline(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell stub")
+	}
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "qmd"), []byte("#!/bin/sh\nexec sleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := CommandQMD{}.Query(ctx, t.TempDir(), "anything", 5)
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 5*time.Second {
+		t.Fatalf("hung qmd = %v after %v", err, time.Since(start))
+	}
 }

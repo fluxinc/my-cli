@@ -1,6 +1,7 @@
 package recordindex
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,16 +9,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // QMD is the local search engine behind an index generation.
 type QMD interface {
 	// Build creates the generation's collection and embeds its documents.
-	Build(genDir string) error
+	Build(ctx context.Context, genDir string) error
 	// Update re-indexes changed documents and embeds them.
-	Update(genDir string) error
+	Update(ctx context.Context, genDir string) error
 	// Query returns matching documents by file name, best first.
-	Query(genDir, text string, limit int) ([]QueryResult, error)
+	Query(ctx context.Context, genDir, text string, limit int) ([]QueryResult, error)
 }
 
 // QueryResult is one qmd match. Its snippet is deliberately not kept: hits
@@ -42,24 +44,24 @@ type CommandQMD struct {
 	ModelCache string
 }
 
-func (c CommandQMD) Build(genDir string) error {
-	if _, err := c.run(genDir, "collection", "add", filepath.Join(genDir, "docs"), "--name", collection, "--mask", "**/*.md"); err != nil {
+func (c CommandQMD) Build(ctx context.Context, genDir string) error {
+	if _, err := c.run(ctx, genDir, "collection", "add", filepath.Join(genDir, "docs"), "--name", collection, "--mask", "**/*.md"); err != nil {
 		return err
 	}
-	_, err := c.run(genDir, "embed")
+	_, err := c.run(ctx, genDir, "embed")
 	return err
 }
 
-func (c CommandQMD) Update(genDir string) error {
-	if _, err := c.run(genDir, "update"); err != nil {
+func (c CommandQMD) Update(ctx context.Context, genDir string) error {
+	if _, err := c.run(ctx, genDir, "update"); err != nil {
 		return err
 	}
-	_, err := c.run(genDir, "embed")
+	_, err := c.run(ctx, genDir, "embed")
 	return err
 }
 
-func (c CommandQMD) Query(genDir, text string, limit int) ([]QueryResult, error) {
-	out, err := c.run(genDir, "query", text, "--json", "-n", fmt.Sprint(limit), "-c", collection)
+func (c CommandQMD) Query(ctx context.Context, genDir, text string, limit int) ([]QueryResult, error) {
+	out, err := c.run(ctx, genDir, "query", text, "--json", "-n", fmt.Sprint(limit), "-c", collection)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +83,7 @@ func (c CommandQMD) Query(genDir, text string, limit int) ([]QueryResult, error)
 	return results, nil
 }
 
-func (c CommandQMD) run(genDir string, args ...string) ([]byte, error) {
+func (c CommandQMD) run(ctx context.Context, genDir string, args ...string) ([]byte, error) {
 	bin, err := exec.LookPath("qmd")
 	if err != nil {
 		return nil, ErrQMDMissing
@@ -98,7 +100,8 @@ func (c CommandQMD) run(genDir string, args ...string) ([]byte, error) {
 			}
 		}
 	}
-	cmd := exec.Command(bin, args...)
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.WaitDelay = 2 * time.Second // don't wait on a killed qmd's pipes
 	cmd.Dir = genDir
 	cmd.Env = append(withoutEnv(os.Environ(), "HOME", "INDEX_PATH", "XDG_CONFIG_HOME", "XDG_CACHE_HOME"),
 		"HOME="+home, "INDEX_PATH="+filepath.Join(home, "index.sqlite"))
@@ -106,6 +109,9 @@ func (c CommandQMD) run(genDir string, args ...string) ([]byte, error) {
 	out, err := cmd.Output()
 	restore()
 	tightenModes(home)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("qmd %s stopped: %w", args[0], ctxErr)
+	}
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {

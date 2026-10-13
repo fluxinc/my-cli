@@ -41,7 +41,10 @@ func Run(m Runner) int {
 		}
 	}
 	gitConfig := filepath.Join(root, "gitconfig")
-	if err := os.WriteFile(gitConfig, nil, 0o600); err != nil {
+	// No background maintenance or auto-gc: they rewrite .git/objects (lock
+	// files appear and vanish) while tests walk or snapshot fixture trees.
+	gitDefaults := "[maintenance]\n\tauto = false\n[gc]\n\tauto = 0\n\tautoDetach = false\n"
+	if err := os.WriteFile(gitConfig, []byte(gitDefaults), 0o600); err != nil {
 		fmt.Fprintln(os.Stderr, "create isolated Git config:", err)
 		_ = os.RemoveAll(root)
 		return 2

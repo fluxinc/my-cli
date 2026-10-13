@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -525,9 +526,9 @@ func TestFleetConfirmationRoundTripsOpaqueAffectedIDs(t *testing.T) {
 // every word of the query. It reads only the generation's documents.
 type textQMD struct{}
 
-func (textQMD) Build(string) error  { return nil }
-func (textQMD) Update(string) error { return nil }
-func (textQMD) Query(genDir, text string, limit int) ([]recordindex.QueryResult, error) {
+func (textQMD) Build(context.Context, string) error  { return nil }
+func (textQMD) Update(context.Context, string) error { return nil }
+func (textQMD) Query(_ context.Context, genDir, text string, limit int) ([]recordindex.QueryResult, error) {
 	entries, _ := os.ReadDir(filepath.Join(genDir, "docs"))
 	var out []recordindex.QueryResult
 	for _, e := range entries {
