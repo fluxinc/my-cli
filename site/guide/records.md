@@ -25,8 +25,8 @@ my fleet search <text> [--no-semantic]
 my fleet get <id|identifier|path>
 my fleet add <id> [--customer ID] [--status TEXT] [--device TEXT] [--serial TEXT] [--identifier ID]...
 my fleet set <id> KEY=VALUE... [--confirm ID]...
-my fleet transition <id> <operation> [KEY=VALUE...]
-my fleet index [--rebuild]
+my fleet transition <id> <operation> [KEY=VALUE...]   # unreleased
+my fleet index [--rebuild]                            # unreleased
 ```
 
 Bare `my meetings` and `my support` use their safest useful action: they list
@@ -114,6 +114,12 @@ The built-in fleet work contract ties these together — see
 [Guidance and Contract](./guidance-and-contract.md).
 
 ### Service-backed fleet
+
+::: warning Unreleased
+This section describes `master`. The latest release (v0.42.0) does not have
+`my fleet transition`, `my fleet index`, `--confirm`, `--no-semantic` or
+service-backed fleet; they arrive with the next release.
+:::
 
 When an organization's registry lives in a service with an API, the manifest
 binds fleet to it. Records of other kinds can stay in a mount:

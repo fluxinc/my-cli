@@ -582,6 +582,9 @@ my fleet transition <id|identifier> <operation> [KEY=VALUE...] [--json]
 my fleet index  [--rebuild] [--json]
 ```
 
+`transition`, `index`, `--confirm` and `--no-semantic` are on master and not
+yet in a release.
+
 A registry record per deployed instance under `fleet/<id>.md`, keyed by a
 stable id (hostname or node name) and updated in place. `get` resolves any
 entry in the record's `identifiers` list — a sales order, functional location,
