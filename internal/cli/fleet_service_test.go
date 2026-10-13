@@ -384,11 +384,11 @@ func TestServiceBackedFleetWritesAtomicallyAndThroughTransitions(t *testing.T) {
 
 	// A wrong confirmation is refused again; the listed ids apply it.
 	err = a.run([]string{"my", "fleet", "set", "SO-1001", "so=SO-2000", "--confirm", "reg:box:1", "--home", home, "--manifest", "acme"})
-	if err == nil || !strings.Contains(err.Error(), "confirmation required") || !strings.Contains(err.Error(), "--confirm reg:box:1,reg:box:9") {
+	if err == nil || !strings.Contains(err.Error(), "confirmation required") || !strings.Contains(err.Error(), "--confirm reg:box:1 --confirm reg:box:9") {
 		t.Fatalf("partial confirm err = %v", err)
 	}
 	stdout.Reset()
-	if err := a.run([]string{"my", "fleet", "set", "SO-1001", "so=SO-2000", "--confirm", "reg:box:1,reg:box:9", "--home", home, "--manifest", "acme"}); err != nil {
+	if err := a.run([]string{"my", "fleet", "set", "SO-1001", "so=SO-2000", "--confirm", "reg:box:1", "--confirm", "reg:box:9", "--home", home, "--manifest", "acme"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := registry.records["reg:box:1"]["order"].(map[string]any)["so_number"]; got != "SO-2000" {
@@ -445,5 +445,45 @@ func TestServiceBackedFleetWritesAtomicallyAndThroughTransitions(t *testing.T) {
 	stdout.Reset()
 	if err := a.run([]string{"my", "fleet", "add", "printer-8", "--workspace", "handbook", "--home", home, "--manifest", "acme"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Affected ids are opaque: --confirm sends each exactly (commas, spaces and
+// quotes included), and the printed rerun quotes each one for the shell.
+func TestFleetConfirmationRoundTripsOpaqueAffectedIDs(t *testing.T) {
+	registry := newFakeRegistry()
+	affected := []string{"reg:box:1", "reg:box:9,part", " box 9's ", "a$(b)"}
+	var sent []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			registry.ServeHTTP(w, r)
+			return
+		}
+		var body struct {
+			Confirmed []string `json:"confirmed_ids"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		sent = body.Confirmed
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Join(sent, "\x00") != strings.Join(affected, "\x00") {
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]any{"error": "confirmation_required", "affected": affected})
+			return
+		}
+		json.NewEncoder(w).Encode(registry.records["reg:box:1"])
+	}))
+	defer server.Close()
+	home, a, _, _ := setupServiceFleet(t, server.URL)
+
+	err := a.run([]string{"my", "fleet", "set", "reg:box:1", "so=SO-2000", "--home", home, "--manifest", "acme"})
+	if err == nil || !strings.Contains(err.Error(), `--confirm reg:box:1 --confirm 'reg:box:9,part' --confirm ' box 9'\''s ' --confirm 'a$(b)'`) {
+		t.Fatalf("rerun hint = %v", err)
+	}
+	args := []string{"my", "fleet", "set", "reg:box:1", "so=SO-2000", "--home", home, "--manifest", "acme"}
+	for _, id := range affected {
+		args = append(args, "--confirm", id)
+	}
+	if err := a.run(args); err != nil || strings.Join(sent, "\x00") != strings.Join(affected, "\x00") {
+		t.Fatalf("sent %q, want %q exactly (err %v)", sent, affected, err)
 	}
 }

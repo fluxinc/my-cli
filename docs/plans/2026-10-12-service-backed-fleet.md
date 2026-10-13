@@ -109,7 +109,7 @@ The service's JSON is projected into `fleet.Record`. Every field is named; nothi
 ## Required follow-ups
 
 The integration is not complete until both of these ship:
-- **Fan-out confirmation** (done): a write that changes other records, such as a shared order number, is refused with "confirmation required", the ids it would affect and a link to the service's UI. It is never labelled stale. `my fleet set ... --confirm <ids>` sends those ids as `confirmed_ids`. The service applies the change only if they are exactly the records it covers, so nothing is confirmed implicitly.
+- **Fan-out confirmation** (done): a write that changes other records, such as a shared order number, is refused with "confirmation required", the ids it would affect and a link to the service's UI. It is never labelled stale. `my fleet set ... --confirm <id>` (repeated, one opaque id each, never split or trimmed) sends those ids as `confirmed_ids`. The service applies the change only if they are exactly the records it covers, so nothing is confirmed implicitly.
 - **Semantic search** (below).
 
 ## Later slices

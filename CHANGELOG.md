@@ -4,9 +4,9 @@
 
 ### Added
 
-- `my fleet set --confirm <ids>` applies a shared change (one order number
+- `my fleet set --confirm <id>` (repeated, one exact id each) applies a shared change (one order number
   on several records) after the service listed exactly which records it
-  covers. Without it, the refusal prints the ids and the command to run.
+  covers. Without it, the refusal prints the ids and the shell-quoted command to run.
 - Serve fleet records from a service: `data_bindings` may name several
   `surfaces` (one service plus mounts) and `field_aliases`. An `http` service
   takes its API base from `connection.url` (https, no credentials or query).

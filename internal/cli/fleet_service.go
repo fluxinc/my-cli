@@ -323,7 +323,11 @@ func describeServiceError(svc *fleetService, err error) error {
 			msg += "\nreview them in " + svc.service.ID + ": " + apiErr.ReviewURL
 		}
 		if len(apiErr.Affected) != 0 {
-			msg += "\nto apply it to all of them, run the same set again with --confirm " + strings.Join(apiErr.Affected, ",")
+			var flags []string
+			for _, id := range apiErr.Affected {
+				flags = append(flags, "--confirm "+shellQuote(id))
+			}
+			msg += "\nto apply it to all of them, run the same set again with " + strings.Join(flags, " ")
 		} else {
 			msg += "\nmake the change in " + svc.service.ID + "'s own UI"
 		}
@@ -479,15 +483,13 @@ func (a app) runFleetTransition(args []string) error {
 	return nil
 }
 
-// splitConfirm accepts --confirm repeated or comma-separated.
-func splitConfirm(values []string) []string {
-	var out []string
-	for _, value := range values {
-		for _, id := range strings.Split(value, ",") {
-			if id = strings.TrimSpace(id); id != "" {
-				out = append(out, id)
-			}
-		}
-	}
-	return out
+// rawListFlag collects a repeated flag's values exactly as given: ids are
+// opaque, so nothing is trimmed or split.
+type rawListFlag []string
+
+func (f *rawListFlag) String() string { return strings.Join(*f, " ") }
+
+func (f *rawListFlag) Set(value string) error {
+	*f = append(*f, value)
+	return nil
 }

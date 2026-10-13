@@ -321,10 +321,10 @@ func (a app) runFleetAdd(args []string) error {
 
 func (a app) runFleetSet(args []string) error {
 	var opts meetingCommonOpts
-	var confirm stringListFlag
+	var confirm rawListFlag
 	fs := newFlagSet("my fleet set", a.stderr)
 	bindMeetingCommonFlags(fs, &opts)
-	fs.Var(&confirm, "confirm", "confirm a shared change: the ids a confirmation_required refusal listed (repeatable or comma-separated)")
+	fs.Var(&confirm, "confirm", "confirm a shared change: one id a confirmation_required refusal listed, exactly (repeat for each)")
 	valueFlags := meetingValueFlags()
 	valueFlags["confirm"] = true
 	rest, err := parseInterspersed(fs, args, valueFlags)
@@ -356,7 +356,7 @@ func (a app) runFleetSet(args []string) error {
 		return a.maybeJSONError(opts.jsonOut, describeServiceError(svc, err))
 	}
 	if match.local == nil {
-		return a.setServiceFleet(svc, match.remote, updates, splitConfirm(confirm), opts.jsonOut)
+		return a.setServiceFleet(svc, match.remote, updates, []string(confirm), opts.jsonOut)
 	}
 	if len(confirm) != 0 {
 		return fmt.Errorf("--confirm applies to records in a bound service; %s is a markdown record", match.local.ID)
