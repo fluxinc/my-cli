@@ -361,11 +361,45 @@ func applyFilter(records []Record, filter Filter) []Record {
 
 func matchesWhere(rec Record, where map[string]string) bool {
 	for key, want := range where {
-		if rec.fields[key] != want {
+		if rec.field(key) != want {
 			return false
 		}
 	}
 	return true
+}
+
+// field is a top-level field by its frontmatter name. A service record has no
+// frontmatter, so it answers for the registry fields it carries; any other
+// name is empty.
+func (r Record) field(key string) string {
+	if r.fields != nil {
+		return r.fields[key]
+	}
+	switch key {
+	case "id":
+		return r.ID
+	case "customer":
+		return r.Customer
+	case "partner":
+		return r.Partner
+	case "status":
+		return r.Status
+	case "device":
+		return r.Device
+	case "serial":
+		return r.Serial
+	case "config_repo":
+		return r.ConfigRepo
+	case "config_branch":
+		return r.ConfigBranch
+	case "deployed_site":
+		return r.DeployedSite
+	case "ship_to":
+		return r.ShipTo
+	case "install_date":
+		return r.InstallDate
+	}
+	return ""
 }
 
 func sortRecords(records []Record) {

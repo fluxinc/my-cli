@@ -602,7 +602,7 @@ func (a app) runFleetIndex(args []string) error {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
 	if svc == nil {
-		return a.maybeJSONError(opts.jsonOut, fmt.Errorf("fleet is not bound to a service; markdown fleet search already uses qmd over the mounted files"))
+		return a.maybeJSONError(opts.jsonOut, fmt.Errorf("fleet is not bound to a service; markdown fleet search reads the mounted files directly (and uses qmd when it is installed)"))
 	}
 	ix, _, err := openFleetIndex(opts.home, svc)
 	if err != nil {

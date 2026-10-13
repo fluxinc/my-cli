@@ -33,7 +33,7 @@ Use the `my` CLI before falling back to ad hoc file searches:
   resolves any identifier (order, location, serial) and lists related support
   records. Update workflow state with `my fleet set <id> status=<value>` and
   publish each meaningful transition with the suggested `my sync --push --message`
-  command.
+  command (service-backed fleet: `my fleet transition`, live, nothing to publish).
 - Add `--json` when a harness needs structured output.
 
 Fleet work contract:

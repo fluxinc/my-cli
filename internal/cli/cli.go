@@ -281,6 +281,8 @@ Usage:
   my fleet get <id|identifier|path>
   my fleet add <id>
   my fleet set <id> KEY=VALUE...
+  my fleet transition <id> <operation> [KEY=VALUE...]
+  my fleet index [--rebuild]
   my record domains|add|list|get|outbox|reconcile|flush|adopt
   my work start [--slug SLUG] [--json] [--print] [harness] [-- harness args...]   (deprecated; use my session)
   my work status [--all] [--json]
