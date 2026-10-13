@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/fluxinc/my-cli/internal/recordindex"
 )
 
 const fakeRegistryToken = "fake-registry-token-91c2"
@@ -22,6 +25,14 @@ type fakeRegistry struct {
 	records map[string]map[string]any
 	fields  map[string]string // writable field -> path in the record ("box.serial_number")
 	patches int
+	feed    []map[string]any // the change feed: {id, op}
+}
+
+// touch records a change in the feed, as the real service does on writes.
+func (f *fakeRegistry) touch(id, op string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.feed = append(f.feed, map[string]any{"id": id, "op": op})
 }
 
 func newFakeRegistry() *fakeRegistry {
@@ -102,6 +113,29 @@ func (f *fakeRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		reply(200, map[string]any{"candidates": candidates})
+	case r.Method == http.MethodGet && path == "changes":
+		start := 0
+		fmt.Sscan(r.URL.Query().Get("after"), &start)
+		end := start + 2
+		if end > len(f.feed) {
+			end = len(f.feed)
+		}
+		reply(200, map[string]any{"changes": f.feed[start:end], "cursor": fmt.Sprint(end), "more": end < len(f.feed)})
+	case r.Method == http.MethodGet && path == "records" && r.URL.Query().Has("after"):
+		after := r.URL.Query().Get("after")
+		var page []any
+		next := any(nil)
+		for _, id := range sortedRegistryIDs(f.records) {
+			if id <= after {
+				continue
+			}
+			if len(page) == 2 {
+				next = page[1].(map[string]any)["id"]
+				break
+			}
+			page = append(page, f.records[id])
+		}
+		reply(200, map[string]any{"records": page, "next_after": next})
 	case r.Method == http.MethodGet && path == "records":
 		q := strings.ToLower(r.URL.Query().Get("q"))
 		var out []any
@@ -485,5 +519,101 @@ func TestFleetConfirmationRoundTripsOpaqueAffectedIDs(t *testing.T) {
 	}
 	if err := a.run(args); err != nil || strings.Join(sent, "\x00") != strings.Join(affected, "\x00") {
 		t.Fatalf("sent %q, want %q exactly (err %v)", sent, affected, err)
+	}
+}
+
+// textQMD is a stand-in semantic engine: a document matches when it contains
+// every word of the query. It reads only the generation's documents.
+type textQMD struct{}
+
+func (textQMD) Build(context.Context, string) error  { return nil }
+func (textQMD) Update(context.Context, string) error { return nil }
+func (textQMD) Query(_ context.Context, genDir, text string, limit int) ([]recordindex.QueryResult, error) {
+	entries, _ := os.ReadDir(filepath.Join(genDir, "docs"))
+	var out []recordindex.QueryResult
+	for _, e := range entries {
+		data, _ := os.ReadFile(filepath.Join(genDir, "docs", e.Name()))
+		matches := true
+		for _, word := range strings.Fields(strings.ToLower(text)) {
+			if !strings.Contains(strings.ToLower(string(data)), word) {
+				matches = false
+			}
+		}
+		if matches {
+			out = append(out, recordindex.QueryResult{File: e.Name(), Score: 0.8})
+		}
+	}
+	return out, nil
+}
+
+func TestServiceBackedFleetSemanticSearchShowsOnlyCurrentValues(t *testing.T) {
+	registry := newFakeRegistry()
+	for _, id := range sortedRegistryIDs(registry.records) {
+		registry.touch(id, "upsert")
+	}
+	server := httptest.NewServer(registry)
+	defer server.Close()
+	previous := fleetQMD
+	fleetQMD = func() recordindex.QMD { return textQMD{} }
+	defer func() { fleetQMD = previous }()
+	home, a, stdout, stderr := setupServiceFleet(t, server.URL)
+	run := func(args ...string) error {
+		stdout.Reset()
+		stderr.Reset()
+		return a.run(append(args, "--home", home, "--manifest", "acme"))
+	}
+
+	// No index yet: the service's search only, and it says so.
+	if err := run("my", "fleet", "search", "site network"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr.String(), "no semantic index yet") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+
+	if err := run("my", "fleet", "index"); err != nil || !strings.Contains(stdout.String(), "built: 2 added") {
+		t.Fatalf("index = %v: %s", err, stdout.String())
+	}
+
+	// The note "Waiting on the site network." is found by meaning (the
+	// service's own search here is a plain substring match on the JSON, so
+	// use words in another order). The hit shows the record as it is now:
+	// its serial changed after indexing, without a feed entry.
+	registry.mu.Lock()
+	registry.records["reg:box:1"]["box"].(map[string]any)["serial_number"] = "SN-NOW"
+	registry.mu.Unlock()
+	if err := run("my", "fleet", "search", "network site", "--json"); err != nil {
+		t.Fatal(err)
+	}
+	var found []struct {
+		ID      string `json:"id"`
+		Serial  string `json:"serial"`
+		Match   string `json:"match"`
+		Snippet string `json:"snippet"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &found); err != nil {
+		t.Fatalf("%v: %s", err, stdout.String())
+	}
+	if len(found) != 1 || found[0].ID != "reg:box:1" || found[0].Match != "semantic" || found[0].Serial != "SN-NOW" ||
+		strings.Contains(found[0].Snippet, "network") {
+		t.Fatalf("semantic hits = %+v", found)
+	}
+
+	// A record deleted in the service drops out even though the index still
+	// has it (no feed entry yet).
+	registry.mu.Lock()
+	delete(registry.records, "reg:box:1")
+	registry.mu.Unlock()
+	if err := run("my", "fleet", "search", "network site", "--json"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stdout.String(), "reg:box:1") {
+		t.Fatalf("a deleted record was shown: %s", stdout.String())
+	}
+
+	// A service that can't answer fails the search; the index never stands in.
+	server.Close()
+	if err := run("my", "fleet", "search", "network site"); err == nil || !strings.Contains(err.Error(), "unavailable") {
+		t.Fatalf("down service err = %v", err)
 	}
 }

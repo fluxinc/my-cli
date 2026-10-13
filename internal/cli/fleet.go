@@ -28,6 +28,8 @@ func (a app) runFleet(args []string) error {
 		return a.runFleetSet(args[1:])
 	case "transition":
 		return a.runFleetTransition(args[1:])
+	case "index":
+		return a.runFleetIndex(args[1:])
 	case "-h", "--help", "help":
 		a.printFleetUsage()
 		return nil
@@ -39,11 +41,12 @@ func (a app) runFleet(args []string) error {
 func (a app) printFleetUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
   my fleet list [--manifest NAME] [--workspace ID] [--status TEXT] [--customer ID] [--partner ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
-  my fleet search <text> [--manifest NAME] [--workspace ID] [--status TEXT] [--customer ID] [--partner ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
+  my fleet search <text> [--no-semantic] [--manifest NAME] [--workspace ID] [--status TEXT] [--customer ID] [--partner ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
   my fleet get <id|identifier|path> [--manifest NAME] [--workspace ID] [--json]
   my fleet add <id> [--manifest NAME] [--workspace ID] [--customer ID] [--partner ID] [--status TEXT] [--device TEXT] [--serial TEXT] [--identifier ID] [--config-repo NAME] [--config-branch NAME] [--deployed-site TEXT] [--ship-to TEXT] [--contact TEXT] [--install-date DATE] [--print] [--json]
   my fleet set <id|identifier> KEY=VALUE... [--confirm IDS] [--manifest NAME] [--workspace ID] [--json]
   my fleet transition <id|identifier> <operation> [KEY=VALUE...] [--manifest NAME] [--json]
+  my fleet index [--rebuild] [--manifest NAME] [--json]
 
 Fleet commands use local markdown files under workspace fleet/ directories:
 one registry record per deployed instance, keyed by a stable id (use the
@@ -59,7 +62,10 @@ When the manifest binds fleet to a service (data_bindings.fleet), records in
 that service are read and written live: get resolves the reference there,
 set saves every KEY=VALUE together or none of them against the record's
 revisions, workflow states change only with transition, and there is
-nothing to publish. Markdown records with managed_by: service:<id> are
+nothing to publish. search also matches by meaning through a private local
+index of the service's records (my fleet index builds it; needs qmd); every
+match is re-read from the service, so only current values are shown.
+Markdown records with managed_by: service:<id> are
 pointers to the service. A service that cannot answer fails the command;
 no local copy stands in for it.`)
 }
@@ -131,6 +137,16 @@ func (a app) runFleetSearch(args []string) error {
 		remote, err := serviceFleetRecords(svc, rest[0], filter)
 		if err != nil {
 			return a.maybeJSONError(opts.jsonOut, describeServiceError(svc, err))
+		}
+		for i := range remote {
+			remote[i].Match = "search"
+		}
+		if !opts.noSemantic {
+			semantic, err := a.semanticFleetMatches(opts.home, svc, rest[0], filter, remote)
+			if err != nil {
+				return a.maybeJSONError(opts.jsonOut, describeServiceError(svc, err))
+			}
+			remote = append(remote, semantic...)
 		}
 		found = append(remote, withoutPointers(found)...)
 	}
@@ -470,6 +486,7 @@ type fleetReadOpts struct {
 	identifier string
 	branch     string
 	where      stringListFlag
+	noSemantic bool
 }
 
 type fleetAddOpts struct {
@@ -499,6 +516,9 @@ func parseFleetReadOpts(name string, stderr io.Writer, args []string) (fleetRead
 	fs.StringVar(&opts.identifier, "identifier", "", "order, invoice, location, or asset identifier")
 	fs.StringVar(&opts.branch, "branch", "", "configuration branch")
 	fs.Var(&opts.where, "where", "KEY=VALUE frontmatter filter (repeatable)")
+	if name == "my fleet search" {
+		fs.BoolVar(&opts.noSemantic, "no-semantic", false, "skip the semantic index; use the service's search only")
+	}
 	rest, err := parseInterspersed(fs, args, map[string]bool{
 		"home":       true,
 		"manifest":   true,

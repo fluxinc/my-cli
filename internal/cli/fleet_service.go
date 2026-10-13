@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/fluxinc/my-cli/internal/fleet"
 	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/recordindex"
 	"github.com/fluxinc/my-cli/internal/recordsvc"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 )
@@ -491,5 +494,133 @@ func (f *rawListFlag) String() string { return strings.Join(*f, " ") }
 
 func (f *rawListFlag) Set(value string) error {
 	*f = append(*f, value)
+	return nil
+}
+
+// semanticSyncPages bounds the catch-up a search does before querying; a
+// longer backlog means my fleet index, not a slow search.
+const semanticSyncPages = 5
+
+// fleetQMD is the semantic engine; tests replace it.
+var fleetQMD = func() recordindex.QMD {
+	home, _ := os.UserHomeDir()
+	return recordindex.CommandQMD{ModelCache: filepath.Join(home, ".cache", "qmd", "models")}
+}
+
+func openFleetIndex(home string, svc *fleetService) (*recordindex.Index, *recordsvc.Client, error) {
+	client, err := svc.connect()
+	if err != nil {
+		return nil, nil, err
+	}
+	resolved, err := resolveHome(home)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := filepath.Join(resolved, ".local", "state", "my-cli", "records")
+	source := recordindex.Source{Manifest: svc.manifest, ServiceID: svc.service.ID, BaseURL: svc.service.Connection.URL}
+	render := func(rec recordsvc.Record) string {
+		return renderServiceFleetRecord(recordsvc.ToFleet(svc.service.ID, rec), rec)
+	}
+	ix, err := recordindex.Open(root, source, client, fleetQMD(), render)
+	return ix, client, err
+}
+
+// semanticFleetMatches adds records the local index finds by meaning. Each
+// is re-read from the service (a gone or archived one is dropped) and shown
+// with current values only. When the index can't answer for a reason other
+// than the service, the search says so and stays with the service's results;
+// a service failure fails the command.
+func (a app) semanticFleetMatches(home string, svc *fleetService, query string, filter fleet.Filter, already []fleet.Record) ([]fleet.Record, error) {
+	ix, client, err := openFleetIndex(home, svc)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := serviceContext()
+	defer cancel()
+	hits, res, err := ix.Search(ctx, query, semanticSyncPages, 20)
+	var apiErr *recordsvc.Error
+	switch {
+	case errors.As(err, &apiErr):
+		return nil, err
+	case errors.Is(err, recordindex.ErrNotBuilt):
+		fmt.Fprintln(a.stderr, "note: no semantic index yet; showing the service's search only (run my fleet index to build it)")
+		return nil, nil
+	case err != nil:
+		fmt.Fprintf(a.stderr, "note: semantic search unavailable (%v); showing the service's search only\n", err)
+		return nil, nil
+	case res.Backlog:
+		fmt.Fprintln(a.stderr, "note: the semantic index is behind the service; showing the service's search only (run my fleet index)")
+		return nil, nil
+	}
+	seen := map[string]bool{}
+	for _, rec := range already {
+		seen[rec.ID] = true
+	}
+	var out []fleet.Record
+	for _, hit := range hits {
+		if seen[hit.ID] {
+			continue
+		}
+		rec, err := client.Get(ctx, hit.ID)
+		if errors.As(err, &apiErr) && apiErr.NotFound() {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if rec["archived"] == true {
+			continue
+		}
+		projected := recordsvc.ToFleet(svc.service.ID, rec)
+		projected.Match = "semantic"
+		projected.Score = hit.Score
+		projected.Snippet = fmt.Sprintf("semantic match %.2f", hit.Score)
+		if len(fleet.FilterRecords([]fleet.Record{projected}, filter)) == 0 {
+			continue
+		}
+		seen[hit.ID] = true
+		out = append(out, projected)
+	}
+	return out, nil
+}
+
+func (a app) runFleetIndex(args []string) error {
+	var opts meetingCommonOpts
+	rebuild := false
+	fs := newFlagSet("my fleet index", a.stderr)
+	bindMeetingCommonFlags(fs, &opts)
+	fs.BoolVar(&rebuild, "rebuild", false, "rebuild the index from scratch")
+	rest, err := parseInterspersed(fs, args, meetingValueFlags())
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return fmt.Errorf("usage: my fleet index [--rebuild]")
+	}
+	svc, err := boundFleetService(opts.home, opts.manifestName, opts.umbrellaRoot)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	if svc == nil {
+		return a.maybeJSONError(opts.jsonOut, fmt.Errorf("fleet is not bound to a service; markdown fleet search already uses qmd over the mounted files"))
+	}
+	ix, _, err := openFleetIndex(opts.home, svc)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	res, err := ix.Sync(ctx, 0, rebuild)
+	if err != nil {
+		return a.maybeJSONError(opts.jsonOut, describeServiceError(svc, err))
+	}
+	if opts.jsonOut {
+		return printJSON(a.stdout, res)
+	}
+	verb := "updated"
+	if res.Rebuilt {
+		verb = "built"
+	}
+	fmt.Fprintf(a.stdout, "semantic index for %s %s: %d added, %d updated, %d removed\n", svc.service.ID, verb, res.Added, res.Updated, res.Removed)
 	return nil
 }

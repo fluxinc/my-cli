@@ -26,6 +26,7 @@ my fleet get <id|identifier|path>
 my fleet add <id> [--customer ID] [--status TEXT] [--device TEXT] [--serial TEXT] [--identifier ID]...
 my fleet set <id> KEY=VALUE...
 my fleet transition <id> <operation> [KEY=VALUE...]
+my fleet index [--rebuild]
 ```
 
 Bare `my meetings` and `my support` use their safest useful action: they list
@@ -141,6 +142,11 @@ Then `my fleet` reads and writes the service live, through the
 - **`add`**: creates markdown only, and needs `--workspace` once fleet is service-backed.
 - **Pointers**: a markdown record with `managed_by: service:registry` (and optionally `managed_id`) points to the service. It is hidden from lists, `get` follows it, and its old values are never shown as current.
 - **Failures**: if the service cannot answer, the command fails and names it. No local copy stands in.
+- **Semantic search**: `my fleet index` builds a private, per-user index of the service's records, kept in `~/.local/state/my-cli/records/` and used by qmd in isolation from your own qmd setup. `my fleet search` then also finds records by meaning.
+  - Every match is re-read from the service and shown with its current values, never cached text.
+  - Deleted and archived records drop out.
+  - Before each search the index catches up from the service's change feed (a few pages). If it is further behind, if qmd is missing, or if it was never built, the search says so and shows the service's own results only.
+  - `--no-semantic` skips it.
 - **Credentials**: `auth_ref` (`env://` or `op://`) is resolved per invocation, sent only to the service's own origin, and never printed.
 
 ## Adoption: why your file did not publish

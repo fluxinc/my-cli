@@ -58,6 +58,11 @@ type Record struct {
 	// ManagedID is the service's stable id for it, when known.
 	ManagedBy string `json:"managed_by,omitempty"`
 	ManagedID string `json:"managed_id,omitempty"`
+	// Match says how a search found a service record: "search" (the
+	// service's own search) or "semantic" (the local semantic index, with
+	// Score). The values shown are always the service's current ones.
+	Match string  `json:"match,omitempty"`
+	Score float64 `json:"score,omitempty"`
 
 	fields map[string]string
 }

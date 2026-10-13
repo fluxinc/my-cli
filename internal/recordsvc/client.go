@@ -331,3 +331,53 @@ func sortedKeys(m map[string]any) []string {
 	sort.Strings(keys)
 	return keys
 }
+
+// ListAfter reads one keyset page of every record in stable-id order, for
+// bootstrapping an index: after is "" to start, then the previous page's
+// next; next is "" on the last page.
+func (c *Client) ListAfter(ctx context.Context, after string, includeArchived bool) ([]Record, string, error) {
+	params := url.Values{"after": {after}}
+	if includeArchived {
+		params.Set("include_archived", "true")
+	}
+	var out struct {
+		Records   []Record `json:"records"`
+		NextAfter *string  `json:"next_after"`
+	}
+	if err := c.do(ctx, http.MethodGet, "records", params, nil, &out); err != nil {
+		return nil, "", err
+	}
+	next := ""
+	if out.NextAfter != nil {
+		next = *out.NextAfter
+	}
+	return out.Records, next, nil
+}
+
+// Change is one entry of the service's commit-safe change feed.
+type Change struct {
+	ID string `json:"id"`
+	Op string `json:"op"` // upsert or tombstone
+}
+
+// Changes reads one page of the change feed after cursor ("" from the
+// start). It returns the cursor to resume from and whether more follow.
+func (c *Client) Changes(ctx context.Context, cursor string) ([]Change, string, bool, error) {
+	params := url.Values{}
+	if cursor != "" {
+		params.Set("after", cursor)
+	}
+	var out struct {
+		Changes []Change `json:"changes"`
+		Cursor  *string  `json:"cursor"`
+		More    bool     `json:"more"`
+	}
+	if err := c.do(ctx, http.MethodGet, "changes", params, nil, &out); err != nil {
+		return nil, "", false, err
+	}
+	next := cursor
+	if out.Cursor != nil && *out.Cursor != "" {
+		next = *out.Cursor
+	}
+	return out.Changes, next, out.More, nil
+}
