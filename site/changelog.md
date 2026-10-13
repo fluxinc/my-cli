@@ -4,6 +4,12 @@
 
 ### Added
 
+- `my fleet index` and semantic `my fleet search` for service-backed fleet:
+  a private per-user qmd index of the service's records, isolated from your
+  own qmd setup. It follows the service's change feed, and every match is
+  re-read from the service and shown with current values only. When the
+  index is behind, missing or qmd is unavailable, search says so and shows
+  the service's results only. `--no-semantic` skips it.
 - `my fleet set --confirm <id>` (repeated, one exact id each) applies a shared change (one order number
   on several records) after the service listed exactly which records it
   covers. Without it, the refusal prints the ids and the shell-quoted command to run.

@@ -1,6 +1,6 @@
 # Service-backed fleet records
 
-Status: first slice and fan-out confirmation implemented (2026-10-12); semantic search follows
+Status: implemented (2026-10-12): live records, fan-out confirmation and semantic search
 
 This plan delivers Slice 4 of the data-surfaces plan
 (`2026-06-13-data-surfaces.md`) for the `fleet` data type. It applies once an
@@ -110,11 +110,20 @@ The service's JSON is projected into `fleet.Record`. Every field is named; nothi
 
 The integration is not complete until both of these ship:
 - **Fan-out confirmation** (done): a write that changes other records, such as a shared order number, is refused with "confirmation required", the ids it would affect and a link to the service's UI. It is never labelled stale. `my fleet set ... --confirm <id>` (repeated, one opaque id each, never split or trimmed) sends those ids as `confirmed_ids`. The service applies the change only if they are exactly the records it covers, so nothing is confirmed implicitly.
-- **Semantic search** (below).
+- **Semantic search** (done; see below).
 
 ## Later slices
 
-- **Semantic search:** a per-user derived index keyed by (service, id, content fingerprint). The fingerprint is over every revision field, or the hydrated content, because a parent edit fans out without bumping the record's own revision. A local QMD index over derived records is the vendor-free first choice. It is bootstrapped from keyset pages using a cursor taken first, then follows `changes`. Every hit is hydrated through `GET records/{id}` before output. The index is never a display source, a write target or an offline fallback.
+- **Semantic search** (done): `my fleet index` and `my fleet search` (`internal/recordindex`).
+  - **Source identity:** manifest, service, API base URL and render format; a change to any of them means a separate index.
+  - **Bootstrap:** the feed cursor is taken first, then keyset pages are read, then the feed is caught up.
+  - **Staged rebuilds:** a new generation is switched to only when complete, and the old one is removed after.
+  - **Following:** the feed is followed page by page, saving the cursor after each page. A cursor that doesn't advance is an error.
+  - **Fingerprints:** over the whole record.
+  - **Pending flag:** re-embeds after a failed update.
+  - **Search:** a bounded catch-up comes first. With a backlog, a missing qmd or a qmd failure, the search explicitly shows the service's results only. A service failure fails the command.
+  - **Hits:** re-read from the service and shown with current values only; no cached snippets.
+  - **qmd isolation:** qmd runs with a private `HOME` and `INDEX_PATH` inside the generation, files are 0600 and directories 0700, and models are linked rather than copied. The user's own qmd config and index are never touched; a real-qmd smoke test checks them byte for byte.
 
 ## Tests
 

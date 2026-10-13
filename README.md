@@ -829,10 +829,11 @@ indexed in [docs/plans/](docs/plans/README.md):
   `my contract list` plus `my admin contract add|remove` for the standard
   inspect/review-commit-push workflow. Plan:
   [contract rules](docs/plans/2026-06-12-contract-rules.md).
-- **Active — service-backed fleet records (first slice and fan-out confirmation implemented; unreleased).**
+- **Implemented — service-backed fleet records (unreleased).**
   Fleet reads and revision-checked writes can use a manifest-bound HTTP service
   alongside Markdown mounts. A shared change needs an explicit
-  `--confirm <id>` per affected record. Hydrated semantic search remains. Plan:
+  `--confirm <id>` per affected record, and `my fleet index` adds a private
+  semantic index whose hits are always re-read from the service. Plan:
   [service-backed fleet](docs/plans/2026-10-12-service-backed-fleet.md).
 - **Shipped — customer records move to the data plane (v0.22.0).**
   `my customers list` now reads mounted `customers/*.md` records, customer

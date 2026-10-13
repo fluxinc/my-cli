@@ -255,6 +255,7 @@ my fleet get <id|identifier|path>
 my fleet add <id>
 my fleet set <id> KEY=VALUE...
 my fleet transition <id> <operation> [KEY=VALUE...]
+my fleet index [--rebuild]
 
 my record adopt <path>
 
