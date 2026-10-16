@@ -53,7 +53,7 @@ approved_by empty unless the operator explicitly approves.
 link notes a published support record on service-backed fleet records, named
 by stable id (my fleet get shows it). It writes nothing unless the record's
 current text is on its workspace's default branch, and only the record's id
-and title are sent. Rerunning it is safe.`)
+is sent. Rerunning it is safe.`)
 }
 
 func (a app) runSupportList(args []string) error {
