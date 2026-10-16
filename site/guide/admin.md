@@ -40,6 +40,28 @@ After an admin edit, only the maintainer checkout has changed: review with
 change up via `my manifests sync`, which reconciles generated guidance and
 launch-scoped skill reconciliation notices automatically.
 
+## Data bindings
+
+Declare the service first, then bind the domain through validated commands:
+
+```sh
+my admin services add registry --manifest-dir ~/src/acme-manifest \
+  --kind http --purpose "Instance registry" \
+  --connection-url https://registry.example.test/api/v1 \
+  --auth-ref env://REGISTRY_TOKEN
+my admin bindings set fleet --manifest-dir ~/src/acme-manifest \
+  --surface service:registry --surface mount:workspace
+```
+
+`set` replaces one binding in full. Optional repeatable `--guidance PATH` and
+`--field-alias KEY=FIELD` flags declare its guidance and write aliases; omitted
+optional fields are cleared. `my admin bindings remove fleet --manifest-dir
+DIR` removes the binding. Invalid references leave the file unchanged. These
+commands use the same administrator authorization and dirty-checkout guard as
+service authoring; `--force` permits a dirty checkout but never skips validation
+or authorization. Review and publish the resulting manifest before teammates
+use it.
+
 ## Tool hints
 
 Manifest tool declarations are admin-owned hints, not installers that My AI runs

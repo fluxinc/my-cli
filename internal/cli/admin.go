@@ -53,6 +53,8 @@ func (a app) runAdmin(args []string) error {
 	case "services":
 		// Manifest authoring; gated in the parsed-checkout loader.
 		return a.runAdminServices(args[1:])
+	case "bindings":
+		return a.runAdminBindings(args[1:])
 	case "contract":
 		// Manifest authoring; gated in the parsed-checkout loader.
 		return a.runAdminContract(args[1:])
@@ -93,6 +95,8 @@ func (a app) printAdminUsage() {
   my admin services add <id> --manifest-dir DIR --kind http|mcp --purpose TEXT --auth-ref REF [--describe-ref REF] [--connection-type TYPE] [--connection-command CMD|--connection-url URL] [--connection-arg ARG] [--connection-env KEY=REF] [--connection-header KEY=VALUE] [--force] [--json]
   my admin services edit <id> --manifest-dir DIR [--kind http|mcp] [--purpose TEXT] [--auth-ref REF] [--describe-ref REF|--clear-describe-ref] [--connection-type TYPE] [--connection-command CMD|--connection-url URL] [--connection-arg ARG] [--connection-env KEY=REF] [--connection-header KEY=VALUE] [--clear-connection] [--force] [--json]
   my admin services remove <id> --manifest-dir DIR [--prune-roles] [--force] [--json]
+  my admin bindings set <type> --manifest-dir DIR --surface REF [--surface REF] [--guidance PATH] [--field-alias KEY=FIELD] [--force] [--json]
+  my admin bindings remove <type> --manifest-dir DIR [--force] [--json]
 
 admin groups shared/workspace configuration. The top-level command forms remain
 as compatibility aliases. Admin aliases are limited to mutating/configuration
