@@ -20,8 +20,6 @@ import (
 // referencePart is what a service accepts for a reference namespace or id.
 var referencePart = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,120}$`)
 
-const supportLinkBodyLimit = 2000
-
 type supportLinkResult struct {
 	Record  string `json:"record"`
 	Created bool   `json:"created"`
@@ -98,7 +96,7 @@ func (a app) runSupportLink(args []string) error {
 		current[id] = got
 	}
 
-	body := supportLinkBody(rec)
+	body := supportLinkBody(rec.ID)
 	var results []supportLinkResult
 	for _, id := range ids {
 		key := supportLinkKey(svc.service.ID, id, ref)
@@ -110,6 +108,9 @@ func (a app) runSupportLink(args []string) error {
 			fresh, getErr := client.Get(ctx, id)
 			if getErr != nil {
 				return a.reportPartialLinks(opts.jsonOut, results, describeServiceError(svc, getErr))
+			}
+			if fresh.ID() != id {
+				return a.reportPartialLinks(opts.jsonOut, results, fmt.Errorf("%s now reads back as %s; not linking", id, fresh.ID()))
 			}
 			_, created, err = client.Link(ctx, id, key, ref, body, fresh.Revisions())
 		}
@@ -138,12 +139,24 @@ func (a app) runSupportLink(args []string) error {
 // reportPartialLinks names the links already made before the failure, so a
 // rerun (which replays them) is understood.
 func (a app) reportPartialLinks(jsonOut bool, done []supportLinkResult, err error) error {
-	if len(done) != 0 && !jsonOut {
-		for _, r := range done {
-			fmt.Fprintf(a.stdout, "%s: linked before the failure\n", r.Record)
+	err = fmt.Errorf("%w; rerun the same command to finish (links already made are kept)", err)
+	if jsonOut {
+		if done == nil {
+			done = []supportLinkResult{}
 		}
+		if printErr := printJSON(a.stdout, struct {
+			Error   string              `json:"error"`
+			Message string              `json:"message"`
+			Links   []supportLinkResult `json:"links"`
+		}{Error: "link_failed", Message: err.Error(), Links: done}); printErr != nil {
+			return printErr
+		}
+		return errAlreadyPrinted
 	}
-	return a.maybeJSONError(jsonOut, fmt.Errorf("%w; rerun the same command to finish (links already made are kept)", err))
+	for _, r := range done {
+		fmt.Fprintf(a.stdout, "%s: linked before the failure\n", r.Record)
+	}
+	return err
 }
 
 // supportReference names a support record exactly: the manifest and
@@ -165,17 +178,10 @@ func supportLinkKey(serviceID, recordID string, ref recordsvc.Reference) string 
 	return hex.EncodeToString(sum[:])
 }
 
-// supportLinkBody is the reference and title only, never the record's text.
-func supportLinkBody(rec support.Record) string {
-	body := "Support record " + rec.ID
-	if title := strings.TrimSpace(rec.Title); title != "" {
-		body += ": " + title
-	}
-	if runes := []rune(body); len(runes) > supportLinkBodyLimit {
-		body = string(runes[:supportLinkBodyLimit])
-	}
-	return body
-}
+// supportLinkBody names the record and nothing else: never its text, and
+// not its title either, which may be corrected after publication. A link's
+// body never changes, so a rerun always replays it.
+func supportLinkBody(id string) string { return "Support record " + id }
 
 // workspaceGitURL is the canonical remote the manifest declares for a
 // support record's workspace or mount.

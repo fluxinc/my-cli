@@ -80,8 +80,8 @@ func TestSupportLinkNotesAPublishedRecordOnceOnEachNamedRecord(t *testing.T) {
 		t.Fatalf("links %+v after %d posts; a repeated --record links once", out.Links, registry.linkPosts)
 	}
 	for key, body := range registry.links {
-		if body != "Support record 2026-10-02-network: Site network" {
-			t.Fatalf("%s: body %q carries more than the id and title", key, body)
+		if body != "Support record 2026-10-02-network" {
+			t.Fatalf("%s: body %q carries more than the id", key, body)
 		}
 	}
 
@@ -153,6 +153,56 @@ func TestSupportLinkNeedsExactStableIDs(t *testing.T) {
 	}
 	if err := linkSupport(a, home); err == nil || !strings.Contains(err.Error(), "--record") {
 		t.Fatalf("expected usage, got %v", err)
+	}
+}
+
+func TestSupportLinkRerunAfterAPublishedTitleCorrectionReplays(t *testing.T) {
+	registry, home, a, stdout, workspace := setupSupportLink(t)
+	if err := linkSupport(a, home, "--record", "reg:box:1"); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(workspace, "support", supportLinkRecord+".md")
+	data, _ := os.ReadFile(path)
+	writeCLITestFile(t, path, strings.Replace(string(data), `title: "Site network"`, `title: "Site network outage"`, 1))
+	git(t, workspace, "commit", "--quiet", "-am", "Correct title")
+	git(t, workspace, "push", "--quiet", "origin", "main")
+	stdout.Reset()
+	if err := linkSupport(a, home, "--record", "reg:box:1"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "already linked") || len(registry.links) != 1 {
+		t.Fatalf("rerun after a title correction: %s", stdout)
+	}
+}
+
+func TestSupportLinkReportsCompletedLinksInJSONWhenALaterOneFails(t *testing.T) {
+	registry, home, a, stdout, _ := setupSupportLink(t)
+	// reg:box:2 already holds this reference with another body, so its link
+	// is a conflict after reg:box:1 succeeds.
+	registry.links = map[string]string{`reg:box:2 {"id":"2026-10-02-network","namespace":"acme.handbook","system":"support"}`: "other"}
+	err := linkSupport(a, home, "--record", "reg:box:1", "--record", "reg:box:2", "--json")
+	if err == nil {
+		t.Fatal("expected failure")
+	}
+	var out struct {
+		Error string              `json:"error"`
+		Links []supportLinkResult `json:"links"`
+	}
+	if jerr := json.Unmarshal(stdout.Bytes(), &out); jerr != nil {
+		t.Fatalf("%v: %s", jerr, stdout)
+	}
+	if out.Error != "link_failed" || len(out.Links) != 1 || out.Links[0].Record != "reg:box:1" || !out.Links[0].Created {
+		t.Fatalf("partial result: %+v", out)
+	}
+}
+
+func TestSupportLinkRefusesARefreshThatNamesAnotherRecord(t *testing.T) {
+	registry, home, a, _, _ := setupSupportLink(t)
+	registry.staleLinks = 1
+	registry.redirectOnRefresh = "reg:box:2"
+	err := linkSupport(a, home, "--record", "reg:box:1")
+	if err == nil || !strings.Contains(err.Error(), "now reads back as reg:box:2") || len(registry.links) != 0 {
+		t.Fatalf("expected refusal, got %v with links %v", err, registry.links)
 	}
 }
 

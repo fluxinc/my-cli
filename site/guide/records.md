@@ -112,7 +112,7 @@ each fleet record's own history, so people working in the service see the
 incident too. It links only a published record: its current text must be on
 its workspace's default branch, freshly fetched, so publish (or finish the
 session) first. Records are named by stable id, never resolved from an
-identifier, and only the record's id and title are sent. A rerun is safe.
+identifier, and only the record's id is sent. A rerun is safe.
 
 For markdown records, record workflow transitions with
 `my fleet set <id> status=<value>`, then publish with the suggested

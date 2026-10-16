@@ -33,6 +33,9 @@ type fakeRegistry struct {
 	linkPosts  int
 	linkKeys   []string
 	staleLinks int
+	// redirectOnRefresh makes the GET after a stale link answer with
+	// another record's id.
+	redirectOnRefresh string
 }
 
 // touch records a change in the feed, as the real service does on writes.
@@ -211,6 +214,10 @@ func (f *fakeRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		switch {
 		case r.Method == http.MethodGet && action == "":
+			if f.redirectOnRefresh != "" && f.linkPosts > 0 {
+				reply(200, f.records[f.redirectOnRefresh])
+				return
+			}
 			reply(200, rec)
 		case r.Method == http.MethodPatch && action == "":
 			changes, _ := body["changes"].(map[string]any)
