@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Tests
+
+- Disable background Git maintenance in recovery fixtures so their byte-for-byte
+  source checks cannot race setup commits. Runtime recovery behavior is unchanged.
+
 ## 0.43.0 - 2026-10-16
 
 ### Added

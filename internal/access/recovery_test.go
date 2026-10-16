@@ -273,7 +273,9 @@ func TestExtractRecoveryArchiveRejectsSymlinkTargetTypeSwap(t *testing.T) {
 
 func runRecoveryGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	// Fixture commits must not leave background Git maintenance changing the
+	// source while the recovery test checks that capture itself is read-only.
+	cmd := exec.Command("git", append([]string{"-c", "maintenance.auto=false", "-c", "gc.auto=0", "-C", dir}, args...)...)
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
