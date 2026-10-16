@@ -185,12 +185,42 @@ func (c *Client) Transition(ctx context.Context, id, operation string, params ma
 	return rec, err
 }
 
+// Reference names a record kept outside the service, such as a support
+// record: exact and namespaced, so two organizations' ids never collide.
+type Reference struct {
+	Namespace string `json:"namespace"`
+	System    string `json:"system"`
+	ID        string `json:"id"`
+}
+
+// Link adds a note to a record naming a reference kept elsewhere. key makes
+// the request idempotent: the service answers a retry (any key, same
+// reference and body) with the note it already made. created is false for
+// such a replay.
+func (c *Client) Link(ctx context.Context, id, key string, ref Reference, body string, revisions map[string]any) (note map[string]any, created bool, err error) {
+	payload := map[string]any{"reference": ref, "body": body}
+	for k, v := range revisions {
+		payload[k] = v
+	}
+	var out struct {
+		Note map[string]any `json:"note"`
+	}
+	status, err := c.send(ctx, http.MethodPost, "records/"+url.PathEscape(id)+"/notes", nil, payload, &out, map[string]string{"Idempotency-Key": key})
+	return out.Note, status == http.StatusCreated, err
+}
+
 // do sends one request. path is relative to the base and already escaped
 // (ids go through url.PathEscape once, here and nowhere else).
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body any, out any) error {
+	_, err := c.send(ctx, method, path, query, body, out, nil)
+	return err
+}
+
+// send is do with extra request headers, reporting the success status.
+func (c *Client) send(ctx context.Context, method, path string, query url.Values, body any, out any, headers map[string]string) (int, error) {
 	target, err := url.Parse(c.base.String() + path)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if query != nil {
 		target.RawQuery = query.Encode()
@@ -199,39 +229,42 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if body != nil {
 		encoded, err := json.Marshal(body)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		reader = bytes.NewReader(encoded)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, target.String(), reader)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for name, value := range headers {
+		req.Header.Set(name, value)
 	}
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return &Error{ServiceID: c.ServiceID, Message: c.scrub(unwrapURLError(err))}
+		return 0, &Error{ServiceID: c.ServiceID, Message: c.scrub(unwrapURLError(err))}
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if err != nil {
-		return &Error{ServiceID: c.ServiceID, Message: "reading the response failed"}
+		return 0, &Error{ServiceID: c.ServiceID, Message: "reading the response failed"}
 	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		decoder := json.NewDecoder(bytes.NewReader(data))
 		decoder.UseNumber()
 		if err := decoder.Decode(out); err != nil {
-			return &Error{ServiceID: c.ServiceID, Status: resp.StatusCode, Code: "bad_response", Message: "the response was not the expected JSON"}
+			return 0, &Error{ServiceID: c.ServiceID, Status: resp.StatusCode, Code: "bad_response", Message: "the response was not the expected JSON"}
 		}
-		return nil
+		return resp.StatusCode, nil
 	}
-	return c.apiError(resp.StatusCode, data)
+	return 0, c.apiError(resp.StatusCode, data)
 }
 
 // apiError keeps only the service's structured fields, never the raw body,

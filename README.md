@@ -560,7 +560,13 @@ my support add    <slug> [--date DATE] [--title TEXT] [--customer ID]
                     [--product ID] [--area TEXT] [--tag TEXT]
                     [--status open|workaround|resolved] [--feature-candidate]
                     [--print] [--json]
+my support link   <id|path> --record <stable-id> [--record <stable-id>]... [--json]
 ```
+
+`my support link` notes a published support record on service-backed fleet
+records (stable ids, as `my fleet get` shows them). It refuses a record whose
+current text is not on its workspace's default branch, and sends only its
+id.
 
 Bare `my support` performs the same safe list action and accepts list filters.
 
