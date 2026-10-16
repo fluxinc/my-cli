@@ -205,10 +205,12 @@ my compile --role operator [--manifest NAME] [--home DIR]
 ```
 
 Manifest `data_bindings` map stable data nouns (`customers`, `meetings`,
-`support`, `fleet`) to an existing `mount:<id>` or `service:<id>`.
-Configure one with `my admin bindings set fleet --manifest-dir DIR --surface
-service:registry --surface mount:workspace`. Repeat `--guidance PATH` and
-`--field-alias KEY=FIELD` as needed. `set` replaces that binding in full;
+`support`, `fleet`) to an existing `mount:<id>` or `service:<id>` (`surface`), or to
+several in order (`surfaces`, at most one service). Only `fleet` can be
+service-backed today; its `field_aliases` map fleet field names to the
+service's. Configure one with `my admin bindings set fleet --manifest-dir DIR
+--surface service:registry --surface mount:workspace`. Repeat `--guidance PATH`
+and `--field-alias KEY=FIELD` as needed. `set` replaces that binding in full;
 `my admin bindings remove fleet --manifest-dir DIR` removes it. Both validate
 before writing and enforce manifest-admin authorization.
 Manifest `services` describe remote organization surfaces such as HTTP APIs and
@@ -572,15 +574,20 @@ built-in token-AND markdown search.
 ```sh
 my fleet list   [--status TEXT] [--customer ID] [--partner ID] [--identifier ID]
                   [--branch NAME] [--where KEY=VALUE] [--json]
-my fleet search <text> [same filters] [--json]
+my fleet search <text> [same filters] [--no-semantic] [--json]
 my fleet get    <id|identifier|path> [--json]
 my fleet add    <id> [--customer ID] [--partner ID] [--status TEXT]
                   [--device TEXT] [--serial TEXT] [--identifier ID]
                   [--config-repo NAME] [--config-branch NAME]
                   [--deployed-site TEXT] [--ship-to TEXT] [--contact TEXT]
                   [--install-date DATE] [--print] [--json]
-my fleet set    <id|identifier> KEY=VALUE... [--json]
+my fleet set    <id|identifier> KEY=VALUE... [--confirm ID]... [--json]
+my fleet transition <id|identifier> <operation> [KEY=VALUE...] [--json]
+my fleet index  [--rebuild] [--json]
 ```
+
+`transition`, `index`, `--confirm` and `--no-semantic` are on master and not
+yet in a release.
 
 A registry record per deployed instance under `fleet/<id>.md`, keyed by a
 stable id (hostname or node name) and updated in place. `get` resolves any
@@ -589,6 +596,11 @@ or serial — and lists support records sharing an identifier. `set` updates
 scalar frontmatter fields while preserving everything else, and suggests an
 `my sync --push --message` command so workflow transitions stay readable in git
 history. The status vocabulary is organization-defined.
+
+When the manifest binds fleet to a service, `get`, `list`, `search` and `set`
+read and write that service live, workflow moves go through `transition`, and
+`index` builds a private semantic index of its records. See
+[Records: service-backed fleet](site/guide/records.md#service-backed-fleet).
 
 ### Diagnostics
 

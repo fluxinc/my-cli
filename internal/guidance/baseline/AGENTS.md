@@ -33,7 +33,7 @@ Use the `my` CLI before falling back to ad hoc file searches:
   resolves any identifier (order, location, serial) and lists related support
   records. Update workflow state with `my fleet set <id> status=<value>` and
   publish each meaningful transition with the suggested `my sync --push --message`
-  command.
+  command (service-backed fleet: `my fleet transition`, live, nothing to publish).
 - Add `--json` when a harness needs structured output.
 
 Fleet work contract:
@@ -48,8 +48,11 @@ Fleet work contract:
   record with repeated `--identifier` flags, plus customer, product, and area
   frontmatter when known.
 - Treat support records as the incident/work log. Fleet records hold registry
-  state; use `my fleet set` only for meaningful state transitions.
-- Publish the resulting content with `my sync --push`.
+  state; change it only for meaningful state transitions: `my fleet set` for
+  markdown records, `my fleet transition` for service-backed ones (refused
+  `set status=` means the record is service-backed).
+- Publish the resulting content with `my sync --push`. Service-backed fleet
+  changes are already live and have nothing to publish.
 
 Default layout:
 

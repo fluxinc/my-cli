@@ -85,13 +85,13 @@ type state struct {
 
 // Result says what a sync did.
 type Result struct {
-	Rebuilt bool
-	Added   int
-	Updated int
-	Removed int
+	Rebuilt bool `json:"rebuilt"`
+	Added   int  `json:"added"`
+	Updated int  `json:"updated"`
+	Removed int  `json:"removed"`
 	// Backlog is true when the change feed had more pages than the sync was
 	// allowed to read; the index is behind and must not be queried.
-	Backlog bool
+	Backlog bool `json:"backlog"`
 }
 
 // Hit is one semantic match: a record id and its score. It carries no text

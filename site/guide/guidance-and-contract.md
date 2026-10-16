@@ -47,7 +47,8 @@ to support records:
 - Put the fleet record id and every useful identifier on the support record
   with repeated `--identifier` flags.
 - Treat support records as the incident/work log; fleet records hold registry
-  state, updated with `my fleet set` only for meaningful transitions.
+  state, updated only for meaningful transitions (`my fleet set` for markdown
+  records, `my fleet transition` for service-backed ones).
 - Publish the resulting content with `my sync --push`.
 
 `my fleet get` reinforces this at the moment it matters: its human output

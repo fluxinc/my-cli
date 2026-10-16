@@ -23,7 +23,10 @@ my manifests validate acme
 
 Services and roles are manifest vocabulary, not separate top-level concepts.
 `data_bindings` map stable data nouns (`customers`, `meetings`, `support`,
-`fleet`) to an existing `mount:<id>` or `service:<id>`, and may carry
+`fleet`) to an existing `mount:<id>` or `service:<id>` (`surface`), or to
+several in order (`surfaces`, at most one service). Only `fleet` can be
+service-backed today; its `field_aliases` map fleet field names to the
+service's. Bindings may also carry
 `guidance` fragments rendered as source-attributed `## Domain Notes` sections.
 `services` describe
 remote organization surfaces such as HTTP APIs and MCP servers using
@@ -77,7 +80,8 @@ fleet, policy, docs, and repo. `my init` scaffolds the organization's content
 repo as a mount at `<umbrella>/workspace`. Support content holds anonymized problem-to-solution
 records with frontmatter attribution (customer id, repeatable identifiers,
 claimed_by/observed_by/approved_by), searched via `my support`. Fleet content
-holds one record per deployed instance, updated in place via `my fleet set`;
+holds one record per deployed instance, updated in place via `my fleet set`
+(or live in a bound service, with `my fleet transition` for workflow moves);
 any identifier resolves via `my fleet get`.
 
 ## Session
