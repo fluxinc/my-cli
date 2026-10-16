@@ -3,7 +3,8 @@
 Workspace content is markdown records with frontmatter, living in mounted
 content repos. Customer identities are read from mounted `customers/*.md`
 records, and each record domain exposes write-oriented commands. `my sync
---push` publishes adopted changes.
+--push` publishes adopted changes. Fleet can instead be served live by a
+service (see [Service-backed fleet](#service-backed-fleet)).
 
 ```sh
 my customers list [--json]
@@ -21,12 +22,12 @@ my support get <id|path>
 my support add <slug> [--customer ID] [--identifier ID]... [--claimed-by MEMBER] [--observed-by MEMBER]... [--product ID] [--area TEXT] [--status open|workaround|resolved]
 
 my fleet list [--status TEXT] [--customer ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
-my fleet search <text>
+my fleet search <text> [--no-semantic]
 my fleet get <id|identifier|path>
 my fleet add <id> [--customer ID] [--status TEXT] [--device TEXT] [--serial TEXT] [--identifier ID]...
-my fleet set <id> KEY=VALUE...
-my fleet transition <id> <operation> [KEY=VALUE...]
-my fleet index [--rebuild]
+my fleet set <id> KEY=VALUE... [--confirm ID]...
+my fleet transition <id> <operation> [KEY=VALUE...]   # unreleased
+my fleet index [--rebuild]                            # unreleased
 ```
 
 Bare `my meetings` and `my support` use their safest useful action: they list
@@ -35,6 +36,8 @@ for search, retrieval, and creation.
 
 When the `qmd` tool is installed, `search` uses it for higher-quality
 retrieval; otherwise a built-in scan applies. Single keywords match best.
+Service-backed fleet records are searched by the service itself, plus the
+private index described under [Service-backed fleet](#service-backed-fleet).
 
 ## Customer records
 
@@ -94,7 +97,8 @@ frontmatter:
 ## Fleet records
 
 The fleet is a registry, not a journal: one record per deployed instance,
-keyed by a stable id, updated in place. State history is the record's git log.
+keyed by a stable id, updated in place. For markdown records, state history is
+the record's git log; for service-backed records, the service keeps it.
 
 `my fleet get` resolves *any* identifier — sales order, functional location,
 serial, hostname — and lists related support records found by shared
@@ -102,14 +106,22 @@ identifiers. Its output ends with the concrete next step: a seeded
 `my support add` command carrying the customer and every identifier, ready to
 run when no relevant record exists yet.
 
-Record workflow transitions with `my fleet set <id> status=<value>`, then
-publish with the suggested `my sync --push --message` command so each transition is
-a readable git commit.
+For markdown records, record workflow transitions with
+`my fleet set <id> status=<value>`, then publish with the suggested
+`my sync --push --message` command so each transition is a readable git commit.
+For service-backed records, use `my fleet transition`: the change is live in
+the service and there is nothing to publish.
 
 The built-in fleet work contract ties these together — see
 [Guidance and Contract](./guidance-and-contract.md).
 
 ### Service-backed fleet
+
+::: warning Unreleased
+This section describes `master`. The latest release (v0.42.0) does not have
+`my fleet transition`, `my fleet index`, `--confirm`, `--no-semantic` or
+service-backed fleet; they arrive with the next release.
+:::
 
 When an organization's registry lives in a service with an API, the manifest
 binds fleet to it. Records of other kinds can stay in a mount:
@@ -142,12 +154,14 @@ Then `my fleet` reads and writes the service live, through the
 - **`add`**: creates markdown only, and needs `--workspace` once fleet is service-backed.
 - **Pointers**: a markdown record with `managed_by: service:registry` (and optionally `managed_id`) points to the service. It is hidden from lists, `get` follows it, and its old values are never shown as current.
 - **Failures**: if the service cannot answer, the command fails and names it. No local copy stands in.
-- **Semantic search**: `my fleet index` builds a private, per-user index of the service's records, kept in `~/.local/state/my-cli/records/` and used by qmd in isolation from your own qmd setup. `my fleet search` then also finds records by meaning.
+- **Semantic search**: `my fleet index` builds a private, per-user index of the service's records, kept in `~/.local/state/my-cli/records/` and used by qmd in isolation from your own qmd index and configuration (qmd's downloaded models are reused read-only). `my fleet search` then also finds records by meaning.
   - Every match is re-read from the service and shown with its current values, never cached text.
   - Deleted and archived records drop out.
   - Before each search the index catches up from the service's change feed (a few pages). If it is further behind, if qmd is missing, or if it was never built, the search says so and shows the service's own results only.
   - `--no-semantic` skips it.
-- **Credentials**: `auth_ref` (`env://` or `op://`) is resolved per invocation, sent only to the service's own origin, and never printed.
+- **`--where`**: markdown records match on any frontmatter field; a service record answers only for the registry fields it carries (`status`, `customer`, `partner`, `device`, `serial`, `config_repo`, `config_branch`, `deployed_site`, `ship_to`, `install_date`).
+- **Connection**: the service's `connection.url` is its API base: https, or http on loopback only, with no credentials, query or fragment. The protocol is described in the [service-backed fleet plan](https://github.com/fluxinc/my-cli/blob/master/docs/plans/2026-10-12-service-backed-fleet.md).
+- **Credentials**: `auth_ref` (`env://`, `op://` or `none`; `broker://` is not supported here) is resolved per invocation, sent only to the service's own origin, and never printed.
 
 ## Adoption: why your file did not publish
 

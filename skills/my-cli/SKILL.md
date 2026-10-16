@@ -87,7 +87,8 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
 - **Operational** commands are read-only or only touch local per-user state.
   They are safe to run freely: `my skills list/show/status`,
   `my meetings list/search/get`, `my support list/search/get`,
-  `my fleet list/search/get`,
+  `my fleet list/search/get` (with service-backed fleet these call the
+  bound service and resolve its credential),
   `my customers list`,
   `my products list`, `my repos list/add/remove`, `my tools list/info`,
   `my services list/get`, `my roles list/get`, `my contract list`,
@@ -300,7 +301,9 @@ my support get     <id|path>
 my fleet list      [--status TEXT] [--customer ID] [--partner ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
 my fleet search    <text>        # qmd-first fleet registry search when available
 my fleet get       <id|identifier|path>   # resolves any identifier; lists related support records
-my fleet set       <id|identifier> KEY=VALUE...  # scalar frontmatter updates; preserves the rest
+my fleet set       <id|identifier> KEY=VALUE... [--confirm ID]...  # markdown: scalar frontmatter updates; service: one all-or-nothing write
+my fleet transition <id|identifier> <operation> [KEY=VALUE...]  # service-backed workflow moves
+my fleet index     [--rebuild]   # private semantic index of a bound fleet service
 my fleet add       <id> [--customer ID] [--partner ID] [--status TEXT] [--device TEXT] [--serial TEXT] [--identifier ID] [--config-repo NAME] [--config-branch NAME] [--deployed-site TEXT] [--ship-to TEXT] [--contact TEXT] [--install-date DATE] [--print] [--json]
 my support add     <slug> [--date DATE] [--title TEXT] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--observed-by MEMBER] [--approved-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--status open|workaround|resolved] [--feature-candidate] [--print] [--json]
                      # --identifier repeatable: record every device, order, or asset
@@ -638,8 +641,11 @@ or memory; clarify only when the target or privacy boundary is ambiguous.
   continue a relevant support record from that list or create a new dated
   anonymized one with `my support add`; put the fleet record id and every
   useful device, order, or asset identifier on the support record with repeated
-  `--identifier` flags. Record workflow transitions with `my fleet set <id>
-  status=<value>`, then publish with the suggested `my sync --push --message`
-  command so each transition stays a readable git commit.
+  `--identifier` flags. For markdown fleet records, record workflow
+  transitions with `my fleet set <id> status=<value>`, then publish with the
+  suggested `my sync --push --message` command so each transition stays a
+  readable git commit. For service-backed records (`get` shows a
+  `service:` surface), use `my fleet transition <id> <operation>`; the change
+  is live and there is nothing to publish.
 - This skill is installed and kept current by the `my` CLI itself; do not
   hand-edit the installed copy.

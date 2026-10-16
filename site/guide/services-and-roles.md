@@ -44,7 +44,11 @@ references:
 `auth_ref` accepts `env://VAR`, `op://vault/item` (1Password), `broker://`
 (reserved for the gated-broker runtime), or `none`. The optional inline
 `connection` uses MCP `server.json` field names; a `describe_ref` can point
-at a checked-in descriptor file instead.
+at a checked-in descriptor file instead. An `http` service's `connection` is
+only its API base, `{ "type": "http", "url": "https://…" }`; a fleet data
+binding uses it to read and write records live (see
+[Records](./records.md#service-backed-fleet)). `broker://` is not supported for
+service-backed records.
 
 Create or update service declarations from a maintainer checkout:
 
@@ -114,8 +118,9 @@ not produce unless forced.
 
 ## Doctor checks
 
-`my doctor` checks every declared service: missing connection data is an
-error; an unset `env://` variable, an `op://` reference without the `op` CLI,
+`my doctor` checks every declared MCP service: missing connection data is an
+error (an `http` service bound to fleet without `connection.url` is reported
+when a fleet command first uses it); an unset `env://` variable, an `op://` reference without the `op` CLI,
 or a URL-only description each get a warning naming the service and the fix.
 Skills can declare `requires: ["service:<id>"]`; `my skills show` surfaces
 those requirements.

@@ -44,7 +44,7 @@ func (a app) printFleetUsage() {
   my fleet search <text> [--no-semantic] [--manifest NAME] [--workspace ID] [--status TEXT] [--customer ID] [--partner ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
   my fleet get <id|identifier|path> [--manifest NAME] [--workspace ID] [--json]
   my fleet add <id> [--manifest NAME] [--workspace ID] [--customer ID] [--partner ID] [--status TEXT] [--device TEXT] [--serial TEXT] [--identifier ID] [--config-repo NAME] [--config-branch NAME] [--deployed-site TEXT] [--ship-to TEXT] [--contact TEXT] [--install-date DATE] [--print] [--json]
-  my fleet set <id|identifier> KEY=VALUE... [--confirm IDS] [--manifest NAME] [--workspace ID] [--json]
+  my fleet set <id|identifier> KEY=VALUE... [--confirm ID]... [--manifest NAME] [--workspace ID] [--json]
   my fleet transition <id|identifier> <operation> [KEY=VALUE...] [--manifest NAME] [--json]
   my fleet index [--rebuild] [--manifest NAME] [--json]
 
@@ -55,8 +55,11 @@ order, functional location, or serial from the record's identifiers list —
 and reports related support records that share an identifier. set updates
 scalar frontmatter fields in place (for example status=live) and preserves
 every other line; state history is the record's git history, so publish each
-	meaningful transition with my sync --push --message. status vocabulary is
-organization-defined. --where filters on any top-level frontmatter field.
+meaningful transition with my sync --push --message. status vocabulary is
+organization-defined. --where filters on any top-level frontmatter field; a
+service record answers only for the registry fields it carries (status,
+customer, partner, device, serial, config_repo, config_branch, deployed_site,
+ship_to, install_date).
 
 When the manifest binds fleet to a service (data_bindings.fleet), records in
 that service are read and written live: get resolves the reference there,

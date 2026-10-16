@@ -183,6 +183,19 @@ lines for checkouts auto-refresh cannot converge (dirty, ahead, behind, or
 diverged), each naming the repository and the command to run, such as
 `my sync` or `my doctor`. Stdout stays clean, so `cd "$(my root)"` is safe.
 
+## Records you will use daily
+
+`my meetings`, `my support` and `my fleet` read the organization's records.
+By default they are markdown files in the content repo: change them, then
+publish with the `my sync --push --message` command they suggest.
+
+*Unreleased (on master, not yet in a release):* a manifest can bind fleet to
+a service with an HTTP API. Then `my fleet get/list/search/set` read and write
+that service live and there is nothing to publish; workflow moves use
+`my fleet transition`, and `my fleet index` adds a private semantic index. See
+[Records: service-backed fleet](./records.md#service-backed-fleet). Release
+installs do not have these commands until the next release.
+
 ## Update my
 
 Use the self-update command:

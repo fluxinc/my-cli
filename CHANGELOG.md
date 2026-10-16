@@ -15,12 +15,18 @@
   covers. Without it, the refusal prints the ids and the shell-quoted command to run.
 - Serve fleet records from a service: `data_bindings` may name several
   `surfaces` (one service plus mounts) and `field_aliases`. An `http` service
-  takes its API base from `connection.url` (https, no credentials or query).
+  takes its API base from `connection.url` (https, or http on loopback only; no credentials, query or fragment).
   `my fleet get/list/search/set` read and write it live through
   `records-http/v1`. Writes save all fields or none. Workflow moves go through
   the new `my fleet transition`. Markdown records with `managed_by` become
   pointers. A service that cannot answer fails the command. Credentials from
-  `env://` or `op://` never leave the service's origin or reach output.
+  `env://` or `op://` (or `none`) never leave the service's origin or reach output.
+
+### Fixed
+
+- `my fleet list/search --where` now matches service-backed records on the
+  registry fields they carry; it used to drop every service record.
+- `my fleet index --json` uses snake_case keys like every other command.
 
 ## 0.42.0 - 2026-09-12
 

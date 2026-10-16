@@ -183,3 +183,17 @@ func writeFleetTestFile(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestFilterWhereOnServiceRecords(t *testing.T) {
+	records := []Record{
+		{ID: "svc-1", Status: "live", ConfigBranch: "partner/site-1", Surface: "service:registry", Source: "service"},
+		{ID: "svc-2", Status: "install", Surface: "service:registry", Source: "service"},
+	}
+	got := FilterRecords(records, Filter{Where: map[string]string{"status": "live", "config_branch": "partner/site-1"}})
+	if len(got) != 1 || got[0].ID != "svc-1" {
+		t.Fatalf("where on service records = %#v", got)
+	}
+	if none := FilterRecords(records, Filter{Where: map[string]string{"assigned": "alex"}}); len(none) != 0 {
+		t.Fatalf("a field a service record lacks must not match: %#v", none)
+	}
+}
