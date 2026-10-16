@@ -106,6 +106,14 @@ identifiers. Its output ends with the concrete next step: a seeded
 `my support add` command carrying the customer and every identifier, ready to
 run when no relevant record exists yet.
 
+When fleet is service-backed, `my support link <id> --record <stable-id>`
+(repeat `--record` for each record) puts a note naming the support record in
+each fleet record's own history, so people working in the service see the
+incident too. It links only a published record: its current text must be on
+its workspace's default branch, freshly fetched, so publish (or finish the
+session) first. Records are named by stable id, never resolved from an
+identifier, and only the record's id and title are sent. A rerun is safe.
+
 For markdown records, record workflow transitions with
 `my fleet set <id> status=<value>`, then publish with the suggested
 `my sync --push --message` command so each transition is a readable git commit.

@@ -21,6 +21,8 @@ func (a app) runSupport(args []string) error {
 		return a.runSupportGet(args[1:])
 	case "add":
 		return a.runSupportAdd(args[1:])
+	case "link":
+		return a.runSupportLink(args[1:])
 	case "-h", "--help", "help":
 		a.printSupportUsage()
 		return nil
@@ -38,6 +40,7 @@ func (a app) printSupportUsage() {
   my support search <text> [--manifest NAME] [--workspace ID] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
   my support get <id|path> [--manifest NAME] [--workspace ID] [--json]
   my support add <slug> [--manifest NAME] [--workspace ID] [--date DATE] [--title TEXT] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--observed-by MEMBER] [--approved-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--status open|workaround|resolved] [--feature-candidate] [--print] [--json]
+  my support link <id|path> --record <stable-id> [--record <stable-id>] [--manifest NAME] [--workspace ID] [--json]
 
 Support commands use local markdown files under workspace support/ directories.
 Repeat --identifier for each device, order, or asset identifier (for example a
@@ -45,7 +48,12 @@ workstation name, equipment ID, functional location, or sales order number) so
 records can be linked to the same equipment later. --claimed-by names the org
 member who worked the problem, --observed-by (repeatable) anyone else involved,
 and --approved-by the member who signed off on the record; agents should leave
-approved_by empty unless the operator explicitly approves.`)
+approved_by empty unless the operator explicitly approves.
+
+link notes a published support record on service-backed fleet records, named
+by stable id (my fleet get shows it). It writes nothing unless the record's
+current text is on its workspace's default branch, and only the record's id
+and title are sent. Rerunning it is safe.`)
 }
 
 func (a app) runSupportList(args []string) error {

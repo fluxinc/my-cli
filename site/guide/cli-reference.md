@@ -248,6 +248,7 @@ my support list
 my support search <text>
 my support get <id|path>
 my support add <slug>
+my support link <id|path> --record <stable-id>
 
 my fleet list
 my fleet search <text> [--no-semantic]

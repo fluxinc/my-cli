@@ -4,6 +4,11 @@
 
 ### Added
 
+- `my support link <id> --record <stable-id>` notes a published support record
+  on service-backed fleet records, named by stable id. It writes nothing unless
+  the record's current text is on its workspace's default branch (freshly
+  fetched from the manifest's git URL), sends only the record's id and title,
+  and is safe to rerun: each link carries a deterministic idempotency key.
 - Author data bindings with validated `my admin bindings set/remove`, including service/mount surfaces, guidance and field aliases. HTTP service authoring now accepts an API connection URL.
 - `my fleet index` and semantic `my fleet search` for service-backed fleet:
   a private per-user qmd index of the service's records, isolated from your

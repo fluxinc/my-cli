@@ -26,6 +26,13 @@ type fakeRegistry struct {
 	fields  map[string]string // writable field -> path in the record ("box.serial_number")
 	patches int
 	feed    []map[string]any // the change feed: {id, op}
+	// links: record id + reference -> body; linkPosts counts every link
+	// request; staleLinks makes that many link requests find the record
+	// changed first.
+	links      map[string]string
+	linkPosts  int
+	linkKeys   []string
+	staleLinks int
 }
 
 // touch records a change in the feed, as the real service does on writes.
@@ -146,6 +153,44 @@ func (f *fakeRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		reply(200, map[string]any{"records": out, "page": 1, "next_page": nil})
+	case r.Method == http.MethodPost && strings.HasPrefix(path, "records/") && strings.HasSuffix(path, "/notes"):
+		id := strings.TrimSuffix(strings.TrimPrefix(path, "records/"), "/notes")
+		rec, ok := f.records[id]
+		if !ok {
+			reply(404, map[string]any{"error": "not_found"})
+			return
+		}
+		f.linkPosts++
+		f.linkKeys = append(f.linkKeys, r.Header.Get("Idempotency-Key"))
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		ref, _ := json.Marshal(body["reference"])
+		key := id + " " + string(ref)
+		if f.links == nil {
+			f.links = map[string]string{}
+		}
+		// As the service does: a replay is answered before revisions.
+		if existing, ok := f.links[key]; ok {
+			if existing != body["body"] {
+				reply(409, map[string]any{"error": "reference_conflict"})
+				return
+			}
+			reply(200, map[string]any{"note": map[string]any{"body": existing}})
+			return
+		}
+		if f.staleLinks > 0 {
+			f.staleLinks--
+			rec["revision"] = toInt(rec["revision"]) + 1
+		}
+		for _, k := range []string{"revision", "order_revision"} {
+			if fmt.Sprint(body[k]) != fmt.Sprint(rec[k]) {
+				reply(409, map[string]any{"error": "stale", "record": rec})
+				return
+			}
+		}
+		f.links[key] = fmt.Sprint(body["body"])
+		rec["revision"] = toInt(rec["revision"]) + 1
+		reply(201, map[string]any{"note": map[string]any{"body": body["body"]}})
 	case strings.HasPrefix(path, "records/"):
 		rest := strings.TrimPrefix(path, "records/")
 		id, action, _ := strings.Cut(rest, "/")
