@@ -206,6 +206,11 @@ my compile --role operator [--manifest NAME] [--home DIR]
 
 Manifest `data_bindings` map stable data nouns (`customers`, `meetings`,
 `support`, `fleet`) to an existing `mount:<id>` or `service:<id>`.
+Configure one with `my admin bindings set fleet --manifest-dir DIR --surface
+service:registry --surface mount:workspace`. Repeat `--guidance PATH` and
+`--field-alias KEY=FIELD` as needed. `set` replaces that binding in full;
+`my admin bindings remove fleet --manifest-dir DIR` removes it. Both validate
+before writing and enforce manifest-admin authorization.
 Manifest `services` describe remote organization surfaces such as HTTP APIs and
 MCP servers. Manifest `roles` are local loadouts: they select services and
 optional role-specific guidance without granting authority or pruning mounts.

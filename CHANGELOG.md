@@ -4,6 +4,7 @@
 
 ### Added
 
+- Author data bindings with validated `my admin bindings set/remove`, including service/mount surfaces, guidance and field aliases. HTTP service authoring now accepts an API connection URL.
 - `my fleet index` and semantic `my fleet search` for service-backed fleet:
   a private per-user qmd index of the service's records, isolated from your
   own qmd setup. It follows the service's change feed, and every match is

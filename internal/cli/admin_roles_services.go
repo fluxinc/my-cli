@@ -675,8 +675,8 @@ func applyAdminServiceOpts(service *manifest.Service, opts adminServiceOpts) {
 }
 
 func validateAdminServiceConnection(service manifest.Service) error {
-	if !service.Connection.IsZero() && service.Kind != "mcp" {
-		return fmt.Errorf("connection flags are only valid for mcp services")
+	if !service.Connection.IsZero() && service.Kind != "mcp" && service.Kind != "http" {
+		return fmt.Errorf("connection flags are only valid for http or mcp services")
 	}
 	for key, value := range service.Connection.Env {
 		if !validConnectionEnvValue(value) {
