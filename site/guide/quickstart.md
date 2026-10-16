@@ -189,12 +189,19 @@ diverged), each naming the repository and the command to run, such as
 By default they are markdown files in the content repo: change them, then
 publish with the `my sync --push --message` command they suggest.
 
-*Unreleased (on master, not yet in a release):* a manifest can bind fleet to
+Since v0.43.0, a manifest can bind fleet to
 a service with an HTTP API. Then `my fleet get/list/search/set` read and write
 that service live and there is nothing to publish; workflow moves use
 `my fleet transition`, and `my fleet index` adds a private semantic index. See
-[Records: service-backed fleet](./records.md#service-backed-fleet). Release
-installs do not have these commands until the next release.
+[Records: service-backed fleet](./records.md#service-backed-fleet). Publish an
+incident before adding its reference with
+`my support link <id> --record <stable-id>`; repeating the command is safe.
+
+If your organization enables an HTTP fleet service, upgrade to v0.43.0 or
+newer **before** refreshing that manifest: older versions reject the new
+connection URL. Run `my update`, then `my setup --no-update-check`.
+`my update` does not load the manifest, so it also works when an already
+refreshed manifest makes the older CLI fail validation.
 
 ## Update my
 

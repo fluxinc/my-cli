@@ -1,6 +1,7 @@
 # Service-backed fleet records
 
-Status: implemented (2026-10-12): live records, fan-out confirmation and semantic search
+Status: shipped in v0.43.0 (2026-10-16): live records, fan-out confirmation,
+semantic search and explicit published incident links
 
 This plan delivers Slice 4 of the data-surfaces plan
 (`2026-06-13-data-surfaces.md`) for the `fleet` data type. It applies once an

@@ -298,6 +298,7 @@ my meetings add    <slug> [--date DATE] [--title TEXT] [--customer ID] [--attend
 my support list    [--since DATE] [--customer ID] [--identifier ID] [--claimed-by MEMBER] [--product ID] [--area TEXT] [--tag TEXT] [--feature-candidate] [--json]
 my support search  <text>        # qmd-first support record search when available
 my support get     <id|path>
+my support link    <id|path> --record <stable-id> [--record <stable-id>]  # link a published incident to service-backed fleet
 my fleet list      [--status TEXT] [--customer ID] [--partner ID] [--identifier ID] [--branch NAME] [--where KEY=VALUE] [--json]
 my fleet search    <text>        # qmd-first fleet registry search when available
 my fleet get       <id|identifier|path>   # resolves any identifier; lists related support records
@@ -647,5 +648,12 @@ or memory; clarify only when the target or privacy boundary is ambiguous.
   readable git commit. For service-backed records (`get` shows a
   `service:` surface), use `my fleet transition <id> <operation>`; the change
   is live and there is nothing to publish.
+- For a service-backed fleet, publish an incident record before adding its
+  reference with `my support link <id> --record <stable-id>` (repeat `--record`
+  for each explicitly selected fleet record). The current record bytes must be
+  on the workspace's canonical default branch. The command sends only the
+  incident ID, never its body, and repeated calls create no duplicate. It does
+  not run automatically when creating or publishing a record. If a later link
+  fails, inspect the completed links reported in the output before retrying.
 - This skill is installed and kept current by the `my` CLI itself; do not
   hand-edit the installed copy.

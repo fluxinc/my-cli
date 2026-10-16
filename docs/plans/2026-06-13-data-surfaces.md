@@ -1,9 +1,9 @@
 # Data Types over Data Surfaces
 
-Status: active, 2026-06-13. Slice 1 shipped in v0.22.0; Slice 2 shipped in
-v0.23.0; Slice 3 shipped in v0.24.0. Service-backed domains and recursive
-claw-pod materialization remain future/YAGNI. Supersedes the earlier
-RBAC-oriented draft.
+Status: shipped through Slice 4, 2026-10-16. Slice 1 shipped in v0.22.0;
+Slice 2 in v0.23.0; Slice 3 in v0.24.0; service-backed fleet (Slice 4) in
+v0.43.0. Recursive claw-pod materialization proceeds through the Mode B
+compile plan. Supersedes the earlier RBAC-oriented draft.
 
 ## Problem
 

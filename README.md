@@ -852,11 +852,13 @@ indexed in [docs/plans/](docs/plans/README.md):
   `my contract list` plus `my admin contract add|remove` for the standard
   inspect/review-commit-push workflow. Plan:
   [contract rules](docs/plans/2026-06-12-contract-rules.md).
-- **Implemented — service-backed fleet records (unreleased).**
+- **Shipped — service-backed fleet records (v0.43.0).**
   Fleet reads and revision-checked writes can use a manifest-bound HTTP service
   alongside Markdown mounts. A shared change needs an explicit
   `--confirm <id>` per affected record, and `my fleet index` adds a private
-  semantic index whose hits are always re-read from the service. Plan:
+  semantic index whose hits are always re-read from the service.
+  `my support link` adds published incident references to explicitly selected
+  service records. Plan:
   [service-backed fleet](docs/plans/2026-10-12-service-backed-fleet.md).
 - **Shipped — customer records move to the data plane (v0.22.0).**
   `my customers list` now reads mounted `customers/*.md` records, customer
@@ -868,12 +870,12 @@ indexed in [docs/plans/](docs/plans/README.md):
   maps stable operational data nouns (`customers`, `meetings`, `support`,
   `fleet`) to existing `mount:<id>` or `service:<id>` surfaces. Mount-backed
   bindings narrow local record commands. Service-backed fleet invocation
-  now proceeds through the active service-backed fleet plan. Plan:
+  shipped in v0.43.0 through the service-backed fleet plan. Plan:
   [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 2.
 - **Shipped — domain notes over bound surfaces (v0.24.0).** Data bindings can
   carry labeled guidance fragments for their backing surfaces without changing
   the top-level org contract. This completed the initial data-surface scope;
-  service-backed fleet invocation now proceeds through its active plan.
+  service-backed fleet invocation shipped in v0.43.0 through its own plan.
   Plan:
   [data surfaces](docs/plans/2026-06-13-data-surfaces.md), Slice 3.
 - **Shipped — contained runner launch projection (v0.25.0).** Org-side
