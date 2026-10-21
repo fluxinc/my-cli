@@ -1,6 +1,6 @@
 # Personal service access and comments
 
-Status: implemented on branch; not released.
+Status: shipped in v0.44.0.
 
 HTTP record services can publish `auth_setup_url`. Onboarding introduces that
 page and the personal-reference setup commands. `my services auth set/status/unset`

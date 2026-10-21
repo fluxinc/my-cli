@@ -852,7 +852,7 @@ indexed in [docs/plans/](docs/plans/README.md):
   `my contract list` plus `my admin contract add|remove` for the standard
   inspect/review-commit-push workflow. Plan:
   [contract rules](docs/plans/2026-06-12-contract-rules.md).
-- **Implemented, unreleased — personal service access and comments.** Personal credential references, web key-setup links in onboarding, expiry diagnostics, and revision-checked conversation comments. Plan: [personal service access](docs/plans/2026-10-20-personal-service-access.md).
+- **Shipped — personal service access and comments (v0.44.0).** Personal credential references, web key-setup links in onboarding, expiry diagnostics, and revision-checked conversation comments. Plan: [personal service access](docs/plans/2026-10-20-personal-service-access.md).
 
 - **Shipped — service-backed fleet records (v0.43.0).**
   Fleet reads and revision-checked writes can use a manifest-bound HTTP service

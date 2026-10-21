@@ -7,7 +7,7 @@ noted successor wins on conflict).
 
 | Plan | Status | Notes |
 |---|---|---|
-| [2026-10-20-personal-service-access](2026-10-20-personal-service-access.md) | active (implemented, unreleased) | Personal credential references, web key-setup links, expiry diagnostics and revision-checked service conversation comments. |
+| [2026-10-20-personal-service-access](2026-10-20-personal-service-access.md) | shipped (v0.44.0) | Personal credential references, web key-setup links, expiry diagnostics and revision-checked service conversation comments. |
 | [2026-10-12-service-backed-fleet](2026-10-12-service-backed-fleet.md) | shipped (v0.43.0) | Live HTTP fleet reads and revision-checked writes alongside Markdown mounts, an explicit `--confirm <id>` per record for shared changes, and a private semantic index whose hits are re-read from the service. |
 | [2026-09-12-fresh-system-onboarding](2026-09-12-fresh-system-onboarding.md) | shipped (v0.42.0) | Neutral agent bootstrap before prerequisites, actual terminal handoff, agent-operated teaching, and clean-system regression coverage. |
 | [2026-08-25-open-issue-sweep](2026-08-25-open-issue-sweep.md) | shipped (v0.41.0) | Re-evaluates all 10 issues open on 2026-08-25; implements current CI, freshness, local-control-root, path-aware session, terminology, and detached-CI identity needs; closes already-fixed or speculative/refactor requests to keep the CLI small. |
