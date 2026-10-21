@@ -11,7 +11,9 @@
   and `optional` behave as before.
 - `my admin manifest-mounts add|remove` declares or removes manifest mounts in
   a maintainer checkout, re-validating before writing. `--role ID` adds the
-  mount to existing roles; removal refuses while a role still selects it.
+  mount to existing roles; removal refuses while a role still selects it
+  unless `--prune-roles` removes the mount and its role references in one
+  validated write.
 
 ## 0.44.0 - 2026-10-20
 

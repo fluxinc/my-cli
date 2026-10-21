@@ -292,7 +292,7 @@ my admin tools edit <id> --manifest-dir <checkout> [--purpose "..."]
 my admin tools remove <id> --manifest-dir <checkout>
 my admin repos add <id> --manifest-dir <checkout> --git-url <url> [--description "..."] [--default]
 my admin manifest-mounts add <id> --manifest-dir <checkout> --kind KIND --git-url <url> --mode required|default|optional|role [--include PATH] [--role ID]
-my admin manifest-mounts remove <id> --manifest-dir <checkout>
+my admin manifest-mounts remove <id> --manifest-dir <checkout> [--prune-roles]
 my admin services add <id> --manifest-dir <checkout> --kind http|mcp --purpose "..." --auth-ref REF
 my admin services edit <id> --manifest-dir <checkout> [--purpose "..."]
 my admin services remove <id> --manifest-dir <checkout> [--prune-roles]

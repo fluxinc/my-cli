@@ -108,7 +108,8 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
   `my admin repos add`,
   `my admin roles add/edit/remove`, `my admin services add/edit/remove`,
   `my admin manifest-mounts add/remove` (manifest mount declarations; mode
-  `role` is a role-only mount cloned only for a role that selects it),
+  `role` is a role-only mount cloned only for a role that selects it;
+  `remove --prune-roles` drops role references in the same write),
   `my admin contract add/remove`,
   `my admin policy add/remove`,
   `my admin manifests/mounts/meetings/support/setup`) and require explicit

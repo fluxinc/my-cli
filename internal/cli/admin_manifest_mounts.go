@@ -17,6 +17,7 @@ type adminManifestMountResult struct {
 	ManifestPath string         `json:"manifest_path"`
 	Mount        manifest.Mount `json:"mount,omitzero"`
 	Roles        []string       `json:"roles,omitempty"`
+	PrunedRoles  []string       `json:"pruned_roles,omitempty"`
 	Message      string         `json:"message,omitempty"`
 	NextCommands []string       `json:"next_commands,omitempty"`
 }
@@ -85,10 +86,12 @@ func (a app) runAdminManifestMountsAdd(args []string) error {
 
 func (a app) runAdminManifestMountsRemove(args []string) error {
 	var manifestDir string
+	var pruneRoles bool
 	var force bool
 	var jsonOut bool
 	fs := newFlagSet("my admin manifest-mounts remove", a.stderr)
 	fs.StringVar(&manifestDir, "manifest-dir", "", "maintainer manifest checkout")
+	fs.BoolVar(&pruneRoles, "prune-roles", false, "remove this mount from role selections in the same write")
 	fs.BoolVar(&force, "force", false, "allow dirty checkout")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON result")
 	rest, err := parseInterspersed(fs, args, map[string]bool{"manifest-dir": true})
@@ -96,9 +99,9 @@ func (a app) runAdminManifestMountsRemove(args []string) error {
 		return err
 	}
 	if len(rest) != 1 || manifestDir == "" {
-		return fmt.Errorf("usage: my admin manifest-mounts remove <id> --manifest-dir DIR [--force] [--json]")
+		return fmt.Errorf("usage: my admin manifest-mounts remove <id> --manifest-dir DIR [--prune-roles] [--force] [--json]")
 	}
-	result, err := a.adminManifestMountsRemove(rest[0], manifestDir, force)
+	result, err := a.adminManifestMountsRemove(rest[0], manifestDir, pruneRoles, force)
 	if err != nil {
 		return err
 	}
@@ -157,7 +160,11 @@ func (a app) adminManifestMountsAdd(id string, opts adminManifestMountOpts) (adm
 	return adminManifestMountResult{Action: action, ID: id, ManifestPath: manifestPath, Mount: mount, Roles: []string(opts.roles), Message: message, NextCommands: adminNextCommands(root)}, nil
 }
 
-func (a app) adminManifestMountsRemove(id, manifestDir string, force bool) (adminManifestMountResult, error) {
+// adminManifestMountsRemove removes a mount declaration. With pruneRoles it
+// also drops every role's reference in the same validated write, which is the
+// only way to remove a role-only mount (a role cannot deselect it first
+// without leaving it dangling).
+func (a app) adminManifestMountsRemove(id, manifestDir string, pruneRoles, force bool) (adminManifestMountResult, error) {
 	doc, manifestPath, root, err := a.loadAuthorizedAdminManifestCheckout(manifestDir)
 	if err != nil {
 		return adminManifestMountResult{}, err
@@ -176,13 +183,21 @@ func (a app) adminManifestMountsRemove(id, manifestDir string, force bool) (admi
 			selecting = append(selecting, role.ID)
 		}
 	}
-	if len(selecting) != 0 {
-		return adminManifestMountResult{}, fmt.Errorf("mount %q is selected by role(s) %s; remove it from those roles first with my admin roles edit", id, strings.Join(selecting, ", "))
+	if len(selecting) != 0 && !pruneRoles {
+		return adminManifestMountResult{}, fmt.Errorf("mount %q is selected by roles: %s; re-run with --prune-roles to remove those references", id, strings.Join(selecting, ", "))
 	}
 	removed := doc.Mounts[idx]
 	doc.Mounts = append(doc.Mounts[:idx], doc.Mounts[idx+1:]...)
 	if len(doc.Mounts) == 0 {
 		doc.Mounts = nil
+	}
+	if pruneRoles {
+		for i := range doc.Roles {
+			doc.Roles[i].Mounts = slices.DeleteFunc(doc.Roles[i].Mounts, func(m string) bool { return m == id })
+			if len(doc.Roles[i].Mounts) == 0 {
+				doc.Roles[i].Mounts = nil
+			}
+		}
 	}
 	if result := manifest.ValidateDocument(root, doc); len(result.Errors) != 0 {
 		return adminManifestMountResult{}, fmt.Errorf("updated manifest is invalid: %s", strings.Join(result.Errors, "; "))
@@ -190,7 +205,11 @@ func (a app) adminManifestMountsRemove(id, manifestDir string, force bool) (admi
 	if err := manifest.SaveDocument(manifestPath, doc); err != nil {
 		return adminManifestMountResult{}, err
 	}
-	return adminManifestMountResult{Action: "removed", ID: id, ManifestPath: manifestPath, Mount: removed, Message: "removed mount", NextCommands: adminNextCommands(root)}, nil
+	message := "removed mount"
+	if len(selecting) != 0 {
+		message += "; pruned roles: " + strings.Join(selecting, ", ")
+	}
+	return adminManifestMountResult{Action: "removed", ID: id, ManifestPath: manifestPath, Mount: removed, PrunedRoles: selecting, Message: message, NextCommands: adminNextCommands(root)}, nil
 }
 
 func (a app) printAdminManifestMountResult(result adminManifestMountResult, jsonOut bool) error {

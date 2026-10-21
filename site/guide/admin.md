@@ -138,7 +138,8 @@ declares a manifest mount (`my admin mounts` stays the umbrella-local
 `my mounts` alias). Mode `role` makes a role-only mount: it is cloned and in
 launch scope only when the selected role lists it, so declare it together with
 a selecting role via `--role ID`. `remove` refuses while any role selects the
-mount.
+mount unless `--prune-roles` is supplied, which removes the mount and every
+role reference to it in one validated write (the way to retire a role mount).
 
 `my admin services edit|remove` and `my admin roles edit|remove` update the
 same declarations. Service removal refuses role-selected services unless

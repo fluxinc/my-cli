@@ -46,7 +46,7 @@ func TestAdminManifestMountsAddRoleModeWithRoleAndRemoveRefusal(t *testing.T) {
 	}
 
 	err = a.run([]string{"my", "admin", "manifest-mounts", "remove", "ops-docs", "--manifest-dir", manifestDir})
-	if err == nil || !strings.Contains(err.Error(), "selected by role(s) operator") {
+	if err == nil || !strings.Contains(err.Error(), "selected by roles: operator") || !strings.Contains(err.Error(), "--prune-roles") {
 		t.Fatalf("err = %v, want selected-by-role refusal", err)
 	}
 	doc, _, err = manifest.LoadDocument(manifestDir)
@@ -141,5 +141,107 @@ func TestAdminMountsStillAliasesUmbrellaMounts(t *testing.T) {
 	err := a.run([]string{"my", "admin", "mounts", "list"})
 	if err == nil || !strings.Contains(err.Error(), "use my mounts list") {
 		t.Fatalf("err = %v, want operational-read alias error", err)
+	}
+}
+
+func writeRoleMountPruneManifest(t *testing.T, dir, extraSkills string) {
+	t.Helper()
+	writeAdminManifest(t, dir, `,
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": "https://github.com/acme/handbook.git", "mode": "required" },
+    { "id": "ops-docs", "kind": "docs", "git_url": "https://github.com/acme/ops-docs.git", "mode": "role" }
+  ],
+  "skills": [
+    { "id": "acme:handbook", "install_slug": "acme-handbook", "path": "skills/acme-handbook" }`+extraSkills+`
+  ],
+  "roles": [
+    { "id": "operator", "purpose": "Operator", "mounts": ["handbook", "ops-docs"] },
+    { "id": "oncall", "purpose": "On call", "mounts": ["ops-docs"] },
+    { "id": "viewer", "purpose": "Viewer", "mounts": ["handbook"] }
+  ]`)
+}
+
+func TestAdminManifestMountsRemovePruneRolesRemovesRoleMount(t *testing.T) {
+	manifestDir := t.TempDir()
+	writeRoleMountPruneManifest(t, manifestDir, "")
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err := a.run([]string{"my", "admin", "manifest-mounts", "remove", "ops-docs", "--manifest-dir", manifestDir})
+	if err == nil || !strings.Contains(err.Error(), "selected by roles: operator, oncall") {
+		t.Fatalf("err = %v, want refusal without --prune-roles", err)
+	}
+	if err := a.run([]string{"my", "admin", "manifest-mounts", "remove", "ops-docs", "--manifest-dir", manifestDir, "--prune-roles", "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), `"pruned_roles": [`) || !strings.Contains(stdout.String(), `"oncall"`) {
+		t.Fatalf("json output = %s", stdout.String())
+	}
+	doc, _, err := manifest.LoadDocument(manifestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Mounts) != 1 || doc.Mounts[0].ID != "handbook" {
+		t.Fatalf("mounts after prune = %#v", doc.Mounts)
+	}
+	got := map[string]string{}
+	for _, role := range doc.Roles {
+		got[role.ID] = strings.Join(role.Mounts, ",")
+	}
+	if len(doc.Roles) != 3 || got["operator"] != "handbook" || got["oncall"] != "" || got["viewer"] != "handbook" {
+		t.Fatalf("roles after prune = %#v", doc.Roles)
+	}
+	if result := manifest.ValidateDocument(manifestDir, doc); len(result.Errors) != 0 {
+		t.Fatalf("pruned manifest invalid: %#v", result.Errors)
+	}
+}
+
+func TestAdminManifestMountsRemovePruneRolesLastSelectingRole(t *testing.T) {
+	manifestDir := t.TempDir()
+	writeAdminManifest(t, manifestDir, adminManifestMountsFixture())
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{
+		"my", "admin", "manifest-mounts", "add", "ops-docs",
+		"--manifest-dir", manifestDir, "--kind", "docs",
+		"--git-url", "https://github.com/acme/ops-docs.git",
+		"--mode", "role", "--role", "operator",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.run([]string{"my", "admin", "manifest-mounts", "remove", "ops-docs", "--manifest-dir", manifestDir, "--prune-roles"}); err != nil {
+		t.Fatal(err)
+	}
+	doc, _, err := manifest.LoadDocument(manifestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Mounts) != 1 || strings.Join(doc.Roles[0].Mounts, ",") != "handbook" {
+		t.Fatalf("after prune mounts = %#v roles = %#v", doc.Mounts, doc.Roles)
+	}
+}
+
+func TestAdminManifestMountsRemovePruneRolesValidationFailureLeavesManifest(t *testing.T) {
+	manifestDir := t.TempDir()
+	// A skill still requires the mount, so the pruned manifest is invalid.
+	writeRoleMountPruneManifest(t, manifestDir, `,
+    { "id": "acme:ops", "install_slug": "acme-ops", "path": "skills/acme-ops", "requires": ["workspace:ops-docs"] }`)
+	path := filepath.Join(manifestDir, "manifest.json")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	err = a.run([]string{"my", "admin", "manifest-mounts", "remove", "ops-docs", "--manifest-dir", manifestDir, "--prune-roles"})
+	if err == nil || !strings.Contains(err.Error(), "updated manifest is invalid") || !strings.Contains(err.Error(), `requires unknown workspace or mount "ops-docs"`) {
+		t.Fatalf("err = %v, want skill-requirement validation failure", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatalf("failed prune changed manifest:\n%s", after)
 	}
 }
