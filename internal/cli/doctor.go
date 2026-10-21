@@ -10,12 +10,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fluxinc/my-cli/internal/guidance"
 	"github.com/fluxinc/my-cli/internal/harness"
 	"github.com/fluxinc/my-cli/internal/manifest"
 	"github.com/fluxinc/my-cli/internal/selfskill"
 	"github.com/fluxinc/my-cli/internal/selfupdate"
+	"github.com/fluxinc/my-cli/internal/serviceauth"
 	"github.com/fluxinc/my-cli/internal/skills"
 	"github.com/fluxinc/my-cli/internal/syncer"
 	"github.com/fluxinc/my-cli/internal/umbrella"
@@ -150,7 +152,7 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 		report.Derived = append(report.Derived, doctorManifestSkillRuntimeState(home, ref, doc)...)
 		report.Workspaces = append(report.Workspaces, doctorWorkspaces(home, ref.Name, doc.Workspaces)...)
 		report.Tools = append(report.Tools, doctorTools(ref.Name, doc.Tools)...)
-		report.Services = append(report.Services, doctorServices(ref.Name, ref.LocalPath, doc.Services)...)
+		report.Services = append(report.Services, doctorPersonalServices(home, ref, doc.Services)...)
 		if manifest.GovernanceConfigured(doc.Governance) {
 			status, statusErr := a.currentAccessMonitorStatus(home, ref.Name)
 			item := doctorItem{Name: ref.Name + ":access-monitor", Status: "error", Path: status.Descriptor, Message: status.Message}
@@ -1051,6 +1053,56 @@ func doctorTools(manifestName string, tools []manifest.Tool) []doctorItem {
 		out = append(out, item)
 	}
 	return out
+}
+
+// Inspect references/verified expiry offline; doctor never reads a secret or
+// contacts a service just to diagnose local setup.
+func doctorPersonalServices(home string, ref manifest.Ref, services []manifest.Service) []doctorItem {
+	effective := append([]manifest.Service(nil), services...)
+	personal := map[string]serviceauth.Entry{}
+	problems := map[string]doctorItem{}
+	for i, s := range effective {
+		if s.Kind != "http" {
+			continue
+		}
+		e, ok, err := serviceauth.Lookup(home, serviceBinding(ref, s))
+		if err != nil {
+			problems[s.ID] = doctorItem{Name: ref.Name + ":" + s.ID, Status: "error", Message: err.Error()}
+			effective[i].AuthRef = "none"
+			continue
+		}
+		if ok {
+			effective[i].AuthRef = e.Ref
+			personal[s.ID] = e
+		}
+	}
+	items := doctorServices(ref.Name, ref.LocalPath, effective)
+	for i, s := range effective {
+		if problem, ok := problems[s.ID]; ok {
+			items[i] = problem
+			continue
+		}
+		e, ok := personal[s.ID]
+		if ok {
+			items[i].Details = append(items[i].Details, "personal auth reference: "+e.Ref)
+			if !e.ExpiresAt.IsZero() && time.Until(e.ExpiresAt) < 7*24*time.Hour {
+				if items[i].Status == "ok" {
+					items[i].Status = "warning"
+				}
+				items[i].Details = append(items[i].Details, "verified key expires "+e.ExpiresAt.Format(time.RFC3339)+"; renew at "+serviceSetupHint(s)+" and rerun my services auth set "+s.ID+" --ref <reference>")
+			}
+		} else if s.Kind == "http" && s.AuthSetupURL != "" && s.AuthRef != "none" {
+			if items[i].Status == "ok" {
+				items[i].Status = "warning"
+			}
+			items[i].Details = append(items[i].Details, "set up your personal key at "+s.AuthSetupURL+"; run my services auth set "+s.ID+" --ref <op:// or env:// reference>")
+		}
+		if items[i].Message == "" && items[i].Status != "ok" && len(items[i].Details) > 0 {
+			items[i].Message = items[i].Details[0]
+			items[i].Details = items[i].Details[1:]
+		}
+	}
+	return items
 }
 
 func doctorServices(manifestName, manifestRoot string, services []manifest.Service) []doctorItem {

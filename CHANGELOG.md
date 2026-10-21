@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.44.0 - 2026-10-20
+
+### Added
+
+- Personal service access with `my services auth set/status/unset`: references
+  stay local, keys are verified before saving, and shared credentials remain
+  unchanged. Onboarding follows each service's `auth_setup_url`; doctor checks
+  personal references and warns before expiry.
+- `my fleet comment` posts service conversation comments with an explicit
+  retry key and revision checks, including service-defined mention delivery.
 
 ### Tests
 

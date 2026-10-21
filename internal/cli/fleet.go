@@ -26,6 +26,8 @@ func (a app) runFleet(args []string) error {
 		return a.runFleetAdd(args[1:])
 	case "set":
 		return a.runFleetSet(args[1:])
+	case "comment":
+		return a.runFleetComment(args[1:])
 	case "transition":
 		return a.runFleetTransition(args[1:])
 	case "index":
@@ -46,6 +48,7 @@ func (a app) printFleetUsage() {
   my fleet add <id> [--manifest NAME] [--workspace ID] [--customer ID] [--partner ID] [--status TEXT] [--device TEXT] [--serial TEXT] [--identifier ID] [--config-repo NAME] [--config-branch NAME] [--deployed-site TEXT] [--ship-to TEXT] [--contact TEXT] [--install-date DATE] [--print] [--json]
   my fleet set <id|identifier> KEY=VALUE... [--confirm ID]... [--manifest NAME] [--workspace ID] [--json]
   my fleet transition <id|identifier> <operation> [KEY=VALUE...] [--manifest NAME] [--json]
+  my fleet comment <id|identifier> --body-file FILE --idempotency-key KEY [--manifest NAME] [--json]
   my fleet index [--rebuild] [--manifest NAME] [--json]
 
 Fleet commands use local markdown files under workspace fleet/ directories:

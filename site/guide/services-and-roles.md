@@ -124,3 +124,60 @@ when a fleet command first uses it); an unset `env://` variable, an `op://` refe
 or a URL-only description each get a warning naming the service and the fix.
 Skills can declare `requires: ["service:<id>"]`; `my skills show` surfaces
 those requirements.
+
+## Personal API access
+
+For an HTTP record service, the manifest can declare `auth_setup_url`, the web
+page where members create personal API keys. During onboarding, open that page,
+create your key, and save it in a private password-manager item. Keep the
+organization's shared credential unchanged.
+
+```sh
+my services auth set registry --ref op://Private/Registry/credential
+my services auth status registry
+my services auth unset registry
+```
+
+`set` resolves the reference and verifies it with `GET <connection.url>/me`
+before saving. The service must return `issuer: {name, email}` and
+`token: {name, scopes, expires_at}`; expiry is an RFC3339 timestamp. Rejected or
+expired credentials leave the previous configuration intact.
+
+Only the `op://` or `env://` reference, service binding and verified expiry are saved locally,
+under `~/.config/my-cli/service-auth.json` with mode 0600. The secret stays in
+your password manager or environment. Overrides apply only to that manifest,
+service and exact API URL. `unset` returns to the manifest's `auth_ref`.
+`my doctor` checks the effective reference and warns before the verified expiry,
+without resolving secrets or making network requests. `status` checks live
+access whenever you need to verify or renew it.
+
+Admins can publish the setup link with:
+
+```sh
+my admin services edit registry --manifest-dir /path/to/manifest \
+  --auth-setup-url https://registry.example.com/settings/keys
+```
+
+## Conversation comments
+
+A record service supporting `POST records/:id/comments` can accept a comment
+from the CLI, including mention text supported by that service:
+
+```sh
+my fleet comment registry:box:123 --body-file comment.txt \
+  --idempotency-key incident-2026-10-20-followup-1
+```
+
+Use a stable submission key when retrying. The command resolves the reference
+uniquely, reads current revisions, and sends the comment with those revisions.
+A stale write is refused; ambiguous identifiers never post. `--body-file -`
+reads stdin. Bodies are plain text of 1–2,000 characters. The service owns
+mention parsing and notifications. This command requires a service-backed
+record and never changes local Markdown.
+
+Personal references currently affect the live HTTP fleet commands and
+`services auth` verification. `my compile` and `my services get` continue to
+show organization configuration, without exporting a user's private override.
+A changed manifest identity or API URL blocks the old personal reference;
+re-verify it with `auth set`, or explicitly use `auth unset` to return to the
+organization credential. The CLI never silently switches attribution.

@@ -296,12 +296,13 @@ type SkillInstall struct {
 // Service describes one callable remote surface. Secret material is always
 // referenced, never stored here; access control belongs to the backing service.
 type Service struct {
-	ID          string            `json:"id"`
-	Kind        string            `json:"kind"`
-	Purpose     string            `json:"purpose"`
-	DescribeRef string            `json:"describe_ref,omitempty"`
-	AuthRef     string            `json:"auth_ref"`
-	Connection  ServiceConnection `json:"connection,omitzero"`
+	ID           string            `json:"id"`
+	Kind         string            `json:"kind"`
+	Purpose      string            `json:"purpose"`
+	DescribeRef  string            `json:"describe_ref,omitempty"`
+	AuthRef      string            `json:"auth_ref"`
+	AuthSetupURL string            `json:"auth_setup_url,omitempty"`
+	Connection   ServiceConnection `json:"connection,omitzero"`
 }
 
 // ServiceConnection is the small MCP/server.json-shaped subset v0.18 needs
@@ -1530,6 +1531,22 @@ func validateService(service Service, result *ValidationResult) {
 		result.Errors = append(result.Errors, fmt.Sprintf("service %q auth_ref is required; use %q for public services", service.ID, "none"))
 	} else if !validAuthRef(service.AuthRef) {
 		result.Errors = append(result.Errors, fmt.Sprintf("service %q auth_ref %q must use op://, env://, broker://, or none", service.ID, service.AuthRef))
+	}
+	if service.AuthSetupURL != "" {
+		setupURL, parseErr := url.Parse(service.AuthSetupURL)
+		if parseErr == nil {
+			setupURL.Fragment = ""
+			setupURL.RawFragment = ""
+		}
+		var setupErr error
+		if parseErr != nil {
+			setupErr = parseErr
+		} else {
+			setupErr = ValidateAPIBaseURL(setupURL.String())
+		}
+		if err := setupErr; err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("service %q auth_setup_url: %v", service.ID, err))
+		}
 	}
 	if service.DescribeRef == "" && service.Connection.IsZero() {
 		result.Errors = append(result.Errors, fmt.Sprintf("service %q describe_ref or connection is required", service.ID))

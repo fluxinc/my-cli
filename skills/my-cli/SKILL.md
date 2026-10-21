@@ -91,7 +91,8 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
   bound service and resolve its credential),
   `my customers list`,
   `my products list`, `my repos list/add/remove`, `my tools list/info`,
-  `my services list/get`, `my roles list/get`, `my contract list`,
+  `my services list/get`,
+  `my services auth set/status/unset` (local references only), `my roles list/get`, `my contract list`,
   `my policy list/show/status/acceptances`,
   `my compile`, `my root`,
   `my ai`, `my doctor`, `my manifests list`, `my mounts list`,
@@ -558,10 +559,11 @@ design can follow in normal work.
    Run `my setup --role <id>` (or `my setup` without roles), preserving the
    launch prompt's manifest/home/umbrella selectors. Check the resulting mounts
    with `my mounts list` and tools with `my tools list`.
-3. Resolve each missing required tool through `my tools info <name>` and its
+3. For HTTP services, inspect `my services list` and the declared `auth_setup_url`. Have the human create a personal key there and save it in a private password-manager item, then run `my services auth set <id> --ref op://Private/item/credential` (or an env:// reference). Verify with `my services auth status <id>`. Never collect a literal key in chat or replace an organization shared credential.
+4. Resolve each missing required tool through `my tools info <name>` and its
    explicit install source. Explain and verify each installation; optional tools
    remain opt-in. Diagnose errors and rerun setup or the failed continuation.
-4. Run `my doctor` and inspect its results. Handle applicable policy gates with
+5. Run `my doctor` and inspect its results. Handle applicable policy gates with
    the operator; use the normal `my ai <harness>` launch for organization work.
    Do not bypass authentication, policy acceptance, or role checks to finish.
 
