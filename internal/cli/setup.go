@@ -288,7 +288,9 @@ func (a app) runSetup(args []string) error {
 			return err
 		}
 	}
-	results, err := workspace.SyncMounts(opts.home, doc.ref.Name, root, nil, false, []string{"required", "default"}, opts.print, nil)
+	// Role-only mounts are listed only when selectedRole names them, so the
+	// "role" mode adds nothing for an unscoped umbrella.
+	results, err := workspace.SyncMountsForRole(opts.home, doc.ref.Name, root, selectedRole, nil, false, []string{"required", "default", manifest.MountModeRole}, opts.print, nil)
 	if err != nil {
 		return err
 	}

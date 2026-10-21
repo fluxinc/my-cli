@@ -474,7 +474,13 @@ func validateSkillClosure(skills []manifest.Skill, mounts, services, tools map[s
 
 func selectMounts(all []manifest.Mount, byID map[string]manifest.Mount, selected []string, hasRole bool) ([]manifest.Mount, error) {
 	if !hasRole {
-		return append([]manifest.Mount(nil), all...), nil
+		out := make([]manifest.Mount, 0, len(all))
+		for _, item := range all {
+			if !manifest.RoleOnlyMount(item) {
+				out = append(out, item)
+			}
+		}
+		return out, nil
 	}
 	selectedSet, err := selectedIDs("mount", selected, byID)
 	if err != nil {

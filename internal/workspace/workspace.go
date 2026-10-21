@@ -80,8 +80,28 @@ func List(home, manifestName string) ([]Entry, error) {
 	return entries, nil
 }
 
-// ListMounts returns manifest-declared mounts resolved inside an umbrella.
+// ListMounts returns manifest-declared mounts resolved inside an umbrella,
+// scoped by the umbrella's saved selected role: role-only mounts appear only
+// when that role selects them.
 func ListMounts(home, manifestName, umbrellaRoot string) ([]Entry, error) {
+	return listMounts(home, manifestName, umbrellaRoot, savedRole)
+}
+
+// ListMountsForRole is ListMounts with an explicit role selection instead of
+// the umbrella's saved one; an empty role means no role is selected.
+func ListMountsForRole(home, manifestName, umbrellaRoot, role string) ([]Entry, error) {
+	return listMounts(home, manifestName, umbrellaRoot, func(string) string { return role })
+}
+
+func savedRole(root string) string {
+	state, err := umbrella.LoadState(root)
+	if err != nil {
+		return ""
+	}
+	return state.SelectedRole
+}
+
+func listMounts(home, manifestName, umbrellaRoot string, roleFor func(root string) string) ([]Entry, error) {
 	refs, err := selectedManifestRefs(home, manifestName)
 	if err != nil {
 		return nil, err
@@ -96,7 +116,7 @@ func ListMounts(home, manifestName, umbrellaRoot string) ([]Entry, error) {
 		if err != nil {
 			return nil, err
 		}
-		for _, mount := range manifest.EffectiveMounts(doc) {
+		for _, mount := range manifest.ScopedMounts(doc, roleFor(root)) {
 			entries = append(entries, Entry{
 				Manifest:     ref.Name,
 				Organization: doc.Organization.ID,
@@ -132,14 +152,29 @@ func Sync(home, manifestName string, workspaceIDs []string, all bool, dryRun boo
 	return results, nil
 }
 
-// SyncMounts clones or fast-forwards manifest mounts.
+// SyncMounts clones or fast-forwards manifest mounts in the umbrella's saved
+// role scope.
 func SyncMounts(home, manifestName, umbrellaRoot string, mountIDs []string, all bool, modes []string, dryRun bool, runner Runner) ([]SyncResult, error) {
-	if runner == nil {
-		runner = execCommand
-	}
 	entries, err := ListMounts(home, manifestName, umbrellaRoot)
 	if err != nil {
 		return nil, err
+	}
+	return syncMountEntries(entries, mountIDs, all, modes, dryRun, runner)
+}
+
+// SyncMountsForRole is SyncMounts with an explicit role selection; an empty
+// role means no role, so role-only mounts are excluded.
+func SyncMountsForRole(home, manifestName, umbrellaRoot, role string, mountIDs []string, all bool, modes []string, dryRun bool, runner Runner) ([]SyncResult, error) {
+	entries, err := ListMountsForRole(home, manifestName, umbrellaRoot, role)
+	if err != nil {
+		return nil, err
+	}
+	return syncMountEntries(entries, mountIDs, all, modes, dryRun, runner)
+}
+
+func syncMountEntries(entries []Entry, mountIDs []string, all bool, modes []string, dryRun bool, runner Runner) ([]SyncResult, error) {
+	if runner == nil {
+		runner = execCommand
 	}
 	if len(modes) != 0 {
 		entries = filterMountModes(entries, modes)

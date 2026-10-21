@@ -187,6 +187,8 @@ my admin meetings add ...
 my admin support add ...
 my admin tools add|edit|remove <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--docs-url URL] [--skill-install-command CMD] [--skill-install-arg ARG] [--force] [--json]
 my admin repos add <id> --manifest-dir DIR --git-url URL [--description TEXT] [--default] [--force] [--json]
+my admin manifest-mounts add <id> --manifest-dir DIR --kind KIND --git-url URL --mode required|default|optional|role [--include PATH] [--role ID] [--force] [--json]
+my admin manifest-mounts remove <id> --manifest-dir DIR [--prune-roles] [--force] [--json]
 my admin contract add "RULE TEXT" --manifest-dir DIR [--force] [--json]
 my admin contract remove <index|"RULE TEXT"> --manifest-dir DIR [--force] [--json]
 my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION --acceptance required|optional [--summary TEXT] [--topic TEXT] [--role ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]

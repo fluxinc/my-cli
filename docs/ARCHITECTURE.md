@@ -98,10 +98,15 @@ registered manifest's recommended umbrella when it has been set up.
 
 **Mount** — a Git-backed content folder cloned into the umbrella. Kinds include
 handbook, customers, meetings, support, fleet, policy, docs. Modes:
-`required`, `default`, `optional`. Optional mounts are clone-if-accessible: if
-the user lacks access
+`required`, `default`, `optional`, `role`. Optional mounts are
+clone-if-accessible: if the user lacks access
 they are skipped with a warning, not a failure (RBAC by Git permissions, not by
-the CLI).
+the CLI). A `role` mount is role-only: validation requires at least one role to
+list it in `mounts`; without a selecting role it is excluded from setup, mount
+sync and listing, launch scope, and `my compile`, and with one it is cloned
+clone-if-accessible by `my setup` and projected with mode `role`. The rule is
+`manifest.ScopedMounts`/`MountInRoleScope`; umbrella mount listing uses the
+saved selected role.
 
 **Session** — an isolated unit of work under `sessions/<id>` in the umbrella: a
 git worktree of each writable content mount on a fresh `my/session/<id>`

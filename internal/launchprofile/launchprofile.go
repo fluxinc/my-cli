@@ -150,8 +150,12 @@ func selectedSkillSet(doc manifest.Document, ctx Context, selector Selector, ski
 			}
 			return out, nil
 		default:
+			// Unscoped: every skill whose workspace requirements are in scope.
+			// Only skills requiring a role-only mount are left out.
 			for _, skill := range doc.Skills {
-				out[skill.ID] = true
+				if workspaceRequirementsSatisfied(skill, availableMounts) {
+					out[skill.ID] = true
+				}
 			}
 			return out, nil
 		}
@@ -199,7 +203,9 @@ func availableScope(doc manifest.Document, ctx Context, role manifest.Role, hasR
 	allServices := idSetServices(doc.Services)
 	allTools := idSetTools(doc.Tools)
 
-	mounts := allMounts
+	// Unscoped launches exclude role-only mounts; a selected role or an
+	// explicit mount list below replaces this default.
+	mounts := idSetMounts(manifest.ScopedMounts(doc, ""))
 	services := allServices
 	tools := allTools
 	if ctx.Target == TargetSession {
