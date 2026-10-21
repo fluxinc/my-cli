@@ -1419,3 +1419,75 @@ func TestValidateHTTPServiceBindingsAndBaseURLs(t *testing.T) {
 		}
 	}
 }
+
+func roleMountTestDoc(mode string, roleMounts ...string) Document {
+	return Document{
+		ManifestVersion: 1,
+		Organization:    Organization{ID: "acme", Name: "Acme Example"},
+		Mounts: []Mount{
+			{ID: "handbook", Kind: "handbook", GitURL: "https://github.com/acme/handbook.git", Mode: "required"},
+			{ID: "ops-docs", Kind: "docs", GitURL: "https://github.com/acme/ops-docs.git", Mode: mode},
+		},
+		Roles: []Role{{ID: "operator", Purpose: "Operator", Mounts: roleMounts}},
+	}
+}
+
+func TestValidateManifestAcceptsRoleMountSelectedByRole(t *testing.T) {
+	result := ValidateDocument("", roleMountTestDoc("role", "ops-docs"))
+	if len(result.Errors) != 0 {
+		t.Fatalf("errors = %#v", result.Errors)
+	}
+}
+
+func TestValidateManifestRejectsDanglingRoleMount(t *testing.T) {
+	result := ValidateDocument("", roleMountTestDoc("role", "handbook"))
+	if !containsValidationError(result.Errors, `mount "ops-docs" mode "role" is not selected by any role`) {
+		t.Fatalf("errors = %#v, want dangling role mount", result.Errors)
+	}
+	noRoles := roleMountTestDoc("role")
+	noRoles.Roles = nil
+	if result := ValidateDocument("", noRoles); !containsValidationError(result.Errors, "is not selected by any role") {
+		t.Fatalf("errors = %#v, want dangling role mount without roles", result.Errors)
+	}
+}
+
+func TestValidateManifestRejectsUnknownMountMode(t *testing.T) {
+	result := ValidateDocument("", roleMountTestDoc("roles", "ops-docs"))
+	if !containsValidationError(result.Errors, `mount "ops-docs" mode "roles" is unsupported`) {
+		t.Fatalf("errors = %#v, want unsupported mode", result.Errors)
+	}
+}
+
+func TestValidateManifestNonRoleModesNeedNoRole(t *testing.T) {
+	for _, mode := range []string{"required", "default", "optional"} {
+		if result := ValidateDocument("", roleMountTestDoc(mode)); len(result.Errors) != 0 {
+			t.Fatalf("mode %s errors = %#v", mode, result.Errors)
+		}
+	}
+}
+
+func TestScopedMountsExcludesRoleOnlyMountsOutsideRole(t *testing.T) {
+	doc := roleMountTestDoc("role", "ops-docs")
+	doc.Roles = append(doc.Roles, Role{ID: "viewer", Purpose: "Viewer", Mounts: []string{"handbook"}})
+	ids := func(mounts []Mount) string {
+		var out []string
+		for _, m := range mounts {
+			out = append(out, m.ID)
+		}
+		return strings.Join(out, ",")
+	}
+	if got := ids(ScopedMounts(doc, "")); got != "handbook" {
+		t.Fatalf("unscoped = %s", got)
+	}
+	if got := ids(ScopedMounts(doc, "viewer")); got != "handbook" {
+		t.Fatalf("viewer = %s", got)
+	}
+	if got := ids(ScopedMounts(doc, "operator")); got != "handbook,ops-docs" {
+		t.Fatalf("operator = %s", got)
+	}
+	for _, mode := range []string{"required", "default", "optional"} {
+		if got := ids(ScopedMounts(roleMountTestDoc(mode), "")); got != "handbook,ops-docs" {
+			t.Fatalf("mode %s unscoped = %s", mode, got)
+		}
+	}
+}

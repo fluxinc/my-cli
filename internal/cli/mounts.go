@@ -400,6 +400,9 @@ func (a app) runMountAdd(args []string) error {
 	}
 	entry, err := selectMountEntry(entries, kind, id)
 	if err != nil {
+		if roleErr := roleOnlyMountError(home, manifestName, id); roleErr != nil {
+			err = roleErr
+		}
 		return a.maybeJSONError(jsonOut, err)
 	}
 	results, err := workspace.SyncMounts(home, entry.Manifest, umbrellaRoot, []string{entry.ID}, false, nil, printOnly, nil)
@@ -877,6 +880,25 @@ func normalizeRepoResults(results []workspace.SyncResult) {
 			results[i].Status = "inaccessible"
 		}
 	}
+}
+
+// roleOnlyMountError explains why a declared role-only mount is out of scope,
+// or returns nil when id is not a role-only mount of the manifest.
+func roleOnlyMountError(home, manifestName, id string) error {
+	doc, err := loadSingleRegisteredDoc(home, manifestName)
+	if err != nil {
+		return nil
+	}
+	for _, mount := range doc.doc.Mounts {
+		if mount.ID == id && manifest.RoleOnlyMount(mount) {
+			return structuredCommandError{
+				code:        "role_only_mount",
+				message:     fmt.Sprintf("mount %q is role-only and the umbrella's selected role does not include it", id),
+				remediation: "my setup --role <id> with a role that lists " + id + " in its mounts (see my roles list)",
+			}
+		}
+	}
+	return nil
 }
 
 func selectMountEntry(entries []workspace.Entry, kind, id string) (workspace.Entry, error) {

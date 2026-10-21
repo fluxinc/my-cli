@@ -50,6 +50,10 @@ func (a app) runAdmin(args []string) error {
 	case "roles":
 		// Manifest authoring; gated in the parsed-checkout loader.
 		return a.runAdminRoles(args[1:])
+	case "manifest-mounts":
+		// Manifest mounts[] authoring; gated in the parsed-checkout loader.
+		// Distinct from "mounts", which aliases umbrella-local my mounts.
+		return a.runAdminManifestMounts(args[1:])
 	case "services":
 		// Manifest authoring; gated in the parsed-checkout loader.
 		return a.runAdminServices(args[1:])
@@ -89,6 +93,8 @@ func (a app) printAdminUsage() {
   my admin tools edit <id> --manifest-dir DIR [--mode required|optional] [--purpose TEXT] [--install-command CMD] [--clear-install-commands] [--docs-url URL|--clear-docs-url] [--skill-install-command CMD] [--skill-install-arg ARG] [--clear-skill-install] [--force] [--json]
   my admin tools remove <id> --manifest-dir DIR [--force] [--json]
   my admin repos add <id> --manifest-dir DIR --git-url URL [--description TEXT] [--default] [--force] [--json]
+  my admin manifest-mounts add <id> --manifest-dir DIR --kind KIND --git-url URL --mode required|default|optional|role [--include PATH] [--role ID] [--force] [--json]
+  my admin manifest-mounts remove <id> --manifest-dir DIR [--force] [--json]
   my admin roles add <id> --manifest-dir DIR --purpose TEXT [--guidance PATH] [--mount ID] [--skill namespace:name] [--tool ID] [--service ID] [--force] [--json]
   my admin roles edit <id> --manifest-dir DIR [--purpose TEXT] [--guidance PATH|--clear-guidance] [--mount ID|--clear-mounts] [--skill namespace:name|--clear-skills] [--tool ID|--clear-tools] [--service ID|--clear-services] [--force] [--json]
   my admin roles remove <id> --manifest-dir DIR [--force] [--json]

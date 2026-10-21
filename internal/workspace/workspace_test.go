@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/fluxinc/my-cli/internal/manifest"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 func TestListReadsSyncedManifest(t *testing.T) {
@@ -398,5 +399,87 @@ func runGit(t *testing.T, dir string, args ...string) {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, out)
+	}
+}
+
+const roleMountManifest = `{
+  "manifest_version": 1,
+  "organization": { "id": "acme", "name": "Acme Example" },
+  "umbrella": { "recommended_path": "~/acme" },
+  "mounts": [
+    { "id": "handbook", "kind": "handbook", "git_url": "https://github.com/acme/acme-handbook.git", "mode": "required" },
+    { "id": "meetings", "kind": "meetings", "git_url": "https://github.com/acme/meetings.git", "mode": "default" },
+    { "id": "leadership", "kind": "meetings", "git_url": "https://github.com/acme/leadership.git", "mode": "optional" },
+    { "id": "ops-docs", "kind": "docs", "git_url": "https://github.com/acme/ops-docs.git", "mode": "role" }
+  ],
+  "roles": [
+    { "id": "operator", "purpose": "Operator", "mounts": ["handbook", "ops-docs"] },
+    { "id": "viewer", "purpose": "Viewer", "mounts": ["handbook"] }
+  ]
+}`
+
+func syncResultIDs(results []SyncResult) string {
+	var out []string
+	for _, r := range results {
+		out = append(out, r.Workspace+"="+r.Mode)
+	}
+	return strings.Join(out, ",")
+}
+
+func TestSyncMountsForRoleExcludesRoleOnlyMountsWithoutSelectingRole(t *testing.T) {
+	home := t.TempDir()
+	writeRegisteredManifest(t, home, "acme", roleMountManifest)
+	modes := []string{"required", "default", manifest.MountModeRole}
+	for _, tc := range []struct {
+		role string
+		want string
+	}{
+		{"", "handbook=required,meetings=default"},
+		{"viewer", "handbook=required,meetings=default"},
+		{"operator", "handbook=required,meetings=default,ops-docs=role"},
+	} {
+		results, err := SyncMountsForRole(home, "acme", "", tc.role, nil, false, modes, true, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := syncResultIDs(results); got != tc.want {
+			t.Fatalf("role %q results = %s, want %s", tc.role, got, tc.want)
+		}
+	}
+	// Optional mounts keep their opt-in behavior under --all regardless of role.
+	results, err := SyncMountsForRole(home, "acme", "", "", nil, true, nil, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := syncResultIDs(results); got != "handbook=required,meetings=default,leadership=optional" {
+		t.Fatalf("unscoped --all = %s", got)
+	}
+	if _, err := SyncMountsForRole(home, "acme", "", "", []string{"ops-docs"}, false, nil, true, nil); err == nil {
+		t.Fatal("explicit role-only mount without a role should not be selectable")
+	}
+}
+
+func TestListMountsUsesUmbrellaSavedRole(t *testing.T) {
+	home := t.TempDir()
+	writeRegisteredManifest(t, home, "acme", roleMountManifest)
+	root := filepath.Join(home, "acme")
+	entries, err := ListMounts(home, "acme", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.ID == "ops-docs" {
+			t.Fatalf("unscoped umbrella listed role-only mount: %#v", entries)
+		}
+	}
+	if err := umbrella.SaveState(root, umbrella.State{SelectedRole: "operator"}); err != nil {
+		t.Fatal(err)
+	}
+	results, err := SyncMounts(home, "acme", root, nil, true, nil, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := syncResultIDs(results); got != "handbook=required,meetings=default,leadership=optional,ops-docs=role" {
+		t.Fatalf("operator --all = %s", got)
 	}
 }

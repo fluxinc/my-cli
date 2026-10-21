@@ -133,6 +133,13 @@ my admin roles add operator \
 After reviewing the local manifest checkout, publish those control-plane edits
 with `my publish --manifest NAME`.
 
+`my admin manifest-mounts add <id> --kind KIND --git-url URL --mode MODE`
+declares a manifest mount (`my admin mounts` stays the umbrella-local
+`my mounts` alias). Mode `role` makes a role-only mount: it is cloned and in
+launch scope only when the selected role lists it, so declare it together with
+a selecting role via `--role ID`. `remove` refuses while any role selects the
+mount.
+
 `my admin services edit|remove` and `my admin roles edit|remove` update the
 same declarations. Service removal refuses role-selected services unless
 `--prune-roles` is supplied. Inline connection env values must be exact

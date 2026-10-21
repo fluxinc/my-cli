@@ -244,6 +244,52 @@ type Mount struct {
 	IncludePaths []string `json:"include_paths,omitempty"`
 }
 
+// MountModeRole marks a role-only mount: it is materialized only when a
+// selected role names it in its mounts list, and is excluded from unscoped
+// umbrella setup, sync, launch scope, and compile projection.
+const MountModeRole = "role"
+
+// RoleOnlyMount reports whether a mount is visible only through a role.
+func RoleOnlyMount(m Mount) bool {
+	return m.Mode == MountModeRole
+}
+
+// MountInRoleScope reports whether a mount is in scope for the given role ID.
+// An empty role ID means no role is selected. Non-role mounts are always in
+// scope; role-only mounts are in scope only when the selected role names them.
+func MountInRoleScope(doc Document, m Mount, roleID string) bool {
+	if !RoleOnlyMount(m) {
+		return true
+	}
+	if roleID == "" {
+		return false
+	}
+	for _, role := range doc.Roles {
+		if role.ID != roleID {
+			continue
+		}
+		for _, id := range role.Mounts {
+			if id == m.ID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ScopedMounts returns EffectiveMounts without role-only mounts that the
+// given role (empty for none) does not select.
+func ScopedMounts(doc Document, roleID string) []Mount {
+	all := EffectiveMounts(doc)
+	out := make([]Mount, 0, len(all))
+	for _, mount := range all {
+		if MountInRoleScope(doc, mount, roleID) {
+			out = append(out, mount)
+		}
+	}
+	return out
+}
+
 // Product describes one catalog product: a business entity the organization
 // sells or operates. Products may link to the repos that implement them; they
 // are never checkouts themselves.
@@ -945,6 +991,7 @@ func validateOrgManifest(doc Document, result *ValidationResult) {
 		validateTool(t, result)
 	}
 	validateRoles(doc.Roles, mountIDs, skillIDs, tools, serviceIDs, result)
+	validateRoleOnlyMounts(doc.Mounts, doc.Roles, result)
 	validateProfiles(doc.Profiles, skillIDs, result)
 	validateContract(doc.Contract, result)
 	validateGovernance(doc.Governance, EffectiveMounts(doc), mountIDs, doc.Roles, result)
@@ -1748,6 +1795,22 @@ func validateRoles(roles []Role, mountIDs, skillIDs map[string]bool, tools map[s
 	}
 }
 
+// validateRoleOnlyMounts rejects role-only mounts that no role selects; such a
+// mount could never be materialized.
+func validateRoleOnlyMounts(mounts []Mount, roles []Role, result *ValidationResult) {
+	selected := map[string]bool{}
+	for _, role := range roles {
+		for _, id := range role.Mounts {
+			selected[id] = true
+		}
+	}
+	for _, mount := range mounts {
+		if RoleOnlyMount(mount) && !selected[mount.ID] {
+			result.Errors = append(result.Errors, fmt.Sprintf("mount %q mode %q is not selected by any role; add it to a role's mounts or use another mode", mount.ID, MountModeRole))
+		}
+	}
+}
+
 func validateProfiles(profiles []Profile, skillIDs map[string]bool, result *ValidationResult) {
 	seen := map[string]bool{}
 	for _, profile := range profiles {
@@ -1865,7 +1928,7 @@ func validMountKind(kind string) bool {
 
 func validMountMode(mode string) bool {
 	switch mode {
-	case "required", "default", "optional":
+	case "required", "default", "optional", MountModeRole:
 		return true
 	default:
 		return false

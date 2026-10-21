@@ -412,3 +412,66 @@ func fleetWorkContractBullets(markdown string) []string {
 	flush()
 	return bullets
 }
+
+func withRoleOnlyMount(doc manifest.Document) manifest.Document {
+	doc.Mounts = append(doc.Mounts, manifest.Mount{
+		ID:     "ops-docs",
+		Kind:   "docs",
+		GitURL: "https://github.com/example/acme-ops-docs.git",
+		Mode:   manifest.MountModeRole,
+	})
+	return doc
+}
+
+func projectedMountModes(projection Projection) string {
+	var out []string
+	for _, mount := range projection.Mounts {
+		out = append(out, mount.ID+"="+mount.Mode)
+	}
+	return strings.Join(out, ",")
+}
+
+func TestCompileUnscopedExcludesRoleOnlyMount(t *testing.T) {
+	projection, err := Compile(withRoleOnlyMount(baseDocument()), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := projectedMountModes(projection); got != "handbook=default,fleet=default" {
+		t.Fatalf("unscoped mounts = %s", got)
+	}
+}
+
+func TestCompileRoleProjectsSelectedRoleOnlyMount(t *testing.T) {
+	doc := withRoleOnlyMount(baseDocument())
+	doc.Roles = []manifest.Role{
+		{ID: "operator", Purpose: "Operate", Mounts: []string{"handbook", "ops-docs"}},
+		{ID: "viewer", Purpose: "View", Mounts: []string{"handbook", "fleet"}},
+	}
+	projection, err := Compile(doc, Options{Role: "operator"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := projectedMountModes(projection); got != "handbook=default,ops-docs=role" {
+		t.Fatalf("operator mounts = %s", got)
+	}
+	projection, err = Compile(doc, Options{Role: "viewer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := projectedMountModes(projection); got != "handbook=default,fleet=default" {
+		t.Fatalf("viewer mounts = %s", got)
+	}
+}
+
+func TestCompileUnscopedKeepsRequiredDefaultOptionalMounts(t *testing.T) {
+	doc := baseDocument()
+	doc.Mounts[0].Mode = "required"
+	doc.Mounts[1].Mode = "optional"
+	projection, err := Compile(doc, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := projectedMountModes(projection); got != "handbook=required,fleet=optional" {
+		t.Fatalf("unscoped mounts = %s", got)
+	}
+}
