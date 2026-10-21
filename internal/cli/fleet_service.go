@@ -14,6 +14,7 @@ import (
 	"github.com/fluxinc/my-cli/internal/manifest"
 	"github.com/fluxinc/my-cli/internal/recordindex"
 	"github.com/fluxinc/my-cli/internal/recordsvc"
+	"github.com/fluxinc/my-cli/internal/serviceauth"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
@@ -29,6 +30,8 @@ const fleetServiceTimeout = 60 * time.Second
 // fleetService is the service a fleet binding names, if any.
 type fleetService struct {
 	manifest string
+	home     string
+	binding  serviceauth.Binding
 	service  manifest.Service
 	aliases  map[string]string
 	client   *recordsvc.Client
@@ -56,7 +59,7 @@ func boundFleetService(home, manifestName, umbrellaRoot string) (*fleetService, 
 			}
 			for _, service := range doc.doc.Services {
 				if service.ID == id {
-					found = append(found, &fleetService{manifest: doc.ref.Name, service: service, aliases: binding.FieldAliases})
+					found = append(found, &fleetService{manifest: doc.ref.Name, home: home, binding: serviceBinding(doc.ref, service), service: service, aliases: binding.FieldAliases})
 				}
 			}
 		}
@@ -105,9 +108,17 @@ func (s *fleetService) connect() (*recordsvc.Client, error) {
 	if s.service.Kind != "http" || s.service.Connection.URL == "" {
 		return nil, fmt.Errorf("fleet is bound to service %s, which needs kind http and connection.url", s.service.ID)
 	}
-	token, err := recordsvc.ResolveAuth(s.service.AuthRef, fleetAuthRunner)
+	authRef := s.service.AuthRef
+	personal, ok, err := serviceauth.Lookup(s.home, s.binding)
 	if err != nil {
-		return nil, fmt.Errorf("service %s: %w", s.service.ID, err)
+		return nil, err
+	}
+	if ok {
+		authRef = personal.Ref
+	}
+	token, err := recordsvc.ResolveAuth(authRef, fleetAuthRunner)
+	if err != nil {
+		return nil, fmt.Errorf("service %s: %w; get a personal key at %s, then run my services auth set %s --ref <reference>", s.service.ID, err, serviceSetupHint(s.service), s.service.ID)
 	}
 	client, err := recordsvc.NewClient(s.service.ID, s.service.Connection.URL, token)
 	if err != nil {
@@ -317,6 +328,8 @@ func describeServiceError(svc *fleetService, err error) error {
 		return err
 	}
 	switch {
+	case apiErr.Status == 401:
+		return fmt.Errorf("%w; get or renew your personal key at %s, then run my services auth set %s --ref <reference>", apiErr, serviceSetupHint(svc.service), svc.service.ID)
 	case apiErr.Code == "confirmation_required":
 		msg := fmt.Sprintf("%v\nconfirmation required: this change also applies to other records; nothing was saved", apiErr)
 		if len(apiErr.Affected) != 0 {

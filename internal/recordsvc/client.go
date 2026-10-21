@@ -104,6 +104,31 @@ func (e *Error) Unavailable() bool { return e.Status == 0 || e.Status >= 500 }
 // NotFound reports a 404.
 func (e *Error) NotFound() bool { return e.Status == http.StatusNotFound }
 
+// Identity is the authenticated key's issuer, scope and expiry from /me.
+type Identity struct {
+	Issuer struct {
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	} `json:"issuer"`
+	Token struct {
+		Name      string    `json:"name"`
+		Scopes    []string  `json:"scopes"`
+		ExpiresAt time.Time `json:"expires_at"`
+	} `json:"token"`
+}
+
+func (c *Client) Identity(ctx context.Context) (Identity, error) {
+	var identity Identity
+	err := c.do(ctx, http.MethodGet, "me", nil, nil, &identity)
+	identity.Issuer.Name = c.scrub(identity.Issuer.Name)
+	identity.Issuer.Email = c.scrub(identity.Issuer.Email)
+	identity.Token.Name = c.scrub(identity.Token.Name)
+	for i, s := range identity.Token.Scopes {
+		identity.Token.Scopes[i] = c.scrub(s)
+	}
+	return identity, err
+}
+
 // Get reads one record by its stable id.
 func (c *Client) Get(ctx context.Context, id string) (Record, error) {
 	var rec Record
@@ -206,6 +231,22 @@ func (c *Client) Link(ctx context.Context, id, key string, ref Reference, body s
 		Note map[string]any `json:"note"`
 	}
 	status, err := c.send(ctx, http.MethodPost, "records/"+url.PathEscape(id)+"/notes", nil, payload, &out, map[string]string{"Idempotency-Key": key})
+	return out.Note, status == http.StatusCreated, err
+}
+
+// Comment posts an ordinary conversation comment with a stable submission key.
+func (c *Client) Comment(ctx context.Context, id, key, body string, revisions map[string]any) (map[string]any, bool, error) {
+	payload := map[string]any{"body": body}
+	for k, v := range revisions {
+		payload[k] = v
+	}
+	var out struct {
+		Note map[string]any `json:"note"`
+	}
+	status, err := c.send(ctx, http.MethodPost, "records/"+url.PathEscape(id)+"/comments", nil, payload, &out, map[string]string{"Idempotency-Key": key})
+	if out.Note != nil {
+		out.Note = c.scrubValue(out.Note).(map[string]any)
+	}
 	return out.Note, status == http.StatusCreated, err
 }
 

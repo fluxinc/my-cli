@@ -322,6 +322,7 @@ type adminServiceOpts struct {
 	kind              optionalStringFlag
 	purpose           optionalStringFlag
 	authRef           optionalStringFlag
+	authSetupURL      optionalStringFlag
 	describeRef       optionalStringFlag
 	connectionType    optionalStringFlag
 	connectionCommand optionalStringFlag
@@ -451,6 +452,7 @@ func parseAdminServiceOpts(name string, stderr io.Writer, args []string) (adminS
 	fs.StringVar(&opts.manifestDir, "manifest-dir", "", "maintainer manifest checkout")
 	fs.Var(&opts.kind, "kind", "service kind: http or mcp")
 	fs.Var(&opts.purpose, "purpose", "service purpose")
+	fs.Var(&opts.authSetupURL, "auth-setup-url", "web page where users create personal keys")
 	fs.Var(&opts.authRef, "auth-ref", "service auth reference: none, env://NAME, op://..., or broker://...")
 	fs.Var(&opts.describeRef, "describe-ref", "http(s) URL or manifest-relative descriptor path")
 	fs.Var(&opts.connectionType, "connection-type", "inline MCP connection type")
@@ -468,6 +470,7 @@ func parseAdminServiceOpts(name string, stderr io.Writer, args []string) (adminS
 		"kind":               true,
 		"purpose":            true,
 		"auth-ref":           true,
+		"auth-setup-url":     true,
 		"describe-ref":       true,
 		"connection-type":    true,
 		"connection-command": true,
@@ -636,6 +639,9 @@ func applyAdminServiceOpts(service *manifest.Service, opts adminServiceOpts) {
 	}
 	if opts.purpose.set {
 		service.Purpose = opts.purpose.value
+	}
+	if opts.authSetupURL.set {
+		service.AuthSetupURL = opts.authSetupURL.value
 	}
 	if opts.authRef.set {
 		service.AuthRef = opts.authRef.value

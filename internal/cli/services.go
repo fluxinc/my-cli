@@ -16,6 +16,8 @@ func (a app) runServices(args []string) error {
 		return fmt.Errorf("missing services subcommand")
 	}
 	switch args[0] {
+	case "auth":
+		return a.runServicesAuth(args[1:])
 	case "list":
 		return a.runServicesList(args[1:])
 	case "get":
@@ -32,6 +34,7 @@ func (a app) printServicesUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
   my services list [--manifest NAME] [--home DIR] [--json]
   my services get <id> [--manifest NAME] [--home DIR] [--json]
+  my services auth set|status|unset <id> [--ref REF] [--manifest NAME] [--home DIR]
 
 Services are the organization's remote surfaces declared in the manifest.
 Secret material is always referenced (op://, env://, broker://), never stored.`)
@@ -113,6 +116,7 @@ func (a app) printService(service manifest.Service) {
 	fmt.Fprintf(a.stdout, "%s - %s\n", service.ID, service.Purpose)
 	printHumanField(a.stdout, "kind", service.Kind)
 	printHumanField(a.stdout, "auth", service.AuthRef)
+	printHumanField(a.stdout, "key setup", service.AuthSetupURL)
 	if service.DescribeRef != "" {
 		printHumanField(a.stdout, "describe", service.DescribeRef)
 	}

@@ -819,7 +819,7 @@ func onboardAgentPrompt(branch, manifestName, root string) string {
 	var b strings.Builder
 	b.WriteString("You are this person's My AI onboarding assistant. Start by greeting them in one or two warm sentences, introduce yourself, and immediately begin a learn-by-example walkthrough.\n")
 	b.WriteString("Use the bundled `my-cli` skill, section `Agent-Operated Onboarding`, as the source of truth. Run routine local checks and setup commands yourself, explain what they do and teach as you go, diagnose failures and retry the continuation command. Pause only for authentication, privilege/password prompts, policy acceptance, material choices, destructive actions, or publication. Never ask for secrets in chat. Optional tools are opt-in. Offer a manual learn-by-example walkthrough when requested.\n")
-	b.WriteString("Keep the walkthrough focused on basic human workflows: setup, launching harnesses, starting/resuming/finishing work sessions, `my sync`, `my sync --push --print`/`my sync --push`, and `my doctor`. Do not teach content-record, fleet, catalog, or full admin command surfaces during onboarding; humans can paste transcripts or raw context into harness chat and let agents operate deeper CLI surfaces.\n")
+	b.WriteString("Keep the walkthrough focused on basic human workflows: setup, launching harnesses, starting/resuming/finishing work sessions, `my sync`, `my sync --push --print`/`my sync --push`, and `my doctor`. For HTTP services, inspect `my services list` and each service auth_setup_url. Teach personal-key setup: the human creates a key in that web UI and saves it in a private password-manager item, then use `my services auth set <id> --ref op://Private/item/credential` or an env:// reference and `my services auth status <id>` to verify it. Never collect a literal key in chat, read the key aloud, or change an organization shared credential. Do not teach content-record, fleet, catalog, or full admin command surfaces during onboarding; humans can paste transcripts or raw context into harness chat and let agents operate deeper CLI surfaces.\n")
 	switch branch {
 	case "AUTHOR":
 		b.WriteString("Branch: AUTHOR. No My AI manifest is registered for this invocation. Guide the operator through authoring a new organization one small command set at a time, and present `my init` only after explicit human approval.\n")
@@ -923,6 +923,17 @@ func (a app) printOnboardIntro(doc registeredDoc, root string, configured bool) 
 	fmt.Fprintln(a.stdout, "  - Manifest (control plane): skills, mounts, services, roles, tools")
 	fmt.Fprintln(a.stdout, "  - Mounts (data plane): local content folders such as customers, meetings, support, fleet")
 	fmt.Fprintln(a.stdout, "  - Setup writes guidance, MCP config, mounts, repos, skills, and local role state")
+	for _, service := range doc.doc.Services {
+		if service.Kind == "http" && service.AuthSetupURL != "" {
+			fmt.Fprintf(a.stdout, "  - Personal access for %s: create a key at %s, save it in a private password-manager item, then run my services auth set %s --ref <op:// or env:// reference>\n", service.ID, service.AuthSetupURL, service.ID)
+		}
+	}
+
+	for _, s := range doc.doc.Services {
+		if s.Kind == "http" && s.AuthSetupURL != "" {
+			fmt.Fprintf(a.stdout, "  - Personal access for %s: create a key at %s, save it in your private password manager, then run my services auth set %s --ref <op:// or env:// reference>\n", s.ID, s.AuthSetupURL, s.ID)
+		}
+	}
 	fmt.Fprintln(a.stdout)
 	if configured {
 		fmt.Fprintln(a.stdout, "Status: configured")
