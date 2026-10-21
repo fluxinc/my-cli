@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.45.0 - 2026-10-21
+
 ### Added
 
 - Manifest mount mode `role`: a role-only mount that must be selected by at
