@@ -929,11 +929,6 @@ func (a app) printOnboardIntro(doc registeredDoc, root string, configured bool) 
 		}
 	}
 
-	for _, s := range doc.doc.Services {
-		if s.Kind == "http" && s.AuthSetupURL != "" {
-			fmt.Fprintf(a.stdout, "  - Personal access for %s: create a key at %s, save it in your private password manager, then run my services auth set %s --ref <op:// or env:// reference>\n", s.ID, s.AuthSetupURL, s.ID)
-		}
-	}
 	fmt.Fprintln(a.stdout)
 	if configured {
 		fmt.Fprintln(a.stdout, "Status: configured")

@@ -7,27 +7,33 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/fluxinc/my-cli/internal/manifest"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/fluxinc/my-cli/internal/manifest"
 )
 
 // Binding pins an override to the manifest identity and exact API endpoint.
 // Reusing a service ID in another organization or moving its URL cannot send
 // the old user's credential to that new destination.
 type Binding struct {
-	Manifest string
-	Service  string
-	URL      string
+	Name     string `json:"manifest_name,omitempty"`
+	Manifest string `json:"manifest"`
+	Service  string `json:"service"`
+	URL      string `json:"url"`
 }
 type Entry struct {
+	Binding   Binding   `json:"binding"`
 	Ref       string    `json:"auth_ref"`
 	ExpiresAt time.Time `json:"expires_at,omitzero"`
 }
 
+func (b Binding) sameService(other Binding) bool {
+	return b.Service == other.Service && (b.Manifest == other.Manifest || (b.Name != "" && b.Name == other.Name))
+}
 func (b Binding) key() string {
 	sum := sha256.Sum256([]byte(b.Manifest + "\n" + b.Service + "\n" + b.URL))
 	return hex.EncodeToString(sum[:])
@@ -67,8 +73,8 @@ func load(home string) (map[string]Entry, error) {
 	if entries == nil {
 		entries = map[string]Entry{}
 	}
-	for _, entry := range entries {
-		if !ValidRef(entry.Ref) {
+	for key, entry := range entries {
+		if !ValidRef(entry.Ref) || entry.Binding.Service == "" || entry.Binding.Manifest == "" || entry.Binding.URL == "" || key != entry.Binding.key() {
 			return nil, fmt.Errorf("invalid personal service reference at %s", path)
 		}
 	}
@@ -80,7 +86,15 @@ func Lookup(home string, b Binding) (Entry, bool, error) {
 		return Entry{}, false, err
 	}
 	e, ok := entries[b.key()]
-	return e, ok, nil
+	if ok {
+		return e, true, nil
+	}
+	for _, e := range entries {
+		if e.Binding.sameService(b) {
+			return Entry{}, false, errors.New("personal reference no longer matches the manifest or API URL; verify it with my services auth set, or explicitly return to organization credentials with my services auth unset")
+		}
+	}
+	return Entry{}, false, nil
 }
 func Set(home string, b Binding, e Entry) error {
 	if !ValidRef(e.Ref) {
@@ -90,6 +104,12 @@ func Set(home string, b Binding, e Entry) error {
 	if err != nil {
 		return err
 	}
+	for key, old := range entries {
+		if old.Binding.sameService(b) {
+			delete(entries, key)
+		}
+	}
+	e.Binding = b
 	entries[b.key()] = e
 	return save(home, entries)
 }
@@ -98,7 +118,11 @@ func Unset(home string, b Binding) error {
 	if err != nil {
 		return err
 	}
-	delete(entries, b.key())
+	for key, old := range entries {
+		if key == b.key() || old.Binding.sameService(b) {
+			delete(entries, key)
+		}
+	}
 	return save(home, entries)
 }
 func save(home string, entries map[string]Entry) error {

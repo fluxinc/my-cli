@@ -143,7 +143,7 @@ before saving. The service must return `issuer: {name, email}` and
 `token: {name, scopes, expires_at}`; expiry is an RFC3339 timestamp. Rejected or
 expired credentials leave the previous configuration intact.
 
-Only the `op://` or `env://` reference and verified expiry are saved locally,
+Only the `op://` or `env://` reference, service binding and verified expiry are saved locally,
 under `~/.config/my-cli/service-auth.json` with mode 0600. The secret stays in
 your password manager or environment. Overrides apply only to that manifest,
 service and exact API URL. `unset` returns to the manifest's `auth_ref`.
@@ -174,3 +174,10 @@ A stale write is refused; ambiguous identifiers never post. `--body-file -`
 reads stdin. Bodies are plain text of 1–2,000 characters. The service owns
 mention parsing and notifications. This command requires a service-backed
 record and never changes local Markdown.
+
+Personal references currently affect the live HTTP fleet commands and
+`services auth` verification. `my compile` and `my services get` continue to
+show organization configuration, without exporting a user's private override.
+A changed manifest identity or API URL blocks the old personal reference;
+re-verify it with `auth set`, or explicitly use `auth unset` to return to the
+organization credential. The CLI never silently switches attribution.

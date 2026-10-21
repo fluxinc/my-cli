@@ -1533,7 +1533,18 @@ func validateService(service Service, result *ValidationResult) {
 		result.Errors = append(result.Errors, fmt.Sprintf("service %q auth_ref %q must use op://, env://, broker://, or none", service.ID, service.AuthRef))
 	}
 	if service.AuthSetupURL != "" {
-		if err := ValidateAPIBaseURL(service.AuthSetupURL); err != nil {
+		setupURL, parseErr := url.Parse(service.AuthSetupURL)
+		if parseErr == nil {
+			setupURL.Fragment = ""
+			setupURL.RawFragment = ""
+		}
+		var setupErr error
+		if parseErr != nil {
+			setupErr = parseErr
+		} else {
+			setupErr = ValidateAPIBaseURL(setupURL.String())
+		}
+		if err := setupErr; err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("service %q auth_setup_url: %v", service.ID, err))
 		}
 	}

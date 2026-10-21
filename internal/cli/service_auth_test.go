@@ -135,10 +135,73 @@ func TestServiceAuthSetupURLAuthoringAndOnboarding(t *testing.T) {
 	}
 	stdout.Reset()
 	a.printOnboardIntro(registeredDoc{ref: manifest.Ref{Name: "acme"}, doc: doc}, "/example", true)
-	if !strings.Contains(stdout.String(), "https://registry.example.test/keys") || !strings.Contains(stdout.String(), "my services auth set registry") {
+	if strings.Count(stdout.String(), "Personal access for registry:") != 1 || !strings.Contains(stdout.String(), "https://registry.example.test/keys") || !strings.Contains(stdout.String(), "my services auth set registry") {
 		t.Fatalf("onboarding missing setup: %s", stdout.String())
+	}
+	if err := a.run([]string{"my", "admin", "services", "edit", "registry", "--manifest-dir", manifestDir, "--auth-setup-url", "https://registry.example.test/settings#keys"}); err != nil {
+		t.Fatal(err)
 	}
 	if err := a.run([]string{"my", "admin", "services", "edit", "registry", "--manifest-dir", manifestDir, "--auth-setup-url", "https://user:password@example.test/keys"}); err == nil {
 		t.Fatal("credential-bearing setup URL accepted")
+	}
+}
+
+func TestStalePersonalBindingNeverFallsBackToSharedKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("stale binding attempted a network request")
+		w.WriteHeader(500)
+	}))
+	defer server.Close()
+	home, _, _, _ := setupServiceFleet(t, server.URL)
+	docs, _ := loadRegisteredDocs(home, "acme")
+	binding := serviceBinding(docs[0].ref, docs[0].doc.Services[0])
+	serviceauth.Set(home, binding, serviceauth.Entry{Ref: "env://OLD_PERSONAL_TOKEN"})
+	doc := docs[0].doc
+	doc.Services[0].Connection.URL += "/changed"
+	raw, _ := json.Marshal(doc)
+	if err := os.WriteFile(docs[0].ref.LocalPath+"/manifest.json", raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := boundFleetService(home, "acme", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.connect(); err == nil || !strings.Contains(err.Error(), "no longer matches") {
+		t.Fatalf("stale connect: %v", err)
+	}
+	report := doctorPersonalServices(home, docs[0].ref, doc.Services)
+	if len(report) != 1 || report[0].Status != "error" || !strings.Contains(report[0].Message, "no longer matches") {
+		t.Fatalf("doctor=%+v", report)
+	}
+}
+func TestUnknownServiceNeverEchoesAPastedCredential(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	home, a, out, _ := setupServiceFleet(t, server.URL)
+	err := a.runServicesAuth([]string{"status", "accidentally-pasted-secret", "--home", home, "--manifest", "acme"})
+	if err == nil || strings.Contains(err.Error()+out.String(), "accidentally-pasted-secret") {
+		t.Fatal("unknown service echoed input")
+	}
+}
+func TestStatusRefreshesVerifiedExpiryAndWarnsForReadOnlyKey(t *testing.T) {
+	t.Setenv("PERSONAL_REGISTRY_TOKEN", "fake-personal-token")
+	future := time.Now().Add(60 * 24 * time.Hour).UTC().Truncate(time.Second)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"issuer": map[string]any{"name": "Fictional"}, "token": map[string]any{"name": "Rotated key", "scopes": []string{"read"}, "expires_at": future}})
+	}))
+	defer server.Close()
+	home, a, _, stderr := setupServiceFleet(t, server.URL)
+	docs, _ := loadRegisteredDocs(home, "acme")
+	binding := serviceBinding(docs[0].ref, docs[0].doc.Services[0])
+	serviceauth.Set(home, binding, serviceauth.Entry{Ref: "env://PERSONAL_REGISTRY_TOKEN", ExpiresAt: time.Now().Add(time.Hour)})
+	if err := a.runServicesAuth([]string{"status", "registry", "--home", home, "--manifest", "acme"}); err != nil {
+		t.Fatal(err)
+	}
+	entry, _, _ := serviceauth.Lookup(home, binding)
+	if !entry.ExpiresAt.Equal(future) {
+		t.Fatal("verified expiry was not refreshed")
+	}
+	if !strings.Contains(stderr.String(), "read-only") {
+		t.Fatal("read-only warning missing")
 	}
 }

@@ -11,13 +11,13 @@ import (
 )
 
 func serviceBinding(ref manifest.Ref, s manifest.Service) serviceauth.Binding {
-	return serviceauth.Binding{Manifest: ref.GitURL, Service: s.ID, URL: s.Connection.URL}
+	return serviceauth.Binding{Name: ref.Name, Manifest: ref.GitURL, Service: s.ID, URL: s.Connection.URL}
 }
 
 func (a app) runServicesAuth(args []string) error {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "help" {
 		fmt.Fprintln(a.stdout, `Usage:
-  my services auth set <service> --ref op://Personal/item/credential [--manifest NAME] [--home DIR]
+  my services auth set <service> --ref op://Private/item/credential [--manifest NAME] [--home DIR]
   my services auth status <service> [--manifest NAME] [--home DIR] [--json]
   my services auth unset <service> [--manifest NAME] [--home DIR]
 
@@ -30,7 +30,7 @@ to the organization's auth_ref. Status verifies access and reports key expiry.`)
 	}
 	operation := args[0]
 	if operation != "set" && operation != "status" && operation != "unset" {
-		return fmt.Errorf("unknown services auth operation %q", operation)
+		return fmt.Errorf("unknown services auth operation; run my services auth --help")
 	}
 	var home, manifestName, authRef string
 	var jsonOut bool
@@ -63,7 +63,7 @@ to the organization's auth_ref. Status verifies access and reports key expiry.`)
 		}
 	}
 	if len(matches) != 1 {
-		return fmt.Errorf("service %q must match exactly one manifest; pass --manifest or run my services list", rest[0])
+		return fmt.Errorf("name a service that matches exactly one manifest; pass --manifest or run my services list")
 	}
 	ref, s := matches[0].ref, matches[0].service
 	if s.Kind != "http" {
@@ -71,7 +71,7 @@ to the organization's auth_ref. Status verifies access and reports key expiry.`)
 	}
 	binding := serviceBinding(ref, s)
 	existing, personal, err := serviceauth.Lookup(home, binding)
-	if err != nil {
+	if err != nil && operation == "status" {
 		return err
 	}
 	if operation == "unset" {
@@ -108,11 +108,21 @@ to the organization's auth_ref. Status verifies access and reports key expiry.`)
 	if identity.Token.Name == "" || identity.Token.ExpiresAt.IsZero() || !identity.Token.ExpiresAt.After(time.Now()) {
 		return fmt.Errorf("service %s /me did not return a usable key identity and expiry", s.ID)
 	}
-	if operation == "set" {
-		if err = serviceauth.Set(home, binding, serviceauth.Entry{Ref: authRef, ExpiresAt: identity.Token.ExpiresAt}); err != nil {
+	if operation == "set" || personal {
+		savedRef := effective
+		if err = serviceauth.Set(home, binding, serviceauth.Entry{Ref: savedRef, ExpiresAt: identity.Token.ExpiresAt}); err != nil {
 			return err
 		}
 		personal = true
+	}
+	writable := false
+	for _, scope := range identity.Token.Scopes {
+		if scope == "write" {
+			writable = true
+		}
+	}
+	if !writable {
+		fmt.Fprintln(a.stderr, "notice: verified key is read-only; updates and comments need write scope")
 	}
 	if jsonOut {
 		return printJSON(a.stdout, map[string]any{"service": s.ID, "personal": personal, "auth_ref": effective, "identity": identity})

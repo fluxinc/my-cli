@@ -1060,14 +1060,15 @@ func doctorTools(manifestName string, tools []manifest.Tool) []doctorItem {
 func doctorPersonalServices(home string, ref manifest.Ref, services []manifest.Service) []doctorItem {
 	effective := append([]manifest.Service(nil), services...)
 	personal := map[string]serviceauth.Entry{}
-	var problems []doctorItem
+	problems := map[string]doctorItem{}
 	for i, s := range effective {
 		if s.Kind != "http" {
 			continue
 		}
 		e, ok, err := serviceauth.Lookup(home, serviceBinding(ref, s))
 		if err != nil {
-			problems = append(problems, doctorItem{Name: ref.Name + ":" + s.ID, Status: "error", Message: err.Error()})
+			problems[s.ID] = doctorItem{Name: ref.Name + ":" + s.ID, Status: "error", Message: err.Error()}
+			effective[i].AuthRef = "none"
 			continue
 		}
 		if ok {
@@ -1077,6 +1078,10 @@ func doctorPersonalServices(home string, ref manifest.Ref, services []manifest.S
 	}
 	items := doctorServices(ref.Name, ref.LocalPath, effective)
 	for i, s := range effective {
+		if problem, ok := problems[s.ID]; ok {
+			items[i] = problem
+			continue
+		}
 		e, ok := personal[s.ID]
 		if ok {
 			items[i].Details = append(items[i].Details, "personal auth reference: "+e.Ref)
@@ -1092,8 +1097,12 @@ func doctorPersonalServices(home string, ref manifest.Ref, services []manifest.S
 			}
 			items[i].Details = append(items[i].Details, "set up your personal key at "+s.AuthSetupURL+"; run my services auth set "+s.ID+" --ref <op:// or env:// reference>")
 		}
+		if items[i].Message == "" && items[i].Status != "ok" && len(items[i].Details) > 0 {
+			items[i].Message = items[i].Details[0]
+			items[i].Details = items[i].Details[1:]
+		}
 	}
-	return append(items, problems...)
+	return items
 }
 
 func doctorServices(manifestName, manifestRoot string, services []manifest.Service) []doctorItem {
