@@ -250,7 +250,7 @@ func loadManifest(ref manifest.Ref) (manifest.Document, error) {
 	}
 	result := manifest.ValidateFile(ref.LocalPath)
 	if len(result.Errors) != 0 {
-		return manifest.Document{}, fmt.Errorf("manifest %q is invalid: %s", ref.Name, strings.Join(result.Errors, "; "))
+		return manifest.Document{}, &manifest.InvalidError{Name: ref.Name, Result: result}
 	}
 	return doc, nil
 }

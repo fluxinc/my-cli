@@ -57,6 +57,9 @@ func (a app) runAdmin(args []string) error {
 	case "services":
 		// Manifest authoring; gated in the parsed-checkout loader.
 		return a.runAdminServices(args[1:])
+	case "min-version":
+		// Manifest authoring; gated in the parsed-checkout loader.
+		return a.runAdminMinVersion(args[1:])
 	case "bindings":
 		return a.runAdminBindings(args[1:])
 	case "contract":
@@ -95,6 +98,7 @@ func (a app) printAdminUsage() {
   my admin repos add <id> --manifest-dir DIR --git-url URL [--description TEXT] [--default] [--force] [--json]
   my admin manifest-mounts add <id> --manifest-dir DIR --kind KIND --git-url URL --mode required|default|optional|role [--include PATH] [--role ID] [--force] [--json]
   my admin manifest-mounts remove <id> --manifest-dir DIR [--prune-roles] [--force] [--json]
+  my admin min-version --manifest-dir DIR [--set X.Y.Z] [--force] [--json]
   my admin roles add <id> --manifest-dir DIR --purpose TEXT [--guidance PATH] [--mount ID] [--skill namespace:name] [--tool ID] [--service ID] [--force] [--json]
   my admin roles edit <id> --manifest-dir DIR [--purpose TEXT] [--guidance PATH|--clear-guidance] [--mount ID|--clear-mounts] [--skill namespace:name|--clear-skills] [--tool ID|--clear-tools] [--service ID|--clear-services] [--force] [--json]
   my admin roles remove <id> --manifest-dir DIR [--force] [--json]

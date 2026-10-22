@@ -58,11 +58,15 @@ type ValidationResult struct {
 	Path     string   `json:"path"`
 	Errors   []string `json:"errors,omitempty"`
 	Warnings []string `json:"warnings,omitempty"`
+	// RequiresMyVersion is set when the manifest's min_my_version is newer
+	// than the running my; it is then the only error reported.
+	RequiresMyVersion string `json:"requires_my_version,omitempty"`
 }
 
 // Document is the organization manifest.json schema consumed by the CLI.
 type Document struct {
 	ManifestVersion           int                    `json:"manifest_version"`
+	MinMyVersion              string                 `json:"min_my_version,omitempty"`
 	Organization              Organization           `json:"organization"`
 	AllowedExternalNamespaces []string               `json:"allowed_external_namespaces,omitempty"`
 	Umbrella                  Umbrella               `json:"umbrella,omitzero"`
@@ -612,6 +616,9 @@ func ValidateFile(path string) ValidationResult {
 		result.Errors = append(result.Errors, err.Error())
 		return result
 	}
+	if !checkMinMyVersion(doc, &result) {
+		return result
+	}
 	validateOrgManifest(doc, &result)
 	validateRepoCatalog(filepath.Dir(resolved), &result)
 	validateProductCatalog(filepath.Dir(resolved), doc, &result)
@@ -622,6 +629,9 @@ func ValidateFile(path string) ValidationResult {
 // schema rules as ValidateFile. Catalog checks run when root is not empty.
 func ValidateDocument(root string, doc Document) ValidationResult {
 	result := ValidationResult{Path: root}
+	if !checkMinMyVersion(doc, &result) {
+		return result
+	}
 	validateOrgManifest(doc, &result)
 	if root != "" {
 		validateRepoCatalog(root, &result)
@@ -660,11 +670,10 @@ func SaveDocument(path string, doc Document) error {
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	data, err := json.MarshalIndent(doc, "", "  ")
+	data, err := EncodeDocument(doc)
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

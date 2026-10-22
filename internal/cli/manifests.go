@@ -42,7 +42,7 @@ func loadDocsForRefs(refs []manifest.Ref) ([]registeredDoc, error) {
 		}
 		result := manifest.ValidateFile(ref.LocalPath)
 		if len(result.Errors) != 0 {
-			return nil, fmt.Errorf("manifest %q is invalid: %s", ref.Name, strings.Join(result.Errors, "; "))
+			return nil, &manifest.InvalidError{Name: ref.Name, Result: result}
 		}
 		docs = append(docs, registeredDoc{ref: ref, doc: doc})
 	}

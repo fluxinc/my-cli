@@ -108,6 +108,14 @@ clone-if-accessible by `my setup` and projected with mode `role`. The rule is
 `manifest.ScopedMounts`/`MountInRoleScope`; umbrella mount listing uses the
 saved selected role.
 
+**Minimum version** — `min_my_version` names the oldest `my` that reads a
+manifest. Validation checks it first and, when the running `my` is older,
+reports only the upgrade requirement. `manifest.featureFloors` maps each gated
+feature to the release that introduced it; add an entry whenever validation
+learns a new value. `manifest.EncodeDocument` raises the declared minimum to
+that floor on every admin write, and `my admin min-version` patches the single
+key so unknown fields survive.
+
 **Session** — an isolated unit of work under `sessions/<id>` in the umbrella: a
 git worktree of each writable content mount on a fresh `my/session/<id>`
 branch, plus session-local scratch, a `SESSION.md` summary, and generated

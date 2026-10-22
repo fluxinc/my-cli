@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"strings"
 
 	mycli "github.com/fluxinc/my-cli"
@@ -165,11 +164,8 @@ func materializeEmbedded(homeOverride string) (string, error) {
 
 // Version returns the build-stamped module version when available.
 func Version() string {
-	info, ok := debug.ReadBuildInfo()
-	if !ok || info.Main.Version == "" || info.Main.Version == "(devel)" {
-		return version.Version
-	}
-	return info.Main.Version
+	current, _ := version.Current()
+	return current
 }
 
 func writeFileIfChanged(path string, data []byte, perm fs.FileMode) error {

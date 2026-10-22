@@ -3,7 +3,6 @@ package cli
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -227,11 +226,10 @@ func (a app) adminPolicyRegistered(action, id string, opts adminPolicyOpts) (adm
 	if validation := manifest.ValidateDocument(repo, doc); len(validation.Errors) != 0 {
 		return adminPolicyResult{}, fmt.Errorf("updated manifest is invalid: %s", strings.Join(validation.Errors, "; "))
 	}
-	data, err := json.MarshalIndent(doc, "", "  ")
+	data, err := manifest.EncodeDocument(doc)
 	if err != nil {
 		return adminPolicyResult{}, err
 	}
-	data = append(data, '\n')
 	result := a.publishPullRequest(opts.home, syncer.PRRequest{
 		Entry: syncer.Entry{
 			Manifest: name, ID: name, Role: "manifest", Kind: "manifest",

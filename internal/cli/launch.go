@@ -18,7 +18,7 @@ import (
 	"github.com/fluxinc/my-cli/internal/worksession"
 )
 
-func (a app) runRoot(args []string) error {
+func (a app) runRoot(args []string) (err error) {
 	var home string
 	var manifestName string
 	var umbrellaRoot string
@@ -26,6 +26,7 @@ func (a app) runRoot(args []string) error {
 	var legacyProductID string
 	var noRefresh bool
 	var noUpdateCheck bool
+	defer func() { err = a.withManifestUpdateHint(err, home, noUpdateCheck) }()
 	fs := newFlagSet("my root", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&manifestName, "manifest", "", "use a registered manifest when no umbrella is found")
@@ -132,8 +133,9 @@ func (a app) runLaunch(args []string) error {
 	return a.runLaunchWithInitialPrompt(args, "")
 }
 
-func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) error {
+func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (err error) {
 	opts, harnessName, harnessArgs, help, err := parseLaunchArgs(args)
+	defer func() { err = a.withManifestUpdateHint(err, opts.home, opts.noUpdateCheck) }()
 	if help {
 		a.printLaunchUsage()
 		return flag.ErrHelp
