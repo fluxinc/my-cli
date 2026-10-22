@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
@@ -269,11 +268,10 @@ func (a app) adminContractRegistered(action, target string, opts adminContractOp
 	if validation := manifest.ValidateDocument(repo, doc); len(validation.Errors) != 0 {
 		return adminContractResult{}, fmt.Errorf("updated manifest is invalid: %s", strings.Join(validation.Errors, "; "))
 	}
-	data, err := json.MarshalIndent(doc, "", "  ")
+	data, err := manifest.EncodeDocument(doc)
 	if err != nil {
 		return adminContractResult{}, err
 	}
-	data = append(data, '\n')
 	result := a.publishPullRequest(opts.home, syncer.PRRequest{
 		Entry: syncer.Entry{
 			Manifest: name, ID: name, Role: "manifest", Kind: "manifest",

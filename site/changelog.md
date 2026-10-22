@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Added
+
+- Manifest `min_my_version` (a plain `X.Y.Z` release): the oldest `my` that
+  reads the manifest. It is checked before every other validation rule, so an
+  older `my` reports only `requires my vX or later (running vY); run my update`
+  instead of rejecting newer features as invalid. Releases before this one
+  ignore the field. Unstamped source builds warn and skip the check.
+- `my admin min-version --manifest-dir DIR [--set X.Y.Z]` declares it: by
+  default it raises the value to the newest feature the manifest uses (now
+  mount mode `role`, v0.45.0) and never lowers a higher one; `--set` refuses a
+  version below that floor. It patches only that key, keeping fields this `my`
+  does not know. Validation warns when a manifest uses a gated feature without
+  declaring a covering `min_my_version`, and every `my admin` manifest write
+  raises it automatically.
+- `my ai`, `my root`, and `my setup` add the cached update notice to an
+  invalid-manifest failure ("a newer my (vX) is available and may support this
+  manifest: run `my update`"), honoring `--no-update-check` and
+  `MYCLI_NO_UPDATE_CHECK`.
+
 ## 0.45.0 - 2026-10-21
 
 ### Added

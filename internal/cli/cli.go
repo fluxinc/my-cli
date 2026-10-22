@@ -374,8 +374,16 @@ func (a app) currentMyVersion() string {
 }
 
 func (a app) maybeUpdateNotice(home string, noUpdateCheck bool) {
+	if notice, ok := a.updateNotice(home, noUpdateCheck); ok {
+		fmt.Fprintf(a.stderr, "a newer my (v%s) is available; run `my update`\n", notice.LatestVersion)
+	}
+}
+
+// updateNotice runs the best-effort, cached update check and reports whether
+// a newer release is available.
+func (a app) updateNotice(home string, noUpdateCheck bool) (selfupdate.Notice, bool) {
 	if noUpdateCheck || os.Getenv("MYCLI_NO_UPDATE_CHECK") != "" {
-		return
+		return selfupdate.Notice{}, false
 	}
 	notice, err := selfupdate.CheckNotice(context.Background(), selfupdate.NoticeOptions{
 		CurrentVersion: a.currentMyVersion(),
@@ -385,7 +393,22 @@ func (a app) maybeUpdateNotice(home string, noUpdateCheck bool) {
 		Now:            a.updateNow,
 	})
 	if err != nil || !notice.UpdateAvailable {
-		return
+		return selfupdate.Notice{}, false
 	}
-	fmt.Fprintf(a.stderr, "a newer my (v%s) is available; run `my update`\n", notice.LatestVersion)
+	return notice, true
+}
+
+// withManifestUpdateHint adds the update notice to a startup failure on a
+// manifest this binary rejects, since the manifest may use features of a newer
+// release. A manifest that declares min_my_version already names the upgrade.
+func (a app) withManifestUpdateHint(err error, home string, noUpdateCheck bool) error {
+	var invalid *manifest.InvalidError
+	if !errors.As(err, &invalid) || invalid.Result.RequiresMyVersion != "" {
+		return err
+	}
+	notice, ok := a.updateNotice(home, noUpdateCheck)
+	if !ok {
+		return err
+	}
+	return fmt.Errorf("%w; a newer my (v%s) is available and may support this manifest: run `my update`", err, notice.LatestVersion)
 }

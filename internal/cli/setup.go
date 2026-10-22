@@ -129,8 +129,9 @@ func derivedReconcileFailed(report derivedReconcileReport) bool {
 	return false
 }
 
-func (a app) runSetup(args []string) error {
+func (a app) runSetup(args []string) (err error) {
 	var opts skillsCommandOpts
+	defer func() { err = a.withManifestUpdateHint(err, opts.home, opts.noUpdateCheck) }()
 	fs := newFlagSet("my setup", a.stderr)
 	fs.BoolVar(&opts.all, "all", false, "install into every supported harness")
 	fs.BoolVar(&opts.print, "print", false, "print the planned actions without changing files")

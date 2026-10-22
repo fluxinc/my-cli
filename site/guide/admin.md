@@ -141,6 +141,16 @@ a selecting role via `--role ID`. `remove` refuses while any role selects the
 mount unless `--prune-roles` is supplied, which removes the mount and every
 role reference to it in one validated write (the way to retire a role mount).
 
+A manifest that uses a feature newer than some members' `my` should declare
+`min_my_version`, so an older `my` asks for `my update` instead of rejecting
+the manifest as invalid. `my admin min-version --manifest-dir DIR` raises it to
+the newest feature in use (mount mode `role` needs v0.45.0) and never lowers a
+higher value; `--set X.Y.Z` declares an explicit version, which must not be
+below that floor. Other `my admin` manifest writes raise it automatically, and
+`my manifests validate` warns when it is missing or too low. The check runs in
+the release that introduced `min_my_version` and later; earlier releases
+ignore the field.
+
 `my admin services edit|remove` and `my admin roles edit|remove` update the
 same declarations. Service removal refuses role-selected services unless
 `--prune-roles` is supplied. Inline connection env values must be exact
