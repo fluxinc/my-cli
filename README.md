@@ -855,6 +855,7 @@ indexed in [docs/plans/](docs/plans/README.md):
   `my contract list` plus `my admin contract add|remove` for the standard
   inspect/review-commit-push workflow. Plan:
   [contract rules](docs/plans/2026-06-12-contract-rules.md).
+- **Shipped — manifest minimum version (v0.46.0).** Manifest `min_my_version` makes an older `my` ask for `my update` instead of rejecting newer features as invalid, with `my admin min-version` as the authoring path.
 - **Shipped — role-only mounts (v0.45.0).** Manifest mount mode `role` materializes a mount only for the roles that select it, with `my admin manifest-mounts add|remove [--prune-roles]` as the validated authoring path.
 - **Shipped — personal service access and comments (v0.44.0).** Personal credential references, web key-setup links in onboarding, expiry diagnostics, and revision-checked conversation comments. Plan: [personal service access](docs/plans/2026-10-20-personal-service-access.md).
 

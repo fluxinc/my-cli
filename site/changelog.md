@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.46.0 - 2026-10-21
+
 ### Added
 
 - Manifest `min_my_version` (a plain `X.Y.Z` release): the oldest `my` that
