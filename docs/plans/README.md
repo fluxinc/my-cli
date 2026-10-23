@@ -1,12 +1,14 @@
 # Design plans index
 
 Long-form designs and decision records for the public `my` CLI, newest
-first. Statuses: **active** (being implemented or next up), **shipped**
+first. Statuses: **proposed** (designed, not yet authorized), **active**
+(being implemented or next up), **shipped**
 (implemented; kept for rationale), **superseded** (kept for history; the
 noted successor wins on conflict).
 
 | Plan | Status | Notes |
 |---|---|---|
+| [2026-10-23-accumulated-contract](2026-10-23-accumulated-contract.md) | proposed | File-backed manifest contract (`contract_file`, one rule per line) with expected-base admin authoring and migration, per-root reconciliation and sync diffs, launch-instance hook delivery for Claude Code and Codex with explicit retractions, and sandboxed advisory model review. Not yet authorized. |
 | [2026-10-20-personal-service-access](2026-10-20-personal-service-access.md) | shipped (v0.44.0) | Personal credential references, web key-setup links, expiry diagnostics and revision-checked service conversation comments. |
 | [2026-10-12-service-backed-fleet](2026-10-12-service-backed-fleet.md) | shipped (v0.43.0) | Live HTTP fleet reads and revision-checked writes alongside Markdown mounts, an explicit `--confirm <id>` per record for shared changes, and a private semantic index whose hits are re-read from the service. |
 | [2026-09-12-fresh-system-onboarding](2026-09-12-fresh-system-onboarding.md) | shipped (v0.42.0) | Neutral agent bootstrap before prerequisites, actual terminal handoff, agent-operated teaching, and clean-system regression coverage. |
