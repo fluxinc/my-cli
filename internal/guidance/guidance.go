@@ -192,6 +192,9 @@ func ComposeWithOptions(manifestRoot string, doc manifest.Document, opts Options
 // a contract file keep their headings one level below the section; an inline
 // contract, or the leading group of a file, has none.
 func writeOrganizationContract(out *bytes.Buffer, contract manifest.Contract) {
+	if contract.Warning != "" {
+		fmt.Fprintf(out, "\n> Contract compatibility warning: %s\n\n", contract.Warning)
+	}
 	sections := contract.Sections()
 	if len(sections) == 0 {
 		return

@@ -31,6 +31,7 @@ type contractShow struct {
 	Source   string                     `json:"source"`
 	File     string                     `json:"file,omitempty"`
 	Blob     string                     `json:"blob,omitempty"`
+	Warning  string                     `json:"warning,omitempty"`
 	Sections []manifest.ContractSection `json:"sections"`
 	text     []byte
 }
@@ -68,6 +69,7 @@ type adminContractOpts struct {
 	umbrellaRoot  string
 	under         string
 	expectBlob    string
+	fromInline    bool
 	force         bool
 	jsonOut       bool
 }
@@ -120,8 +122,8 @@ func (a app) printContractUsage() {
 
 The organization contract is the manifest's list of short, binding rules,
 rendered into generated AGENTS.md. It lives inline in manifest.json or, once
-migrated, in a contract_file such as guidance/contract.md with one "- rule" per
-line. Edit it with my admin contract add|remove|replace|migrate.`)
+migrated, in a contract_source such as guidance/contract.md with one "- rule" per
+line and an automatically maintained inline copy for older my releases. Edit it with my admin contract add|remove|replace|migrate.`)
 }
 
 func (a app) runContractList(args []string) error {
@@ -188,7 +190,7 @@ func (a app) runContractShow(args []string) error {
 		}
 		show := contractShow{
 			Manifest: doc.ref.Name, Source: contract.Source(), File: contract.File, Blob: contract.Blob,
-			Sections: contract.Sections(),
+			Sections: contract.Sections(), Warning: contract.Warning,
 		}
 		if show.Sections == nil {
 			show.Sections = []manifest.ContractSection{}
@@ -272,7 +274,7 @@ var adminContractUsage = map[string]string{
 	"add":     `usage: my admin contract add "RULE TEXT" [--under HEADING] [--manifest NAME --umbrella DIR | --manifest-dir DIR]`,
 	"remove":  `usage: my admin contract remove <index|"RULE TEXT"> [--manifest NAME --umbrella DIR | --manifest-dir DIR]`,
 	"replace": `usage: my admin contract replace <index|"OLD TEXT"> "NEW TEXT" [--manifest NAME --umbrella DIR | --manifest-dir DIR]`,
-	"migrate": `usage: my admin contract migrate [--manifest NAME --umbrella DIR | --manifest-dir DIR]`,
+	"migrate": `usage: my admin contract migrate [--from-inline] [--manifest NAME --umbrella DIR | --manifest-dir DIR]`,
 }
 
 var adminContractArgs = map[string]int{"add": 1, "remove": 1, "replace": 2, "migrate": 0}
@@ -284,6 +286,9 @@ func (a app) runAdminContractEdit(action string, args []string) error {
 	}
 	if len(rest) != adminContractArgs[action] {
 		return a.maybeJSONError(opts.jsonOut, errors.New(adminContractUsage[action]))
+	}
+	if opts.fromInline && action != "migrate" {
+		return a.maybeJSONError(opts.jsonOut, fmt.Errorf("--from-inline is only valid with migrate"))
 	}
 	if opts.under != "" && action != "add" {
 		return a.maybeJSONError(opts.jsonOut, fmt.Errorf("--under is only valid with my admin contract add"))
@@ -314,6 +319,7 @@ func parseAdminContractOpts(name string, stderr io.Writer, args []string) (opts 
 	fs.StringVar(&opts.umbrellaRoot, "umbrella", "", "override umbrella root")
 	fs.StringVar(&opts.under, "under", "", "add the rule under this contract_file heading")
 	fs.StringVar(&opts.expectBlob, "expect-blob", "", "refuse unless the contract_file is at this Git blob")
+	fs.BoolVar(&opts.fromInline, "from-inline", false, "migrate: restore the editable file from the inline compatibility copy")
 	fs.BoolVar(&opts.force, "force", false, "allow dirty explicit --manifest-dir checkout")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON result")
 	fs.BoolVar(&opts.review, "review", false, "run advisory model review; --review=false overrides manifest opt-in")
@@ -355,7 +361,10 @@ func planContractEdit(action string, args []string, opts adminContractOpts, root
 	edit.originals["manifest.json"] = raw
 	edit.result = adminContractResult{Source: current.Source(), ManifestPath: manifestPath, ContractFile: current.File, BaseBlob: current.Blob}
 	if action == "migrate" {
-		return planContractMigrate(edit, root, manifestPath, doc)
+		return planContractMigrate(edit, root, manifestPath, doc, opts.fromInline)
+	}
+	if current.Warning != "" {
+		return contractEdit{}, errors.New(current.Warning)
 	}
 	next := current
 	switch action {
@@ -388,21 +397,35 @@ func planContractEdit(action string, args []string, opts adminContractOpts, root
 		edit.files[next.File] = data
 		edit.originals[next.File] = current.Bytes()
 		edit.result.Blob = next.Blob
-		// A hand-written contract_file may predate its feature floor; stamp
-		// it with a targeted patch so older readers ask for an upgrade.
 		raised := doc
-		if manifest.RaiseMinMyVersion(&raised) {
+		manifest.RaiseMinMyVersion(&raised)
+		var patches []manifest.KeyEdit
+		if doc.ContractSource != "" {
+			raised.Contract = next.Rules()
+			value, _ := json.Marshal(raised.Contract)
+			if len(raised.Contract) == 0 {
+				value = []byte("[]")
+				raised.Contract = []string{}
+			}
+			patches = append(patches, manifest.KeyEdit{Key: "contract", Value: value, After: "contract_source"})
+		}
+		if raised.MinMyVersion != doc.MinMyVersion {
 			value, _ := json.Marshal(raised.MinMyVersion)
-			patched, err := manifest.PatchManifestKeys(raw, []manifest.KeyEdit{{Key: "min_my_version", Value: value, After: "manifest_version"}})
+			patches = append(patches, manifest.KeyEdit{Key: "min_my_version", Value: value, After: "manifest_version"})
+		}
+		if len(patches) > 0 {
+			patched, err := manifest.PatchManifestKeys(raw, patches)
 			if err != nil {
-				return contractEdit{}, fmt.Errorf("%s: %w", manifestPath, err)
+				return contractEdit{}, err
 			}
 			edit.files["manifest.json"] = patched
-			edit.result.MinMyVersion = raised.MinMyVersion
-			doc = raised
 		}
-		if validation := manifest.ValidateDocument(root, doc); len(validation.Errors) != 0 {
+		edit.result.MinMyVersion = raised.MinMyVersion
+		if validation := manifest.ValidateDocument("", raised); len(validation.Errors) != 0 {
 			return contractEdit{}, fmt.Errorf("updated manifest is invalid: %s", strings.Join(validation.Errors, "; "))
+		}
+		if resolved, err := manifest.ResolveContractBytes(raised, data, nil); err != nil || resolved.Warning != "" {
+			return contractEdit{}, fmt.Errorf("updated contract compatibility copy is invalid: %v %s", err, resolved.Warning)
 		}
 	} else {
 		doc.Contract = next.Rules()
@@ -420,68 +443,89 @@ func planContractEdit(action string, args []string, opts adminContractOpts, root
 	return edit, nil
 }
 
-// planContractMigrate moves the inline contract into guidance/contract.md. The
-// manifest is patched key by key, so unknown keys and key order survive, and
-// the rendered AGENTS.md is unchanged.
-func planContractMigrate(edit contractEdit, root, manifestPath string, doc manifest.Document) (contractEdit, error) {
-	if doc.ContractFile != "" {
-		return contractEdit{}, fmt.Errorf("contract already lives in %s", doc.ContractFile)
+// planContractMigrate creates or reconciles the editable file and its inline
+// compatibility copy. Targeted patches preserve unrelated manifest keys.
+func planContractMigrate(edit contractEdit, root, manifestPath string, doc manifest.Document, fromInline bool) (contractEdit, error) {
+	if err := manifest.CheckContractSource(doc); err != nil {
+		return contractEdit{}, err
 	}
-	file := manifest.DefaultContractFile
-	if _, err := manifest.ContractFilePath(root, file); !errors.Is(err, os.ErrNotExist) {
+	file := doc.ContractPath()
+	if file == "" {
+		file = manifest.DefaultContractFile
+	}
+	target, err := manifest.ContractFilePath(root, file)
+	var original []byte
+	if err == nil {
+		original, err = os.ReadFile(target)
+	}
+	exists := err == nil
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return contractEdit{}, err
+	}
+	if doc.ContractPath() == "" && exists && !fromInline {
+		return contractEdit{}, fmt.Errorf("%s already exists; inspect it, then use migrate --from-inline to restore it from the current inline rules", file)
+	}
+	var contract manifest.Contract
+	if doc.ContractPath() != "" && !fromInline {
+		if err != nil {
+			return contractEdit{}, fmt.Errorf("cannot read %s: %w; use --from-inline to restore it from the compatibility copy", file, err)
+		}
+		contract, err = manifest.ParseContractFile(file, original)
 		if err != nil {
 			return contractEdit{}, err
 		}
-		return contractEdit{}, fmt.Errorf("%s already exists; move it aside or merge it into the manifest contract before migrating", file)
+	} else {
+		if fromInline && doc.ContractFile != "" {
+			return contractEdit{}, fmt.Errorf("file-only contract has no inline copy; omit --from-inline")
+		}
+		contract = manifest.NewContractFile(file, doc.Contract)
 	}
-	contract := manifest.NewContractFile(file, doc.Contract)
-	contractData := contract.Bytes()
-	if _, err := manifest.ParseContractFile(file, contractData); err != nil {
-		return contractEdit{}, fmt.Errorf("migrated contract is invalid: %w", err)
+	if _, err := manifest.ParseContractFile(file, contract.Bytes()); err != nil {
+		return contractEdit{}, err
 	}
-	raw := edit.originals["manifest.json"]
 	migrated := doc
-	migrated.Contract = nil
-	migrated.ContractFile = file
+	migrated.ContractFile = ""
+	migrated.ContractSource = file
+	migrated.Contract = contract.Rules()
+	if migrated.Contract == nil {
+		migrated.Contract = []string{}
+	}
+	// Compatibility metadata adds no feature floor. Preserve every declared floor.
 	manifest.RaiseMinMyVersion(&migrated)
 	fileValue, _ := json.Marshal(file)
+	rulesValue, _ := json.Marshal(migrated.Contract)
 	edits := []manifest.KeyEdit{
-		{Key: "contract"},
-		{Key: "contract_file", Value: fileValue, After: "contract"},
+		{Key: "contract", Value: rulesValue}, {Key: "contract_file"},
+		{Key: "contract_source", Value: fileValue, After: "contract"},
 	}
 	if migrated.MinMyVersion != doc.MinMyVersion {
 		value, _ := json.Marshal(migrated.MinMyVersion)
 		edits = append(edits, manifest.KeyEdit{Key: "min_my_version", Value: value, After: "manifest_version"})
 	}
-	manifestData, err := manifest.PatchManifestKeys(raw, edits)
+	manifestData, err := manifest.PatchManifestKeys(edit.originals["manifest.json"], edits)
 	if err != nil {
-		return contractEdit{}, fmt.Errorf("%s: %w", manifestPath, err)
+		return contractEdit{}, err
 	}
-	var patched manifest.Document
-	if err := json.Unmarshal(manifestData, &patched); err != nil {
-		return contractEdit{}, fmt.Errorf("migrated manifest is invalid JSON: %w", err)
-	}
-	// The contract file does not exist yet, so validate the manifest without
-	// reading it and check the file content on its own.
-	if validation := manifest.ValidateDocument("", patched); len(validation.Errors) != 0 {
+	if validation := manifest.ValidateDocument("", migrated); len(validation.Errors) != 0 {
 		return contractEdit{}, fmt.Errorf("migrated manifest is invalid: %s", strings.Join(validation.Errors, "; "))
 	}
-	inline, _ := manifest.LoadContract(root, doc)
-	if strings.Join(contract.Rules(), "\n") != strings.Join(inline.Rules(), "\n") {
-		return contractEdit{}, fmt.Errorf("migrated contract does not match the inline rules")
+	if _, err := manifest.ResolveContractBytes(migrated, contract.Bytes(), nil); err != nil {
+		return contractEdit{}, err
 	}
-	edit.files[file] = contractData
+	edit.files[file] = contract.Bytes()
 	edit.files["manifest.json"] = manifestData
-	edit.creates = file
+	if exists {
+		edit.originals[file] = original
+	} else {
+		edit.creates = file
+	}
 	edit.contract = contract
 	edit.result.Action = "migrated"
 	edit.result.ContractFile = file
 	edit.result.Blob = contract.Blob
-	edit.result.MinMyVersion = patched.MinMyVersion
+	edit.result.MinMyVersion = migrated.MinMyVersion
 	edit.result.Contract = contract.Rules()
-	edit.result.Warnings = append(edit.result.Warnings, fmt.Sprintf(
-		"my releases before 0.46.0 ignore contract_file and min_my_version and would launch without the contract; confirm every member runs my v0.46.0 or later (my update) before merging. v0.46.x asks for v%s.",
-		patched.MinMyVersion))
+	edit.result.Warnings = append(edit.result.Warnings, "The inline contract compatibility copy is retained for older my releases; no member upgrade is required by this migration. Older authoring commands may detach the file and keep the contract inline; rerun migrate --from-inline to reconnect it.")
 	return edit, nil
 }
 
@@ -563,17 +607,35 @@ func writeContractEdit(root string, edit contractEdit) error {
 		}
 		return nil
 	}
-	for rel, data := range edit.files {
+	paths := sortedKeys(edit.files)
+	// Publish the compatibility copy last. During a partial local write, members
+	// continue reading the old complete copy rather than a half-updated contract.
+	for i, rel := range paths {
+		if rel == "manifest.json" {
+			paths = append(append(paths[:i:i], paths[i+1:]...), rel)
+			break
+		}
+	}
+	var written []string
+	for _, rel := range paths {
 		path := filepath.Join(root, "manifest.json")
 		if rel != "manifest.json" {
 			var err error
-			if path, err = manifest.ContractFilePath(root, rel); err != nil {
+			path, err = manifest.ContractFilePath(root, rel)
+			if err != nil {
 				return err
 			}
 		}
-		if err := writeExistingFile(path, data); err != nil {
+		if err := writeExistingFile(path, edit.files[rel]); err != nil {
+			for i := len(written) - 1; i >= 0; i-- {
+				old := written[i]
+				if restoreErr := writeExistingFile(filepath.Join(root, filepath.FromSlash(old)), edit.originals[old]); restoreErr != nil {
+					return fmt.Errorf("write %s: %v; restore %s: %w", rel, err, old, restoreErr)
+				}
+			}
 			return err
 		}
+		written = append(written, rel)
 	}
 	return nil
 }
@@ -735,4 +797,18 @@ func sortedKeys(files map[string][]byte) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// printContractCompatibilityWarnings keeps stdout (including JSON) clean.
+func (a app) printContractCompatibilityWarnings(home, name string) {
+	docs, err := loadRegisteredDocs(home, name)
+	if err != nil {
+		return
+	}
+	for _, doc := range docs {
+		c, err := manifest.LoadContract(doc.ref.LocalPath, doc.doc)
+		if err == nil && c.Warning != "" {
+			fmt.Fprintf(a.stderr, "warning: manifest %s: %s\n", doc.ref.Name, c.Warning)
+		}
+	}
 }

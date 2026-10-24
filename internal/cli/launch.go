@@ -188,6 +188,7 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 		opts.sessionID = sessionID
 	}
 	if opts.printOnly {
+		a.printContractCompatibilityWarnings(opts.home, opts.manifestName)
 		a.printGovernedLaunchProjectionNotices(opts.home, opts.manifestName, root)
 		target, err := a.launchTarget(opts, root)
 		if err != nil {

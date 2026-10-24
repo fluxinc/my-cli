@@ -79,7 +79,8 @@ func newContractLine(kind contractLineKind, text string) contractLine {
 // its exact lines so edits change only the lines they touch.
 type Contract struct {
 	// File is the manifest-relative contract_file path; empty for inline.
-	File string `json:"file,omitempty"`
+	File    string `json:"file,omitempty"`
+	Warning string `json:"warning,omitempty"`
 	// Blob is the Git blob id of the contract file bytes; empty for inline.
 	Blob  string `json:"blob,omitempty"`
 	lines []contractLine
@@ -312,26 +313,101 @@ func ValidContractFilePath(value string) bool {
 	return strings.HasPrefix(value, ContractFileDir+"/") && strings.HasSuffix(value, ".md")
 }
 
-// LoadContract resolves doc's organization contract. root is the manifest
-// checkout; it is read only for a contract_file.
-func LoadContract(root string, doc Document) (Contract, error) {
-	if doc.ContractFile == "" {
-		return inlineContract(doc.Contract), nil
+// ContractPath returns the editable source path, including the legacy file-only form.
+func (doc Document) ContractPath() string {
+	if doc.ContractSource != "" {
+		return doc.ContractSource
 	}
-	if doc.Contract != nil {
-		return Contract{}, errors.New("manifest sets both contract and contract_file; keep one")
+	return doc.ContractFile
+}
+
+// CheckContractSource checks the representation independently of file contents.
+func CheckContractSource(doc Document) error {
+	if doc.ContractSource != "" {
+		if doc.ContractFile != "" {
+			return errors.New("contract_source and contract_file cannot be combined")
+		}
+		if doc.Contract == nil {
+			return errors.New("contract_source requires an inline contract compatibility copy (use [] for no rules)")
+		}
+	} else if doc.ContractFile != "" && doc.Contract != nil {
+		return errors.New("manifest sets both contract and contract_file; use contract_source for an inline compatibility copy")
 	}
-	if !ValidContractFilePath(doc.ContractFile) {
-		return Contract{}, fmt.Errorf("contract_file %q must be a relative .md path under %s/", doc.ContractFile, ContractFileDir)
+	if file := doc.ContractPath(); doc.ContractSource == "" && file != "" && !ValidContractFilePath(file) {
+		return fmt.Errorf("contract source %q must be a relative .md path under %s/", file, ContractFileDir)
 	}
-	if root == "" {
-		return Contract{}, fmt.Errorf("contract_file %q needs the manifest checkout to read", doc.ContractFile)
-	}
-	data, err := readContractFile(root, doc.ContractFile)
-	if err != nil {
+	return nil
+}
+
+// ResolveContractBytes resolves committed or working-tree bytes by the same rules.
+// The inline copy is the compatible member view if the editable source drifts.
+func ResolveContractBytes(doc Document, data []byte, readErr error) (Contract, error) {
+	if err := CheckContractSource(doc); err != nil {
 		return Contract{}, err
 	}
-	return ParseContractFile(doc.ContractFile, data)
+	if doc.ContractPath() == "" {
+		return inlineContract(doc.Contract), nil
+	}
+	var c Contract
+	err := readErr
+	if !ValidContractFilePath(doc.ContractPath()) {
+		err = fmt.Errorf("unsafe contract source path; expected a relative .md path under guidance/")
+	}
+	if err == nil {
+		c, err = ParseContractFile(doc.ContractPath(), data)
+	}
+	if doc.ContractSource == "" {
+		return c, err
+	}
+	if err == nil && !equalContractRules(doc.Contract, c.Rules()) {
+		err = errors.New("file rules differ from the inline compatibility copy")
+	}
+	if err != nil {
+		fallback := inlineContract(doc.Contract)
+		fallback.Warning = fmt.Sprintf("contract_source %q: %v; using the inline compatibility copy. An administrator must run my admin contract migrate --manifest-dir <checkout> to regenerate the copy from the file, or add --from-inline to restore the file from the copy", doc.ContractSource, err)
+		return fallback, nil
+	}
+	return c, nil
+}
+
+func equalContractRules(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if strings.TrimSpace(a[i]) != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// LoadContract resolves the member-visible contract from a manifest checkout.
+func LoadContract(root string, doc Document) (Contract, error) {
+	if err := CheckContractSource(doc); err != nil {
+		return Contract{}, err
+	}
+	if doc.ContractPath() == "" {
+		return inlineContract(doc.Contract), nil
+	}
+	if root == "" {
+		return Contract{}, fmt.Errorf("contract source %q needs the manifest checkout to read", doc.ContractPath())
+	}
+	data, err := readContractFile(root, doc.ContractPath())
+	return ResolveContractBytes(doc, data, err)
+}
+
+// RequireContractSource is the strict authoring/publication check. Members can
+// continue with their complete compatibility copy while an administrator repairs it.
+func RequireContractSource(root string, doc Document) error {
+	c, err := LoadContract(root, doc)
+	if err != nil {
+		return err
+	}
+	if c.Warning != "" {
+		return errors.New(c.Warning)
+	}
+	return nil
 }
 
 // ContractFilePath returns the checkout path of doc's contract_file, refusing
@@ -542,17 +618,15 @@ func (c Contract) ReplaceRule(idx int, text string) (Contract, string, error) {
 // validateContractSource checks contract and contract_file together. The file
 // itself is read only when root is known.
 func validateContractSource(root string, doc Document, result *ValidationResult) {
-	if doc.ContractFile == "" {
+	if err := CheckContractSource(doc); err != nil {
+		result.Errors = append(result.Errors, err.Error())
+		return
+	}
+	if doc.ContractPath() == "" || doc.ContractSource != "" {
 		validateContract(doc.Contract, result)
+	}
+	if doc.ContractPath() == "" {
 		warnContractBudget(inlineContract(doc.Contract), result)
-		return
-	}
-	if doc.Contract != nil {
-		result.Errors = append(result.Errors, "manifest sets both contract and contract_file; keep one (my admin contract migrate moves the inline list)")
-		return
-	}
-	if !ValidContractFilePath(doc.ContractFile) {
-		result.Errors = append(result.Errors, fmt.Sprintf("contract_file %q must be a relative .md path under %s/", doc.ContractFile, ContractFileDir))
 		return
 	}
 	if root == "" {
@@ -562,6 +636,9 @@ func validateContractSource(root string, doc Document, result *ValidationResult)
 	if err != nil {
 		result.Errors = append(result.Errors, err.Error())
 		return
+	}
+	if c.Warning != "" {
+		result.Warnings = append(result.Warnings, c.Warning)
 	}
 	warnContractBudget(c, result)
 }

@@ -82,6 +82,7 @@ type Document struct {
 	Roles                     []Role                 `json:"roles,omitempty"`
 	Profiles                  []Profile              `json:"profiles,omitempty"`
 	Contract                  []string               `json:"contract,omitempty"`
+	ContractSource            string                 `json:"contract_source,omitempty"`
 	ContractFile              string                 `json:"contract_file,omitempty"`
 	ContractReview            ContractReview         `json:"contract_review,omitzero"`
 	Governance                Governance             `json:"governance,omitzero"`

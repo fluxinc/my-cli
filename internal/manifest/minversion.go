@@ -111,6 +111,9 @@ func EncodeDocument(doc Document) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if doc.ContractSource != "" && len(doc.Contract) == 0 {
+		return PatchManifestKeys(data, []KeyEdit{{Key: "contract", Value: json.RawMessage("[]"), After: "contract_source"}})
+	}
 	return append(data, '\n'), nil
 }
 

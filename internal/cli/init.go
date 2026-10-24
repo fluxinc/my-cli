@@ -522,6 +522,9 @@ Options:`)
 }
 
 func (a app) publishOrg(home string, doc registeredDoc, printOnly bool) (publishResult, error) {
+	if err := manifest.RequireContractSource(doc.ref.LocalPath, doc.doc); err != nil {
+		return publishResult{Manifest: doc.ref.Name}, err
+	}
 	if !printOnly && manifest.GovernanceConfigured(doc.doc.Governance) {
 		authorized, _, _, err := a.loadAuthorizedAdminManifestCheckout(doc.ref.LocalPath)
 		if err != nil {

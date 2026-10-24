@@ -155,28 +155,26 @@ func contractSnapshotAt(ref manifest.Ref, rev string) (contractstate.Snapshot, e
 	if err = json.Unmarshal(raw, &doc); err != nil {
 		return contractstate.Snapshot{}, err
 	}
-	var c manifest.Contract
-	if doc.ContractFile != "" {
-		if doc.Contract != nil || !manifest.ValidContractFilePath(doc.ContractFile) {
-			return contractstate.Snapshot{}, fmt.Errorf("invalid contract source at %s", commit)
-		}
-		data, err := gitPRBytes(ref.LocalPath, nil, "show", commit+":"+doc.ContractFile)
-		if err != nil {
-			return contractstate.Snapshot{}, fmt.Errorf("contract file is unavailable at %s", commit)
-		}
-		c, err = manifest.ParseContractFile(doc.ContractFile, data)
-		if err != nil {
+	var data []byte
+	var readErr error
+	if file := doc.ContractPath(); file != "" {
+		if err := manifest.CheckContractSource(doc); err != nil {
 			return contractstate.Snapshot{}, err
 		}
-	} else {
-		c, err = manifest.LoadContract("", doc)
-		if err != nil {
-			return contractstate.Snapshot{}, err
+		if manifest.ValidContractFilePath(file) {
+			data, readErr = gitPRBytes(ref.LocalPath, nil, "show", commit+":"+file)
+		} else {
+			readErr = fmt.Errorf("unsafe contract source path")
 		}
 	}
+	c, err := manifest.ResolveContractBytes(doc, data, readErr)
+	if err != nil {
+		return contractstate.Snapshot{}, err
+	}
+
 	text := string(c.Bytes())
 	if c.File == "" && text != "" && !strings.HasSuffix(text, "\n") {
 		text += "\n"
 	}
-	return contractstate.Snapshot{Configured: c.File != "" || len(c.Rules()) != 0, Source: c.Source(), Path: c.File, Text: text, Provenance: "committed", Revision: contractstate.Revision{ManifestCommit: commit, Blob: manifest.ContractBlob([]byte(text))}}, nil
+	return contractstate.Snapshot{Configured: doc.ContractPath() != "" || len(c.Rules()) != 0, Source: c.Source(), Path: c.File, Text: text, Provenance: "committed", Revision: contractstate.Revision{ManifestCommit: commit, Blob: manifest.ContractBlob([]byte(text))}}, nil
 }
