@@ -1,9 +1,9 @@
 # Accumulated organization contract
 
 Status: active. Drafted by Claude and adversarially reviewed by Codex.
-Phase 1 (file-backed contract) shipped in v0.47.0 and phase 2 (revisions and
-sync diff) in v0.48.0. Phases 3–4 are authorized and follow as their own
-releases. Phase 5 and the evidence generator remain
+Phase 1 (file-backed contract) shipped in v0.47.0, phase 2 (revisions and
+sync diff) in v0.48.0, and phase 3 (live delivery) in v0.49.0. Phase 4 is
+authorized and follows as its own release. Phase 5 and the evidence generator remain
 optional and later.
 
 ## Goal (operator)
@@ -561,7 +561,7 @@ than as extra infrastructure in phase 1.
     - The admin then applies the bundle through the reviewed path.
     - Until it merges, no session sees the rule.
 
-## Phases (1–2 shipped; 3–4 authorized; 5 optional)
+## Phases (1–3 shipped; 4 authorized; 5 optional)
 
 1. **File-backed contract.** *Shipped in v0.47.0.* The compile block
    carries `revision: {manifest_commit, blob}`.
@@ -579,7 +579,7 @@ than as extra infrastructure in phase 1.
    - The sync `contract_change` diff.
    - Fan-out to session roots.
    - `my contract status` and `my contract diff`.
-3. **Live delivery.** *Implemented; Claude Code proven live, Codex mechanics
+3. **Live delivery.** *Shipped in v0.49.0; Claude Code proven live, Codex mechanics
    proven live, Codex inline trust persistence verified from 0.163.0 source.*
    - The launch-instance registry, native-id binding, and receipts.
    - `my contract pending`, explicit retraction and empty snapshots, and

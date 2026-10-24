@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.49.0 - 2026-10-24
+
 ### Added
 
 - Per-launch organization contract delivery state, separate from installed
@@ -19,8 +21,9 @@
   context setting, bounded by the CLI's own 64 KiB output cap. Native Windows
   remains unsupported. Claude Code was verified live for startup, prompt,
   mid-run tool, resume, compaction and fork delivery. Codex was verified live
-  for the delivery mechanics and for skipping an untrusted hook. Persisting
-  Codex trust for the inline layer is not yet verified.
+  for the delivery mechanics and for skipping an untrusted hook. Approving the
+  hook once in Codex's `/hooks` persists across launches; this was verified from
+  the Codex 0.163.0 source, not from a live approval.
 - Resuming or forking a conversation by ID starts from what that conversation
   was last given, so forks list the rules retracted since then. Every update
   states that it is the complete contract. Closed launch records are pruned 30
