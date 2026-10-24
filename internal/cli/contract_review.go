@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/fluxinc/my-cli/internal/contractreview"
 	"github.com/fluxinc/my-cli/internal/manifest"
@@ -173,6 +174,10 @@ func collectContractReviewInput(home, name, umbrella string, doc manifest.Docume
 				in.Missing = append(in.Missing, policy.ID+": committed policy blob unavailable")
 			} else if contractreview.Digest(data) != policy.SHA256 {
 				in.Missing = append(in.Missing, policy.ID+": committed policy digest does not match manifest")
+			} else if !utf8.Valid(data) {
+				// JSON encoding would silently replace invalid bytes, so the
+				// model would not see the exact verified policy text.
+				in.Missing = append(in.Missing, policy.ID+": committed policy is not valid UTF-8")
 			} else {
 				p.Text = string(data)
 			}

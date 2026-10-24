@@ -206,3 +206,28 @@ func TestContractReviewDetectsModelConfigurationChangedDuringReview(t *testing.T
 		t.Fatalf("%v %s", err, out)
 	}
 }
+
+// JSON encoding would silently replace invalid bytes, so a policy that is not
+// valid UTF-8 cannot be sent in full and the review stops before the model.
+func TestContractReviewRejectsNonUTF8PolicyBeforeModel(t *testing.T) {
+	home, repo, policyRepo := t.TempDir(), t.TempDir(), t.TempDir()
+	policyText := "Policy \xff text.\n"
+	writeCLITestFile(t, filepath.Join(policyRepo, "policy.md"), policyText)
+	initCLIGitRepo(t, policyRepo)
+	doc := manifest.Document{ManifestVersion: 1, Organization: manifest.Organization{ID: "acme", Name: "Acme"}, Contract: []string{"Review changes."}, Governance: manifest.Governance{Policies: []manifest.Policy{{ID: "review", Mount: "handbook", Path: "policy.md", SHA256: contractreview.Digest([]byte(policyText))}}}}
+	data, _ := json.Marshal(doc)
+	writeCLITestFile(t, filepath.Join(repo, "manifest.json"), string(data))
+	initCLIGitRepo(t, repo)
+	calls := 0
+	out := &bytes.Buffer{}
+	a := app{stdout: out, stderr: &bytes.Buffer{}, contractReviewRunner: func(context.Context, []string, string) ([]byte, error) {
+		calls++
+		return reviewTestReply(`{"findings":[]}`), nil
+	}}
+	err := a.runContractReview([]string{"--manifest-dir", repo, "--home", home, "--harness", "claude", "--model", "chosen", "--policy-root", "handbook=" + policyRepo, "--json"})
+	var report contractreview.Report
+	_ = json.Unmarshal(out.Bytes(), &report)
+	if err == nil || calls != 0 || report.Status != "incomplete" || !strings.Contains(report.Message, "not valid UTF-8") {
+		t.Fatalf("err=%v calls=%d report=%+v", err, calls, report)
+	}
+}
