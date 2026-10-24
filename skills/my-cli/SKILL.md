@@ -341,9 +341,14 @@ my services list|get             # manifest-declared remote surfaces
 my roles list|get                # manifest-declared operating roles
 my contract list                 # binding organization contract rules
 my contract show                 # the contract file as written, with its blob id
-my contract status               # local active/installed revisions and pending roots
+my contract status               # active/installed revisions and per-launch emission state
+my contract pending              # local pending update; manual output never records receipt
 my contract diff --from REV --to REV # local historical contract diff (no fetch)
 ```
+
+Before a new task in a long session, check `my contract status`. Apply contract
+updates printed by `my` within the existing instruction hierarchy, including
+explicit retractions. Emission receipts do not prove model acceptance.
 
 Keep organization skill source directories immutable. Store mutable runtime
 state — credentials, cookies, caches, and downloads — under

@@ -60,14 +60,16 @@ type app struct {
 	stdin  io.Reader
 	// interactive reports whether stdin/stdout are a TTY. Zero value (false)
 	// keeps tests on the deterministic, non-launching path by default.
-	interactive          bool
-	lookPath             func(string) (string, error)
-	harnessProbe         func(path string, args ...string) ([]byte, error)
-	execHarness          func(path string, args []string, dir string) error
-	updateSource         selfupdate.Source
-	updateNow            func() time.Time
-	updateCurrentVersion string
-	updateTargetPath     string
+	interactive            bool
+	lookPath               func(string) (string, error)
+	harnessProbe           func(path string, args ...string) ([]byte, error)
+	execHarness            func(path string, args []string, dir string) error
+	harnessEnvironment     []string
+	execHarnessEnvironment func(path string, args []string, dir string, env []string) error
+	updateSource           selfupdate.Source
+	updateNow              func() time.Time
+	updateCurrentVersion   string
+	updateTargetPath       string
 	// publishRunner overrides external gh invocations during my publish.
 	publishRunner manifest.Runner
 	// accessRunner overrides GitHub API calls during authorization checks.
@@ -89,6 +91,9 @@ func (a app) runStartupMaintenance(args []string) {
 }
 
 func shouldAutoSyncSelfSkill(args []string) bool {
+	if contractHookInvocation(args) {
+		return false
+	}
 	if os.Getenv("MYCLI_DISABLE_SELF_SKILL_SYNC") != "" {
 		return false
 	}
@@ -136,6 +141,7 @@ func (a app) run(args []string) error {
 		return nil
 	}
 
+	defer a.printContractFallback(args)
 	a.runStartupMaintenance(args)
 
 	switch args[1] {

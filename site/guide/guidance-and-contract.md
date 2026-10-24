@@ -162,8 +162,89 @@ active contract. Explicit `--from` and `--to` resolve local Git commits. State l
 `~/.local/share/my-cli/state/contract/<manifest>.json`.
 
 Guidance installation does **not** prove that a running harness read the update.
-Live delivery is currently reported as unsupported. Restart the session or paste
-`my contract show` to supply the updated contract; hook adapters ship separately.
+Live delivery uses a separate launch instance and an emitted snapshot for each
+harness conversation. An emission receipt proves only that the CLI wrote the
+complete update into the hook path, not that the harness accepted or followed it.
+
+### Live contract delivery
+
+New `my ai` launches register independently of workspace session IDs. The
+adapters use Claude Code 2.1.310+ and Codex CLI 0.163.0+ hooks at session start,
+prompt submission, and tool completion (also before tools in Codex). Startup,
+resume, clear, compaction and fork deliver a full snapshot. Removed rules are
+explicitly marked `RETRACTED`; removing the final rule emits an empty snapshot.
+Each launch compares against its own emitted text even if it missed many updates.
+A launch that resumes or forks a conversation by ID (`claude --resume ID`,
+`codex resume|fork ID`) starts from what that conversation was last given, so a
+fork still lists the rules retracted since. Every update says it is the complete
+contract and supersedes any earlier contract text in the conversation.
+
+Hooks read local state only. Run `my sync` or use the normal refresh path to
+bring merged changes to the machine. This is context delivery, not a guarantee
+that an already-issued action will reconsider a new rule.
+
+Codex requires review of the exact hook definition with `/hooks`; the adapter
+never bypasses that trust. Hook definitions stay stable across launches: instance
+identity is passed through the child process environment. Codex's context limit
+is disabled only for these hooks, whose output has a strict 64 KiB cap. Larger
+updates remain `incomplete`; manually load the full contract before proceeding.
+
+Existing settings remain in place. An explicit Claude `--settings` or Codex hook
+configuration on the command line disables automatic adapter injection for that
+launch, avoiding replacement of the caller's options. Native Windows and other
+harnesses remain `unsupported` until verified. Already-running sessions cannot
+acquire hooks retroactively; relaunch once, or manually supply the contract.
+
+```sh
+my contract status --json
+my contract pending                   # local context; no emission receipt
+my contract pending --hook codex       # native hook JSON on stdin
+```
+
+Status distinguishes `untrusted`, `stale`, `emitted`, `incomplete`, `unsupported`
+and `closed` instances. It never labels a model as having accepted an update.
+Commands inside a registered launch print pending changes on stderr as a fallback;
+that output never advances the emission cursor. Unchanged fallback context is quiet.
+
+Contained runtimes can register at actual process launch:
+
+```sh
+my contract register --manifest acme --harness codex --root /workspace
+```
+
+The JSON result supplies a launch ID and environment variables for that process.
+The runtime must still install and trust a verified hook adapter. `my compile`
+continues to carry contract content/revision without allocating an instance.
+State schema 2 is introduced when a launch is registered; older clients refuse
+that tracking state instead of rewriting it and losing emission receipts.
+
+Closed launch records are kept for 30 days after their last hook. If a
+long-idle process's record was pruned, or its conversation was reopened
+without a session-start hook, its next hook gets a full authoritative snapshot
+instead of an exact retraction list.
+
+Live verification (v0.49.0, in a sandbox manifest):
+
+- **Claude Code 2.1.310:** the hook delivered the contract at startup, on each
+  prompt, and mid-run after a tool call that changed and synced the contract.
+  Resume and fork marked the replaced rule `RETRACTED`. Compaction re-sent the
+  full snapshot. Project and user hooks kept running alongside the generated
+  `--settings` layer. Subagent hook calls carry `agent_id` and are skipped, so a
+  subagent never consumes the parent's cursor.
+- **Codex CLI 0.163.0:** until the hook definition is trusted, Codex skips it,
+  the model gets nothing, and status stays `untrusted`. Your own
+  `~/.codex/hooks.json` hooks still run beside the inline layer. In a test-only
+  invocation with the trust bypass enabled,
+  startup, prompt, and pre- and post-tool hooks delivered the contract, and a
+  mid-run change arrived with its retraction. The adapter never enables that
+  bypass. Normal `/hooks` trust persistence is verified from the
+  [0.163.0 discovery source](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/hooks/src/engine/discovery.rs):
+  session flags use a stable source path, and trust is matched by source,
+  event, handler position and definition hash. The
+  [TUI saves approvals](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/tui/src/hooks_rpc.rs)
+  in persistent `hooks.state`. This persistence check was source-based, not a
+  live TUI approval test. Until you approve the definition, status remains
+  `untrusted` and the stderr fallback remains available.
 
 ### Migrating an inline contract
 

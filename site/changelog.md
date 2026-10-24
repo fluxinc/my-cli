@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Added
+
+- Per-launch organization contract delivery state, separate from installed
+  guidance. Each harness keeps its own emitted snapshot and native conversation
+  binding, including resume/fork handling, explicit retractions, final-rule
+  removal, and full snapshots after compaction. Receipts record completed output
+  into a hook path, never model acceptance or compliance.
+- `my contract pending` reads pending context locally without recording receipt;
+  native `--hook claude|codex` adapters record emission only after complete output.
+  Hooks never fetch. Context above 64 KiB is reported incomplete without advancing
+  the cursor. Unsupported harnesses receive a stderr fallback from `my` commands.
+- Launch-scoped Claude Code (2.1.310+) and Codex (0.163.0+) adapters keep
+  existing settings and hooks. Their command definitions are stable across
+  launches, and they never bypass hook trust. Codex uses an unlimited hook
+  context setting, bounded by the CLI's own 64 KiB output cap. Native Windows
+  remains unsupported. Claude Code was verified live for startup, prompt,
+  mid-run tool, resume, compaction and fork delivery. Codex was verified live
+  for the delivery mechanics and for skipping an untrusted hook. Persisting
+  Codex trust for the inline layer is not yet verified.
+- Resuming or forking a conversation by ID starts from what that conversation
+  was last given, so forks list the rules retracted since then. Every update
+  states that it is the complete contract. Closed launch records are pruned 30
+  days after their last hook. A pruned or reopened record gets a full snapshot
+  on its next hook.
+- `my contract register --manifest NAME --harness NAME --root DIR` is the explicit
+  runtime registration seam for contained runners. Compilation stays deterministic
+  and does not register a launch or claim live delivery. State upgrades to schema 2
+  when instances are added, preventing older clients from discarding receipts.
+
 ## 0.48.0 - 2026-10-24
 
 ### Added

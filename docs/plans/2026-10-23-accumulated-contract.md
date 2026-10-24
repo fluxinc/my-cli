@@ -579,7 +579,8 @@ than as extra infrastructure in phase 1.
    - The sync `contract_change` diff.
    - Fan-out to session roots.
    - `my contract status` and `my contract diff`.
-3. **Live delivery.**
+3. **Live delivery.** *Implemented; Claude Code proven live, Codex mechanics
+   proven live, Codex inline trust persistence verified from 0.163.0 source.*
    - The launch-instance registry, native-id binding, and receipts.
    - `my contract pending`, explicit retraction and empty snapshots, and
      the stderr fallback.
