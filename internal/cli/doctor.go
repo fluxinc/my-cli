@@ -150,6 +150,7 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 		}
 		report.Manifests = append(report.Manifests, doctorLocalMountURLs(ref, doc)...)
 		report.Derived = append(report.Derived, doctorManifestSkillRuntimeState(home, ref, doc)...)
+		report.Derived = append(report.Derived, doctorContractReview(home, ref, doc, root)...)
 		report.Workspaces = append(report.Workspaces, doctorWorkspaces(home, ref.Name, doc.Workspaces)...)
 		report.Tools = append(report.Tools, doctorTools(ref.Name, doc.Tools)...)
 		report.Services = append(report.Services, doctorPersonalServices(home, ref, doc.Services)...)

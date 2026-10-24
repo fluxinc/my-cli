@@ -246,6 +246,86 @@ Live verification (v0.49.0, in a sandbox manifest):
   live TUI approval test. Until you approve the definition, status remains
   `untrusted` and the stderr fallback remains available.
 
+### Advisory conflict review
+
+```sh
+my admin contract review --manifest acme --harness claude --model YOUR_MODEL
+my admin contract review --manifest acme --check --json
+my admin contract add "Record decisions before acting." --review --harness claude --model YOUR_MODEL
+```
+
+Review reads the full contract, its pending diff, and every declared policy's
+committed text, including role-scoped policies. Each policy blob must match its
+manifest SHA256. A missing mount, unreadable blob, or digest mismatch produces
+`incomplete` before any model call. Format, duplicate and size lint runs first;
+semantic conflicts, stale facts, vague rules and scope suggestions are advisory
+model findings. Suggested removed/added text is never applied automatically.
+
+The default is no model call during authoring. Pass `--review`, or opt in through
+the manifest (requires my v0.50.0):
+
+```json
+"contract_review": {
+  "enabled": true,
+  "harness": "claude",
+  "model": "YOUR_MODEL",
+  "timeout_seconds": 120,
+  "max_budget_usd": 1
+}
+```
+
+`--review=false` skips an opted-in authoring review. Explicit `--harness` and
+`--model` override the manifest selection. There is no implicit model choice.
+Claude Code 2.1.310+ runs using the operator's own credentials, in a temporary
+working directory with safe mode, no tools, no MCP servers, no hooks or skills,
+and no saved session. Contract and policy text are data, not instructions.
+Timeout defaults to 120 seconds (maximum 600); the harness budget defaults to
+$1 (maximum $10). Standalone review accepts `--timeout` and `--max-budget-usd`.
+Input and output are bounded to 2 MiB and 1 MiB; oversized input is never
+silently summarized or partially reviewed. A missing harness or model reports
+`unavailable`. Codex review currently reports `unavailable` because its bounded
+no-tools runner has not been verified.
+
+Verified live with Claude Code 2.1.310: under the runner's flags the review
+model did not receive the user's global `CLAUDE.md` (about 3k input tokens,
+against about 158k without safe mode). A seeded pair of contradictory rules came
+back as a `conflict` finding with concrete removed and added text.
+
+Results are `clean`, `findings`, `incomplete`, `unavailable`, `not_reviewed`, or
+`stale`. A clean review is **not a certificate of consistency**. Findings never
+block publication or change administrator authority, governance checks or
+required approvals. Registered authoring includes a **Conflict review** section
+in the PR body, bound to the exact proposed commit. Local `--manifest-dir`
+authoring returns the review alongside the edit result.
+
+Review evidence lives outside Git in the user's `state/contract-review`
+directory. It binds the candidate head, contract blob, policy digest set,
+prompt version, harness and selected model. `--check` reads local inputs and
+saved evidence without writes, network access or a model call. It reports stale
+evidence after any binding changes; policy-only updates also produce a doctor
+note. Without selection flags or manifest configuration, checking uses the
+saved harness/model selection. Use a versioned model identifier rather than an alias
+for reproducible evidence. `--check` compares the selected model string, so it
+cannot see an alias retargeted upstream; the report records the models the
+harness actually used (`reported_models`). A squash merge changes the head and
+requires a fresh review. A PR body's old review remains historical evidence; rerun checks
+and replace the review after updating the PR.
+
+For an explicit manifest checkout or CI, supply each policy repository:
+
+```sh
+my admin contract review --manifest-dir ./manifest \
+  --policy-root handbook=./handbook --harness claude --model YOUR_MODEL --json
+```
+
+`--policy-root MOUNT=DIR` is repeatable. The repository must contain the exact
+declared policy blob at committed `HEAD:path`; uncommitted policy edits are not
+review inputs. Standalone review compares against `HEAD` by default (local
+pending edits); pass `--base COMMIT` for a committed PR candidate's base.
+See `examples/contract-review/` in the source repository for an
+optional CI workflow. Evidence-derived proposals and incident-closeout
+generators remain a later extension.
+
 ### Migrating an inline contract
 
 ```sh

@@ -68,6 +68,9 @@ type Options struct {
 // branch creation and pull-request proof; syncer retains fetch/divergence,
 // declared-content, duplicate-checkout, adoption, and active-session gates.
 type PRRequest struct {
+	// AdvisoryBody attaches non-gating evidence to the exact candidate commit.
+	// It is called only for an actual publication, never a dry run.
+	AdvisoryBody     func(candidateHead string) string
 	Entry            Entry
 	Branch           string
 	Upstream         string
