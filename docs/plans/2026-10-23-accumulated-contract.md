@@ -3,7 +3,7 @@
 Status: shipped (core phases 1–4). Drafted by Claude and adversarially
 reviewed by Codex. Phase 1 (file-backed contract) shipped in v0.47.0, phase 2
 (revisions and sync diff) in v0.48.0, phase 3 (live delivery) in v0.49.0, and
-phase 4 (advisory review) in v0.50.0. Phase 5 and the evidence generator remain
+phase 4 (advisory review) in v0.50.0, and compatible migration in v0.51.0. Phase 5 and the evidence generator remain
 optional and later.
 
 > **Revised in v0.51.0: compatible migration.** The file-only shape below

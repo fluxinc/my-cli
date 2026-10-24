@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.51.0 - 2026-10-24
+
 ### Added
 
 - `contract_source` keeps a grouped `guidance/contract.md` next to the inline
