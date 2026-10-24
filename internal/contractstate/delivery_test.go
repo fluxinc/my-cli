@@ -334,3 +334,26 @@ func TestDeliveryReopenedOrPrunedInstanceGetsFullSnapshot(t *testing.T) {
 		t.Fatal("malformed instance id was accepted")
 	}
 }
+
+// Recovery also works when the registry is empty or absent, as in a schema 1
+// state written before any launch registered.
+func TestDeliveryRecoversWithNoInstanceRegistry(t *testing.T) {
+	home := t.TempDir()
+	_, err := Update(home, "acme", func(s *State) error {
+		s.Observe(Snapshot{Configured: true, Revision: Revision{ManifestCommit: "one", Blob: "one"}, Text: "- Rule.\n"})
+		s.Instances = nil
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := NewID()
+	var out bytes.Buffer
+	if err := Deliver(home, "acme", id, "codex", HookInput{Event: "UserPromptSubmit", SessionID: "conv"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	state, _ := Load(home, "acme")
+	if !strings.Contains(out.String(), "Full active") || state.Instances[id].Emitted == nil {
+		t.Fatalf("recovery without a registry failed: %q %#v", out.String(), state.Instances)
+	}
+}

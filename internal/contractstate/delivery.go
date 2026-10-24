@@ -245,6 +245,9 @@ func Deliver(home, name, id, adapter string, input HookInput, w io.Writer) error
 				return err
 			}
 			instance = Instance{ID: id, Harness: expectedHarness, Started: *s.Active, StartedAt: time.Now().UTC().Format(time.RFC3339Nano), Delivery: "untrusted", NeedsSnapshot: true}
+			if s.Instances == nil {
+				s.Instances = map[string]Instance{}
+			}
 		}
 		if instance.Harness != expectedHarness {
 			return fmt.Errorf("hook adapter does not match registered harness")
