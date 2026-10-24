@@ -464,7 +464,10 @@ func (a app) adminContractLocal(action string, args []string, opts adminContract
 	if err := ensureAdminManifestClean(root, opts.force); err != nil {
 		return adminContractResult{}, err
 	}
-	head, _ := gitPRText(root, nil, "rev-parse", "HEAD^{commit}")
+	head, headErr := gitPRText(root, nil, "rev-parse", "HEAD^{commit}")
+	if headErr != nil {
+		head = ""
+	}
 	edit, err := planContractEdit(action, args, opts, root, manifestPath, doc)
 	if err != nil {
 		return adminContractResult{}, err
@@ -486,6 +489,12 @@ func (a app) adminContractLocal(action string, args []string, opts adminContract
 // if manifest.json cannot be written, so a failure leaves the inline contract
 // in force.
 func writeContractEdit(root string, edit contractEdit) error {
+	if edit.result.BaseCommit != "" {
+		current, err := gitPRText(root, nil, "rev-parse", "HEAD^{commit}")
+		if err != nil || current != edit.result.BaseCommit {
+			return fmt.Errorf("manifest commit changed while the contract edit was prepared; nothing was written, so retry")
+		}
+	}
 	for _, rel := range sortedKeys(edit.originals) {
 		current, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil || !bytes.Equal(current, edit.originals[rel]) {
