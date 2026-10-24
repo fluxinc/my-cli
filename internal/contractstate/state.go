@@ -39,11 +39,12 @@ type Root struct {
 }
 
 type State struct {
-	SchemaVersion             int             `json:"schema_version"`
-	Active                    *Snapshot       `json:"active,omitempty"`
-	Previous                  *Snapshot       `json:"previous,omitempty"`
-	Roots                     map[string]Root `json:"roots,omitempty"`
-	LastSuccessfulRemoteCheck string          `json:"last_successful_remote_check,omitempty"`
+	Instances                 map[string]Instance `json:"instances,omitempty"`
+	SchemaVersion             int                 `json:"schema_version"`
+	Active                    *Snapshot           `json:"active,omitempty"`
+	Previous                  *Snapshot           `json:"previous,omitempty"`
+	Roots                     map[string]Root     `json:"roots,omitempty"`
+	LastSuccessfulRemoteCheck string              `json:"last_successful_remote_check,omitempty"`
 }
 
 // Observe advances the local active revision. Absence after a configured
@@ -137,7 +138,7 @@ func load(path string) (State, error) {
 	if err = json.Unmarshal(data, &s); err != nil {
 		return State{}, fmt.Errorf("read contract state: %w", err)
 	}
-	if s.SchemaVersion != 1 {
+	if s.SchemaVersion != 1 && s.SchemaVersion != 2 {
 		return State{}, fmt.Errorf("unsupported contract state version %d", s.SchemaVersion)
 	}
 	if s.Roots == nil {
@@ -170,6 +171,9 @@ func Update(home, name string, change func(*State) error) (State, error) {
 	}
 	if s.Active == nil {
 		return s, nil
+	}
+	if len(s.Instances) != 0 {
+		s.SchemaVersion = 2
 	}
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {

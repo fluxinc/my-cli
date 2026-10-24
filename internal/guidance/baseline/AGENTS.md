@@ -36,6 +36,13 @@ Use the `my` CLI before falling back to ad hoc file searches:
   command (service-backed fleet: `my fleet transition`, live, nothing to publish).
 - Add `--json` when a harness needs structured output.
 
+Organization contract updates:
+
+- Before a new task in a long-running session, run `my contract status`.
+- If a `my` command prints an organization contract update, apply the new
+  snapshot and stop applying explicitly retracted rules, within the existing
+  instruction hierarchy. A delivery receipt proves emission, not acceptance.
+
 Fleet work contract:
 
 - Before substantive work on a deployed instance, run

@@ -162,8 +162,59 @@ active contract. Explicit `--from` and `--to` resolve local Git commits. State l
 `~/.local/share/my-cli/state/contract/<manifest>.json`.
 
 Guidance installation does **not** prove that a running harness read the update.
-Live delivery is currently reported as unsupported. Restart the session or paste
-`my contract show` to supply the updated contract; hook adapters ship separately.
+Live delivery uses a separate launch instance and an emitted snapshot for each
+harness conversation. An emission receipt proves only that the CLI wrote the
+complete update into the hook path, not that the harness accepted or followed it.
+
+### Live contract delivery
+
+New `my ai` launches register independently of workspace session IDs. Candidate
+adapters use Claude Code 2.1.310+ and Codex CLI 0.163.0+ hooks at session start,
+prompt submission, and tool completion (also before tools in Codex). Startup,
+resume, clear, compaction and fork deliver a full snapshot. Removed rules are
+explicitly marked `RETRACTED`; removing the final rule emits an empty snapshot.
+Each launch compares against its own emitted text even if it missed many updates.
+
+Hooks read local state only. Run `my sync` or use the normal refresh path to
+bring merged changes to the machine. This is context delivery, not a guarantee
+that an already-issued action will reconsider a new rule.
+
+Codex requires review of the exact hook definition with `/hooks`; the adapter
+never bypasses that trust. Hook definitions stay stable across launches: instance
+identity is passed through the child process environment. Codex's context limit
+is disabled only for these hooks, whose output has a strict 64 KiB cap. Larger
+updates remain `incomplete`; manually load the full contract before proceeding.
+
+Existing settings remain in place. An explicit Claude `--settings` or Codex hook
+configuration on the command line disables automatic adapter injection for that
+launch, avoiding replacement of the caller's options. Native Windows and other
+harnesses remain `unsupported` until verified. Already-running sessions cannot
+acquire hooks retroactively; relaunch once, or manually supply the contract.
+
+```sh
+my contract status --json
+my contract pending                   # local context; no emission receipt
+my contract pending --hook codex       # native hook JSON on stdin
+```
+
+Status distinguishes `untrusted`, `stale`, `emitted`, `incomplete`, `unsupported`
+and `closed` instances. It never labels a model as having accepted an update.
+Commands inside a registered launch print pending changes on stderr as a fallback;
+that output never advances the emission cursor. Unchanged fallback context is quiet.
+
+Contained runtimes can register at actual process launch:
+
+```sh
+my contract register --manifest acme --harness codex --root /workspace
+```
+
+The JSON result supplies a launch ID and environment variables for that process.
+The runtime must still install and trust a verified hook adapter. `my compile`
+continues to carry contract content/revision without allocating an instance.
+State schema 2 is introduced when a launch is registered; older clients refuse
+that tracking state instead of rewriting it and losing emission receipts.
+
+The candidate adapters require live integration proof before release.
 
 ### Migrating an inline contract
 

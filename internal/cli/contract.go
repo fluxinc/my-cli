@@ -85,6 +85,10 @@ func (a app) runContract(args []string) error {
 		return a.runContractList(args[1:])
 	case "show":
 		return a.runContractShow(args[1:])
+	case "pending":
+		return a.runContractPending(args[1:])
+	case "register":
+		return a.runContractRegister(args[1:])
 	case "status", "diff":
 		return a.runContractStateCommand(args[0], args[1:])
 	case "add", "remove", "replace", "migrate":
@@ -101,6 +105,8 @@ func (a app) printContractUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
   my contract list [--manifest NAME] [--home DIR] [--json]
   my contract show [--manifest NAME] [--home DIR] [--json]
+  my contract pending [--manifest NAME] [--instance ID] [--hook claude|codex]
+  my contract register --manifest NAME --harness NAME --root DIR [--home DIR]
   my contract status [--manifest NAME] [--home DIR] [--json]
   my contract diff [--from REV] [--to REV] [--manifest NAME] [--home DIR] [--json]
 

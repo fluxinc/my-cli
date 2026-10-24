@@ -14,13 +14,19 @@ type contractRootStatus struct {
 	Status string `json:"status"`
 }
 
+type contractInstanceStatus struct {
+	contractstate.Instance
+	Status string `json:"status"`
+}
+
 type contractStatusReport struct {
-	Manifest                  string                  `json:"manifest"`
-	Active                    *contractstate.Snapshot `json:"active,omitempty"`
-	Local                     contractstate.Snapshot  `json:"local"`
-	LastSuccessfulRemoteCheck string                  `json:"last_successful_remote_check,omitempty"`
-	Roots                     []contractRootStatus    `json:"roots"`
-	LiveDelivery              string                  `json:"live_delivery"`
+	Instances                 []contractInstanceStatus `json:"instances"`
+	Manifest                  string                   `json:"manifest"`
+	Active                    *contractstate.Snapshot  `json:"active,omitempty"`
+	Local                     contractstate.Snapshot   `json:"local"`
+	LastSuccessfulRemoteCheck string                   `json:"last_successful_remote_check,omitempty"`
+	Roots                     []contractRootStatus     `json:"roots"`
+	LiveDelivery              string                   `json:"live_delivery"`
 }
 
 func (a app) runContractStateCommand(action string, args []string) error {
@@ -93,7 +99,13 @@ func (a app) runContractStateCommand(action string, args []string) error {
 		_, err = a.stdout.Write([]byte(change.Diff))
 		return err
 	}
-	report := contractStatusReport{Manifest: name, Active: state.Active, Local: current, LastSuccessfulRemoteCheck: state.LastSuccessfulRemoteCheck, Roots: []contractRootStatus{}, LiveDelivery: "unsupported: restart or manually reload; live adapters ship separately"}
+	report := contractStatusReport{Manifest: name, Active: state.Active, Local: current, LastSuccessfulRemoteCheck: state.LastSuccessfulRemoteCheck, Roots: []contractRootStatus{}, LiveDelivery: "unsupported: no registered launch; relaunch through my ai or manually reload"}
+	for _, instance := range contractstate.SortedInstances(state) {
+		report.Instances = append(report.Instances, contractInstanceStatus{Instance: instance, Status: contractstate.InstanceStatus(instance, state.Active)})
+	}
+	if len(report.Instances) != 0 {
+		report.LiveDelivery = "per-launch emission receipts; model acceptance and behavior are not verified"
+	}
 	for _, r := range sortedContractRoots(state) {
 		status := "current"
 		if state.Pending(r.Path) || state.Active != nil && current.Revision != state.Active.Revision {
@@ -122,6 +134,9 @@ func (a app) runContractStateCommand(action string, args []string) error {
 	fmt.Fprintf(a.stdout, "last-successful-remote-check\t%s\n", checked)
 	for _, r := range report.Roots {
 		fmt.Fprintf(a.stdout, "root\t%s\t%s\t%s\n", r.Status, r.Path, r.LastError)
+	}
+	for _, instance := range report.Instances {
+		fmt.Fprintf(a.stdout, "instance\t%s\t%s\t%s\t%s\n", instance.ID, instance.Harness, instance.Status, instance.Message)
 	}
 	fmt.Fprintf(a.stdout, "live-delivery\t%s\n", report.LiveDelivery)
 	return nil

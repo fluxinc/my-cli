@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Added
+
+- Per-launch organization contract delivery state, separate from installed
+  guidance. Each harness keeps its own emitted snapshot and native conversation
+  binding, including resume/fork handling, explicit retractions, final-rule
+  removal, and full snapshots after compaction. Receipts record completed output
+  into a hook path, never model acceptance or compliance.
+- `my contract pending` reads pending context locally without recording receipt;
+  native `--hook claude|codex` adapters record emission only after complete output.
+  Hooks never fetch. Context above 64 KiB is reported incomplete without advancing
+  the cursor. Unsupported harnesses receive a stderr fallback from `my` commands.
+- Launch-scoped candidate adapters preserve existing settings, keep their command
+  definitions stable across launches, and never bypass hook trust. Codex uses an
+  unlimited hook context setting bounded by the CLI's output cap. Adapters require
+  live integration verification before release; native Windows remains unsupported.
+- `my contract register --manifest NAME --harness NAME --root DIR` is the explicit
+  runtime registration seam for contained runners. Compilation stays deterministic
+  and does not register a launch or claim live delivery. State upgrades to schema 2
+  when instances are added, preventing older clients from discarding receipts.
+
 ## 0.48.0 - 2026-10-24
 
 ### Added

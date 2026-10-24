@@ -299,7 +299,7 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 	if err := a.ensureLaunchOrgSkills(h, opts, doc, root, targetDir, selector); err != nil {
 		return err
 	}
-	return a.runHarness(binary, harnessArgs, targetDir)
+	return a.runContractHarness(h, binary, harnessArgs, targetDir, opts.home, doc.ref.Name, root)
 }
 
 func (a app) printGovernedLaunchProjectionNotices(home, manifestName, root string) {
@@ -955,10 +955,16 @@ func (a app) probeCursorAgent(path string) (bool, error) {
 }
 
 func (a app) runHarness(path string, args []string, dir string) error {
+	if a.execHarnessEnvironment != nil {
+		return a.execHarnessEnvironment(path, args, dir, a.harnessEnvironment)
+	}
 	if a.execHarness != nil {
 		return a.execHarness(path, args, dir)
 	}
 	cmd := exec.Command(path, args...)
+	if a.harnessEnvironment != nil {
+		cmd.Env = a.harnessEnvironment
+	}
 	cmd.Dir = dir
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout

@@ -579,7 +579,7 @@ than as extra infrastructure in phase 1.
    - The sync `contract_change` diff.
    - Fan-out to session roots.
    - `my contract status` and `my contract diff`.
-3. **Live delivery.**
+3. **Live delivery.** *Candidate implementation; live adapter proof pending.*
    - The launch-instance registry, native-id binding, and receipts.
    - `my contract pending`, explicit retraction and empty snapshots, and
      the stderr fallback.
