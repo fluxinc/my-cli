@@ -117,6 +117,18 @@ func EncodeDocument(doc Document) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
+// PatchValue encodes a PatchManifestKeys value without HTML escaping, so a
+// rule with & or < keeps the bytes an administrator wrote.
+func PatchValue(v any) (json.RawMessage, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return json.RawMessage(bytes.TrimRight(buf.Bytes(), "\n")), nil
+}
+
 // SetMinMyVersion writes min_my_version into the manifest.json at path and
 // changes nothing else: unknown keys (from a newer my) and key order survive,
 // unlike a round trip through Document. A new key goes after manifest_version.

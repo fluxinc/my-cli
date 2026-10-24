@@ -402,7 +402,10 @@ func planContractEdit(action string, args []string, opts adminContractOpts, root
 		var patches []manifest.KeyEdit
 		if doc.ContractSource != "" {
 			raised.Contract = next.Rules()
-			value, _ := json.Marshal(raised.Contract)
+			value, err := manifest.PatchValue(raised.Contract)
+			if err != nil {
+				return contractEdit{}, err
+			}
 			if len(raised.Contract) == 0 {
 				value = []byte("[]")
 				raised.Contract = []string{}
@@ -453,6 +456,25 @@ func planContractMigrate(edit contractEdit, root, manifestPath string, doc manif
 	if file == "" {
 		file = manifest.DefaultContractFile
 	}
+	// A file-only contract_file elsewhere is copied to guidance/contract.md,
+	// the only compatible location; the old file stays for the admin to delete.
+	var legacy []byte
+	if file != manifest.DefaultContractFile {
+		if doc.ContractFile == "" {
+			return contractEdit{}, fmt.Errorf("contract_source must be %s; point it there, then rerun migrate", manifest.DefaultContractFile)
+		}
+		if fromInline {
+			return contractEdit{}, fmt.Errorf("file-only contract has no inline copy; omit --from-inline")
+		}
+		from, err := manifest.ContractFilePath(root, file)
+		if err == nil {
+			legacy, err = os.ReadFile(from)
+		}
+		if err != nil {
+			return contractEdit{}, err
+		}
+		file = manifest.DefaultContractFile
+	}
 	target, err := manifest.ContractFilePath(root, file)
 	var original []byte
 	if err == nil {
@@ -465,8 +487,16 @@ func planContractMigrate(edit contractEdit, root, manifestPath string, doc manif
 	if doc.ContractPath() == "" && exists && !fromInline {
 		return contractEdit{}, fmt.Errorf("%s already exists; inspect it, then use migrate --from-inline to restore it from the current inline rules", file)
 	}
+	if legacy != nil && exists && !bytes.Equal(original, legacy) {
+		return contractEdit{}, fmt.Errorf("%s already exists with other content; merge %s into it or move it aside, then rerun migrate", file, doc.ContractFile)
+	}
 	var contract manifest.Contract
-	if doc.ContractPath() != "" && !fromInline {
+	if legacy != nil {
+		contract, err = manifest.ParseContractFile(file, legacy)
+		if err != nil {
+			return contractEdit{}, err
+		}
+	} else if doc.ContractPath() != "" && !fromInline {
 		if err != nil {
 			return contractEdit{}, fmt.Errorf("cannot read %s: %w; use --from-inline to restore it from the compatibility copy", file, err)
 		}
@@ -492,8 +522,14 @@ func planContractMigrate(edit contractEdit, root, manifestPath string, doc manif
 	}
 	// Compatibility metadata adds no feature floor. Preserve every declared floor.
 	manifest.RaiseMinMyVersion(&migrated)
-	fileValue, _ := json.Marshal(file)
-	rulesValue, _ := json.Marshal(migrated.Contract)
+	fileValue, err := manifest.PatchValue(file)
+	if err != nil {
+		return contractEdit{}, err
+	}
+	rulesValue, err := manifest.PatchValue(migrated.Contract)
+	if err != nil {
+		return contractEdit{}, err
+	}
 	edits := []manifest.KeyEdit{
 		{Key: "contract", Value: rulesValue}, {Key: "contract_file"},
 		{Key: "contract_source", Value: fileValue, After: "contract"},
@@ -519,12 +555,19 @@ func planContractMigrate(edit contractEdit, root, manifestPath string, doc manif
 	} else {
 		edit.creates = file
 	}
+	if legacy != nil {
+		// Not written, but the copy is only valid while the source is unchanged.
+		edit.originals[doc.ContractFile] = legacy
+	}
 	edit.contract = contract
 	edit.result.Action = "migrated"
 	edit.result.ContractFile = file
 	edit.result.Blob = contract.Blob
 	edit.result.MinMyVersion = migrated.MinMyVersion
 	edit.result.Contract = contract.Rules()
+	if legacy != nil {
+		edit.result.Warnings = append(edit.result.Warnings, fmt.Sprintf("copied %s to %s; the old file is no longer read, so delete it in a later change", doc.ContractFile, file))
+	}
 	edit.result.Warnings = append(edit.result.Warnings, "The inline contract compatibility copy is retained for older my releases; no member upgrade is required by this migration. Older authoring commands may detach the file and keep the contract inline; rerun migrate --from-inline to reconnect it.")
 	return edit, nil
 }
@@ -809,6 +852,9 @@ func (a app) printContractCompatibilityWarnings(home, name string) {
 		c, err := manifest.LoadContract(doc.ref.LocalPath, doc.doc)
 		if err == nil && c.Warning != "" {
 			fmt.Fprintf(a.stderr, "warning: manifest %s: %s\n", doc.ref.Name, c.Warning)
+		}
+		if warning := manifest.DetachedContractFileWarning(doc.ref.LocalPath, doc.doc); warning != "" {
+			fmt.Fprintf(a.stderr, "warning: manifest %s: %s\n", doc.ref.Name, warning)
 		}
 	}
 }

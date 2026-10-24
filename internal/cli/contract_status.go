@@ -59,6 +59,7 @@ func (a app) runContractStateCommand(action string, args []string) error {
 	if !ok {
 		return fmt.Errorf("manifest %q not registered", name)
 	}
+	a.printContractCompatibilityWarnings(home, name)
 	state, err := contractstate.Load(home, name)
 	if err != nil {
 		return a.maybeJSONError(jsonOut, err)

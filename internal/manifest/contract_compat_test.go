@@ -89,3 +89,34 @@ func TestContractSourceSymlinkDoesNotReadTarget(t *testing.T) {
 		t.Fatalf("unsafe fallback: %#v %v", c, err)
 	}
 }
+
+func TestContractSourceOnlyAtDefaultPath(t *testing.T) {
+	root := t.TempDir()
+	writeTestManifestFile(t, root, "guidance/rules.md", "- One.\n")
+	doc := Document{ManifestVersion: 1, Organization: Organization{ID: "acme", Name: "Acme"}, ContractSource: "guidance/rules.md", Contract: []string{"One."}}
+	c, err := LoadContract(root, doc)
+	if err != nil || !strings.Contains(c.Warning, DefaultContractFile) || c.File != "" {
+		t.Fatalf("custom source: %#v %v", c, err)
+	}
+}
+
+func TestDetachedContractFileWarning(t *testing.T) {
+	root := t.TempDir()
+	writeTestManifestFile(t, root, "guidance/contract.md", "## Group\n- One.\n")
+	doc := Document{ManifestVersion: 1, Organization: Organization{ID: "acme", Name: "Acme"}, Contract: []string{"One.", "Two."}}
+	result := ValidateDocument(root, doc)
+	if len(result.Errors) != 0 || !strings.Contains(strings.Join(result.Warnings, "\n"), "does not reference it") {
+		t.Fatalf("detached file not reported: %#v", result)
+	}
+	doc.AgentGuidance.Paths = []string{"guidance/contract.md"}
+	if result := ValidateDocument(root, doc); strings.Contains(strings.Join(result.Warnings, "\n"), "does not reference it") {
+		t.Fatalf("guidance fragment reported as detached: %#v", result)
+	}
+}
+
+func TestPatchValueKeepsHTMLCharacters(t *testing.T) {
+	got, err := PatchValue([]string{"Cite sources & never <guess>."})
+	if err != nil || string(got) != `["Cite sources & never <guess>."]` {
+		t.Fatalf("escaped: %s %v", got, err)
+	}
+}

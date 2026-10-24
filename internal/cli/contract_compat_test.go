@@ -141,3 +141,96 @@ func TestCompatibleContractSyncRefusesPublishingDrift(t *testing.T) {
 		t.Fatalf("missing warning: %s", a.stderr)
 	}
 }
+
+func TestCompatibleContractMigrateKeepsRuleBytesAndDefaultPath(t *testing.T) {
+	dir := t.TempDir()
+	writeAdminManifest(t, dir, `, "contract":["Cite sources & never <guess>."]`)
+	a := app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}}
+	if _, err := runAdminContractJSON(t, a, "migrate", "--manifest-dir", dir); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "manifest.json"))
+	if !strings.Contains(string(data), "Cite sources & never <guess>.") {
+		t.Fatalf("migrate escaped the inline copy: %s", data)
+	}
+	if _, err := runAdminContractJSON(t, a, "add", "Keep A & B.", "--manifest-dir", dir); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ = os.ReadFile(filepath.Join(dir, "manifest.json")); !strings.Contains(string(data), "Keep A & B.") {
+		t.Fatalf("add escaped the inline copy: %s", data)
+	}
+
+	legacy := t.TempDir()
+	writeAdminManifest(t, legacy, `, "min_my_version":"0.47.0", "contract_file":"guidance/rules.md"`)
+	writeCLITestFile(t, filepath.Join(legacy, "guidance", "rules.md"), "# Rules\n\n## Group\n- A rule.\n")
+	before := composeCLIGuidance(t, legacy)
+	if _, err := runAdminContractJSON(t, a, "migrate", "--manifest-dir", legacy); err != nil {
+		t.Fatal(err)
+	}
+	copied, _ := os.ReadFile(filepath.Join(legacy, "guidance", "contract.md"))
+	kept, _ := os.ReadFile(filepath.Join(legacy, "guidance", "rules.md"))
+	if string(copied) != "# Rules\n\n## Group\n- A rule.\n" || !bytes.Equal(copied, kept) {
+		t.Fatalf("legacy copy: %q kept %q", copied, kept)
+	}
+	doc, _, _ := manifest.LoadDocument(legacy)
+	if doc.ContractSource != manifest.DefaultContractFile || doc.ContractFile != "" || strings.Join(doc.Contract, "/") != "A rule." {
+		t.Fatalf("legacy conversion: %#v", doc)
+	}
+	if after := composeCLIGuidance(t, legacy); after != before {
+		t.Fatal("legacy copy changed guidance")
+	}
+
+	conflict := t.TempDir()
+	writeAdminManifest(t, conflict, `, "min_my_version":"0.47.0", "contract_file":"guidance/rules.md"`)
+	writeCLITestFile(t, filepath.Join(conflict, "guidance", "rules.md"), "- A rule.\n")
+	writeCLITestFile(t, filepath.Join(conflict, "guidance", "contract.md"), "- Something else.\n")
+	if _, err := runAdminContractJSON(t, a, "migrate", "--manifest-dir", conflict, "--force"); err == nil || !strings.Contains(err.Error(), "other content") {
+		t.Fatalf("conflicting default accepted: %v", err)
+	}
+}
+
+func TestCompatibleContractStatusWarnsOnFallback(t *testing.T) {
+	home, _, cache, _, _ := setupCLITrackedManifestBody(t, `{"manifest_version":1,"organization":{"id":"acme","name":"Acme"},"contract_source":"guidance/contract.md","contract":["Visible to all versions."]}`)
+	writeCLITestFile(t, filepath.Join(cache, "guidance", "contract.md"), "- Different rule.\n")
+	gitCLIOutput(t, cache, "add", "guidance/contract.md")
+	gitCLIOutput(t, cache, "commit", "-m", "Add mismatched source fixture")
+	for _, action := range []string{"status", "diff"} {
+		a := app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}}
+		_ = a.run([]string{"my", "contract", action, "--home", home, "--manifest", "acme", "--json"})
+		if !strings.Contains(a.stderr.(*bytes.Buffer).String(), "compatibility copy") {
+			t.Fatalf("%s: missing warning: %s", action, a.stderr)
+		}
+	}
+}
+
+func TestDetachedContractFileWarnsOnRead(t *testing.T) {
+	home, _, cache, _, _ := setupCLITrackedManifestBody(t, `{"manifest_version":1,"organization":{"id":"acme","name":"Acme"},"contract":["Inline rule."]}`)
+	writeCLITestFile(t, filepath.Join(cache, "guidance", "contract.md"), "## Group\n- Inline rule.\n")
+	gitCLIOutput(t, cache, "add", "guidance/contract.md")
+	gitCLIOutput(t, cache, "commit", "-m", "Leave a detached contract file")
+	a := app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}}
+	if err := a.run([]string{"my", "contract", "list", "--home", home, "--manifest", "acme", "--no-refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(a.stderr.(*bytes.Buffer).String(), "does not reference it") {
+		t.Fatalf("missing detached warning: %s", a.stderr)
+	}
+}
+
+func TestLegacyContractCopyRefusesChangedSource(t *testing.T) {
+	dir := t.TempDir()
+	writeAdminManifest(t, dir, `, "min_my_version":"0.47.0", "contract_file":"guidance/rules.md"`)
+	writeCLITestFile(t, filepath.Join(dir, "guidance", "rules.md"), "- A rule.\n")
+	doc, manifestPath, _ := manifest.LoadDocument(dir)
+	edit, err := planContractEdit("migrate", nil, adminContractOpts{}, dir, manifestPath, doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(dir, "guidance", "rules.md"), "- A rule.\n- Concurrent rule.\n")
+	if err := writeContractEdit(dir, edit); err == nil || !strings.Contains(err.Error(), "changed while the contract edit was prepared") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "guidance", "contract.md")); !os.IsNotExist(err) {
+		t.Fatalf("copy written from a stale source: %v", err)
+	}
+}

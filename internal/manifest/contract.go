@@ -352,6 +352,10 @@ func ResolveContractBytes(doc Document, data []byte, readErr error) (Contract, e
 	err := readErr
 	if !ValidContractFilePath(doc.ContractPath()) {
 		err = fmt.Errorf("unsafe contract source path; expected a relative .md path under guidance/")
+	} else if doc.ContractSource != "" && doc.ContractSource != DefaultContractFile {
+		// An older my's migrate refuses only because the default file exists;
+		// at any other path it would drop the inline copy older members read.
+		err = fmt.Errorf("contract_source must be %s", DefaultContractFile)
 	}
 	if err == nil {
 		c, err = ParseContractFile(doc.ContractPath(), data)
@@ -627,6 +631,7 @@ func validateContractSource(root string, doc Document, result *ValidationResult)
 	}
 	if doc.ContractPath() == "" {
 		warnContractBudget(inlineContract(doc.Contract), result)
+		warnDetachedContractFile(root, doc, result)
 		return
 	}
 	if root == "" {
@@ -641,6 +646,32 @@ func validateContractSource(root string, doc Document, result *ValidationResult)
 		result.Warnings = append(result.Warnings, c.Warning)
 	}
 	warnContractBudget(c, result)
+}
+
+// warnDetachedContractFile flags a contract file that no key references. A my
+// release older than contract_source drops that key when it edits the inline
+// list, so later edits to the file would silently have no effect.
+func warnDetachedContractFile(root string, doc Document, result *ValidationResult) {
+	if warning := DetachedContractFileWarning(root, doc); warning != "" {
+		result.Warnings = append(result.Warnings, warning)
+	}
+}
+
+// DetachedContractFileWarning reports an unreferenced guidance/contract.md, or
+// "" when there is none.
+func DetachedContractFileWarning(root string, doc Document) string {
+	if root == "" || doc.ContractPath() != "" {
+		return ""
+	}
+	for _, p := range doc.AgentGuidance.Paths {
+		if filepath.ToSlash(filepath.Clean(p)) == DefaultContractFile {
+			return ""
+		}
+	}
+	if _, err := ContractFilePath(root, DefaultContractFile); err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%s exists but manifest.json does not reference it, so members read only the inline contract; if an older my detached it while editing the inline list, reconnect it with my admin contract migrate --from-inline (the file is rewritten from the inline list)", DefaultContractFile)
 }
 
 func inlineContract(rules []string) Contract {
