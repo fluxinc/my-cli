@@ -1,9 +1,9 @@
 # Accumulated organization contract
 
-Status: active. Drafted by Claude and adversarially reviewed by Codex.
-Phase 1 (file-backed contract) shipped in v0.47.0, phase 2 (revisions and
-sync diff) in v0.48.0, and phase 3 (live delivery) in v0.49.0. Phase 4 is
-implemented and independently reviewed, with live Claude runner proof recorded. Phase 5 and the evidence generator remain
+Status: shipped (core phases 1–4). Drafted by Claude and adversarially
+reviewed by Codex. Phase 1 (file-backed contract) shipped in v0.47.0, phase 2
+(revisions and sync diff) in v0.48.0, phase 3 (live delivery) in v0.49.0, and
+phase 4 (advisory review) in v0.50.0. Phase 5 and the evidence generator remain
 optional and later.
 
 ## Goal (operator)
@@ -561,7 +561,7 @@ than as extra infrastructure in phase 1.
     - The admin then applies the bundle through the reviewed path.
     - Until it merges, no session sees the rule.
 
-## Phases (1–3 shipped; 4 authorized; 5 optional)
+## Phases (1–4 shipped; 5 optional)
 
 1. **File-backed contract.** *Shipped in v0.47.0.* The compile block
    carries `revision: {manifest_commit, blob}`.
@@ -591,7 +591,7 @@ than as extra infrastructure in phase 1.
 
    This phase is part of full delivery. The operator asked for in-session
    reload, so it is not optional polish.
-4. **Review.** *Implemented and independently reviewed; live Claude runner proof recorded, release pending.*
+4. **Review.** *Shipped in v0.50.0; live Claude runner proof recorded.*
    - Deterministic lint and the sandboxed `my admin contract review`.
    - PR-body findings and stale-review detection.
    - The example CI workflow.

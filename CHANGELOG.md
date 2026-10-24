@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.50.0 - 2026-10-24
+
 ### Added
 
 - Opt-in `my admin contract review` evaluates the complete contract and verified
