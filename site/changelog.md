@@ -15,7 +15,10 @@
 - Saved review evidence binds the contract head/blob, policy digest set, prompt
   version, harness and model. Local `review --check` and doctor notes detect
   stale or incomplete evidence, including policy-only changes, without model
-  calls. An optional manifest-repository CI example is included.
+  calls. An optional manifest-repository CI example is included. Use a
+  versioned model identifier: `--check` cannot see an alias retargeted
+  upstream. Policy text that is not valid UTF-8 makes the review incomplete
+  before any model call.
 
 ## 0.49.0 - 2026-10-24
 

@@ -286,6 +286,11 @@ silently summarized or partially reviewed. A missing harness or model reports
 `unavailable`. Codex review currently reports `unavailable` because its bounded
 no-tools runner has not been verified.
 
+Verified live with Claude Code 2.1.310: under the runner's flags the review
+model did not receive the user's global `CLAUDE.md` (about 3k input tokens,
+against about 158k without safe mode). A seeded pair of contradictory rules came
+back as a `conflict` finding with concrete removed and added text.
+
 Results are `clean`, `findings`, `incomplete`, `unavailable`, `not_reviewed`, or
 `stale`. A clean review is **not a certificate of consistency**. Findings never
 block publication or change administrator authority, governance checks or
@@ -299,8 +304,11 @@ prompt version, harness and selected model. `--check` reads local inputs and
 saved evidence without writes, network access or a model call. It reports stale
 evidence after any binding changes; policy-only updates also produce a doctor
 note. Without selection flags or manifest configuration, checking uses the
-saved harness/model selection. A squash merge changes the head and requires a
-fresh review. A PR body's old review remains historical evidence; rerun checks
+saved harness/model selection. Use a versioned model identifier rather than an alias
+for reproducible evidence. `--check` compares the selected model string, so it
+cannot see an alias retargeted upstream; the report records the models the
+harness actually used (`reported_models`). A squash merge changes the head and
+requires a fresh review. A PR body's old review remains historical evidence; rerun checks
 and replace the review after updating the PR.
 
 For an explicit manifest checkout or CI, supply each policy repository:
