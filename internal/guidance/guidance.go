@@ -158,14 +158,11 @@ func ComposeWithOptions(manifestRoot string, doc manifest.Document, opts Options
 	out.WriteString("\n\n")
 	out.Write(bytes.TrimSpace(baseline))
 	out.WriteString("\n")
-	if len(doc.Contract) > 0 {
-		out.WriteString("\n## Organization Contract\n\nThese rules are binding in this workspace:\n\n")
-		for _, rule := range doc.Contract {
-			out.WriteString("- ")
-			out.WriteString(strings.TrimSpace(rule))
-			out.WriteString("\n")
-		}
+	contract, err := manifest.LoadContract(manifestRoot, doc)
+	if err != nil {
+		return nil, err
 	}
+	writeOrganizationContract(&out, contract)
 	writeOrganizationPolicies(&out, doc.Governance.Policies, opts.Role)
 	paths := append([]string{}, doc.AgentGuidance.Paths...)
 	paths = append(paths, opts.RoleGuidancePaths...)
@@ -189,6 +186,32 @@ func ComposeWithOptions(manifestRoot string, doc manifest.Document, opts Options
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+// writeOrganizationContract renders the contract's rules in order. Groups from
+// a contract file keep their headings one level below the section; an inline
+// contract, or the leading group of a file, has none.
+func writeOrganizationContract(out *bytes.Buffer, contract manifest.Contract) {
+	sections := contract.Sections()
+	if len(sections) == 0 {
+		return
+	}
+	out.WriteString("\n## Organization Contract\n\nThese rules are binding in this workspace:\n\n")
+	for i, section := range sections {
+		if section.Heading != "" {
+			if i > 0 {
+				out.WriteString("\n")
+			}
+			out.WriteString("### ")
+			out.WriteString(section.Heading)
+			out.WriteString("\n\n")
+		}
+		for _, rule := range section.Rules {
+			out.WriteString("- ")
+			out.WriteString(rule)
+			out.WriteString("\n")
+		}
+	}
 }
 
 func writeOrganizationPolicies(out *bytes.Buffer, policies []manifest.Policy, role string) {

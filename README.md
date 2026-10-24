@@ -231,12 +231,19 @@ if an applicable policy mount is outside the selected role.
 
 ```sh
 my contract list [--json]
-my admin contract add "RULE TEXT" [--manifest <name>] [--umbrella <root>]
+my contract show [--json]
+my admin contract add "RULE TEXT" [--under <heading>] [--manifest <name>] [--umbrella <root>]
 my admin contract remove <index|"RULE TEXT"> [--manifest <name>] [--umbrella <root>]
+my admin contract replace <index|"OLD TEXT"> "NEW TEXT" [--manifest <name>] [--umbrella <root>]
+my admin contract migrate [--manifest <name>] [--umbrella <root>]
 ```
 
 Manifest `contract` entries are short, binding organization rules rendered
-into generated `AGENTS.md`. Reads stay top-level; edits go through the admin
+into generated `AGENTS.md`. A growing contract can live in a manifest-repo
+file instead (`"contract_file": "guidance/contract.md"`, v0.47.0+): one
+`- rule` per line with optional `## ` groups, so each change is a one-line
+diff. `migrate` moves an inline list there without changing the rendered
+guidance; run it only once every member has my v0.46.0 or later. Reads stay top-level; edits go through the admin
 review flow. The registered-manifest form resolves the current umbrella and
 opens an isolated governed pull request without dirtying the sync-managed
 manifest cache. `--manifest-dir <checkout>` remains available for maintainers
@@ -301,6 +308,8 @@ my admin roles edit <id> --manifest-dir <checkout> [--purpose "..."]
 my admin roles remove <id> --manifest-dir <checkout>
 my admin contract add "RULE TEXT" [--manifest <name>] [--umbrella <root>]
 my admin contract remove <index|"RULE TEXT"> [--manifest <name>] [--umbrella <root>]
+my admin contract replace <index|"OLD TEXT"> "NEW TEXT" [--manifest <name>] [--umbrella <root>]
+my admin contract migrate [--manifest <name>] [--umbrella <root>]
 my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION \
   --acceptance required|optional [--summary TEXT] [--topic TEXT] [--role ID]
 my admin policy remove <id> [--manifest <name>] [--umbrella <root>]
@@ -328,7 +337,7 @@ my admin meetings add                # alias of my meetings add
 my admin support add                 # alias of my support add
 my admin tools add|edit|remove       # edit manifest tools[]
 my admin repos add                   # edit catalog/repos.json
-my admin contract add|remove         # edit manifest contract[]
+my admin contract add|remove|replace|migrate  # edit contract[] or contract_file
 ```
 
 Admin aliases are intentionally limited to those mutating/configuration
@@ -855,7 +864,7 @@ indexed in [docs/plans/](docs/plans/README.md):
   `my contract list` plus `my admin contract add|remove` for the standard
   inspect/review-commit-push workflow. Plan:
   [contract rules](docs/plans/2026-06-12-contract-rules.md).
-- **Proposed — accumulated organization contract.** A file-backed, admin-authored contract (`guidance/contract.md` in the manifest repo) with sync diffs, honest in-session delivery through harness hooks, and advisory model conflict review; see [the plan](docs/plans/2026-10-23-accumulated-contract.md).
+- **Active — accumulated organization contract.** A file-backed, admin-authored contract (`guidance/contract.md` in the manifest repo) with sync diffs, honest in-session delivery through harness hooks, and advisory model conflict review. Phase 1 shipped in v0.47.0: `contract_file`, `my contract show`, `my admin contract replace|migrate`, and expected-base edits. Next come revisions and sync diffs, live delivery, and review; see [the plan](docs/plans/2026-10-23-accumulated-contract.md).
 - **Shipped — manifest minimum version (v0.46.0).** Manifest `min_my_version` makes an older `my` ask for `my update` instead of rejecting newer features as invalid, with `my admin min-version` as the authoring path.
 - **Shipped — role-only mounts (v0.45.0).** Manifest mount mode `role` materializes a mount only for the roles that select it, with `my admin manifest-mounts add|remove [--prune-roles]` as the validated authoring path.
 - **Shipped — personal service access and comments (v0.44.0).** Personal credential references, web key-setup links in onboarding, expiry diagnostics, and revision-checked conversation comments. Plan: [personal service access](docs/plans/2026-10-20-personal-service-access.md).

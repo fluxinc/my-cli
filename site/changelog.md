@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+### Added
+
+- File-backed organization contract. A manifest can set
+  `"contract_file": "guidance/contract.md"` instead of the inline `contract`
+  list (one or the other, never both). The file is a Markdown list: one
+  single-line `- rule` per entry, optional unique `## ` groups that render as
+  `### ` headings under `## Organization Contract`, and one optional `# `
+  title that is not rendered. Anything else, plus duplicates, invalid UTF-8,
+  control characters, paths outside `guidance/` and symlinks, is a validation
+  error. Validation warns above 150 rules or 16 KiB. The feature floor is
+  v0.47.0, so authoring stamps `min_my_version` and v0.46.x asks for
+  `my update`.
+- `my contract show [--json]` prints the contract as written, with its Git
+  blob id. `my contract list --json` adds each rule's heading.
+- `my admin contract replace <index|"OLD"> "NEW"` rewrites one rule as a
+  single edit, and `my admin contract add --under HEADING` adds to a group,
+  creating the heading if needed. Edits to a contract file change only the
+  lines they touch.
+- `my admin contract migrate` moves an inline contract into
+  `guidance/contract.md`. It refuses if the file exists. It patches only
+  `contract`, `contract_file` and `min_my_version`, keeping unknown keys and
+  key order and never lowering a higher floor, and the generated `AGENTS.md`
+  is byte-identical. It reminds the admin that releases before v0.46.0 ignore
+  the new keys.
+- Contract edits guard their base. Registered-manifest PRs re-fetch just
+  before pushing and refuse (`base_moved`) if the upstream moved. Local
+  `--manifest-dir` edits refuse if the files changed while the edit was
+  prepared. `--expect-blob SHA` refuses an edit unless the contract file is
+  still at the blob you read.
+- `my compile` carries a contract file's rules with its `path`, `sections` and
+  `revision` (manifest commit and blob id). An emptied file still projects its
+  block.
+
 ## 0.46.0 - 2026-10-21
 
 ### Added

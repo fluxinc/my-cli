@@ -81,6 +81,7 @@ type Document struct {
 	Roles                     []Role                 `json:"roles,omitempty"`
 	Profiles                  []Profile              `json:"profiles,omitempty"`
 	Contract                  []string               `json:"contract,omitempty"`
+	ContractFile              string                 `json:"contract_file,omitempty"`
 	Governance                Governance             `json:"governance,omitzero"`
 }
 
@@ -620,6 +621,7 @@ func ValidateFile(path string) ValidationResult {
 		return result
 	}
 	validateOrgManifest(doc, &result)
+	validateContractSource(filepath.Dir(resolved), doc, &result)
 	validateRepoCatalog(filepath.Dir(resolved), &result)
 	validateProductCatalog(filepath.Dir(resolved), doc, &result)
 	return result
@@ -633,6 +635,7 @@ func ValidateDocument(root string, doc Document) ValidationResult {
 		return result
 	}
 	validateOrgManifest(doc, &result)
+	validateContractSource(root, doc, &result)
 	if root != "" {
 		validateRepoCatalog(root, &result)
 		validateProductCatalog(root, doc, &result)
@@ -1002,7 +1005,6 @@ func validateOrgManifest(doc Document, result *ValidationResult) {
 	validateRoles(doc.Roles, mountIDs, skillIDs, tools, serviceIDs, result)
 	validateRoleOnlyMounts(doc.Mounts, doc.Roles, result)
 	validateProfiles(doc.Profiles, skillIDs, result)
-	validateContract(doc.Contract, result)
 	validateGovernance(doc.Governance, EffectiveMounts(doc), mountIDs, doc.Roles, result)
 }
 

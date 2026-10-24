@@ -85,9 +85,11 @@ func (a app) printAdminUsage() {
   my admin mounts add|remove|sync ...        (alias of my mounts ...)
   my admin meetings add ...                 (alias of my meetings add)
   my admin support add ...                  (alias of my support add)
-  my admin contract add "RULE TEXT" [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
-  my admin contract remove <index|"RULE TEXT"> [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
-  my admin contract add|remove ... --manifest-dir DIR [--force] [--json]  (compatibility)
+  my admin contract add "RULE TEXT" [--under HEADING] [--manifest NAME] [--home DIR] [--umbrella DIR] [--expect-blob SHA] [--json]
+  my admin contract remove <index|"RULE TEXT"> [--manifest NAME] [--home DIR] [--umbrella DIR] [--expect-blob SHA] [--json]
+  my admin contract replace <index|"OLD TEXT"> "NEW TEXT" [--manifest NAME] [--home DIR] [--umbrella DIR] [--expect-blob SHA] [--json]
+  my admin contract migrate [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]   (inline contract -> guidance/contract.md)
+  my admin contract add|remove|replace|migrate ... --manifest-dir DIR [--force] [--json]  (compatibility)
   my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION --acceptance required|optional [--summary TEXT] [--topic TEXT] [--role ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my admin policy add <id> ... --manifest-dir DIR --sha256 sha256:HEX [--force] [--json]  (compatibility)
   my admin policy remove <id> [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]

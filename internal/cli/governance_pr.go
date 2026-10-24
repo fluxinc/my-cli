@@ -146,6 +146,18 @@ func (a app) publishPullRequest(home string, request syncer.PRRequest, allowManu
 		}
 	}
 
+	if request.RequireFreshUpstream {
+		if out, err := gitPRBytes(request.Entry.LocalPath, nil, "fetch", "--prune", "origin"); err != nil {
+			return fail("base_unverified", "re-check the upstream before publishing: "+commandMessage(out, err), "my manifests sync "+request.Entry.Manifest)
+		}
+		current, err := gitPRText(request.Entry.LocalPath, nil, "rev-parse", request.Upstream+"^{commit}")
+		if err != nil {
+			return fail("base_unverified", err.Error(), "my manifests sync "+request.Entry.Manifest)
+		}
+		if current != request.Head {
+			return fail("base_moved", fmt.Sprintf("%s moved from %s to %s while the change was prepared; nothing was published", request.Upstream, request.Head, current), "my manifests sync "+request.Entry.Manifest)
+		}
+	}
 	branch := governedBranchName(prospective.Commit)
 	if _, err := gitPRBytes(request.Entry.LocalPath, nil, "update-ref", "refs/heads/"+branch, prospective.Commit); err != nil {
 		return fail("pr_branch_failed", err.Error(), "git -C "+shellQuote(request.Entry.LocalPath)+" status --short")

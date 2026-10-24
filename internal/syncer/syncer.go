@@ -80,6 +80,10 @@ type PRRequest struct {
 	Message          string
 	DryRun           bool
 	PreserveCheckout bool
+	// RequireFreshUpstream re-fetches just before pushing and refuses when
+	// Upstream no longer points at Head, so a change computed against one
+	// base never publishes against another.
+	RequireFreshUpstream bool
 }
 
 type PRResult struct {

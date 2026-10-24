@@ -30,6 +30,11 @@ var baselineFleetWorkContract = []string{
 // Options controls launch projection compilation.
 type Options struct {
 	Role string
+	// ManifestRoot is the manifest checkout, needed to read a contract_file.
+	ManifestRoot string
+	// ManifestCommit is the checkout's commit, recorded in the contract
+	// revision when known.
+	ManifestCommit string
 }
 
 // Projection is the deterministic JSON artifact printed by `my compile`.
@@ -54,6 +59,19 @@ type ContractBlock struct {
 	Source string   `json:"source"`
 	Mode   string   `json:"mode"`
 	Rules  []string `json:"rules"`
+	// Path and Revision identify a contract_file, and Sections keeps its
+	// headings. An empty file still projects a block, so a deliberate empty
+	// revision is distinguishable from no contract.
+	Path     string                     `json:"path,omitempty"`
+	Revision *ContractRevision          `json:"revision,omitempty"`
+	Sections []manifest.ContractSection `json:"sections,omitempty"`
+}
+
+// ContractRevision identifies one contract_file version: the manifest commit
+// it was read at (when known) and the file's Git blob id.
+type ContractRevision struct {
+	ManifestCommit string `json:"manifest_commit,omitempty"`
+	Blob           string `json:"blob"`
 }
 
 // GuidanceRef describes a manifest guidance fragment and its later include mode.
@@ -136,6 +154,10 @@ func Compile(doc manifest.Document, opts Options) (Projection, error) {
 	if err != nil {
 		return Projection{}, err
 	}
+	contract, err := manifest.LoadContract(opts.ManifestRoot, doc)
+	if err != nil {
+		return Projection{}, err
+	}
 
 	allMounts := mountByID(doc.Mounts)
 	allServices := serviceByID(doc.Services)
@@ -184,7 +206,7 @@ func Compile(doc manifest.Document, opts Options) (Projection, error) {
 		Target:         target,
 		Organization:   doc.Organization,
 		Role:           opts.Role,
-		Contract:       projectContract(doc.Contract),
+		Contract:       projectContract(contract, opts.ManifestCommit),
 		Guidance:       projectGuidance(doc, role, hasRole, bindings),
 		Policies:       policies,
 		Mounts:         mounts,
@@ -255,20 +277,32 @@ func selectRole(doc manifest.Document, roleID string) (manifest.Role, bool, erro
 	return manifest.Role{}, false, fmt.Errorf("role %q not found; run my roles list", roleID)
 }
 
-func projectContract(rules []string) []ContractBlock {
+func projectContract(contract manifest.Contract, manifestCommit string) []ContractBlock {
 	blocks := []ContractBlock{{
 		Source: "baseline:fleet-work-contract",
 		Mode:   "enforce",
 		Rules:  append([]string(nil), baselineFleetWorkContract...),
 	}}
-	if len(rules) != 0 {
-		blocks = append(blocks, ContractBlock{
-			Source: "manifest:contract",
-			Mode:   "enforce",
-			Rules:  append([]string(nil), rules...),
+	rules := contract.Rules()
+	if contract.File != "" {
+		sections := contract.Sections()
+		if sections == nil {
+			sections = []manifest.ContractSection{}
+		}
+		if rules == nil {
+			rules = []string{}
+		}
+		return append(blocks, ContractBlock{
+			Source: "manifest:contract_file", Mode: "enforce", Rules: rules,
+			Path:     contract.File,
+			Revision: &ContractRevision{ManifestCommit: manifestCommit, Blob: contract.Blob},
+			Sections: sections,
 		})
 	}
-	return blocks
+	if len(rules) == 0 {
+		return blocks
+	}
+	return append(blocks, ContractBlock{Source: "manifest:contract", Mode: "enforce", Rules: rules})
 }
 
 func projectGuidance(doc manifest.Document, role manifest.Role, hasRole bool, bindings map[string]DataBinding) []GuidanceRef {

@@ -375,3 +375,81 @@ func writeGuidanceTestFile(t *testing.T, path, body string) {
 		t.Fatal(err)
 	}
 }
+
+// A migrated contract_file renders byte-identical AGENTS.md to the inline
+// contract it replaced, including rules stored with surrounding whitespace.
+func TestComposeMigratedContractFileMatchesInline(t *testing.T) {
+	for name, rules := range map[string][]string{
+		"rules":      {"  Ask before touching external assets. ", "Logs live under logs/.", "Match the reader's register."},
+		"empty list": nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			manifestRoot := t.TempDir()
+			writeGuidanceTestFile(t, filepath.Join(manifestRoot, "guidance", "base.md"), "base guidance\n")
+			inline := manifest.Document{
+				AgentGuidance: manifest.AgentGuidance{Paths: []string{"guidance/base.md"}},
+				Contract:      rules,
+			}
+			want, err := Compose(manifestRoot, inline)
+			if err != nil {
+				t.Fatal(err)
+			}
+			file := manifest.NewContractFile(manifest.DefaultContractFile, rules)
+			writeGuidanceTestFile(t, filepath.Join(manifestRoot, "guidance", "contract.md"), string(file.Bytes()))
+			migrated := inline
+			migrated.Contract = nil
+			migrated.ContractFile = manifest.DefaultContractFile
+			got, err := Compose(manifestRoot, migrated)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != string(want) {
+				t.Fatalf("migrated guidance differs\nwant:\n%s\ngot:\n%s", want, got)
+			}
+		})
+	}
+}
+
+func TestComposeRendersContractFileHeadings(t *testing.T) {
+	manifestRoot := t.TempDir()
+	writeGuidanceTestFile(t, filepath.Join(manifestRoot, "guidance", "contract.md"), `# Organization contract
+
+- Keep answers short.
+
+## Logs
+- Service logs live under logs/.
+
+## Empty group
+
+## Communication
+- Answer clinical staff in clinical language.
+`)
+	got, err := Compose(manifestRoot, manifest.Document{ContractFile: "guidance/contract.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `## Organization Contract
+
+These rules are binding in this workspace:
+
+- Keep answers short.
+
+### Logs
+
+- Service logs live under logs/.
+
+### Communication
+
+- Answer clinical staff in clinical language.
+`
+	if !strings.Contains(string(got), want) {
+		t.Fatalf("composed guidance missing grouped contract:\n%s", got)
+	}
+	if strings.Contains(string(got), "Empty group") || strings.Contains(string(got), "# Organization contract") {
+		t.Fatalf("title or empty heading rendered:\n%s", got)
+	}
+
+	if _, err := Compose(t.TempDir(), manifest.Document{ContractFile: "guidance/contract.md"}); err == nil {
+		t.Fatal("missing contract_file composed without error")
+	}
+}
