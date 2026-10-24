@@ -74,9 +74,12 @@ top-level `contract` list:
 Each entry must be a non-empty, single-line rule, with no duplicates. The rules
 render as an `## Organization Contract` section in generated `AGENTS.md`,
 between the public baseline and any manifest guidance fragments, so every
-harness sees them as obligations rather than background reading. Inspect the
-rules in force with `my contract list`, and edit them with
-`my admin contract add|remove`. Longer narrative guidance still belongs in
+harness sees them as obligations rather than background reading. A growing
+contract can move to a file in the manifest repo instead:
+`"contract_file": "guidance/contract.md"` (v0.47.0+), one `- rule` per line
+with optional `## ` groups. A manifest sets one or the other. Inspect the rules
+in force with `my contract list` or `my contract show`, and edit them with
+`my admin contract add|remove|replace|migrate`. Longer narrative guidance still belongs in
 `agent_guidance.paths` fragments. See
 [Guidance and Contract](./guidance-and-contract.md) for the full picture.
 

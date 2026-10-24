@@ -31,6 +31,7 @@ var featureFloors = []featureFloor{
 		}
 		return false
 	}},
+	{Version: "0.47.0", Feature: "contract_file", Uses: func(doc Document) bool { return doc.ContractFile != "" }},
 }
 
 // releaseVersionPattern is the min_my_version grammar: a plain X.Y.Z release,
@@ -127,17 +128,42 @@ func SetMinMyVersion(path, version string) error {
 	if err != nil {
 		return err
 	}
-	value, err := json.Marshal(version)
+	value, _ := json.Marshal(version)
+	out, err := PatchManifestKeys(data, []KeyEdit{{Key: "min_my_version", Value: value, After: "manifest_version"}})
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return os.WriteFile(path, out, info.Mode().Perm())
+}
+
+// KeyEdit sets or deletes one top-level manifest key. A nil Value deletes it.
+// A key that already exists keeps its position; a new one goes right after
+// After (even when After is deleted in the same patch), else at the end.
+type KeyEdit struct {
+	Key   string
+	Value json.RawMessage
+	After string
+}
+
+// PatchManifestKeys applies edits to manifest.json bytes and changes nothing
+// else: unknown keys (from a newer my), nested values and key order survive,
+// unlike a round trip through Document.
+func PatchManifestKeys(data []byte, edits []KeyEdit) ([]byte, error) {
+	if !json.Valid(data) {
+		return nil, fmt.Errorf("manifest is not valid JSON")
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
-		return fmt.Errorf("%s: manifest must be a JSON object", path)
+		return nil, fmt.Errorf("manifest must be a JSON object")
 	}
+	byKey := map[string]KeyEdit{}
+	for _, edit := range edits {
+		byKey[edit.Key] = edit
+	}
+	written := map[string]bool{}
 	var buf bytes.Buffer
 	buf.WriteByte('{')
-	fields, wrote := 0, false
+	fields := 0
 	write := func(key string, raw []byte) {
 		if fields > 0 {
 			buf.WriteByte(',')
@@ -148,39 +174,54 @@ func SetMinMyVersion(path, version string) error {
 		buf.Write(raw)
 		fields++
 	}
+	writeEdit := func(edit KeyEdit) {
+		if !written[edit.Key] && edit.Value != nil {
+			write(edit.Key, edit.Value)
+		}
+		written[edit.Key] = true
+	}
+	present := map[string]bool{}
+	var keys []string
+	raws := map[string]json.RawMessage{}
 	for dec.More() {
 		tok, err := dec.Token()
 		if err != nil {
-			return fmt.Errorf("%s: invalid JSON: %w", path, err)
+			return nil, fmt.Errorf("invalid JSON: %w", err)
 		}
 		key, _ := tok.(string)
 		var raw json.RawMessage
 		if err := dec.Decode(&raw); err != nil {
-			return fmt.Errorf("%s: invalid JSON: %w", path, err)
+			return nil, fmt.Errorf("invalid JSON: %w", err)
 		}
-		if key == "min_my_version" {
-			if !wrote {
-				write(key, value)
-				wrote = true
+		if present[key] {
+			return nil, fmt.Errorf("manifest repeats key %q", key)
+		}
+		present[key] = true
+		keys = append(keys, key)
+		raws[key] = raw
+	}
+	for _, key := range keys {
+		if edit, ok := byKey[key]; ok {
+			writeEdit(edit)
+		} else {
+			write(key, raws[key])
+		}
+		for _, edit := range edits {
+			if edit.After == key && !present[edit.Key] {
+				writeEdit(edit)
 			}
-			continue
-		}
-		write(key, raw)
-		if key == "manifest_version" && !wrote {
-			write("min_my_version", value)
-			wrote = true
 		}
 	}
-	if !wrote {
-		write("min_my_version", value)
+	for _, edit := range edits {
+		writeEdit(edit)
 	}
 	buf.WriteByte('}')
 	var out bytes.Buffer
 	if err := json.Indent(&out, buf.Bytes(), "", "  "); err != nil {
-		return err
+		return nil, err
 	}
 	out.WriteByte('\n')
-	return os.WriteFile(path, out.Bytes(), info.Mode().Perm())
+	return out.Bytes(), nil
 }
 
 // checkMinMyVersion runs before every other manifest check. It returns false

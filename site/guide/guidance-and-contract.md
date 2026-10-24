@@ -57,13 +57,57 @@ and every identifier from the fleet record.
 
 ## The organization contract
 
-Organizations add their own binding rules on top. Each rule is one sentence;
-longer material belongs in guidance fragments.
+Organizations add their own binding rules on top. Each rule is one line;
+longer material belongs in guidance fragments or governance policies. The
+contract can live inline in `manifest.json` (`contract`) or, from v0.47.0, in a
+contract file in the manifest repo (`contract_file`). A manifest uses one or
+the other, never both.
 
-Inspect the rules in force:
+### The contract file
+
+```json
+{
+  "min_my_version": "0.47.0",
+  "contract_file": "guidance/contract.md"
+}
+```
+
+The file is a plain Markdown list, so a change reads as a one-line Git diff:
+
+```markdown
+# Organization contract
+
+## Logs
+- Service logs live under the install's `logs/` directory.
+
+## Communication
+- Answer technically able people in technical language.
+- Answer clinical staff in clinical language.
+```
+
+- Each `- ` line is one rule. Rules must be single-line, non-blank, and
+  unique.
+- `## ` headings group rules. They are free-form, must be unique, and render
+  as `### ` headings inside `## Organization Contract`. A heading with no rules
+  renders nothing.
+- One optional `# ` title may open the file. It names the file for people and
+  is not rendered.
+- Blank lines are allowed. Anything else (prose, indented or nested bullets,
+  `###` headings) is a validation error.
+- The path must be a `.md` file under `guidance/`, which already publishes with
+  the manifest. Symlinks are refused.
+- The contract lives in the manifest repo, not a content mount, so only people
+  who can change the manifest can change it. Every member loads it, so keep it
+  to material every member may see.
+
+Validation and `my doctor` warn above 150 rules or 16 KiB, since every rule
+loads into every session.
+
+### Reading and editing
 
 ```sh
-my contract list [--manifest NAME] [--json]
+my contract list [--manifest NAME] [--json]   # rules with their position (and heading)
+my contract show [--manifest NAME] [--json]   # the file as written, plus its Git blob id
 ```
 
 ```
@@ -71,31 +115,60 @@ acme	1	Continue an existing relevant support record or create a new dated record
 acme	2	Record decisions in the handbook before acting on them.
 ```
 
-Edit the contract through the admin surface, which works against a maintainer
-checkout of the manifest repo:
+Edit through the admin surface:
 
 ```sh
-my admin contract add "Record decisions in the handbook before acting on them." --manifest-dir DIR
-my admin contract remove 2 --manifest-dir DIR        # by list index
-my admin contract remove "RULE TEXT" --manifest-dir DIR  # by exact text
+my admin contract add "Rotate logs weekly." --under Logs
+my admin contract remove 2                      # by list position
+my admin contract remove "RULE TEXT"            # by exact text
+my admin contract replace 3 "Service logs live under /var/log/acme."
 ```
 
-Like every admin edit, this writes `manifest.json` locally and prints the
-review/publish follow-up. Publish reviewed control-plane edits with
-`my publish --manifest NAME`; the rule reaches teammates after the manifest
-change is pushed and their workspaces reconcile (`my sync` or
-`my manifests sync`). Validation rejects empty, multiline, and duplicate rules,
-and `add` refuses a rule that already exists.
+- With a registered manifest (`--manifest NAME`, or the umbrella's manifest)
+  each command opens one pull request from a clean cache at its trusted
+  upstream and leaves the cache untouched. It re-fetches just before pushing
+  and refuses if the upstream moved while the change was prepared.
+- With `--manifest-dir DIR` it edits a maintainer checkout and never commits.
+  It refuses if the files it touches changed while it was working.
+- `replace` is a single edit, so there is never a moment with both rules or
+  neither.
+- `--under HEADING` adds to that group and creates the heading if it is
+  missing. It needs a contract file.
+- `--expect-blob SHA` (the `blob` from `my contract show --json`) refuses the
+  edit if the file changed since you read it. A number that is also the text
+  of a different rule is refused as ambiguous.
+- Governed manifests require provider admin permission for every edit.
+  Elsewhere, whoever can merge to the manifest's default branch can change
+  the contract, so protect that branch.
 
-In the manifest the contract is a plain list of strings:
+A rule reaches teammates when the change merges and their workspaces sync:
+regenerated `AGENTS.md` and every new launch carry it. In v0.47.0, harness
+conversations that are already running are not reloaded. Start a new
+session, or paste `my contract show`, to pick up a change. Live in-session
+delivery is planned.
 
-```json
-{
-  "contract": [
-    "Continue an existing relevant support record or create a new dated record when working on any fleet member."
-  ]
-}
+### Migrating an inline contract
+
+```sh
+my admin contract migrate [--manifest NAME | --manifest-dir DIR]
 ```
+
+`migrate` writes the inline rules, in order and under no heading, to
+`guidance/contract.md`. In the same change it removes `contract` and sets
+`contract_file` and `min_my_version`.
+
+- Only those keys change. Fields this `my` does not know, nested values and
+  key order are kept, and a higher `min_my_version` is never lowered.
+- It refuses if `guidance/contract.md` already exists.
+- The generated `AGENTS.md` is byte-identical before and after.
+- Inline `contract` stays supported.
+
+Upgrade before migrating. `my` v0.46.x reads `min_my_version` and asks for
+`my update`. Releases before v0.46.0 ignore both keys and launch without the
+contract. Confirm every member runs v0.46.0 or later first, and `migrate`
+prints this reminder.
+
+### Rendering
 
 Rendered in `AGENTS.md` between the baseline and any guidance fragments:
 
@@ -106,7 +179,16 @@ These rules are binding in this workspace:
 
 - Continue an existing relevant support record or create a new dated record
   when working on any fleet member.
+
+### Logs
+
+- Service logs live under the install's `logs/` directory.
 ```
+
+`my compile` carries the same rules in its `contract` block. For a contract
+file the block also records its `path`, its `sections`, and a `revision`
+(manifest commit and file blob id). An emptied file still projects an empty
+block.
 
 ## Organization policies
 
@@ -170,7 +252,8 @@ permissions.
 
 ## Choosing the right layer
 
-- **One-sentence obligation every agent must follow** → `contract` rule.
+- **One-line fact, convention, or obligation every agent must know** →
+  contract rule (`contract` or `contract_file`).
 - **Narrative context, playbooks, org background** → `agent_guidance.paths`
   fragment.
 - **Role-specific instructions** → role `guidance_paths`, activated by

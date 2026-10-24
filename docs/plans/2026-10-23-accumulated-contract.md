@@ -1,7 +1,9 @@
 # Accumulated organization contract
 
-Status: proposed (plan only). Drafted by Claude, adversarially reviewed by
-Codex; nothing implemented or authorized yet.
+Status: active. Drafted by Claude and adversarially reviewed by Codex.
+Phase 1 (file-backed contract) shipped in v0.47.0. Phases 2–4 are authorized
+and follow as their own releases. Phase 5 and the evidence generator remain
+optional and later.
 
 ## Goal (operator)
 
@@ -79,6 +81,11 @@ surfaced (see section 6). Neither side silently overwrites the other.
   the manifest root. It must be a relative path, not a URL, and after
   symlinks are resolved it must still be a regular file inside the manifest
   repo.
+  - **As shipped (v0.47.0), narrower:** the path must be a clean `.md` path
+    under `guidance/`, which is already a manifest control path, so normal
+    sync and admin PRs publish it with no extra rule. A symlink anywhere on
+    the path is refused rather than resolved, so reads and writes can never
+    leave the repo.
 - It is a new key rather than a change to the type of `contract`. An older
   binary would fail to decode a `[]string` field that now holds an object,
   and it would fail before `min_my_version` is ever read.
@@ -104,6 +111,16 @@ surfaced (see section 6). Neither side silently overwrites the other.
   - Each `- ` bullet is one entry and fits on one line.
   - `#`/`##` headings are optional free-form groups and are kept in the
     rendered output. The category names are not fixed.
+    - **As shipped:** `## ` headings are the groups. They must be unique and
+      render as `### ` under `## Organization Contract`, and a heading with
+      no rules renders nothing. One `# ` title may open the file. It names
+      the file for people and is not rendered, because `AGENTS.md` already
+      carries the section heading. `migrate` writes that title, and the
+      rendered output stays byte-identical. A tab inside a rule is allowed,
+      as it was inline. Other control characters, invalid UTF-8, a
+      byte-order mark and stray carriage returns are errors. Edits rewrite
+      only the lines they touch and keep every other line's bytes and line
+      ending.
   - Blank lines are allowed.
   - Anything else is a validation error: prose paragraphs, nested bullets,
     continuation lines. This keeps the file a list, with one diff line per
@@ -543,9 +560,10 @@ than as extra infrastructure in phase 1.
     - The admin then applies the bundle through the reviewed path.
     - Until it merges, no session sees the rule.
 
-## Phases (proposed; none of them is authorized yet)
+## Phases (1 shipped; 2–4 authorized; 5 optional)
 
-1. **File-backed contract.**
+1. **File-backed contract.** *Shipped in v0.47.0.* The compile block
+   carries `revision: {manifest_commit, blob}`.
    - `contract_file` schema, parser and validation.
    - Feature floor and rendering from the file.
    - `list` and `show`.
@@ -583,8 +601,8 @@ than as extra infrastructure in phase 1.
    as its own plan.
 
 Each phase is its own release, with sandbox smoke tests (stub `gh`, local
-bare repos). Migrating the operator's manifest after phase 1 would be a
-separate, explicitly approved step.
+bare repos). The operator approved migrating their own manifest after
+phase 1. It goes through the normal reviewed manifest PR.
 
 ## Tests (beyond unit coverage per package)
 

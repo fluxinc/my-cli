@@ -27,7 +27,12 @@ func (a app) runCompile(args []string) error {
 	if err != nil {
 		return err
 	}
-	projection, err := launchplan.Compile(doc.doc, launchplan.Options{Role: role})
+	// The commit is best effort: a manifest outside Git still compiles.
+	commit := ""
+	if doc.doc.ContractFile != "" {
+		commit, _ = gitPRText(doc.ref.LocalPath, nil, "rev-parse", "HEAD^{commit}")
+	}
+	projection, err := launchplan.Compile(doc.doc, launchplan.Options{Role: role, ManifestRoot: doc.ref.LocalPath, ManifestCommit: commit})
 	if err != nil {
 		return err
 	}

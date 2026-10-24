@@ -475,3 +475,55 @@ func TestCompileUnscopedKeepsRequiredDefaultOptionalMounts(t *testing.T) {
 		t.Fatalf("unscoped mounts = %s", got)
 	}
 }
+
+func TestCompileCarriesContractFileWithRevision(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "guidance"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "# Organization contract\n\n- Lead rule.\n\n## Logs\n- Logs live under logs/.\n"
+	if err := os.WriteFile(filepath.Join(root, "guidance", "contract.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	doc := manifest.Document{Organization: manifest.Organization{ID: "acme", Name: "Acme"}, ContractFile: "guidance/contract.md"}
+	projection, err := Compile(doc, Options{ManifestRoot: root, ManifestCommit: "abc123"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projection.Contract) != 2 {
+		t.Fatalf("contract blocks = %#v", projection.Contract)
+	}
+	block := projection.Contract[1]
+	want := ContractBlock{
+		Source: "manifest:contract_file", Mode: "enforce",
+		Rules:    []string{"Lead rule.", "Logs live under logs/."},
+		Path:     "guidance/contract.md",
+		Revision: &ContractRevision{ManifestCommit: "abc123", Blob: manifest.ContractBlob([]byte(body))},
+		Sections: []manifest.ContractSection{{Rules: []string{"Lead rule."}}, {Heading: "Logs", Rules: []string{"Logs live under logs/."}}},
+	}
+	if !reflect.DeepEqual(block, want) {
+		t.Fatalf("block = %#v\nwant %#v", block, want)
+	}
+	data, err := Marshal(projection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), root) {
+		t.Fatalf("projection leaks the host manifest path:\n%s", data)
+	}
+
+	// An emptied contract file still projects its block and revision.
+	if err := os.WriteFile(filepath.Join(root, "guidance", "contract.md"), []byte("# Organization contract\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	projection, err = Compile(doc, Options{ManifestRoot: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projection.Contract) != 2 || len(projection.Contract[1].Rules) != 0 || projection.Contract[1].Revision == nil {
+		t.Fatalf("empty contract file blocks = %#v", projection.Contract)
+	}
+	if _, err := Compile(doc, Options{}); err == nil {
+		t.Fatal("contract_file compiled without a manifest root")
+	}
+}
