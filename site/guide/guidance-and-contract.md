@@ -233,11 +233,18 @@ Live verification (v0.49.0, in a sandbox manifest):
   subagent never consumes the parent's cursor.
 - **Codex CLI 0.163.0:** until the hook definition is trusted, Codex skips it,
   the model gets nothing, and status stays `untrusted`. Your own
-  `~/.codex/hooks.json` hooks still run beside the inline layer. With trust,
+  `~/.codex/hooks.json` hooks still run beside the inline layer. In a test-only
+  invocation with the trust bypass enabled,
   startup, prompt, and pre- and post-tool hooks delivered the contract, and a
-  mid-run change arrived with its retraction. Persisting trust for the inline
-  launch layer across launches with `/hooks` is not verified yet. If it does not
-  persist, Codex sessions stay `untrusted` and rely on the stderr fallback.
+  mid-run change arrived with its retraction. The adapter never enables that
+  bypass. Normal `/hooks` trust persistence is verified from the
+  [0.163.0 discovery source](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/hooks/src/engine/discovery.rs):
+  session flags use a stable source path, and trust is matched by source,
+  event, handler position and definition hash. The
+  [TUI saves approvals](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/tui/src/hooks_rpc.rs)
+  in persistent `hooks.state`. This persistence check was source-based, not a
+  live TUI approval test. Until you approve the definition, status remains
+  `untrusted` and the stderr fallback remains available.
 
 ### Migrating an inline contract
 

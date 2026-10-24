@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -108,6 +109,51 @@ func TestContractPendingFallbackDoesNotAdvanceReceipt(t *testing.T) {
 func TestContractHookDoesNotRunStartupMaintenance(t *testing.T) {
 	if shouldAutoSyncSelfSkill([]string{"my", "contract", "pending", "--hook", "codex"}) {
 		t.Fatal("hook invokes startup mutations")
+	}
+}
+
+type contractShortWriter struct{}
+
+func (contractShortWriter) Write(p []byte) (int, error) { return len(p) - 1, nil }
+
+func TestContractPendingRestoresFailedCompactionWithoutReceipt(t *testing.T) {
+	home := t.TempDir()
+	_, err := contractstate.Update(home, "acme", func(s *contractstate.State) error {
+		s.Observe(contractstate.Snapshot{Configured: true, Revision: contractstate.Revision{ManifestCommit: "one", Blob: "one"}, Text: "- Current rule.\n"})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := contractstate.Register(home, "acme", "claude-code", "/base", "", "untrusted", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := contractstate.HookInput{Event: "SessionStart", SessionID: "conversation", Source: "startup"}
+	if err := contractstate.Deliver(home, "acme", instance.ID, "claude", input, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	input.Source = "compact"
+	if err := contractstate.Deliver(home, "acme", instance.ID, "claude", input, contractShortWriter{}); err != io.ErrShortWrite {
+		t.Fatalf("short write = %v", err)
+	}
+	before, _ := contractstate.Load(home, "acme")
+	for _, jsonOut := range []bool{false, true} {
+		out := &bytes.Buffer{}
+		args := []string{"--home", home, "--manifest", "acme", "--instance", instance.ID}
+		if jsonOut {
+			args = append(args, "--json")
+		}
+		if err := (app{stdout: out, stderr: io.Discard}).runContractPending(args); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out.String(), "Current rule.") {
+			t.Fatalf("missing recovery context: %s", out)
+		}
+	}
+	after, _ := contractstate.Load(home, "acme")
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("manual recovery advanced receipt")
 	}
 }
 

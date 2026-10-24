@@ -57,7 +57,7 @@ func (a app) runContractPending(args []string) error {
 		return err
 	}
 	context := ""
-	if state.Active != nil && (instance.Emitted == nil || instance.Emitted.Revision != state.Active.Revision) {
+	if state.Active != nil && (instance.NeedsSnapshot || instance.Emitted == nil || instance.Emitted.Revision != state.Active.Revision) {
 		context = contractstate.Context(instance, *state.Active)
 	}
 	if jsonOut {
