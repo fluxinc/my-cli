@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.48.0 - 2026-10-24
+
 ### Added
 
 - Sync failures with `--json` retain one complete report on stdout (including
@@ -19,6 +21,9 @@
   final-rule retractions and rollbacks. Never-configured manifests create no
   contract state. Rewriting guidance does not prove a running agent read it;
   live delivery remains unsupported until the separate adapter release.
+- Each root records a hash of the AGENTS.md it installed. A later sync, or
+  `my contract status`, treats an edited or missing file as pending and
+  rewrites it, even with no new pull.
 
 ## 0.47.0 - 2026-10-24
 

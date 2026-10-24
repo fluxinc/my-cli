@@ -1,8 +1,9 @@
 # Accumulated organization contract
 
 Status: active. Drafted by Claude and adversarially reviewed by Codex.
-Phase 1 (file-backed contract) shipped in v0.47.0. Phases 2–4 are authorized
-and follow as their own releases. Phase 5 and the evidence generator remain
+Phase 1 (file-backed contract) shipped in v0.47.0 and phase 2 (revisions and
+sync diff) in v0.48.0. Phases 3–4 are authorized and follow as their own
+releases. Phase 5 and the evidence generator remain
 optional and later.
 
 ## Goal (operator)
@@ -560,7 +561,7 @@ than as extra infrastructure in phase 1.
     - The admin then applies the bundle through the reviewed path.
     - Until it merges, no session sees the rule.
 
-## Phases (1 shipped; 2–4 authorized; 5 optional)
+## Phases (1–2 shipped; 3–4 authorized; 5 optional)
 
 1. **File-backed contract.** *Shipped in v0.47.0.* The compile block
    carries `revision: {manifest_commit, blob}`.
@@ -572,7 +573,7 @@ than as extra infrastructure in phase 1.
    - `my compile` and contained projections carry the contract content and
      revision, so migrating to a file never drops the contract from them.
    - Docs and changelogs.
-2. **Revisions and sync diff.** *Implemented for the next release.*
+2. **Revisions and sync diff.** *Shipped in v0.48.0.*
    - Active and installed cursors, and per-root pending reconciliation.
      Emission receipts remain part of phase 3.
    - The sync `contract_change` diff.
