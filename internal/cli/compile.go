@@ -27,9 +27,10 @@ func (a app) runCompile(args []string) error {
 	if err != nil {
 		return err
 	}
+	a.printContractCompatibilityWarnings(home, doc.ref.Name)
 	// The commit is best effort: a manifest outside Git still compiles.
 	commit := ""
-	if doc.doc.ContractFile != "" {
+	if doc.doc.ContractPath() != "" {
 		if head, err := gitPRText(doc.ref.LocalPath, nil, "rev-parse", "HEAD^{commit}"); err == nil {
 			commit = head
 		}

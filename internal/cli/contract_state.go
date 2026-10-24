@@ -138,7 +138,7 @@ func observeContract(home, name, root string, fetched bool) (contractstate.State
 		if err != nil {
 			return existing, nil, err
 		}
-		if doc.ContractFile == "" && len(doc.Contract) == 0 {
+		if doc.ContractPath() == "" && len(doc.Contract) == 0 {
 			return existing, nil, nil
 		}
 	}

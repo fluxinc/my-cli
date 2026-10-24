@@ -192,6 +192,11 @@ func ComposeWithOptions(manifestRoot string, doc manifest.Document, opts Options
 // a contract file keep their headings one level below the section; an inline
 // contract, or the leading group of a file, has none.
 func writeOrganizationContract(out *bytes.Buffer, contract manifest.Contract) {
+	if contract.Warning != "" {
+		// The full reason goes to stderr; agents only need to know which copy
+		// is in force and that repair is an administrator's job.
+		fmt.Fprintf(out, "\n> The manifest's contract file could not be used, so these are the rules from its inline copy, which every my release reads. Mention this to the user; a manifest administrator repairs it with `my admin contract migrate`.\n\n")
+	}
 	sections := contract.Sections()
 	if len(sections) == 0 {
 		return

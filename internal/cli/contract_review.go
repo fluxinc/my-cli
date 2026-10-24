@@ -221,23 +221,26 @@ func committedContractText(repo, head string) string {
 	if json.Unmarshal(data, &doc) != nil {
 		return ""
 	}
-	if doc.ContractFile != "" {
-		data, err := gitPRBytes(repo, nil, "cat-file", "blob", head+":"+doc.ContractFile)
-		if err == nil {
-			return string(data)
-		}
-		return ""
+	var fileData []byte
+	var readErr error
+	if file := doc.ContractPath(); file != "" && manifest.ValidContractFilePath(file) {
+		fileData, readErr = gitPRBytes(repo, nil, "cat-file", "blob", head+":"+file)
 	}
-	c, err := manifest.LoadContract("", doc)
+	c, err := manifest.ResolveContractBytes(doc, fileData, readErr)
 	if err != nil {
 		return ""
 	}
+
 	return string(c.Bytes())
 }
 
 func currentContractText(root string, doc manifest.Document, edit contractEdit) string {
-	if doc.ContractFile != "" {
-		return string(edit.originals[doc.ContractFile])
+	if doc.ContractPath() != "" {
+		c, err := manifest.ResolveContractBytes(doc, edit.originals[doc.ContractPath()], nil)
+		if err != nil {
+			return ""
+		}
+		return string(c.Bytes())
 	}
 	c, _ := manifest.LoadContract("", doc)
 	return string(c.Bytes())

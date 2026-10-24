@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Added
+
+- `contract_source` keeps a grouped `guidance/contract.md` next to the inline
+  `contract` list, which stays as a copy for older `my` releases. Every
+  released `my` reads the same rules in the same order; v0.51.0 and later read
+  the file with its groups. No `min_my_version` is added, so no member has to
+  upgrade before an organization migrates.
+- `my admin contract migrate --from-inline` rebuilds the file from the inline
+  copy, for repairing drift or reconnecting a file an older `my` left
+  unreferenced.
+
+### Changed
+
+- `my admin contract migrate` now writes the compatible shape, keeps rule text
+  byte for byte, and converts a file-only `contract_file` manifest to it.
+  `add`, `remove` and `replace` update the file and the inline copy together.
+- When the file and the inline copy disagree, or the file is missing or unsafe,
+  members get the inline copy with a warning on stderr and in `AGENTS.md`
+  instead of an error. Contract edits, `my publish` and `my sync --publish
+  direct|pr` refuse until `migrate` repairs it.
+- `my manifests validate` warns when `guidance/contract.md` exists but the
+  manifest does not reference it.
+
+### Fixed
+
+- Migrating a contract no longer cuts members off. The v0.47.0 file-only shape
+  made v0.46.x refuse the manifest and made releases before v0.46.0 launch with
+  no contract at all.
+
 ## 0.50.0 - 2026-10-24
 
 ### Added

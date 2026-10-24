@@ -487,7 +487,15 @@ func runGnit(entries []Entry, opts Options) Report {
 }
 
 func inspect(entry Entry, opts Options, runner Runner) inspection {
-	return inspectWithMode(entry, opts, runner, inspectMode{fetch: !opts.DryRun, fetchFatal: true})
+	in := inspectWithMode(entry, opts, runner, inspectMode{fetch: !opts.DryRun, fetchFatal: true})
+	if in.result.Status == "pending" && entry.Role == "manifest" && (opts.Publish == "direct" || opts.Publish == "pr") {
+		if doc, _, err := manifest.LoadDocument(entry.LocalPath); err == nil && doc.ContractSource != "" {
+			if err := manifest.RequireContractSource(entry.LocalPath, doc); err != nil {
+				holdWithCode(&in, err.Error(), "contract_source_drift", "my admin contract migrate --manifest-dir "+entry.LocalPath)
+			}
+		}
+	}
+	return in
 }
 
 func inspectWithMode(entry Entry, opts Options, runner Runner, mode inspectMode) inspection {

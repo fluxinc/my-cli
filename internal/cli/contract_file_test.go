@@ -61,8 +61,8 @@ func TestAdminContractMigrateManifestDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Action != "migrated" || result.ContractFile != "guidance/contract.md" || result.MinMyVersion != "0.47.0" ||
-		len(result.Contract) != 2 || len(result.Warnings) == 0 || !strings.Contains(result.Warnings[0], "0.46.0") {
+	if result.Action != "migrated" || result.ContractFile != "guidance/contract.md" || result.MinMyVersion != "" ||
+		len(result.Contract) != 2 || len(result.Warnings) == 0 || !strings.Contains(result.Warnings[0], "no member upgrade") {
 		t.Fatalf("result = %#v", result)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "guidance", "contract.md"))
@@ -72,7 +72,6 @@ func TestAdminContractMigrateManifestDir(t *testing.T) {
 	manifestData, _ := os.ReadFile(filepath.Join(dir, "manifest.json"))
 	want := `{
   "manifest_version": 1,
-  "min_my_version": "0.47.0",
   "organization": {
     "id": "acme",
     "name": "Acme Example",
@@ -84,7 +83,11 @@ func TestAdminContractMigrateManifestDir(t *testing.T) {
   "future_top_level": [
     "kept"
   ],
-  "contract_file": "guidance/contract.md",
+  "contract": [
+    "Ask before touching external assets.",
+    "Logs live under logs/."
+  ],
+  "contract_source": "guidance/contract.md",
   "skills": []
 }
 `
@@ -94,7 +97,7 @@ func TestAdminContractMigrateManifestDir(t *testing.T) {
 	if after := composeCLIGuidance(t, dir); after != before {
 		t.Fatalf("migration changed AGENTS.md\nbefore:\n%s\nafter:\n%s", before, after)
 	}
-	if _, err := runAdminContractJSON(t, a, "migrate", "--manifest-dir", dir); err == nil || !strings.Contains(err.Error(), "already lives in") {
+	if _, err := runAdminContractJSON(t, a, "migrate", "--manifest-dir", dir); err != nil {
 		t.Fatalf("second migrate err = %v", err)
 	}
 }
@@ -285,8 +288,8 @@ func TestAdminContractRegisteredMigratePublishesBothFiles(t *testing.T) {
 		t.Fatalf("result = %#v", result)
 	}
 	proposedManifest := gitCLIOutput(t, remote, "show", state.commit+":manifest.json")
-	if !strings.Contains(proposedManifest, `"contract_file": "guidance/contract.md"`) || strings.Contains(proposedManifest, `"contract":`) ||
-		!strings.Contains(proposedManifest, `"future_top_level"`) || !strings.Contains(proposedManifest, `"min_my_version": "0.47.0"`) {
+	if !strings.Contains(proposedManifest, `"contract_source": "guidance/contract.md"`) || !strings.Contains(proposedManifest, `"contract":`) ||
+		!strings.Contains(proposedManifest, `"future_top_level"`) || strings.Contains(proposedManifest, `"min_my_version": "0.47.0"`) {
 		t.Fatalf("proposed manifest:\n%s", proposedManifest)
 	}
 	proposedFile := gitCLIOutput(t, remote, "show", state.commit+":guidance/contract.md")

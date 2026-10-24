@@ -59,16 +59,29 @@ and every identifier from the fleet record.
 
 Organizations add their own binding rules on top. Each rule is one line;
 longer material belongs in guidance fragments or governance policies. The
-contract can live inline in `manifest.json` (`contract`) or, from v0.47.0, in a
-contract file in the manifest repo (`contract_file`). A manifest uses one or
-the other, never both.
+contract has three possible shapes:
+
+- **Inline:** only the `contract` list in `manifest.json`. Every `my` release
+  reads it.
+- **Contract file with an inline copy** (recommended, from v0.51.0):
+  `contract_source` names `guidance/contract.md`, and `contract` keeps the same
+  rules, in the same order, for older `my` releases. `my admin contract`
+  commands keep the two in step. No member has to upgrade first.
+- **Contract file only** (v0.47.0+): `contract_file` with no inline list. It
+  needs `min_my_version` 0.47.0, so members on older releases are blocked or
+  lose the contract until they upgrade. `migrate` converts it to the
+  recommended shape.
 
 ### The contract file
 
 ```json
 {
-  "min_my_version": "0.47.0",
-  "contract_file": "guidance/contract.md"
+  "contract": [
+    "Service logs live under the install's `logs/` directory.",
+    "Answer technically able people in technical language.",
+    "Answer clinical staff in clinical language."
+  ],
+  "contract_source": "guidance/contract.md"
 }
 ```
 
@@ -94,7 +107,8 @@ The file is a plain Markdown list, so a change reads as a one-line Git diff:
   is not rendered.
 - Blank lines are allowed. Anything else (prose, indented or nested bullets,
   `###` headings) is a validation error.
-- The path must be a `.md` file under `guidance/`, which already publishes with
+- `contract_source` must be exactly `guidance/contract.md`; a file-only
+  `contract_file` may be any `.md` file under `guidance/`. Both publish with
   the manifest. Symlinks are refused.
 - The contract lives in the manifest repo, not a content mount, so only people
   who can change the manifest can change it. Every member loads it, so keep it
@@ -329,23 +343,60 @@ generators remain a later extension.
 ### Migrating an inline contract
 
 ```sh
-my admin contract migrate [--manifest NAME | --manifest-dir DIR]
+my admin contract migrate [--from-inline] [--manifest NAME | --manifest-dir DIR]
 ```
 
 `migrate` writes the inline rules, in order and under no heading, to
-`guidance/contract.md`. In the same change it removes `contract` and sets
-`contract_file` and `min_my_version`.
+`guidance/contract.md` and adds `contract_source`. The inline `contract` list
+stays as the copy older releases read. Add `## ` groups to the file afterwards;
+later `add`, `remove` and `replace` commands update the file and the inline
+copy together.
 
-- Only those keys change. Fields this `my` does not know, nested values and
-  key order are kept, and a higher `min_my_version` is never lowered.
-- It refuses if `guidance/contract.md` already exists.
-- The generated `AGENTS.md` is byte-identical before and after.
-- Inline `contract` stays supported.
+- Only those keys change. Fields this `my` does not know, nested values, rule
+  text and key order are kept.
+- The compatible shape needs no newer `my`, so `migrate` adds no
+  `min_my_version` for it. It still raises an existing floor that another
+  feature in the manifest needs, and never lowers one. Members on any release
+  keep the same rules in the same order; releases before v0.51.0 show them
+  without the group headings.
+- Migrating an inline list leaves the generated `AGENTS.md` byte-identical.
+  Adding groups or repairing drift later changes it on purpose.
+- It refuses if `guidance/contract.md` already exists and the manifest does not
+  reference it.
+- On a file-only `contract_file` manifest it writes the inline copy and
+  replaces `contract_file` with `contract_source`. A file at another path is
+  copied to `guidance/contract.md`, and the old file stays until you delete
+  it. The existing `min_my_version` (0.47.0 or later for that shape) is kept,
+  so members older than it stay blocked until they update.
 
-Upgrade before migrating. `my` v0.46.x reads `min_my_version` and asks for
-`my update`. Releases before v0.46.0 ignore both keys and launch without the
-contract. Confirm every member runs v0.46.0 or later first, and `migrate`
-prints this reminder.
+Run `migrate` with a current `my`. Older releases' `migrate` writes the
+file-only shape.
+
+| Member's `my` | Reads |
+| --- | --- |
+| v0.51.0 and later | `guidance/contract.md`, with its groups |
+| v0.50.0 and earlier | the inline copy: the same rules, ungrouped |
+
+### When the file and the inline copy disagree
+
+The two can drift after a hand edit or a partial merge. Releases from v0.51.0
+then use the inline copy, so every member still sees the same rules, and warn
+on stderr and in `AGENTS.md`. `my admin contract add|remove|replace`,
+`my publish`, and `my sync --publish direct|pr` refuse to publish until it is
+repaired:
+
+```sh
+my admin contract migrate --manifest-dir DIR [--force]                # inline copy from the file
+my admin contract migrate --from-inline --manifest-dir DIR [--force]  # file from the inline copy
+```
+
+`--force` is needed only when the checkout already has uncommitted changes.
+`--from-inline` rewrites the file as an ungrouped list.
+
+A release before v0.51.0 that edits the inline list drops `contract_source`.
+The rules stay correct, but `guidance/contract.md` is left unreferenced, and
+`my manifests validate` warns about it. Reconnect it with
+`migrate --from-inline` and re-add any groups.
 
 ### Rendering
 
@@ -432,7 +483,7 @@ permissions.
 ## Choosing the right layer
 
 - **One-line fact, convention, or obligation every agent must know** →
-  contract rule (`contract` or `contract_file`).
+  contract rule (`contract`, `contract_source` or `contract_file`).
 - **Narrative context, playbooks, org background** → `agent_guidance.paths`
   fragment.
 - **Role-specific instructions** → role `guidance_paths`, activated by

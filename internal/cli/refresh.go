@@ -82,6 +82,7 @@ func hasMyDir(root string) bool {
 }
 
 func (a app) maybeAutoRefresh(home, manifestName, umbrellaRoot, root string, noRefresh bool) {
+	defer a.printContractCompatibilityWarnings(home, manifestName)
 	if noRefresh || os.Getenv("MYCLI_NO_AUTO_REFRESH") != "" || root == "" || !hasMyDir(root) {
 		return
 	}
@@ -152,10 +153,12 @@ func (a app) maybeAutoRefreshReads(home, manifestName string, noRefresh bool) {
 
 func (a app) maybeAutoRefreshReadsAt(home, manifestName, umbrellaRoot string, noRefresh bool) {
 	if noRefresh {
+		a.printContractCompatibilityWarnings(home, manifestName)
 		return
 	}
 	root, ok, err := existingUmbrellaRoot(home, manifestName, umbrellaRoot)
 	if err != nil || !ok {
+		a.printContractCompatibilityWarnings(home, manifestName)
 		return
 	}
 	a.maybeAutoRefresh(home, manifestName, root, root, false)

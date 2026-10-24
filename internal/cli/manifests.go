@@ -414,6 +414,15 @@ func (a app) runManifestSync(args []string) error {
 			}
 		}
 	}
+	defer func() {
+		if all || len(rest) == 0 {
+			a.printContractCompatibilityWarnings(home, "")
+		} else {
+			for _, name := range rest {
+				a.printContractCompatibilityWarnings(home, name)
+			}
+		}
+	}()
 	results, err := manifest.Sync(home, rest, all, printOnly, nil)
 	if err != nil {
 		return err
