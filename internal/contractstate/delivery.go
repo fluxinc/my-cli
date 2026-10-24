@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -39,6 +40,8 @@ type HookInput struct {
 	AgentID   string `json:"agent_id"`
 }
 
+var instanceIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
 func NewID() (string, error) {
 	var data [16]byte
 	if _, err := rand.Read(data[:]); err != nil {
@@ -63,10 +66,65 @@ func Register(home, name, harness, root, parentSession, delivery, message string
 		if s.Instances == nil {
 			s.Instances = map[string]Instance{}
 		}
+		pruneInstances(s, time.Now().UTC())
 		s.Instances[id] = instance
 		return nil
 	})
 	return instance, err
+}
+
+// InstanceRetention bounds the registry: every launch adds an instance, so
+// closed ones are dropped after this long, and a resume alias goes with its
+// canonical instance. A later resume of a pruned conversation starts from a
+// full authoritative snapshot.
+const InstanceRetention = 30 * 24 * time.Hour
+
+func pruneInstances(s *State, now time.Time) {
+	expired := func(stamp string) bool {
+		t, err := time.Parse(time.RFC3339Nano, stamp)
+		return err == nil && now.Sub(t) > InstanceRetention
+	}
+	for id, instance := range s.Instances {
+		if instance.AliasOf == "" && instance.ClosedAt != "" && expired(instance.ClosedAt) && (instance.LastHookAt == "" || expired(instance.LastHookAt)) {
+			delete(s.Instances, id)
+		}
+	}
+	for id, instance := range s.Instances {
+		if instance.AliasOf == "" {
+			continue
+		}
+		if _, ok := s.Instances[instance.AliasOf]; !ok {
+			delete(s.Instances, id)
+		}
+	}
+}
+
+// LinkResumeParent records that launch instance id continues the harness
+// conversation nativeID, so a fork of it computes retractions against what
+// that conversation was last given rather than against the current contract.
+// An unknown conversation leaves the instance unchanged.
+func LinkResumeParent(home, name, id, nativeID string) error {
+	_, err := Update(home, name, func(s *State) error {
+		instance, ok := s.Instances[id]
+		if !ok {
+			return nil
+		}
+		for _, candidate := range s.Instances {
+			if candidate.AliasOf != "" || candidate.ID == id || candidate.Harness != instance.Harness || candidate.NativeID != nativeID {
+				continue
+			}
+			instance.ParentInstance = candidate.ID
+			if candidate.Emitted != nil {
+				instance.Started = *candidate.Emitted
+			} else {
+				instance.Started = candidate.Started
+			}
+			s.Instances[id] = instance
+			return nil
+		}
+		return nil
+	})
+	return err
 }
 
 func ResolveInstance(s State, id, nativeID string) (Instance, error) {
@@ -94,7 +152,7 @@ func ResolveInstance(s State, id, nativeID string) (Instance, error) {
 // with this instance's own emitted text, not the manifest's last single change.
 func Context(instance Instance, active Snapshot) string {
 	var out strings.Builder
-	fmt.Fprintf(&out, "[Organization contract update: %s / %s]\nThis snapshot supersedes earlier organization contract text. Existing higher-priority instructions still apply.\n", active.Revision.ManifestCommit, active.Revision.Blob)
+	fmt.Fprintf(&out, "[Organization contract update: %s / %s]\nThis is the complete organization contract. Disregard any organization contract text earlier in this conversation; where they differ, only this snapshot applies. Existing higher-priority instructions still apply.\n", active.Revision.ManifestCommit, active.Revision.Blob)
 	previous := instance.Started.Text
 	if instance.Emitted != nil {
 		previous = instance.Emitted.Text
@@ -161,15 +219,32 @@ func Deliver(home, name, id, adapter string, input HookInput, w io.Writer) error
 	if input.AgentID != "" {
 		return nil
 	}
+	// The common case, a tool or prompt hook with nothing new, reads state
+	// without taking the lock or rewriting the file.
+	if current, err := Load(home, name); err == nil && !fullSnapshotEvent(input) && input.Event != "SessionEnd" {
+		if instance, err := ResolveInstance(current, id, input.SessionID); err == nil && instance.NativeID == input.SessionID && instance.ClosedAt == "" {
+			if instance.Delivery == "unsupported" {
+				return nil
+			}
+			if !instance.NeedsSnapshot && instance.Emitted != nil && current.Active != nil && instance.Emitted.Revision == current.Active.Revision {
+				return nil
+			}
+		}
+	}
 	var outputErr error
 	_, err := Update(home, name, func(s *State) error {
-		instance, err := ResolveInstance(*s, id, input.SessionID)
-		if err != nil {
-			return err
-		}
 		expectedHarness := adapter
 		if adapter == "claude" {
 			expectedHarness = "claude-code"
+		}
+		instance, err := ResolveInstance(*s, id, input.SessionID)
+		if err != nil {
+			// A pruned or missing record must not break a live process:
+			// start it over from a full authoritative snapshot.
+			if s.Active == nil || !instanceIDPattern.MatchString(id) {
+				return err
+			}
+			instance = Instance{ID: id, Harness: expectedHarness, Started: *s.Active, StartedAt: time.Now().UTC().Format(time.RFC3339Nano), Delivery: "untrusted", NeedsSnapshot: true}
 		}
 		if instance.Harness != expectedHarness {
 			return fmt.Errorf("hook adapter does not match registered harness")
@@ -204,6 +279,11 @@ func Deliver(home, name, id, adapter string, input HookInput, w io.Writer) error
 		}
 		instance.NativeID = input.SessionID
 		instance.LastHookAt = now
+		if instance.ClosedAt != "" && input.Event != "SessionEnd" {
+			// Reopened without a SessionStart (missed or failed): the
+			// conversation may have lost earlier context, so resend it all.
+			instance.NeedsSnapshot = true
+		}
 		instance.ClosedAt = ""
 		if input.Event == "SessionEnd" {
 			instance.ClosedAt = now

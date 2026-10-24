@@ -153,3 +153,29 @@ func TestContractLaunchRegistersIsolatedEnvironmentAndHookReceipt(t *testing.T) 
 		}
 	}
 }
+
+func TestContractResumeTargetNamesOnlyExplicitConversations(t *testing.T) {
+	const uuidA = "56036ed1-d52c-4e48-9143-1577ac619e1e"
+	const uuidB = "0b2aef46-b9b8-4b44-81c8-fcae2fc00000"
+	for _, tc := range []struct {
+		h    harness.Harness
+		args []string
+		want string
+	}{
+		{harness.ClaudeCode, []string{"--resume", uuidA, "--fork-session"}, uuidA},
+		{harness.ClaudeCode, []string{"-r", uuidA}, uuidA},
+		{harness.ClaudeCode, []string{"--resume=" + uuidA}, uuidA},
+		{harness.ClaudeCode, []string{"--resume", "search words"}, ""},
+		{harness.ClaudeCode, []string{"--resume", "--fork-session"}, ""},
+		{harness.ClaudeCode, []string{"--continue"}, ""},
+		{harness.Codex, []string{"resume", uuidB, "prompt"}, uuidB},
+		{harness.Codex, []string{"resume", "--model", "gpt-x", uuidB}, uuidB},
+		{harness.Codex, []string{"fork", "--model", "gpt-x"}, ""},
+		{harness.Codex, []string{"resume", "--last"}, ""},
+		{harness.Codex, []string{"exec", uuidB}, ""},
+	} {
+		if got := contractResumeTarget(tc.h, tc.args); got != tc.want {
+			t.Errorf("contractResumeTarget(%s, %q) = %q, want %q", tc.h, tc.args, got, tc.want)
+		}
+	}
+}

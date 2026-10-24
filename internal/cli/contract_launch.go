@@ -22,7 +22,10 @@ func (a app) runContractHarness(h harness.Harness, binary string, args []string,
 	if err != nil || state.Active == nil || !state.Active.Configured && state.Active.Text == "" {
 		return a.runHarness(binary, args, target)
 	}
-	delivery, message := "untrusted", "Hook has not emitted yet; review and trust its exact definition in the harness."
+	delivery, message := "untrusted", "Hook has not emitted yet."
+	if h == harness.Codex {
+		message = "Hook has not emitted yet; Codex runs it only after you trust its exact definition (/hooks)."
+	}
 	adapterArgs := []string{}
 	if runtime.GOOS == "windows" {
 		delivery = "unsupported"
@@ -81,6 +84,11 @@ func (a app) runContractHarness(h harness.Harness, binary string, args []string,
 			return err
 		}
 	}
+	if native := contractResumeTarget(h, args); native != "" {
+		if err := contractstate.LinkResumeParent(home, name, instance.ID, native); err != nil {
+			return err
+		}
+	}
 	a.harnessEnvironment = contractLaunchEnvironment(os.Environ(), home, name, instance.ID)
 	fmt.Fprintf(a.stderr, "contract\t%s\t%s\t%s\n", instance.ID, delivery, message)
 	defer func() {
@@ -123,6 +131,38 @@ func contractVersionAtLeast(value string, min [3]int) bool {
 	}
 	return true
 }
+
+var conversationIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// contractResumeTarget returns the conversation a launch resumes or forks:
+// claude --resume/-r ID, or codex resume|fork ... ID. Only a UUID counts, so
+// option values, names and search terms are never mistaken for one; those
+// launches, like --continue and pickers, start from the full snapshot.
+func contractResumeTarget(h harness.Harness, args []string) string {
+	for i, arg := range args {
+		switch {
+		case h == harness.ClaudeCode && strings.HasPrefix(arg, "--resume="):
+			if value := strings.TrimPrefix(arg, "--resume="); conversationIDPattern.MatchString(value) {
+				return value
+			}
+			return ""
+		case h == harness.ClaudeCode && (arg == "--resume" || arg == "-r"):
+			if i+1 < len(args) && conversationIDPattern.MatchString(args[i+1]) {
+				return args[i+1]
+			}
+			return ""
+		case h == harness.Codex && (arg == "resume" || arg == "fork"):
+			for _, next := range args[i+1:] {
+				if conversationIDPattern.MatchString(next) {
+					return next
+				}
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
 func conflictingContractHookArgs(h harness.Harness, args []string) bool {
 	for i, arg := range args {
 		if h == harness.ClaudeCode && (arg == "--settings" || strings.HasPrefix(arg, "--settings=")) {

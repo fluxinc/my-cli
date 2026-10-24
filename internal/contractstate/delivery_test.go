@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func deliveryFixture(t *testing.T) (string, Instance, Instance) {
@@ -207,5 +209,128 @@ func TestDeliveryMissedForkStartRecoversAtToolHook(t *testing.T) {
 	child, err := ResolveInstance(s, a.ID, "child")
 	if err != nil || child.ID == a.ID || !strings.Contains(out.String(), "Full active") {
 		t.Fatal("missed startup was not independently recovered")
+	}
+}
+
+// A launch that forks an earlier conversation by id retracts what that
+// conversation was last given, not what the current contract already says.
+func TestDeliveryLinkedForkRetractsParentConversationRules(t *testing.T) {
+	home, a, _ := deliveryFixture(t)
+	if err := Deliver(home, "acme", a.ID, "claude", HookInput{Event: "SessionStart", Source: "startup", SessionID: "parent-conv"}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	updateDelivery(t, home, "two", "- New rule.\n")
+	fork, err := Register(home, "acme", "claude-code", "/base", "", "untrusted", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := LinkResumeParent(home, "acme", fork.ID, "parent-conv"); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := Deliver(home, "acme", fork.ID, "claude", HookInput{Event: "SessionStart", Source: "fork", SessionID: "forked-conv"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "RETRACTED") || !strings.Contains(out.String(), "Old rule.") || !strings.Contains(out.String(), "Disregard any organization contract text earlier") {
+		t.Fatal(out.String())
+	}
+	state, _ := Load(home, "acme")
+	if state.Instances[fork.ID].ParentInstance != a.ID || state.Instances[a.ID].NativeID != "parent-conv" {
+		t.Fatalf("fork linkage = %#v", state.Instances[fork.ID])
+	}
+	if err := LinkResumeParent(home, "acme", fork.ID, "unknown-conv"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A tool hook with nothing new must not rewrite the state file.
+func TestDeliveryCurrentToolHookDoesNotWriteState(t *testing.T) {
+	home, a, _ := deliveryFixture(t)
+	if err := Deliver(home, "acme", a.ID, "claude", HookInput{Event: "SessionStart", Source: "startup", SessionID: "conv"}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := Path(home, "acme")
+	before, _ := os.ReadFile(path)
+	var out bytes.Buffer
+	if err := Deliver(home, "acme", a.ID, "claude", HookInput{Event: "PostToolUse", SessionID: "conv"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := os.ReadFile(path)
+	if out.Len() != 0 || !bytes.Equal(before, after) {
+		t.Fatalf("current hook wrote output %q or changed state", out.String())
+	}
+	updateDelivery(t, home, "two", "- New rule.\n")
+	if err := Deliver(home, "acme", a.ID, "claude", HookInput{Event: "PostToolUse", SessionID: "conv"}, &out); err != nil || !strings.Contains(out.String(), "New rule.") {
+		t.Fatalf("changed revision not delivered: %v %q", err, out.String())
+	}
+}
+
+func TestRegisterPrunesExpiredClosedInstances(t *testing.T) {
+	home, a, b := deliveryFixture(t)
+	old := time.Now().UTC().Add(-InstanceRetention - time.Hour).Format(time.RFC3339Nano)
+	_, err := Update(home, "acme", func(s *State) error {
+		closed := s.Instances[a.ID]
+		closed.ClosedAt = old
+		s.Instances[a.ID] = closed
+		s.Instances["alias"] = Instance{ID: "alias", AliasOf: a.ID, StartedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+		// A long-lived resumed process keeps its alias while the canonical
+		// instance is open, however old the alias is.
+		s.Instances["old-alias"] = Instance{ID: "old-alias", AliasOf: b.ID, StartedAt: old}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Register(home, "acme", "codex", "/base", "", "untrusted", ""); err != nil {
+		t.Fatal(err)
+	}
+	state, _ := Load(home, "acme")
+	if _, ok := state.Instances[a.ID]; ok {
+		t.Fatal("expired closed instance kept")
+	}
+	if _, ok := state.Instances["alias"]; ok {
+		t.Fatal("alias of a pruned instance kept")
+	}
+	if _, ok := state.Instances["old-alias"]; !ok {
+		t.Fatal("alias of an open instance pruned")
+	}
+	if _, ok := state.Instances[b.ID]; !ok || len(state.Instances) != 3 {
+		t.Fatalf("open instances pruned: %d", len(state.Instances))
+	}
+}
+
+// A resumed process whose canonical record was closed by a sibling, or pruned,
+// still gets a full snapshot on its next hook rather than silence or an error.
+func TestDeliveryReopenedOrPrunedInstanceGetsFullSnapshot(t *testing.T) {
+	home, a, _ := deliveryFixture(t)
+	if err := Deliver(home, "acme", a.ID, "claude", HookInput{Event: "SessionStart", Source: "startup", SessionID: "conv"}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if err := Deliver(home, "acme", a.ID, "claude", HookInput{Event: "SessionEnd", SessionID: "conv"}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := Deliver(home, "acme", a.ID, "claude", HookInput{Event: "UserPromptSubmit", SessionID: "conv"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Full active") {
+		t.Fatalf("reopened instance got no snapshot: %q", out.String())
+	}
+	_, err := Update(home, "acme", func(s *State) error {
+		delete(s.Instances, a.ID)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := Deliver(home, "acme", a.ID, "claude", HookInput{Event: "PostToolUse", SessionID: "conv"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Full active") {
+		t.Fatalf("pruned instance got no snapshot: %q", out.String())
+	}
+	if err := Deliver(home, "acme", "not-an-id", "claude", HookInput{Event: "PostToolUse", SessionID: "conv"}, io.Discard); err == nil {
+		t.Fatal("malformed instance id was accepted")
 	}
 }
