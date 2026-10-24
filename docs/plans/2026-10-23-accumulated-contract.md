@@ -3,7 +3,7 @@
 Status: active. Drafted by Claude and adversarially reviewed by Codex.
 Phase 1 (file-backed contract) shipped in v0.47.0, phase 2 (revisions and
 sync diff) in v0.48.0, and phase 3 (live delivery) in v0.49.0. Phase 4 is
-authorized and follows as its own release. Phase 5 and the evidence generator remain
+implemented, with independent review and live runner proof pending. Phase 5 and the evidence generator remain
 optional and later.
 
 ## Goal (operator)
@@ -591,7 +591,7 @@ than as extra infrastructure in phase 1.
 
    This phase is part of full delivery. The operator asked for in-session
    reload, so it is not optional polish.
-4. **Review.**
+4. **Review.** *Implemented; independent review and live runner proof pending.*
    - Deterministic lint and the sandboxed `my admin contract review`.
    - PR-body findings and stale-review detection.
    - The example CI workflow.

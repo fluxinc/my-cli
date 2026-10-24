@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Added
+
+- Opt-in `my admin contract review` evaluates the complete contract and verified
+  committed policy text with an explicit model. Deterministic format, duplicate
+  and size lint precedes bounded, tool-free Claude review; missing sources,
+  unavailable runners and partial output are reported distinctly.
+- Contract authoring can attach advisory findings to the exact proposed PR
+  commit with `--review` or manifest `contract_review` configuration. Findings
+  never rewrite, block, approve or merge changes. `--review=false` overrides
+  manifest opt-in. The new manifest field has a v0.50.0 compatibility floor.
+- Saved review evidence binds the contract head/blob, policy digest set, prompt
+  version, harness and model. Local `review --check` and doctor notes detect
+  stale or incomplete evidence, including policy-only changes, without model
+  calls. An optional manifest-repository CI example is included.
+
 ## 0.49.0 - 2026-10-24
 
 ### Added

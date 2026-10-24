@@ -15,6 +15,7 @@ import (
 
 	"github.com/fluxinc/my-cli/internal/access"
 	"github.com/fluxinc/my-cli/internal/bundle"
+	"github.com/fluxinc/my-cli/internal/contractreview"
 	"github.com/fluxinc/my-cli/internal/manifest"
 	"github.com/fluxinc/my-cli/internal/selfskill"
 	"github.com/fluxinc/my-cli/internal/selfupdate"
@@ -55,9 +56,10 @@ func isTerminal(f *os.File) bool {
 }
 
 type app struct {
-	stdout io.Writer
-	stderr io.Writer
-	stdin  io.Reader
+	contractReviewRunner contractreview.Runner
+	stdout               io.Writer
+	stderr               io.Writer
+	stdin                io.Reader
 	// interactive reports whether stdin/stdout are a TTY. Zero value (false)
 	// keeps tests on the deterministic, non-launching path by default.
 	interactive            bool

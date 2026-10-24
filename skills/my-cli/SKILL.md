@@ -350,6 +350,15 @@ Before a new task in a long session, check `my contract status`. Apply contract
 updates printed by `my` within the existing instruction hierarchy, including
 explicit retractions. Emission receipts do not prove model acceptance.
 
+For advisory conflict review, use `my admin contract review --harness claude
+--model MODEL` (or an explicit manifest selection). Review reads the whole
+contract and verified committed policy blobs; missing sources are incomplete,
+never clean. Authoring invokes a model only with `--review` or manifest opt-in.
+Findings suggest edits but never authorize, apply, approve, or merge them.
+`my admin contract review --check` checks saved evidence locally without a model
+call. A clean review is not a certificate of consistency; rerun after contract,
+policy, model or prompt changes. Codex review is currently unavailable.
+
 Keep organization skill source directories immutable. Store mutable runtime
 state — credentials, cookies, caches, and downloads — under
 `~/.local/state/my-cli/skills/<manifest>/<install-slug>/`. `my doctor` warns

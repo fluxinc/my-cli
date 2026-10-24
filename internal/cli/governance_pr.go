@@ -146,6 +146,10 @@ func (a app) publishPullRequest(home string, request syncer.PRRequest, allowManu
 		}
 	}
 
+	advisory := ""
+	if request.AdvisoryBody != nil {
+		advisory = request.AdvisoryBody(prospective.Commit)
+	}
 	if request.RequireFreshUpstream {
 		if out, err := gitPRBytes(request.Entry.LocalPath, nil, "fetch", "--prune", "origin"); err != nil {
 			return fail("base_unverified", "re-check the upstream before publishing: "+commandMessage(out, err), "my manifests sync "+request.Entry.Manifest)
@@ -170,6 +174,7 @@ func (a app) publishPullRequest(home string, request syncer.PRRequest, allowManu
 	}
 	baseBranch := pullRequestBaseBranch(request.Upstream, request.Branch)
 	body := fmt.Sprintf("Created by `my sync` from governed organization `%s`.\n\nTrusted manifest commit: `%s`\nProposed commit: `%s`\n\nThe repository's required governance check and review rules remain authoritative.", doc.doc.Organization.ID, manifestBase, prospective.Commit)
+	body += advisory
 	if recordRequired {
 		body += "\n\nMy-Record: " + request.RecordRef
 	}

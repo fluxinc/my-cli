@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/fluxinc/my-cli/internal/contractreview"
 	"github.com/fluxinc/my-cli/internal/manifest"
 	"github.com/fluxinc/my-cli/internal/syncer"
 )
@@ -34,34 +36,40 @@ type contractShow struct {
 }
 
 type adminContractResult struct {
-	Action       string   `json:"action"`
-	Rule         string   `json:"rule,omitempty"`
-	Previous     string   `json:"previous,omitempty"`
-	Source       string   `json:"source"`
-	ManifestPath string   `json:"manifest_path"`
-	ContractFile string   `json:"contract_file,omitempty"`
-	BaseCommit   string   `json:"base_commit,omitempty"`
-	BaseBlob     string   `json:"base_blob,omitempty"`
-	Blob         string   `json:"blob,omitempty"`
-	MinMyVersion string   `json:"min_my_version,omitempty"`
-	Contract     []string `json:"contract"`
-	Message      string   `json:"message,omitempty"`
-	Warnings     []string `json:"warnings,omitempty"`
-	NextCommands []string `json:"next_commands,omitempty"`
-	Publication  string   `json:"publication,omitempty"`
-	PRURL        string   `json:"pr_url,omitempty"`
-	PRHeadSHA    string   `json:"pr_head_sha,omitempty"`
+	Review       *contractreview.Report `json:"review,omitempty"`
+	Action       string                 `json:"action"`
+	Rule         string                 `json:"rule,omitempty"`
+	Previous     string                 `json:"previous,omitempty"`
+	Source       string                 `json:"source"`
+	ManifestPath string                 `json:"manifest_path"`
+	ContractFile string                 `json:"contract_file,omitempty"`
+	BaseCommit   string                 `json:"base_commit,omitempty"`
+	BaseBlob     string                 `json:"base_blob,omitempty"`
+	Blob         string                 `json:"blob,omitempty"`
+	MinMyVersion string                 `json:"min_my_version,omitempty"`
+	Contract     []string               `json:"contract"`
+	Message      string                 `json:"message,omitempty"`
+	Warnings     []string               `json:"warnings,omitempty"`
+	NextCommands []string               `json:"next_commands,omitempty"`
+	Publication  string                 `json:"publication,omitempty"`
+	PRURL        string                 `json:"pr_url,omitempty"`
+	PRHeadSHA    string                 `json:"pr_head_sha,omitempty"`
 }
 
 type adminContractOpts struct {
-	manifestDir  string
-	home         string
-	manifestName string
-	umbrellaRoot string
-	under        string
-	expectBlob   string
-	force        bool
-	jsonOut      bool
+	review        bool
+	reviewSet     bool
+	reviewHarness string
+	reviewModel   string
+	policyRoots   stringListFlag
+	manifestDir   string
+	home          string
+	manifestName  string
+	umbrellaRoot  string
+	under         string
+	expectBlob    string
+	force         bool
+	jsonOut       bool
 }
 
 // contractEdit is one planned contract change: the files it writes, relative
@@ -246,6 +254,8 @@ func (a app) runAdminContract(args []string) error {
 		return fmt.Errorf("missing admin contract subcommand")
 	}
 	switch args[0] {
+	case "review":
+		return a.runContractReview(args[1:])
 	case "add", "remove", "replace", "migrate":
 		return a.runAdminContractEdit(args[0], args[1:])
 	case "list", "show":
@@ -306,8 +316,17 @@ func parseAdminContractOpts(name string, stderr io.Writer, args []string) (opts 
 	fs.StringVar(&opts.expectBlob, "expect-blob", "", "refuse unless the contract_file is at this Git blob")
 	fs.BoolVar(&opts.force, "force", false, "allow dirty explicit --manifest-dir checkout")
 	fs.BoolVar(&opts.jsonOut, "json", false, "print JSON result")
+	fs.BoolVar(&opts.review, "review", false, "run advisory model review; --review=false overrides manifest opt-in")
+	fs.StringVar(&opts.reviewHarness, "harness", "", "review harness: claude or codex")
+	fs.StringVar(&opts.reviewModel, "model", "", "explicit review model")
+	fs.Var(&opts.policyRoots, "policy-root", "review policy source MOUNT=DIR (repeatable)")
 	rest, err = parseInterspersed(fs, args, map[string]bool{
-		"manifest-dir": true, "home": true, "manifest": true, "umbrella": true, "under": true, "expect-blob": true,
+		"manifest-dir": true, "home": true, "manifest": true, "umbrella": true, "under": true, "expect-blob": true, "harness": true, "model": true, "policy-root": true,
+	})
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "review" {
+			opts.reviewSet = true
+		}
 	})
 	return opts, rest, err
 }
@@ -491,6 +510,10 @@ func (a app) adminContractLocal(action string, args []string, opts adminContract
 		"git -C " + shellQuote(root) + " status --short",
 		"git -C " + shellQuote(root) + " diff -- " + strings.Join(sortedKeys(edit.files), " "),
 	}
+	if wantsContractReview(opts, doc) {
+		report := a.reviewContractEdit(opts, doc, root, head, edit.contract, currentContractText(root, doc, edit), "")
+		edit.result.Review = &report
+	}
 	return edit.result, nil
 }
 
@@ -650,6 +673,14 @@ func (a app) adminContractRegistered(action string, args []string, opts adminCon
 		},
 		Branch: branch, Upstream: upstream, Head: head, Changed: sortedKeys(edit.files),
 		FileContents: edit.files, Message: message, PreserveCheckout: true, RequireFreshUpstream: true,
+		AdvisoryBody: func(candidate string) string {
+			if !wantsContractReview(opts, doc) {
+				return ""
+			}
+			report := a.reviewContractEdit(opts, doc, repo, candidate, edit.contract, currentContractText(repo, doc, edit), root)
+			edit.result.Review = &report
+			return contractreview.Markdown(report)
+		},
 	}, false)
 	if result.Status != "pull request opened" {
 		message := result.Message
@@ -691,6 +722,9 @@ func (a app) printAdminContractResult(result adminContractResult, jsonOut bool) 
 		fmt.Fprintf(a.stderr, "warning: %s\n", warning)
 	}
 	printAdminNextCommands(a.stdout, result.NextCommands)
+	if result.Review != nil {
+		fmt.Fprintln(a.stdout, contractreview.Markdown(*result.Review))
+	}
 	return nil
 }
 

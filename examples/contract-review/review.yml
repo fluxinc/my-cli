@@ -1,0 +1,57 @@
+name: Advisory contract review
+on:
+  pull_request:
+    paths: [manifest.json, 'guidance/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install released reviewers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/reviewer-bin /tmp/reviewer-release
+          gh release download v0.50.0 --repo fluxinc/my-cli --dir /tmp/reviewer-release --pattern checksums.txt --pattern my-cli_0.50.0_linux_amd64.tar.gz
+          cd /tmp/reviewer-release
+          sha256sum --check --ignore-missing checksums.txt
+          tar -xzf my-cli_0.50.0_linux_amd64.tar.gz -C /tmp/reviewer-bin my
+          echo /tmp/reviewer-bin >> "$GITHUB_PATH"
+          npm install --global @anthropic-ai/claude-code@2.1.310
+      - name: Review exact candidate
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          REVIEW_MODEL: ${{ vars.CONTRACT_REVIEW_MODEL }}
+          REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.sha }}
+        run: |
+          # Add --policy-root handbook=PATH for each separately checked-out policy repo.
+          my admin contract review --manifest-dir . --base "$REVIEW_BASE" --harness claude --model "$REVIEW_MODEL" --json > /tmp/contract-review.json
+      - name: Post advisory evidence
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          try:
+              report = json.loads(Path('/tmp/contract-review.json').read_text())
+          except (OSError, ValueError):
+              report = {'status': 'incomplete', 'message': 'Review did not produce complete evidence.'}
+          Path('/tmp/contract-review-comment.md').write_text('## Conflict review\n\nAdvisory only; not a certificate of consistency.\n\n```json\n' + json.dumps(report, indent=2) + '\n```\n')
+          PY
+          gh pr comment "$PR_NUMBER" --body-file /tmp/contract-review-comment.md

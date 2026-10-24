@@ -32,6 +32,7 @@ var featureFloors = []featureFloor{
 		return false
 	}},
 	{Version: "0.47.0", Feature: "contract_file", Uses: func(doc Document) bool { return doc.ContractFile != "" }},
+	{Version: "0.50.0", Feature: "contract_review", Uses: func(doc Document) bool { return doc.ContractReview != (ContractReview{}) }},
 }
 
 // releaseVersionPattern is the min_my_version grammar: a plain X.Y.Z release,

@@ -83,7 +83,17 @@ type Document struct {
 	Profiles                  []Profile              `json:"profiles,omitempty"`
 	Contract                  []string               `json:"contract,omitempty"`
 	ContractFile              string                 `json:"contract_file,omitempty"`
+	ContractReview            ContractReview         `json:"contract_review,omitzero"`
 	Governance                Governance             `json:"governance,omitzero"`
+}
+
+// ContractReview opts into advisory review. It never changes edit authority.
+type ContractReview struct {
+	Enabled        bool    `json:"enabled,omitempty"`
+	Harness        string  `json:"harness,omitempty"`
+	Model          string  `json:"model,omitempty"`
+	TimeoutSeconds int     `json:"timeout_seconds,omitempty"`
+	MaxBudgetUSD   float64 `json:"max_budget_usd,omitempty"`
 }
 
 // Governance declares machine-enforced organization policy. Contract remains
@@ -961,6 +971,20 @@ func gitHead(path string, runner Runner) (string, error) {
 }
 
 func validateOrgManifest(doc Document, result *ValidationResult) {
+	if review := doc.ContractReview; review != (ContractReview{}) {
+		if review.Harness != "" && review.Harness != "claude" && review.Harness != "codex" {
+			result.Errors = append(result.Errors, "contract_review.harness must be claude or codex")
+		}
+		if review.Enabled && (review.Harness == "" || strings.TrimSpace(review.Model) == "") {
+			result.Errors = append(result.Errors, "enabled contract_review requires an explicit harness and model")
+		}
+		if review.TimeoutSeconds < 0 || review.TimeoutSeconds > 600 {
+			result.Errors = append(result.Errors, "contract_review.timeout_seconds must be 0 (default) or 1–600")
+		}
+		if review.MaxBudgetUSD < 0 || review.MaxBudgetUSD > 10 {
+			result.Errors = append(result.Errors, "contract_review.max_budget_usd must be 0 (default) or greater than 0 up to 10")
+		}
+	}
 	if doc.ManifestVersion <= 0 {
 		result.Errors = append(result.Errors, "manifest_version must be a positive integer")
 	}
