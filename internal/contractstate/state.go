@@ -3,6 +3,7 @@
 package contractstate
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,12 +29,13 @@ type Snapshot struct {
 }
 
 type Root struct {
-	Umbrella          string    `json:"umbrella,omitempty"`
-	Path              string    `json:"path"`
-	Kind              string    `json:"kind"`
-	SessionID         string    `json:"session_id,omitempty"`
-	InstalledRevision *Revision `json:"installed_revision,omitempty"`
-	LastError         string    `json:"last_error,omitempty"`
+	InstalledOutputSHA256 string    `json:"installed_output_sha256,omitempty"`
+	Umbrella              string    `json:"umbrella,omitempty"`
+	Path                  string    `json:"path"`
+	Kind                  string    `json:"kind"`
+	SessionID             string    `json:"session_id,omitempty"`
+	InstalledRevision     *Revision `json:"installed_revision,omitempty"`
+	LastError             string    `json:"last_error,omitempty"`
 }
 
 type State struct {
@@ -91,6 +93,12 @@ func (s State) Pending(path string) bool {
 		return false
 	}
 	root, ok := s.Roots[path]
+	if root.InstalledOutputSHA256 != "" {
+		hash, err := OutputHash(path)
+		if err != nil || hash != root.InstalledOutputSHA256 {
+			return true
+		}
+	}
 	return !ok || root.InstalledRevision == nil || *root.InstalledRevision != s.Active.Revision || root.LastError != ""
 }
 
@@ -192,3 +200,15 @@ func Update(home, name string, change func(*State) error) (State, error) {
 	}
 	return s, nil
 }
+
+// OutputHash lets reconciliation detect a successful write subsequently
+// replaced by a legacy writer, even when the manifest revision did not move.
+func OutputHash(root string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		return "", err
+	}
+	return ContentHash(data), nil
+}
+
+func ContentHash(data []byte) string { return fmt.Sprintf("%x", sha256.Sum256(data)) }

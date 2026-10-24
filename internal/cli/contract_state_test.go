@@ -315,3 +315,54 @@ func TestContractReconcileRepairsStaleUmbrellaBehindCurrentMarker(t *testing.T) 
 		t.Fatalf("stale umbrella guidance not repaired:\n%s", data)
 	}
 }
+
+func TestContractSyncRepairsChangedOutputsWithoutNewPull(t *testing.T) {
+	for _, command := range []string{"sync", "manifests"} {
+		t.Run(command, func(t *testing.T) {
+			body := `{"manifest_version":1,"organization":{"id":"acme","name":"Acme"},"contract":["Current rule."]}`
+			home, root, _, _, _ := setupCLITrackedManifestBody(t, body)
+			if _, _, err := umbrella.Ensure(root, "acme", "acme"); err != nil {
+				t.Fatal(err)
+			}
+			session := worksession.Session{SchemaVersion: 1, ID: "active", Status: worksession.StatusActive, Path: filepath.Join(root, "sessions", "active")}
+			if err := os.MkdirAll(session.Path, 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := worksession.Save(root, session); err != nil {
+				t.Fatal(err)
+			}
+			a := app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}}
+			if _, err := a.reconcileContractRoots(home, "acme", root); err != nil {
+				t.Fatal(err)
+			}
+			for _, path := range []string{root, session.Path} {
+				file := filepath.Join(path, "AGENTS.md")
+				data, err := os.ReadFile(file)
+				if err != nil {
+					t.Fatal(err)
+				}
+				writeCLITestFile(t, file, strings.Replace(string(data), "Current rule.", "Stale rule.", 1))
+			}
+			state, _ := contractstate.Load(home, "acme")
+			if !state.Pending(root) || !state.Pending(session.Path) {
+				t.Fatal("changed output behind current revision was not pending")
+			}
+			var err error
+			if command == "sync" {
+				err = a.runSync([]string{"--home", home, "--manifest", "acme", "--umbrella", root, "--scope", "manifest", "--json"})
+			} else {
+				err = a.runManifestSync([]string{"acme", "--home", home, "--umbrella", root, "--json"})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			state, _ = contractstate.Load(home, "acme")
+			for _, path := range []string{root, session.Path} {
+				data, _ := os.ReadFile(filepath.Join(path, "AGENTS.md"))
+				if !strings.Contains(string(data), "Current rule.") || strings.Contains(string(data), "Stale rule.") || state.Pending(path) {
+					t.Fatalf("output not recovered: %s", path)
+				}
+			}
+		})
+	}
+}

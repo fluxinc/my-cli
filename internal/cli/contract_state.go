@@ -307,6 +307,7 @@ func (a app) reconcileContractRoots(home, name, root string) ([]contractRootResu
 				return fmt.Errorf("contract changed before guidance write; retry")
 			}
 			var writeErr error
+			expectedOutputHash := ""
 			_, exists, rootErr := existingUmbrellaRootStatus(root, name)
 			if rootErr != nil {
 				writeErr = rootErr
@@ -323,6 +324,11 @@ func (a app) reconcileContractRoots(home, name, root string) ([]contractRootResu
 				if err != nil {
 					writeErr = err
 				} else {
+					content, composeErr := guidance.ComposeWithOptions(doc.ref.LocalPath, doc.doc, opts)
+					if composeErr != nil {
+						return composeErr
+					}
+					expectedOutputHash = contractstate.ContentHash(content)
 					written, err := guidance.Ensure(root, doc.ref.LocalPath, doc.doc, opts)
 					writeErr = err
 					if err == nil && written.Status == "blocked" {
@@ -342,6 +348,7 @@ func (a app) reconcileContractRoots(home, name, root string) ([]contractRootResu
 					if err != nil {
 						writeErr = err
 					} else {
+						expectedOutputHash = contractstate.ContentHash(worksession.RenderGuidance(session, context))
 						writeErr = worksession.EnsureGuidance(session, context)
 					}
 				}
@@ -354,12 +361,24 @@ func (a app) reconcileContractRoots(home, name, root string) ([]contractRootResu
 					writeErr = fmt.Errorf("contract changed during guidance write; retry")
 				}
 			}
+			outputHash := ""
+			if writeErr == nil {
+				outputHash, writeErr = contractstate.OutputHash(r.Path)
+			}
+			if writeErr == nil && outputHash != expectedOutputHash {
+				writeErr = fmt.Errorf("guidance changed during installation; retry")
+			}
 			if writeErr != nil {
 				result.Status = "pending"
 				result.Error = writeErr.Error()
 			}
 			s.Register(r.Path, r.Kind, r.SessionID)
 			s.Installed(r.Path, expected.Revision, result.Error)
+			if result.Error == "" {
+				stored := s.Roots[r.Path]
+				stored.InstalledOutputSHA256 = outputHash
+				s.Roots[r.Path] = stored
+			}
 			return nil
 
 		})
