@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.47.0 - 2026-10-24
+
 ### Added
 
 - File-backed organization contract. A manifest can set
