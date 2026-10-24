@@ -166,9 +166,9 @@ surfaced (see section 6). Neither side silently overwrites the other.
 - **Proposals (later, optional).** v1 authoring is admin-only. A later phase
   lets members without manifest push rights propose a change:
   - `my contract propose "TEXT" [--replace N|"OLD"] [--retract N|"OLD"]`
-    writes a local patch against the current revision, which the member
-    sends to an admin.
-  - The admin applies it with `my admin contract apply <patch>`.
+    writes a proposal bundle (section 11) against the current revision,
+    which the member sends to an admin.
+  - The admin applies it with `my admin contract apply <bundle>`.
   - It needs no repo push and adds no content-repo proposal domain.
   - A proposal never activates anything, never raises anyone's
     permissions, and never enters launch context.
@@ -406,6 +406,94 @@ on the harness.
 The rendered `AGENTS.md` is byte-identical before and after migration, and a
 golden test proves it. Inline `contract` stays supported indefinitely.
 
+### 11. Extension point: evidence-driven proposals (later, optional)
+
+The operator's follow-up idea is a post-processing step that reads recent
+traces and session or incident logs, then proposes new contract rules,
+policies or skills, or changes to existing ones. Non-admins could run it as
+an incident closeout, or it could run alongside sync once issue records are
+published.
+
+Nothing in this section is built now. The plan only keeps the seams so the
+step can be added later without rework. Even the proposal bundle is a
+versioned design seam, implemented with the phase 5 proposals work rather
+than as extra infrastructure in phase 1.
+
+- **A versioned proposal bundle that covers every target.** The phase 5
+  `propose` command emits this format rather than a bare patch, so a later
+  generator produces the same artifact a person does. A bundle carries:
+  - `schema_version`.
+  - `target` (`contract`, `policy`, `skill` or `guidance`) and `op` (`add`,
+    `replace`, `retract` or `amend`).
+  - The proposed text or patch, and `base` (manifest commit plus file blob
+    or policy digest).
+  - `strength`: `recommendation` or `obligation`.
+  - `proposed_scope`: all members, a role, or a specific policy or skill.
+  - `rationale`, plus any known exceptions or conflicting evidence.
+  - `evidence` references (see below).
+  - `submitted_by`, the identity the caller claims. This is kept separate
+    from the verified reviewer identity, which only provider review
+    supplies.
+  - `generator`: `human`, or harness + model + prompt version.
+  - A normalized `dedupe_key`.
+- **Intake through existing authority.**
+  - Phase 5 ships `my admin contract apply <bundle>` for the contract
+    target. It enforces the expected base and opens the same reviewed PR an
+    admin edit would.
+  - The phase 4 review accepts bundles as input.
+  - A generic `my admin proposal apply` that routes bundles to other
+    targets' authoring paths is a candidate future surface, not a
+    commitment.
+- **The generator is a skill or workflow, not a core CLI model
+  dependency.** It runs on the caller's own harness, and non-admins can run
+  it.
+  - Inputs are explicitly selected records, sessions or traces within a
+    bounded time window.
+  - Access is caller-scoped. It reads only what the caller may already read.
+    That includes the approved, published contract, policies and skills,
+    which it needs in order to propose amendments.
+  - It never receives manifest write access or admin credentials.
+  - It is sandboxed like the review (section 6) and can only write bundle
+    files. It cannot grant itself admin rights, apply or merge anything, or
+    put text into launch context.
+- **Evidence and privacy.**
+  - **Published sources.** Each evidence reference names an immutable
+    source revision or digest and the time window it covers.
+  - **Local sources.** Unpublished traces may be analyzed too. Their
+    provenance is marked `local/unpublished`, and they are never uploaded
+    automatically.
+  - **No raw text.** Bundles never copy raw trace or log text.
+  - **References can leak too.** Names and paths can be private, so
+    references stay access-controlled and rationale is redacted.
+  - **What a model may see.** An explicit organization policy states which
+    evidence may be sent to a model at all. Secrets and unnecessary
+    sensitive content, such as customer or patient identifiers, are
+    excluded.
+- **One incident is a hypothesis, not a universal rule.**
+  - The generator states whether a candidate is a recommendation or an
+    obligation, notes exceptions and conflicting evidence, and proposes a
+    scope.
+  - The admin decides the audience. A candidate may belong in the
+    all-member contract (section 7 visibility applies), or in a scoped
+    policy or skill instead. Visibility is judged per target, not as a
+    blanket all-member requirement.
+- **No repeated suggestions, no lost evidence.**
+  - A candidate whose `dedupe_key` matches active text or a known pending
+    bundle is not re-proposed. Its distinct supporting evidence is attached
+    to the existing bundle instead of being discarded.
+  - An admin therefore sees a cluster, such as ten incidents behind one
+    rule, as a single item with all of its evidence.
+- **Triggers and transport are deliberately open.**
+  - A future adapter consumes only successful sync results and resolves the
+    record revisions that were actually published. It never treats an
+    attempted or failed sync as published. Whether today's `my sync --json`
+    report carries complete published-record ids is checked when that
+    adapter is designed, not assumed here.
+  - The later phase decides how bundles travel: as a file, as a
+    manifest-repo PR, or through a declared content-repo inbox.
+  - However bundles travel, a proposal never renders into launch context and
+    never raises permissions.
+
 ## Scenarios
 
 1. **A log path moves.** An admin runs `replace`, which is one PR with a
@@ -444,6 +532,16 @@ golden test proves it. Inline `contract` stays supported indefinitely.
     snapshot or retractions before going quiet.
 11. **An organization that never had a contract.** No section, no hooks, no
     state, no noise.
+12. **Incident closeout (later phase).** After syncing an incident's
+    records, a non-admin runs the closeout skill on those records.
+    - It writes one bundle proposing a scoped recommendation and cites the
+      published record revisions.
+    - If a pending bundle already makes the same proposal, the new evidence
+      is added to that bundle.
+    - An admin judges the audience. In this case the rule fits better in a
+      role policy than in the all-member contract.
+    - The admin then applies the bundle through the reviewed path.
+    - Until it merges, no session sees the rule.
 
 ## Phases (proposed; none of them is authorized yet)
 
@@ -476,8 +574,13 @@ golden test proves it. Inline `contract` stays supported indefinitely.
    - Deterministic lint and the sandboxed `my admin contract review`.
    - PR-body findings and stale-review detection.
    - The example CI workflow.
-5. **Proposals (optional).** `propose` patch export and
-   `my admin contract apply`.
+5. **Proposals (optional).**
+   - The proposal bundle schema.
+   - The `propose` bundle export.
+   - `my admin contract apply <bundle>`.
+
+   The evidence-driven generator (section 11) builds on this phase later,
+   as its own plan.
 
 Each phase is its own release, with sandbox smoke tests (stub `gh`, local
 bare repos). Migrating the operator's manifest after phase 1 would be a
@@ -534,6 +637,12 @@ separate, explicitly approved step.
 - A missing harness reports `unavailable`, and a missing policy source
   reports `incomplete`.
 - Proposals never render into launch context.
+- A bundle whose base has moved refuses to apply.
+- A bundle with raw evidence text instead of references fails validation.
+- A bundle that duplicates active or pending text is not re-proposed, and
+  its distinct evidence is attached to the existing bundle.
+- A bundle citing an unpublished or failed-sync source is marked
+  `local/unpublished`, never `published`.
 
 ## Defaults chosen (the operator can override any of them)
 
