@@ -172,7 +172,7 @@ The organization contract — short, binding rules rendered into generated
 my admin contract add "Record decisions in the handbook before acting on them." --manifest-dir ~/src/acme-manifest
 my admin contract remove 2 --manifest-dir ~/src/acme-manifest
 my admin contract replace 1 "Record decisions in the handbook first." --manifest-dir ~/src/acme-manifest
-my admin contract migrate --manifest-dir ~/src/acme-manifest   # inline list -> guidance/contract.md
+my admin contract migrate --manifest-dir ~/src/acme-manifest   # inline list -> guidance/contract.md, keeping the list for older my
 ```
 
 Without `--manifest-dir`, the same commands open one pull request against
@@ -180,7 +180,8 @@ the registered manifest. `remove` and `replace` accept the 1-based index shown
 by `my contract list` or the exact rule text. Validation rejects empty,
 multiline, and duplicate rules. A growing contract is easier to review as
 `guidance/contract.md`, one `- rule` per line with optional `## ` groups.
-Migrate only after every member runs my v0.46.0 or later. See
+`migrate` keeps the inline list as a copy older `my` releases read, so members
+do not need to upgrade first. Run it with a current `my`. See
 [Guidance and Contract](./guidance-and-contract.md).
 
 ## Governance policies

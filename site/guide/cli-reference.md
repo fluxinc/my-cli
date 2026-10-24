@@ -192,7 +192,7 @@ my admin manifest-mounts remove <id> --manifest-dir DIR [--prune-roles] [--force
 my admin contract add "RULE TEXT" [--under HEADING] [--manifest NAME] [--umbrella DIR] [--expect-blob SHA] [--json]
 my admin contract remove <index|"RULE TEXT"> [--manifest NAME] [--umbrella DIR] [--expect-blob SHA] [--json]
 my admin contract replace <index|"OLD TEXT"> "NEW TEXT" [--manifest NAME] [--umbrella DIR] [--expect-blob SHA] [--json]
-my admin contract migrate [--manifest NAME] [--umbrella DIR] [--json]
+my admin contract migrate [--from-inline] [--manifest NAME] [--umbrella DIR] [--json]
 my admin contract add|remove|replace|migrate ... --manifest-dir DIR [--force] [--json]
 my admin policy add <id> --title TEXT --mount ID --path PATH --version VERSION --acceptance required|optional [--summary TEXT] [--topic TEXT] [--role ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
 my admin policy add <id> ... --manifest-dir DIR --sha256 sha256:HEX [--force] [--json]

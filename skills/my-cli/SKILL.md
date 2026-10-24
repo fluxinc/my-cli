@@ -66,8 +66,9 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
   records, not manifest catalog rows.
 - **Guidance** — the generated root `AGENTS.md` (and `CLAUDE.md` pointer) built
   from a public baseline plus manifest and selected-role fragments. A manifest
-  `contract` list, or a `contract_file` such as `guidance/contract.md` with one
-  `- rule` per line, adds short, binding org rules rendered as an
+  `contract` list, or `guidance/contract.md` with one `- rule` per line
+  (`contract_source` plus an inline copy for older releases, or file-only
+  `contract_file`), adds short, binding org rules rendered as an
   `## Organization Contract` section. Governed manifests also add a compact,
   role-scoped `## Organization Policies` consultation index; treat both
   sections as obligations.
@@ -406,7 +407,7 @@ my admin policy remove <id>       # propose removal without rewriting old accept
 my admin contract add "RULE" [--under HEADING] [--manifest NAME] [--umbrella DIR] # propose an isolated manifest PR
 my admin contract remove <index|"RULE"> [--manifest NAME] [--umbrella DIR]
 my admin contract replace <index|"OLD"> "NEW" [--manifest NAME] [--umbrella DIR] # one atomic edit
-my admin contract migrate [--manifest NAME] [--umbrella DIR] # inline contract -> guidance/contract.md
+my admin contract migrate [--from-inline] [--manifest NAME] [--umbrella DIR] # inline contract -> guidance/contract.md + inline copy; also repairs drift
 my record domains                # inspect manifest-routed generic record classes
 my record add <domain> <slug>    # write, queue, and optionally PR-submit a record
 my record outbox                 # distinguish queued/failed/submitted publication

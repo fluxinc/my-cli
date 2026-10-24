@@ -237,15 +237,18 @@ my contract diff [--from REV] [--to REV] [--json]
 my admin contract add "RULE TEXT" [--under <heading>] [--manifest <name>] [--umbrella <root>]
 my admin contract remove <index|"RULE TEXT"> [--manifest <name>] [--umbrella <root>]
 my admin contract replace <index|"OLD TEXT"> "NEW TEXT" [--manifest <name>] [--umbrella <root>]
-my admin contract migrate [--manifest <name>] [--umbrella <root>]
+my admin contract migrate [--from-inline] [--manifest <name>] [--umbrella <root>]
 ```
 
 Manifest `contract` entries are short, binding organization rules rendered
 into generated `AGENTS.md`. A growing contract can live in a manifest-repo
-file instead (`"contract_file": "guidance/contract.md"`, v0.47.0+): one
-`- rule` per line with optional `## ` groups, so each change is a one-line
-diff. `migrate` moves an inline list there without changing the rendered
-guidance; run it only once every member has my v0.46.0 or later. Reads stay top-level; edits go through the admin
+file instead: `guidance/contract.md`, one `- rule` per line with optional
+`## ` groups, so each change is a one-line diff. `migrate` writes the file,
+points `contract_source` at it, and keeps the inline `contract` list as a copy
+that older `my` releases read, so no member has to upgrade first and the
+rendered guidance does not change. Admin edits keep the file and the copy in
+step (v0.51.0+). The file-only `contract_file` form (v0.47.0+) still works but
+needs every member on v0.47.0 or later. Reads stay top-level; edits go through the admin
 review flow. The registered-manifest form resolves the current umbrella and
 opens an isolated governed pull request without dirtying the sync-managed
 manifest cache. `--manifest-dir <checkout>` remains available for maintainers
@@ -339,7 +342,7 @@ my admin meetings add                # alias of my meetings add
 my admin support add                 # alias of my support add
 my admin tools add|edit|remove       # edit manifest tools[]
 my admin repos add                   # edit catalog/repos.json
-my admin contract add|remove|replace|migrate  # edit contract[] or contract_file
+my admin contract add|remove|replace|migrate  # edit contract[], contract_source or contract_file
 ```
 
 Admin aliases are intentionally limited to those mutating/configuration

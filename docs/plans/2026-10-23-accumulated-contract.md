@@ -6,6 +6,20 @@ reviewed by Codex. Phase 1 (file-backed contract) shipped in v0.47.0, phase 2
 phase 4 (advisory review) in v0.50.0. Phase 5 and the evidence generator remain
 optional and later.
 
+> **Revised in v0.51.0: compatible migration.** The file-only shape below
+> (`contract_file` plus a `min_my_version` 0.47.0 floor) turned out to be a
+> cutoff. Tested with tagged binaries against a migrated manifest, v0.46.0
+> refused every manifest command until `my update`, and v0.45.0 synced cleanly
+> and rendered no contract at all. Requiring admins to confirm member versions
+> first was a silent prerequisite. v0.51.0 replaces it as the migration target:
+> `contract_source: "guidance/contract.md"` plus the inline `contract` list,
+> kept as an exact, ordered copy, with no floor. Every released `my` reads
+> the copy, and v0.51.0+ reads the file. When the two disagree, members get
+> the copy with a warning, and authoring and publication refuse until
+> `migrate` (or `migrate --from-inline`) repairs it. `contract_file` stays
+> supported as the file-only form. The "One source", "Feature floor" and §10
+> text below describes v0.47.0–v0.50.0.
+
 ## Goal (operator)
 
 Organizations need a growing list of things that are always true and that
