@@ -387,12 +387,89 @@ func (a app) runManifestSync(args []string) error {
 			rest = []string{name}
 		}
 	}
+	// Capture the previous checkout before any pull. Missing caches are first
+	// observations after clone and have no previous revision to diff.
+	if !printOnly {
+		registry, err := manifest.LoadRegistry(home)
+		if err != nil {
+			return err
+		}
+		for _, ref := range registry.Manifests {
+			selected := all
+			for _, name := range rest {
+				selected = selected || name == ref.Name
+			}
+			if !selected {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(ref.LocalPath, "manifest.json")); os.IsNotExist(err) {
+				continue
+			}
+			root, hasRoot, rootErr := existingUmbrellaRoot(home, ref.Name, umbrellaRoot)
+			if rootErr != nil || !hasRoot {
+				root = ""
+			}
+			if _, _, err := observeContract(home, ref.Name, root, false); err != nil {
+				fmt.Fprintf(a.stderr, "warning: previous contract snapshot unavailable: %v\n", err)
+			}
+		}
+	}
 	results, err := manifest.Sync(home, rest, all, printOnly, nil)
 	if err != nil {
 		return err
 	}
+	changes := map[string]*contractChange{}
+	if !printOnly {
+		for _, result := range results {
+			_, change, err := observeContract(home, result.Name, "", result.Fetched)
+			if err != nil {
+				continue
+			} // Per-result diagnostic below.
+			changes[result.Name] = change
+		}
+	}
 	derivedManifest, derived, derivedNotices, derivedErr := a.manifestSyncDerived(home, umbrellaRoot, results, printOnly || noDerived)
 	wrapped := wrapManifestSyncResults(results, derivedManifest, derived, derivedNotices)
+	if !printOnly {
+		for i := range wrapped {
+			item := &wrapped[i]
+			root, hasRoot, rootErr := existingUmbrellaRoot(home, item.Name, umbrellaRoot)
+			if rootErr != nil || !hasRoot {
+				root = ""
+			}
+			state, change, err := observeContract(home, item.Name, root, item.Fetched)
+			if err != nil {
+				item.ContractError = err.Error()
+				if derivedErr == nil {
+					derivedErr = err
+				}
+				continue
+			}
+			if previous := changes[item.Name]; previous != nil {
+				change = previous
+			}
+			item.ContractChange = change
+			if change != nil {
+				fmt.Fprint(a.stderr, change.Diff)
+			}
+			if !noDerived && contractPending(state) {
+				roots, err := a.reconcileContractRoots(home, item.Name, root)
+				if item.Derived == nil {
+					item.Derived = &derivedReconcileReport{}
+				}
+				item.Derived.ContractRoots = roots
+				if err != nil {
+					item.ContractError = err.Error()
+					if derivedErr == nil {
+						derivedErr = err
+					}
+				}
+				if derivedReportFailed(item.Derived) && derivedErr == nil {
+					derivedErr = fmt.Errorf("contract reconciliation remains pending")
+				}
+			}
+		}
+	}
 	if jsonOut {
 		if err := printJSON(a.stdout, wrapped); err != nil {
 			return err
@@ -411,6 +488,14 @@ func (a app) runManifestSync(args []string) error {
 		if derived != nil {
 			a.printDerivedReconcileReport(*derived, true)
 		}
+		for _, item := range wrapped {
+			if item.Derived != nil && item.Name != derivedManifest {
+				a.printDerivedReconcileReport(*item.Derived, true)
+			}
+			if item.ContractError != "" {
+				fmt.Fprintf(a.stderr, "contract\t%s\terror\t%s\n", item.Name, item.ContractError)
+			}
+		}
 		printManifestSyncDerivedNotices(a.stdout, results, derivedNotices)
 	}
 	if manifestResultsFailed(results) {
@@ -427,6 +512,8 @@ func (a app) runManifestSync(args []string) error {
 
 type manifestSyncCommandResult struct {
 	manifest.SyncResult
+	ContractChange *contractChange         `json:"contract_change,omitempty"`
+	ContractError  string                  `json:"contract_error,omitempty"`
 	Derived        *derivedReconcileReport `json:"derived,omitempty"`
 	DerivedStatus  string                  `json:"derived_status,omitempty"`
 	DerivedMessage string                  `json:"derived_message,omitempty"`
@@ -510,7 +597,7 @@ func (a app) manifestSyncDerived(home, umbrellaRoot string, results []manifest.S
 	}
 	report, err := a.reconcileDerived(home, manifestName, root)
 	if err != nil {
-		return manifestName, nil, notices, err
+		return manifestName, &report, notices, err
 	}
 	return manifestName, &report, notices, nil
 }

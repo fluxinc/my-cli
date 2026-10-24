@@ -572,8 +572,9 @@ than as extra infrastructure in phase 1.
    - `my compile` and contained projections carry the contract content and
      revision, so migrating to a file never drops the contract from them.
    - Docs and changelogs.
-2. **Revisions and sync diff.**
-   - The three cursors and per-root pending reconciliation.
+2. **Revisions and sync diff.** *Implemented for the next release.*
+   - Active and installed cursors, and per-root pending reconciliation.
+     Emission receipts remain part of phase 3.
    - The sync `contract_change` diff.
    - Fan-out to session roots.
    - `my contract status` and `my contract diff`.

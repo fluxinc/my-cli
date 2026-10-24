@@ -142,10 +142,28 @@ my admin contract replace 3 "Service logs live under /var/log/acme."
   the contract, so protect that branch.
 
 A rule reaches teammates when the change merges and their workspaces sync:
-regenerated `AGENTS.md` and every new launch carry it. In v0.47.0, harness
-conversations that are already running are not reloaded. Start a new
-session, or paste `my contract show`, to pick up a change. Live in-session
-delivery is planned.
+regenerated `AGENTS.md` and every new launch carry it. Sync records the active
+revision before writing derived files, shows a line diff on stderr, and includes
+`contract_change` in JSON. Each umbrella and active session has its own installed
+revision. A failed write or `--no-derived` leaves it pending; the next sync retries
+without requiring another pull. Closed sessions leave the live root inventory.
+
+```sh
+my contract status [--manifest NAME] [--json]
+my contract diff [--from REV] [--to REV] [--json]
+```
+
+These two commands read only local files and Git objects. Status distinguishes
+unpublished local changes from the last observed active revision, and reports
+the last successful remote check rather than claiming current connectivity.
+Historical diffs resolve the manifest and its contract file at the same commit.
+With no revisions specified, diff compares the previous active snapshot to the
+active contract. Explicit `--from` and `--to` resolve local Git commits. State lives under
+`~/.local/share/my-cli/state/contract/<manifest>.json`.
+
+Guidance installation does **not** prove that a running harness read the update.
+Live delivery is currently reported as unsupported. Restart the session or paste
+`my contract show` to supply the updated contract; hook adapters ship separately.
 
 ### Migrating an inline contract
 

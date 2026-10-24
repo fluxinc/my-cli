@@ -141,6 +141,7 @@ type Result struct {
 	// intentionally omitted instead of reporting a stale tracking-ref count.
 	BehindUnknown bool     `json:"behind_unknown,omitempty"`
 	FetchError    string   `json:"fetch_error,omitempty"`
+	Fetched       bool     `json:"fetched,omitempty"`
 	Dirty         []string `json:"dirty,omitempty"`
 	Changed       []string `json:"changed,omitempty"`
 	PRURL         string   `json:"pr_url,omitempty"`
@@ -517,6 +518,8 @@ func inspectWithMode(entry Entry, opts Options, runner Runner, mode inspectMode)
 			fetchFailed = true
 			in.result.BehindUnknown = true
 			in.result.FetchError = msg
+		} else {
+			in.result.Fetched = true
 		}
 	}
 	branch, out, err := gitTrim(runner, entry.LocalPath, "rev-parse", "--abbrev-ref", "HEAD")
