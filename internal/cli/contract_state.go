@@ -289,7 +289,7 @@ func (a app) reconcileContractRoots(home, name, root string) ([]contractRootResu
 			root = r.Path
 		}
 
-		if !state.Pending(r.Path) {
+		if !state.Pending(r.Path) && !umbrellaGuidanceStale(r, doc) {
 			continue
 		}
 		result := contractRootResult{Path: r.Path, Kind: r.Kind, Status: "current"}
@@ -370,6 +370,21 @@ func (a app) reconcileContractRoots(home, name, root string) ([]contractRootResu
 		results = append(results, result)
 	}
 	return results, nil
+}
+
+// umbrellaGuidanceStale catches an umbrella AGENTS.md that an older writer
+// replaced after its marker was recorded: setup and launch still write base
+// guidance outside the state lock. Only managed, stale files are rewritten.
+func umbrellaGuidanceStale(r contractstate.Root, doc registeredDoc) bool {
+	if r.Kind != "umbrella" {
+		return false
+	}
+	opts, err := guidanceOptionsForSelectedRole(r.Path, doc.doc)
+	if err != nil {
+		return false
+	}
+	check, err := guidance.CheckWithOptions(r.Path, doc.ref.LocalPath, doc.doc, opts)
+	return err == nil && check.Status == "stale"
 }
 
 func pathWithinContractRoot(root, path string) bool {

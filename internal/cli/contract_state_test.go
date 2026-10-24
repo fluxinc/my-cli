@@ -280,3 +280,38 @@ func TestContractSessionParentSymlinkCannotEscapeUmbrella(t *testing.T) {
 		t.Fatal("symlink ancestor escaped umbrella")
 	}
 }
+
+// A legacy writer that loaded an older manifest can replace AGENTS.md after
+// reconciliation marked the umbrella current; the next reconcile repairs it.
+func TestContractReconcileRepairsStaleUmbrellaBehindCurrentMarker(t *testing.T) {
+	body := `{"manifest_version":1,"organization":{"id":"acme","name":"Acme"},"umbrella":{"recommended_path":"~/acme"},"contract":["Current rule."]}`
+	home, root, _, _, _ := setupCLITrackedManifestBody(t, body)
+	if _, _, err := umbrella.Ensure(root, "acme", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	a := app{stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}}
+	if _, err := a.reconcileContractRoots(home, "acme", root); err != nil {
+		t.Fatal(err)
+	}
+	state, err := contractstate.Load(home, "acme")
+	if err != nil || state.Pending(root) {
+		t.Fatalf("umbrella not marked current: %#v %v", state.Roots, err)
+	}
+	agents := filepath.Join(root, "AGENTS.md")
+	data, err := os.ReadFile(agents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := strings.Replace(string(data), "Current rule.", "Older rule.", 1)
+	if stale == string(data) {
+		t.Fatal("fixture guidance does not contain the rule")
+	}
+	writeCLITestFile(t, agents, stale)
+	if _, err := a.reconcileContractRoots(home, "acme", root); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(agents)
+	if !strings.Contains(string(data), "Current rule.") || strings.Contains(string(data), "Older rule.") {
+		t.Fatalf("stale umbrella guidance not repaired:\n%s", data)
+	}
+}
