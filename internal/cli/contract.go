@@ -85,6 +85,8 @@ func (a app) runContract(args []string) error {
 		return a.runContractList(args[1:])
 	case "show":
 		return a.runContractShow(args[1:])
+	case "status", "diff":
+		return a.runContractStateCommand(args[0], args[1:])
 	case "add", "remove", "replace", "migrate":
 		return fmt.Errorf("my contract %s edits the manifest; use my admin contract %s", args[0], args[0])
 	case "-h", "--help", "help":
@@ -99,6 +101,8 @@ func (a app) printContractUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
   my contract list [--manifest NAME] [--home DIR] [--json]
   my contract show [--manifest NAME] [--home DIR] [--json]
+  my contract status [--manifest NAME] [--home DIR] [--json]
+  my contract diff [--from REV] [--to REV] [--manifest NAME] [--home DIR] [--json]
 
 The organization contract is the manifest's list of short, binding rules,
 rendered into generated AGENTS.md. It lives inline in manifest.json or, once

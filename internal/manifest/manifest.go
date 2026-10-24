@@ -49,6 +49,7 @@ type SyncResult struct {
 	LocalPath string `json:"local_path"`
 	Status    string `json:"status"`
 	Changed   bool   `json:"changed,omitempty"`
+	Fetched   bool   `json:"fetched,omitempty"`
 	Message   string `json:"message,omitempty"`
 	Error     string `json:"error,omitempty"`
 }
@@ -909,6 +910,7 @@ func syncOne(ref Ref, dryRun bool, runner Runner) SyncResult {
 			return res
 		}
 		res.Status = "synced"
+		res.Fetched = true
 		after, afterErr := gitHead(ref.LocalPath, runner)
 		if beforeErr != nil || afterErr != nil || before != after {
 			res.Changed = true
@@ -944,6 +946,7 @@ func syncOne(ref Ref, dryRun bool, runner Runner) SyncResult {
 		return res
 	}
 	res.Status = "synced"
+	res.Fetched = true
 	res.Changed = true
 	res.Message = strings.TrimSpace(string(out))
 	return res

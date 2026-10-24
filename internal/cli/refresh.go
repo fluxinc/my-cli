@@ -106,8 +106,25 @@ func (a app) maybeAutoRefresh(home, manifestName, umbrellaRoot, root string, noR
 		if !autoRefreshDue(state, key, now, ttl) {
 			continue
 		}
+		if entry.Role == "manifest" {
+			if _, _, err := observeContract(home, entry.Manifest, root, false); err != nil {
+				fmt.Fprintf(a.stderr, "warning: previous contract snapshot unavailable: %v\n", err)
+			}
+		}
 		result := syncer.Inspect([]syncer.Entry{entry}, syncer.InspectOptions{Fetch: true})[0]
 		item, _, include := doctorFixFreshnessItem(entry, result)
+		if entry.Role == "manifest" {
+			_, change, err := observeContract(home, entry.Manifest, root, result.Fetched)
+			if err != nil {
+				fmt.Fprintf(a.stderr, "warning: contract observation failed: %v\n", err)
+			} else {
+				if change != nil {
+					fmt.Fprint(a.stderr, change.Diff)
+				}
+				a.reconcileContractRootsWarning(home, entry.Manifest, root)
+			}
+		}
+
 		state.Repos[key] = autoRefreshRecord{LastAutoRefresh: now.Format(time.RFC3339)}
 		changed = true
 		if include && item.Status == "fixed" {
@@ -179,6 +196,9 @@ func (a app) requireGovernedManifestFreshness(home string, doc registeredDoc, ro
 	if !autoRefreshDue(state, key, now, ttl) {
 		return nil
 	}
+	if _, _, err := observeContract(home, doc.ref.Name, root, false); err != nil {
+		fmt.Fprintf(a.stderr, "warning: contract observation failed: %v\n", err)
+	}
 	result := syncer.Inspect([]syncer.Entry{*manifestEntry}, syncer.InspectOptions{Fetch: true})[0]
 	if result.BehindUnknown || result.Status == "unknown" || result.Status == "failed" || result.FetchError != "" {
 		message := result.FetchError
@@ -209,6 +229,13 @@ func (a app) requireGovernedManifestFreshness(home string, doc registeredDoc, ro
 	verified := syncer.Inspect([]syncer.Entry{*manifestEntry}, syncer.InspectOptions{})[0]
 	if verified.BehindUnknown || verified.Status == "failed" || len(verified.Dirty) != 0 || verified.Ahead != 0 || verified.Behind != 0 {
 		return fmt.Errorf("governed operation blocked: manifest checkout did not converge to a clean remote revision")
+	}
+	_, change, err := observeContract(home, doc.ref.Name, root, result.Fetched)
+	if err != nil {
+		fmt.Fprintf(a.stderr, "warning: contract observation failed: %v\n", err)
+	}
+	if change != nil {
+		fmt.Fprint(a.stderr, change.Diff)
 	}
 	state.Repos[key] = autoRefreshRecord{LastAutoRefresh: now.Format(time.RFC3339)}
 	if err := saveAutoRefreshState(root, state); err != nil {

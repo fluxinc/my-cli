@@ -83,6 +83,18 @@ func (a app) runSync(args []string) error {
 	if err != nil {
 		return a.maybeJSONError(jsonOut, err)
 	}
+	if !printOnly && syncScopeAllowsDerived(scope) {
+		root, hasRoot, rootErr := existingUmbrellaRoot(home, manifestName, umbrellaRoot)
+		if rootErr != nil {
+			return a.maybeJSONError(jsonOut, rootErr)
+		}
+		if !hasRoot {
+			root = ""
+		}
+		if _, _, err := observeContract(home, manifestName, root, false); err != nil {
+			fmt.Fprintf(a.stderr, "warning: previous contract snapshot unavailable: %v\n", err)
+		}
+	}
 	if doc, loadErr := loadSingleRegisteredDoc(home, manifestName); loadErr != nil {
 		return a.maybeJSONError(jsonOut, loadErr)
 	} else if root, rootErr := resolveMyRoot(home, manifestName, umbrellaRoot); rootErr != nil {
@@ -176,16 +188,36 @@ func (a app) runSync(args []string) error {
 		report.Results = append(report.Results, a.syncLeftoverResults(home, manifestName, syncRoot)...)
 	}
 	var derived *derivedReconcileReport
-	if !printOnly && !noDerived && syncScopeAllowsDerived(scope) {
-		if changedManifest, ok := changedManifestForDerived(report); ok {
-			if root, hasRoot, err := existingUmbrellaRoot(home, changedManifest, umbrellaRoot); err != nil {
-				return a.maybeJSONError(jsonOut, err)
-			} else if hasRoot {
-				derivedReport, err := a.reconcileDerived(home, changedManifest, root)
-				if err != nil {
-					return a.maybeJSONError(jsonOut, err)
-				}
-				derived = &derivedReport
+	var derivedErr error
+	var change *contractChange
+	if !printOnly && syncScopeAllowsDerived(scope) {
+		root, hasRoot, err := existingUmbrellaRoot(home, manifestName, umbrellaRoot)
+		if err != nil {
+			return a.maybeJSONError(jsonOut, err)
+		}
+		if !hasRoot {
+			root = ""
+		}
+		fetched := false
+		for _, result := range report.Results {
+			if result.Role == "manifest" && result.Manifest == manifestName && result.Fetched {
+				fetched = true
+			}
+		}
+		state, observed, err := observeContract(home, manifestName, root, fetched)
+		if err != nil {
+			derivedErr = err
+		}
+		change = observed
+		if change != nil && change.Diff != "" {
+			fmt.Fprint(a.stderr, change.Diff)
+		}
+		_, changed := changedManifestForDerived(report)
+		if !noDerived && hasRoot && (changed || contractPending(state)) {
+			result, err := a.reconcileDerived(home, manifestName, root)
+			derived = &result
+			if err != nil {
+				derivedErr = err
 			}
 		}
 	}
@@ -195,7 +227,7 @@ func (a app) runSync(args []string) error {
 		}
 	}
 	if jsonOut {
-		if err := printJSON(a.stdout, syncCommandReport{Report: report, Derived: derived}); err != nil {
+		if err := printJSON(a.stdout, syncCommandReport{Report: report, Derived: derived, ContractChange: change, ContractError: contractErrorText(derivedErr)}); err != nil {
 			return err
 		}
 	} else {
@@ -208,10 +240,13 @@ func (a app) runSync(args []string) error {
 		}
 	}
 	if syncReportFailed(report) {
-		return a.maybeJSONError(jsonOut, fmt.Errorf("one or more sync operations failed"))
+		return fmt.Errorf("one or more sync operations failed")
+	}
+	if derivedErr != nil {
+		return derivedErr
 	}
 	if derivedReportFailed(derived) {
-		return a.maybeJSONError(jsonOut, fmt.Errorf("one or more derived reconciliation operations failed"))
+		return fmt.Errorf("one or more derived reconciliation operations failed")
 	}
 	return nil
 }
@@ -326,8 +361,10 @@ func localMountGitURLs(doc manifest.Document) []string {
 }
 
 type syncCommandReport struct {
+	ContractError string `json:"contract_error,omitempty"`
 	syncer.Report
-	Derived *derivedReconcileReport `json:"derived,omitempty"`
+	Derived        *derivedReconcileReport `json:"derived,omitempty"`
+	ContractChange *contractChange         `json:"contract_change,omitempty"`
 }
 
 func (a app) printSyncUsage() {
@@ -774,4 +811,11 @@ func loadLastSyncAudit(root string) (lastSyncAudit, bool, error) {
 		return lastSyncAudit{}, false, fmt.Errorf("read %s: %w", path, err)
 	}
 	return audit, true, nil
+}
+
+func contractErrorText(err error) string {
+	if err != nil {
+		return err.Error()
+	}
+	return ""
 }

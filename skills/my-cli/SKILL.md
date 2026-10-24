@@ -341,6 +341,8 @@ my services list|get             # manifest-declared remote surfaces
 my roles list|get                # manifest-declared operating roles
 my contract list                 # binding organization contract rules
 my contract show                 # the contract file as written, with its blob id
+my contract status               # local active/installed revisions and pending roots
+my contract diff --from REV --to REV # local historical contract diff (no fetch)
 ```
 
 Keep organization skill source directories immutable. Store mutable runtime

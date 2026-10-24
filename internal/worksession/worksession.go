@@ -350,9 +350,8 @@ func writeSessionDoc(session Session) error {
 	return os.WriteFile(filepath.Join(session.Path, "SESSION.md"), []byte(b.String()), 0o644)
 }
 
-// writeSessionGuidance writes a session-aware AGENTS.md (with a CLAUDE.md
-// alias) so harnesses launched inside the session keep their work here.
-func writeSessionGuidance(session Session, guidance GuidanceContext) error {
+// RenderGuidance composes the exact generated guidance without writing files.
+func RenderGuidance(session Session, guidance GuidanceContext) []byte {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Work Session %s\n\n", session.ID)
 	b.WriteString("## Session Context\n\n")
@@ -412,7 +411,11 @@ func writeSessionGuidance(session Session, guidance GuidanceContext) error {
 		b.WriteString(base)
 		b.WriteString("\n")
 	}
-	content := []byte(b.String())
+	return []byte(b.String())
+}
+
+func writeSessionGuidance(session Session, guidance GuidanceContext) error {
+	content := RenderGuidance(session, guidance)
 	agentsPath := filepath.Join(session.Path, "AGENTS.md")
 	if err := os.WriteFile(agentsPath, content, 0o644); err != nil {
 		return err

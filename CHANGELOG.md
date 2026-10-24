@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Added
+
+- Sync failures with `--json` retain one complete report on stdout (including
+  contract tracking errors), with a nonzero exit status. They no longer append
+  a second JSON error document after the report.
+- Contract revision tracking and per-root installation state. Sync shows a
+  line diff on stderr and `contract_change` in JSON when the active contract
+  changes. `--no-derived` preserves pending work; later syncs retry even
+  without a new pull. Umbrellas and active sessions reconcile independently.
+- `my contract status [--json]` reports active and installed revisions, local
+  unpublished changes, pending roots, and the last successful remote check.
+  `my contract diff [--from REV] [--to REV] [--json]` compares local revisions.
+  Both commands are local-only and do not fetch or update state.
+- Revision state is recorded for inline and file-backed contracts, including
+  final-rule retractions and rollbacks. Never-configured manifests create no
+  contract state. Rewriting guidance does not prove a running agent read it;
+  live delivery remains unsupported until the separate adapter release.
+
 ## 0.47.0 - 2026-10-24
 
 ### Added

@@ -24,12 +24,13 @@ import (
 const onboardingTourVersion = 1
 
 type derivedReconcileReport struct {
-	Guidance guidance.Result  `json:"guidance"`
-	Skills   []skills.Result  `json:"skills,omitempty"`
-	MCP      mcpconfig.Result `json:"mcp,omitzero"`
+	Guidance      guidance.Result      `json:"guidance"`
+	Skills        []skills.Result      `json:"skills,omitempty"`
+	MCP           mcpconfig.Result     `json:"mcp,omitzero"`
+	ContractRoots []contractRootResult `json:"contract_roots,omitempty"`
 }
 
-func (a app) reconcileDerived(home, manifestName, root string) (derivedReconcileReport, error) {
+func (a app) reconcileDerived(home, manifestName, root string) (report derivedReconcileReport, resultErr error) {
 	if manifestName == "" {
 		if ws, err := umbrella.LoadWorkspace(root); err == nil {
 			manifestName = ws.ManifestRef
@@ -42,6 +43,13 @@ func (a app) reconcileDerived(home, manifestName, root string) (derivedReconcile
 	if err != nil {
 		return derivedReconcileReport{}, err
 	}
+	defer func() {
+		roots, err := a.reconcileContractRoots(home, doc.ref.Name, root)
+		report.ContractRoots = roots
+		if resultErr == nil {
+			resultErr = err
+		}
+	}()
 	guidanceOpts, err := guidanceOptionsForSelectedRole(root, doc.doc)
 	if err != nil {
 		return derivedReconcileReport{}, err
@@ -77,6 +85,9 @@ func (a app) reconcileDerived(home, manifestName, root string) (derivedReconcile
 }
 
 func (a app) printDerivedReconcileReport(report derivedReconcileReport, verbose bool) {
+	for _, root := range report.ContractRoots {
+		fmt.Fprintf(a.stdout, "contract-root\t%s\t%s\t%s\n", root.Status, root.Path, root.Error)
+	}
 	line := fmt.Sprintf("derived\tguidance\t%s\t%s", report.Guidance.Status, report.Guidance.TargetPath)
 	if report.Guidance.Message != "" {
 		line += "\t" + report.Guidance.Message
@@ -115,6 +126,11 @@ func derivedReportFailed(report *derivedReconcileReport) bool {
 }
 
 func derivedReconcileFailed(report derivedReconcileReport) bool {
+	for _, root := range report.ContractRoots {
+		if root.Status == "pending" {
+			return true
+		}
+	}
 	if report.Guidance.Status == "blocked" {
 		return true
 	}
@@ -264,6 +280,9 @@ func (a app) runSetup(args []string) (err error) {
 		if err := umbrella.SaveState(root, state); err != nil {
 			return err
 		}
+	}
+	if !opts.print {
+		defer a.reconcileContractRootsWarning(opts.home, doc.ref.Name, root)
 	}
 	guidanceOpts, err := setupGuidanceOptions(root, doc.doc, opts)
 	if err != nil {

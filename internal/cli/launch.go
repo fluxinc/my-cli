@@ -295,6 +295,7 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 	if err := ensureSessionLaunchGuidance(root, targetDir, doc); err != nil {
 		return err
 	}
+	a.reconcileContractRootsWarning(opts.home, doc.ref.Name, root)
 	if err := a.ensureLaunchOrgSkills(h, opts, doc, root, targetDir, selector); err != nil {
 		return err
 	}
