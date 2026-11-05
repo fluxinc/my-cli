@@ -2,6 +2,7 @@ package serviceauth
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +26,7 @@ func TestReferenceOnlyEndpointScopedStorage(t *testing.T) {
 	}
 	path, _ := Path(home)
 	info, _ := os.Stat(path)
-	if info.Mode().Perm() != 0600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 { // Windows has no mode bits
 		t.Fatalf("mode=%v", info.Mode())
 	}
 	if err := Set(home, b, Entry{Ref: "literal-secret-value"}); err == nil || strings.Contains(err.Error(), "literal-secret-value") {
