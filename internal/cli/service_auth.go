@@ -20,16 +20,36 @@ func (a app) runServicesAuth(args []string) error {
   my services auth set <service> --ref op://Private/item/credential [--manifest NAME] [--home DIR]
   my services auth status <service> [--manifest NAME] [--home DIR] [--json]
   my services auth unset <service> [--manifest NAME] [--home DIR]
+  my services auth refresh <service> [--manifest NAME] [--home DIR] [--json]
+  my services auth lock [--home DIR]
+  my services auth cache status|on|off [--idle 1h] [--max 8h] [--home DIR] [--json]
+  my services auth cache account <email|url|uuid> [--home DIR]
 
 Create your personal key at the service's auth_setup_url, then save it in your
 password manager. --ref accepts only op:// or env:// references, never a token.
 Set verifies the credential with GET <connection.url>/me before saving your
 reference. No shared manifest or password-manager item is changed. Unset returns
-to the organization's auth_ref. Status verifies access and reports key expiry.`)
+to the organization's auth_ref. Status verifies access live and reports key
+expiry.
+
+An op:// key is fetched once, then kept in memory by a background my process
+for this user: until unused for 1h, or 8h at most. A cached key stays usable
+after 1Password locks. Lock clears it and stops fetches under way; refresh
+fetches it again; cache off disables caching; --no-cache or
+MYCLI_NO_CRED_CACHE=1 skips it for one command. Cache status shows expiries,
+never keys, and makes no live check. env:// references are never cached.`)
 		return nil
 	}
 	operation := args[0]
-	if operation != "set" && operation != "status" && operation != "unset" {
+	switch operation {
+	case "lock":
+		return a.runServicesAuthLock(args[1:])
+	case "cache":
+		return a.runServicesAuthCache(args[1:])
+	case credBrokerOperation:
+		return a.runServicesAuthBroker(args[1:])
+	}
+	if operation != "set" && operation != "status" && operation != "unset" && operation != "refresh" {
 		return fmt.Errorf("unknown services auth operation; run my services auth --help")
 	}
 	var home, manifestName, authRef string
@@ -78,6 +98,9 @@ to the organization's auth_ref. Status verifies access and reports key expiry.`)
 		if err = serviceauth.Unset(home, binding); err != nil {
 			return err
 		}
+		if personal {
+			a.warnCachedKeyKept(s.ID, dropCachedServiceKey(home, binding, existing.Ref))
+		}
 		fmt.Fprintf(a.stdout, "Personal reference removed for %s; using the organization's auth_ref.\n", s.ID)
 		return nil
 	}
@@ -91,13 +114,34 @@ to the organization's auth_ref. Status verifies access and reports key expiry.`)
 		}
 		effective = authRef
 	}
-	token, err := recordsvc.ResolveAuth(effective, fleetAuthRunner)
+	if operation == "refresh" {
+		if err = dropCachedServiceKey(home, binding, effective); err != nil {
+			return fmt.Errorf("could not clear the cached %s key: %w; %s", s.ID, err, credentialCacheEscape)
+		}
+	}
+	var notAfter time.Time
+	if personal {
+		notAfter = existing.ExpiresAt
+	}
+	var token string
+	var cached *cachedCredential
+	if operation == "set" {
+		token, err = resolveCandidateCredential(home, effective)
+	} else {
+		token, cached, err = resolveServiceCredential(home, binding, effective, notAfter)
+	}
 	if err != nil {
+		if credentialCacheError(err) {
+			return fmt.Errorf("service %s: %w; %s", s.ID, err, credentialCacheEscape)
+		}
 		return fmt.Errorf("service %s: %w; get a personal key at %s and run my services auth set %s --ref <reference>", s.ID, err, serviceSetupHint(s), s.ID)
 	}
 	client, err := recordsvc.NewClient(s.ID, s.Connection.URL, token)
 	if err != nil {
 		return err
+	}
+	if cached != nil {
+		client.UseCredentialSource(cached)
 	}
 	ctx, cancel := serviceContext()
 	defer cancel()
@@ -106,12 +150,27 @@ to the organization's auth_ref. Status verifies access and reports key expiry.`)
 		return fmt.Errorf("%w; get or renew your key at %s", err, serviceSetupHint(s))
 	}
 	if identity.Token.Name == "" || identity.Token.ExpiresAt.IsZero() || !identity.Token.ExpiresAt.After(time.Now()) {
+		if cached != nil {
+			_ = cached.Drop()
+		}
 		return fmt.Errorf("service %s /me did not return a usable key identity and expiry", s.ID)
 	}
 	if operation == "set" || personal {
 		savedRef := effective
 		if err = serviceauth.Set(home, binding, serviceauth.Entry{Ref: savedRef, ExpiresAt: identity.Token.ExpiresAt}); err != nil {
 			return err
+		}
+		if operation == "set" {
+			// Whatever was cached came from the reference this replaces, or
+			// from an earlier version of the same one.
+			previous := s.AuthRef
+			if personal {
+				previous = existing.Ref
+			}
+			a.warnCachedKeyKept(s.ID, dropCachedServiceKey(home, binding, previous))
+			if previous != effective {
+				a.warnCachedKeyKept(s.ID, dropCachedServiceKey(home, binding, effective))
+			}
 		}
 		personal = true
 	}
@@ -125,12 +184,23 @@ to the organization's auth_ref. Status verifies access and reports key expiry.`)
 		fmt.Fprintln(a.stderr, "notice: verified key is read-only; updates and comments need write scope")
 	}
 	if jsonOut {
-		return printJSON(a.stdout, map[string]any{"service": s.ID, "personal": personal, "auth_ref": effective, "identity": identity})
+		out := map[string]any{"service": s.ID, "personal": personal, "auth_ref": effective, "identity": identity, "live_check": true}
+		if cached != nil {
+			out["cache"] = map[string]any{"idle_until": cached.grant.IdleUntil, "hard_until": cached.grant.HardUntil, "fetched": cached.grant.Fetched}
+		}
+		return printJSON(a.stdout, out)
 	}
 	if !personal {
 		fmt.Fprintln(a.stdout, "Using the organization auth_ref; set a personal reference for individual attribution.")
 	}
-	fmt.Fprintf(a.stdout, "%s: verified %s; key %s expires %s\n", s.ID, strings.TrimSpace(identity.Issuer.Name), identity.Token.Name, identity.Token.ExpiresAt.Format(time.RFC3339))
+	fmt.Fprintf(a.stdout, "%s: verified %s by live check; key %s expires %s\n", s.ID, strings.TrimSpace(identity.Issuer.Name), identity.Token.Name, identity.Token.ExpiresAt.Format(time.RFC3339))
+	if cached != nil {
+		source := "from the cache"
+		if cached.grant.Fetched {
+			source = "fetched now"
+		}
+		fmt.Fprintf(a.stdout, "Cached key %s; held until unused at %s, or %s at the latest.\n", source, cached.grant.IdleUntil.Local().Format("15:04"), cached.grant.HardUntil.Local().Format("15:04"))
+	}
 	if operation == "set" {
 		fmt.Fprintln(a.stdout, "Personal reference saved locally. The key itself was not stored.")
 	}

@@ -143,6 +143,46 @@ before saving. The service must return `issuer: {name, email}` and
 `token: {name, scopes, expires_at}`; expiry is an RFC3339 timestamp. Rejected or
 expired credentials leave the previous configuration intact.
 
+### Key caching
+
+An `op://` key is fetched from 1Password once, then reused by later commands
+from any shell or harness. A background `my` process for your user holds it in
+memory only, never on disk, in the environment or on a command line.
+
+```sh
+my services auth cache status      # expiries only; never a key, no live check
+my services auth lock              # clear every key and stop fetches under way
+my services auth refresh registry  # fetch this key again and verify it
+my services auth cache off         # ask 1Password on every command
+my services auth cache on --idle 30m --max 4h
+```
+
+A key lasts until it goes unused for 1 hour, or 8 hours at most (24 hours is the
+ceiling), and never past the recorded expiry of a personal key. The first fetch
+prints both times.
+
+**A cached key stays usable after 1Password locks**, until it expires or you run
+`my services auth lock`. Any process running as your user can reach the cache,
+which is broader than 1Password's own approval for one terminal session. The
+cache does not isolate one process of yours from another.
+
+For one command, pass `--no-cache` or set `MYCLI_NO_CRED_CACHE=1`. `env://`
+references, 1Password service accounts (`OP_SERVICE_ACCOUNT_TOKEN`) and Connect
+(`OP_CONNECT_TOKEN`) are never cached.
+
+If several 1Password accounts are set up on the machine, choose one with
+`my services auth cache account <email>` or `OP_ACCOUNT`. Until you do, `my` says
+so and asks 1Password on each command.
+
+If the service rejects a key (401), `my` fetches it once more and retries reads
+only. A rejected write is reported and never replayed, so run it again. After a
+refused or failed prompt, `my` waits 30 seconds before asking again;
+`my services auth lock` ends the wait. If the cache process cannot be restarted,
+the command stops with an error rather than asking every time; use `--no-cache`
+to carry on.
+
+Windows does not cache yet. `my` says so and asks 1Password on each command.
+
 Only the `op://` or `env://` reference, service binding and verified expiry are saved locally,
 under `~/.config/my-cli/service-auth.json` with mode 0600. The secret stays in
 your password manager or environment. Overrides apply only to that manifest,

@@ -34,7 +34,8 @@ func (a app) printServicesUsage() {
 	fmt.Fprintln(a.stdout, `Usage:
   my services list [--manifest NAME] [--home DIR] [--json]
   my services get <id> [--manifest NAME] [--home DIR] [--json]
-  my services auth set|status|unset <id> [--ref REF] [--manifest NAME] [--home DIR]
+  my services auth set|status|unset|refresh <id> [--ref REF] [--manifest NAME] [--home DIR]
+  my services auth lock|cache ... (see my services auth --help)
 
 Services are the organization's remote surfaces declared in the manifest.
 Secret material is always referenced (op://, env://, broker://), never stored.`)

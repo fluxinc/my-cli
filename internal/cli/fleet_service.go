@@ -109,20 +109,28 @@ func (s *fleetService) connect() (*recordsvc.Client, error) {
 		return nil, fmt.Errorf("fleet is bound to service %s, which needs kind http and connection.url", s.service.ID)
 	}
 	authRef := s.service.AuthRef
+	var notAfter time.Time
 	personal, ok, err := serviceauth.Lookup(s.home, s.binding)
 	if err != nil {
 		return nil, err
 	}
 	if ok {
 		authRef = personal.Ref
+		notAfter = personal.ExpiresAt
 	}
-	token, err := recordsvc.ResolveAuth(authRef, fleetAuthRunner)
+	token, cached, err := resolveServiceCredential(s.home, s.binding, authRef, notAfter)
 	if err != nil {
+		if credentialCacheError(err) {
+			return nil, fmt.Errorf("service %s: %w; %s", s.service.ID, err, credentialCacheEscape)
+		}
 		return nil, fmt.Errorf("service %s: %w; get a personal key at %s, then run my services auth set %s --ref <reference>", s.service.ID, err, serviceSetupHint(s.service), s.service.ID)
 	}
 	client, err := recordsvc.NewClient(s.service.ID, s.service.Connection.URL, token)
 	if err != nil {
 		return nil, err
+	}
+	if cached != nil {
+		client.UseCredentialSource(cached)
 	}
 	s.client = client
 	return client, nil

@@ -41,7 +41,23 @@ type Client struct {
 	base      *url.URL
 	token     string
 	http      *http.Client
+	// credentials, when set, can replace a key the service rejects. retired
+	// keeps replaced keys so they stay redacted in anything echoed later.
+	credentials CredentialSource
+	refreshed   bool
+	retired     []string
 }
+
+// CredentialSource supplies a replacement for a rejected key.
+type CredentialSource interface {
+	// Refresh forgets the rejected key and returns a fresh one.
+	Refresh() (string, error)
+	// Drop forgets the rejected key without fetching another.
+	Drop() error
+}
+
+// UseCredentialSource lets a 401 trigger one key refresh per client.
+func (c *Client) UseCredentialSource(source CredentialSource) { c.credentials = source }
 
 // NewClient validates the base URL and builds a client that never follows a
 // redirect to another origin, so the credential cannot leave the service.
@@ -257,8 +273,35 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	return err
 }
 
-// send is do with extra request headers, reporting the success status.
+// send is do with extra request headers, reporting the success status. A 401
+// refreshes the key at most once and retries only reads: a write may have taken
+// effect behind whatever rejected it, so it is reported and never replayed. A
+// 403 means the key is valid but not allowed, which a new copy cannot change.
 func (c *Client) send(ctx context.Context, method, path string, query url.Values, body any, out any, headers map[string]string) (int, error) {
+	status, err := c.sendOnce(ctx, method, path, query, body, out, headers)
+	var refused *Error
+	if c.credentials == nil || !errors.As(err, &refused) || refused.Status != http.StatusUnauthorized {
+		return status, err
+	}
+	if c.refreshed || (method != http.MethodGet && method != http.MethodHead) {
+		refused.Message = "the credential was not accepted and the cached key was cleared; rerun the command to fetch it again"
+		if dropErr := c.credentials.Drop(); dropErr != nil {
+			refused.Message = "the credential was not accepted and the cached key could not be cleared; run my services auth lock, then rerun the command"
+		}
+		return status, err
+	}
+	c.refreshed = true
+	token, refreshErr := c.credentials.Refresh()
+	if refreshErr != nil {
+		refused.Message = "the credential was not accepted, and fetching it again failed: " + c.scrub(refreshErr.Error())
+		return status, err
+	}
+	c.retired = append(c.retired, c.token)
+	c.token = token
+	return c.send(ctx, method, path, query, body, out, headers)
+}
+
+func (c *Client) sendOnce(ctx context.Context, method, path string, query url.Values, body any, out any, headers map[string]string) (int, error) {
 	target, err := url.Parse(c.base.String() + path)
 	if err != nil {
 		return 0, err
@@ -370,6 +413,11 @@ func (c *Client) scrubValue(value any) any {
 }
 
 func (c *Client) scrub(text string) string {
+	for _, retired := range c.retired {
+		if retired != "" {
+			text = strings.ReplaceAll(text, retired, "[redacted]")
+		}
+	}
 	if c.token == "" {
 		return text
 	}
