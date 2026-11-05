@@ -143,6 +143,7 @@ func (a app) run(args []string) error {
 		return nil
 	}
 
+	args = takeNoCacheFlag(args)
 	defer a.printContractFallback(args)
 	a.runStartupMaintenance(args)
 

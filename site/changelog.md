@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Added
+
+- `op://` service keys are fetched from 1Password once and then reused, instead
+  of on every `my fleet` or `my support link` command. A background `my` process
+  for your user holds them in memory only: until unused for 1 hour, or 8 hours
+  at most (`my services auth cache on --idle --max`). The first fetch prints
+  both expiries. A cached key stays usable after 1Password locks, until it
+  expires or `my services auth lock` clears it.
+- `my services auth lock`, `refresh` and `cache status|on|off|account`.
+  `my services auth cache off`, `--no-cache` and `MYCLI_NO_CRED_CACHE=1` turn
+  caching off; `env://` references, 1Password service accounts and Connect are
+  never cached. No manifest change or `min_my_version` is involved, and older
+  `my` releases keep working as they did.
+
+### Changed
+
+- With several 1Password accounts, keys are cached only once one is chosen
+  (`my services auth cache account <email>` or `OP_ACCOUNT`); until then `my`
+  says so and asks on each command, as before.
+- A 401 fetches a key again once and retries reads only. A write is reported,
+  never replayed, and a 403 never fetches again.
+- `my services auth status` labels its live check.
+- If the cache process cannot be restarted, commands stop with an error naming
+  `--no-cache`, rather than quietly asking on every command.
+- Windows does not cache yet: `my` says so and asks 1Password on each command.
+
 ## 0.51.0 - 2026-10-24
 
 ### Added

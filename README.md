@@ -725,6 +725,12 @@ rationale.
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
+- **In review — service credential cache.** `op://` service keys are fetched
+  from 1Password once and held in memory by a per-user background process, with
+  visible lifetimes, a lock and an opt-out, and no manifest change. Windows stays
+  direct for now. Plan:
+  [service credential cache](docs/plans/2026-11-05-service-credential-cache.md).
+
 - **Shipped (v0.42.0) — reliable fresh-system onboarding.** Preserve real terminal input,
   launch the assistant before Git/GitHub/setup prerequisites on every retry,
   and let it operate while teaching. Native terminal and offline clean-system

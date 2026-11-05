@@ -25,6 +25,16 @@ jobs:
       - run: go test ./...
       - run: git diff --check
 
+  windows-direct-credentials:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./cmd/my
+      - run: go test ./internal/credcache ./internal/recordsvc ./internal/serviceauth
+
   onboarding-terminal:
     strategy:
       matrix:

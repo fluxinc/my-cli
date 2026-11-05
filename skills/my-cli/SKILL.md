@@ -94,7 +94,7 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
   `my customers list`,
   `my products list`, `my repos list/add/remove`, `my tools list/info`,
   `my services list/get`,
-  `my services auth set/status/unset` (local references only), `my roles list/get`, `my contract list`,
+  `my services auth set/status/unset/refresh/lock/cache` (local references only; `op://` keys are cached in memory, `cache status` shows expiries), `my roles list/get`, `my contract list`,
   `my policy list/show/status/acceptances`,
   `my compile`, `my root`,
   `my ai`, `my doctor`, `my manifests list`, `my mounts list`,
