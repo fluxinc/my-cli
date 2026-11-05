@@ -64,7 +64,7 @@ var testKey = Key{ManifestName: "acme", Manifest: "m", Service: "registry", URL:
 
 func testHome(t *testing.T) string {
 	t.Helper()
-	home, err := os.MkdirTemp("", "cc")
+	home, err := os.MkdirTemp("/tmp", "cc")
 	if err != nil {
 		t.Fatal(err)
 	}

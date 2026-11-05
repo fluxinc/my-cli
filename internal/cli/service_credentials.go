@@ -247,6 +247,12 @@ func resolveServiceCredential(home string, binding serviceauth.Binding, ref stri
 		if reason != "" {
 			fmt.Fprintf(credNotices, "notice: %s; asking 1Password on each command\n", reason)
 		}
+		// An expired recorded lifetime disables storage, not the account
+		// selection already resolved above. A renewed key may use the same ref.
+		if account != "" {
+			token, err := resolveForAccount(ref, account)
+			return token, nil, err
+		}
 		token, err := recordsvc.ResolveAuth(ref, fleetAuthRunner)
 		return token, nil, err
 	}
@@ -318,7 +324,10 @@ func noteCredentialFetch(service string, grant credcache.Grant) {
 // Without a known account there is no entry it could name; lifetimes bound it.
 func dropCachedServiceKey(home string, binding serviceauth.Binding, ref string) error {
 	_, account, use, _, err := cachePlan(home, ref)
-	if err != nil || !use {
+	if err != nil {
+		return err
+	}
+	if !use {
 		return nil
 	}
 	return newCredentialClient(home).Invalidate(credentialKey(binding, ref, account), 0)
