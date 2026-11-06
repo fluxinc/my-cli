@@ -50,6 +50,9 @@ self-skill and installation` or release subjects like `Release v0.4.0: ...`.
 Keep commits scoped, include tests or verification in the PR description, and
 link issues or plans when applicable. Add screenshots only for visible site/UI
 changes. Do not add agent signatures or co-author trailers to commit messages.
+Add a `## Unreleased` entry to `CHANGELOG.md` and `site/changelog.md` in the
+same commit as each user-visible change. Commit `site/package-lock.json` with
+any site dependency change.
 
 ## Releasing
 
