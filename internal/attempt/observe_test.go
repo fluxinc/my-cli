@@ -127,6 +127,10 @@ func TestLocalChange(t *testing.T) {
 		{"after failed", same, with(func(r *RepoObs) { r.Error, r.Dirty, r.Ahead = "boom", nil, nil }), nil},
 		{"before failed", with(func(r *RepoObs) { r.Error = "boom" }), same, nil},
 		{"no upstream is unknown, not unchanged", same, with(func(r *RepoObs) { r.HasUpstream, r.Ahead = &no, nil }), nil},
+		{"dirty before, clean after", with(func(r *RepoObs) { r.Dirty = &yes }), same, &yes},
+		{"ahead before, level after", with(func(r *RepoObs) { r.Ahead = &two }), same, &yes},
+		{"prior ahead unknown cannot support no change", with(func(r *RepoObs) { r.Ahead = nil }), same, nil},
+		{"prior dirty unknown cannot support no change", with(func(r *RepoObs) { r.Dirty = nil }), same, nil},
 	}
 	for _, tc := range cases {
 		got := LocalChange(tc.before, tc.after)

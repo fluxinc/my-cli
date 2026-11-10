@@ -19,11 +19,11 @@ checkouts, and how the launch closed.
 
 | Field | Meaning |
 |---|---|
-| `observed_exit` | Set only when the launcher saw its child end. Never invented. |
+| `observed_exit` | Set only when the launcher saw its child end. Never invented. A child ended by a signal has code -1, as `my ai` has always reported it, plus the signal's name. |
 | `closure_reason` | `exited`, `start_failed`, or `launcher_lost`. Absent while unfinalized. |
-| `reconciled_at`, `child_state` | Set by a reader that found the launcher gone. `child_state` is `possibly_running` only when pid and start time both match on the same host, `not_found` when they do not, and `unknown` otherwise. |
+| `reconciled_at`, `child_state` | Set by a reader that found the launcher gone. `child_state` is `possibly_running` when pid and start time both match on the same host. The start time has one-second resolution, so this is plausible identity, not proof, and nothing should derive authority from it. It is `not_found` only when the start time differs, or when both `ps` and the kernel say there is no such process. Any other probe failure is `unknown`. |
 | `before`, `after` | One local `git status` per checkout: branch, HEAD, dirty (tracked changes and untracked files), upstream present, ahead count. No fetch. No upstream means ahead is unknown. Failures are stored per checkout. |
-| `local_change_observed` | True on positive evidence. False only when both observations fully succeeded, covered at least one checkout and showed nothing. Absent when unknown. |
+| `local_change_observed` | True on positive evidence: a checkout that ends dirty or ahead, or whose HEAD, branch, dirty state or ahead count differs between the two observations. False only when every checkout has complete evidence at both ends and nothing differs. Absent when unknown. |
 
 Observed checkouts are the umbrella root, its mounts, opted-in repos, and the
 worktrees of the session the launch runs in. `my`'s own state directory is
@@ -32,11 +32,13 @@ excluded from the dirty check.
 Read side:
 
 - `my attempts list [--running|--unclosed|--local-changes] [--json]`.
-  Unreadable and incomplete records always show.
+  A record carrying any error (unreadable, incomplete, a checkout that could
+  not be observed, a wait error) always shows, whatever the filter.
 - One stderr notice before a launch when launches from the last seven days
   observed local changes. It is worded as history, and says no work-service
   tracking was established.
-- A `my doctor` row. Doctor inspects and never reconciles.
+- A `my doctor` summary row, plus one bounded warning row counting the
+  records that carry errors. Doctor inspects and never reconciles.
 
 ## Rules the implementation keeps
 
@@ -73,5 +75,7 @@ two live launches in competing processes; launcher killed while its child
 runs; launcher killed after its child ended; child recorded without a start
 time; another host's record; the directory-then-lock-then-record race;
 interrupted write; corrupt record; six concurrent reconcilers; start failure;
-non-zero exit; a real child's pid and exit status; `--print`; no upstream;
-untracked files; unreadable checkout.
+non-zero exit; a real child's pid and exit status; a real child ended by a
+signal; a resumed session; `--print`; no upstream; untracked files;
+unreadable checkout; a failed process probe; errors behind every list filter
+and in doctor.

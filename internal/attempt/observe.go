@@ -120,8 +120,10 @@ func gitError(err error) string {
 }
 
 // LocalChange derives local_change_observed. It returns true on any positive
-// evidence, false only when both observations fully succeeded and showed
-// nothing, and nil otherwise.
+// evidence: a checkout that ends dirty or ahead, or whose HEAD, branch, dirty
+// state or ahead count differs between the two observations. It returns false
+// only when every checkout has complete evidence at both ends and nothing
+// differs, and nil otherwise.
 func LocalChange(before, after *Observation) *bool {
 	yes, no := true, false
 	if after == nil || len(after.Repos) == 0 {
@@ -143,10 +145,20 @@ func LocalChange(before, after *Observation) *bool {
 			return &yes
 		}
 		prior, seen := earlier[repo.Path]
-		if seen && prior.Error == "" && repo.Error == "" && (prior.Head != repo.Head || prior.Branch != repo.Branch) {
-			return &yes
+		if seen && prior.Error == "" && repo.Error == "" {
+			if prior.Head != repo.Head || prior.Branch != repo.Branch {
+				return &yes
+			}
+			if prior.Dirty != nil && repo.Dirty != nil && *prior.Dirty != *repo.Dirty {
+				return &yes
+			}
+			if prior.Ahead != nil && repo.Ahead != nil && *prior.Ahead != *repo.Ahead {
+				return &yes
+			}
 		}
-		if repo.Error != "" || repo.Dirty == nil || repo.Ahead == nil || !seen || prior.Error != "" {
+		// "No change" needs complete evidence at both ends for this checkout.
+		complete := func(r RepoObs) bool { return r.Error == "" && r.Dirty != nil && r.Ahead != nil }
+		if !seen || !complete(prior) || !complete(repo) {
 			unknown = true
 		}
 	}

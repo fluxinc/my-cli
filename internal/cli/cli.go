@@ -134,6 +134,9 @@ var errAlreadyPrinted = errors.New("error already printed")
 
 type exitCodeError struct {
 	code int
+	// signal names the signal that ended the child, for the launch record.
+	// It does not change the exit code my reports.
+	signal string
 }
 
 func (e exitCodeError) Error() string {

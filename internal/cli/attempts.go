@@ -79,7 +79,7 @@ func (a app) withAttempt(meta attemptLaunch, run func(app) error) error {
 			r.ObservedExit = &attempt.Exit{Code: 0, At: at}
 		case errors.As(runErr, &exit):
 			r.ClosureReason = attempt.ClosureExited
-			r.ObservedExit = &attempt.Exit{Code: exit.code, At: at}
+			r.ObservedExit = &attempt.Exit{Code: exit.code, Signal: exit.signal, At: at}
 		case started:
 			// The child ran but its end was not a plain exit status.
 			r.ClosureReason = attempt.ClosureExited
@@ -222,6 +222,33 @@ func attemptEndedAt(entry attempt.Entry) time.Time {
 	return at
 }
 
+// attemptProblems collects every error an attempt carries: the entry's own,
+// the record's, and any checkout that could not be observed.
+func attemptProblems(entry attempt.Entry) []string {
+	var problems []string
+	if entry.Error != "" {
+		problems = append(problems, entry.Error)
+	}
+	if rec := entry.Record; rec != nil {
+		problems = append(problems, rec.Errors...)
+		for _, obs := range []*attempt.Observation{rec.Before, rec.After} {
+			if obs == nil {
+				continue
+			}
+			for _, repo := range obs.Repos {
+				if repo.Error != "" {
+					name := repo.Label
+					if name == "" {
+						name = repo.Path
+					}
+					problems = append(problems, fmt.Sprintf("could not observe %s (%s): %s", name, obs.Kind, repo.Error))
+				}
+			}
+		}
+	}
+	return problems
+}
+
 type attemptListReport struct {
 	SchemaVersion int             `json:"schema_version"`
 	Supported     bool            `json:"supported"`
@@ -276,9 +303,9 @@ and checkouts shared by several agents are observed, not attributed.
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
 	for _, entry := range entries {
-		// Unreadable and incomplete entries always show: an error that
-		// disappears behind a filter is an error nobody fixes.
-		broken := entry.State == attempt.StateUnreadable || entry.State == attempt.StateIncomplete
+		// Anything carrying an error always shows: an error that disappears
+		// behind a filter is an error nobody fixes.
+		broken := len(attemptProblems(entry)) > 0
 		keep := !running && !unclosed && !localChanges
 		keep = keep || running && (entry.State == attempt.StateRunning || entry.State == attempt.StateStarting)
 		keep = keep || unclosed && entry.State == attempt.StateUnclosed
@@ -310,6 +337,9 @@ func attemptLine(entry attempt.Entry) string {
 		exit := "exit=unobserved"
 		if rec.ObservedExit != nil {
 			exit = fmt.Sprintf("exit=%d", rec.ObservedExit.Code)
+			if rec.ObservedExit.Signal != "" {
+				exit += " (" + rec.ObservedExit.Signal + ")"
+			}
 		}
 		change := "local-changes=unknown"
 		if rec.LocalChangeObserved != nil {
@@ -322,19 +352,9 @@ func attemptLine(entry attempt.Entry) string {
 		if rec.Goal != "" {
 			fields = append(fields, "goal="+rec.Goal)
 		}
-		for _, obs := range []*attempt.Observation{rec.Before, rec.After} {
-			if obs == nil {
-				continue
-			}
-			for _, repo := range obs.Repos {
-				if repo.Error != "" {
-					fields = append(fields, fmt.Sprintf("observe-error[%s %s]=%s", obs.Kind, repo.Label, repo.Error))
-				}
-			}
-		}
 	}
-	if entry.Error != "" {
-		fields = append(fields, "error="+entry.Error)
+	for _, problem := range attemptProblems(entry) {
+		fields = append(fields, "error="+problem)
 	}
 	return strings.Join(fields, "\t")
 }
@@ -351,21 +371,36 @@ func doctorAttempts(root string) []doctorItem {
 	}
 	var items []doctorItem
 	running, unclosed, changed := 0, 0, 0
+	// Records carrying errors are counted into one bounded warning; a broken
+	// checkout would otherwise add a row for every launch that saw it.
+	const maxProblemDetails = 5
+	withProblems := 0
+	var problemDetails []string
 	for _, entry := range entries {
 		switch entry.State {
 		case attempt.StateRunning, attempt.StateStarting:
 			running++
 		case attempt.StateUnclosed:
 			unclosed++
-		case attempt.StateUnreadable, attempt.StateIncomplete:
-			items = append(items, doctorItem{Name: entry.ID, Status: "warn", Path: filepath.Join(attempt.Dir(root), entry.ID), Message: entry.Error})
 		}
 		if attemptEndedLauncher(entry) && attemptLocalChange(entry) {
 			changed++
 		}
-		if entry.Error != "" && entry.State != attempt.StateUnreadable && entry.State != attempt.StateIncomplete {
-			items = append(items, doctorItem{Name: entry.ID, Status: "warn", Path: filepath.Join(attempt.Dir(root), entry.ID), Message: entry.Error})
+		if problems := attemptProblems(entry); len(problems) > 0 {
+			withProblems++
+			if len(problemDetails) < maxProblemDetails {
+				problemDetails = append(problemDetails, entry.ID+": "+problems[0])
+			}
 		}
+	}
+	if withProblems > 0 {
+		items = append(items, doctorItem{
+			Name:    "errors",
+			Status:  "warn",
+			Path:    attempt.Dir(root),
+			Message: fmt.Sprintf("%d launch %s carry errors (unreadable record, failed observation or wait error); run my attempts list", withProblems, plural(withProblems, "record", "records")),
+			Details: problemDetails,
+		})
 	}
 	if len(entries) == 0 {
 		return items

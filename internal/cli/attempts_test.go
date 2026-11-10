@@ -223,7 +223,7 @@ func TestLaunchObservationFailureNeverChangesTheResult(t *testing.T) {
 	if err := a.run([]string{"my", "attempts", "list", "--home", home, "--umbrella", root}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "observe-error[") {
+	if !strings.Contains(out.String(), "error=could not observe broken (after)") {
 		t.Fatalf("list hid the observation error:\n%s", out.String())
 	}
 }
@@ -348,5 +348,94 @@ func TestAttemptTargetsAndSessionID(t *testing.T) {
 	want := "handbook,repos/svc,sessions/s1/handbook"
 	if got := strings.Join(labels, ","); got != want {
 		t.Fatalf("targets = %s, want %s (another session's worktrees and personal/ stay out)", got, want)
+	}
+}
+
+func TestLaunchRecordsSignalExitWithoutChangingTheResult(t *testing.T) {
+	home, root := setupCLILaunchFixture(t)
+	script := filepath.Join(t.TempDir(), "codex")
+	writeCLITestFile(t, script, "#!/bin/sh\nkill -TERM $$\nsleep 5\n")
+	if err := os.Chmod(script, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr, lookPath: func(string) (string, error) { return script, nil }}
+	err := a.run(attemptLaunchArgs(home))
+	var exit exitCodeError
+	// A signalled child has always surfaced as exit code -1; that must not change.
+	if !errors.As(err, &exit) || exit.code != -1 {
+		t.Fatalf("run error = %v, want the existing -1 for a signalled child", err)
+	}
+	rec := oneAttempt(t, root).Record
+	if rec.ClosureReason != attempt.ClosureExited || rec.ObservedExit == nil {
+		t.Fatalf("record = %+v", rec)
+	}
+	if rec.ObservedExit.Code != -1 || rec.ObservedExit.Signal != "terminated" {
+		t.Fatalf("observed_exit = %+v, want code -1 with signal terminated", rec.ObservedExit)
+	}
+}
+
+func TestResumedSessionIsANewLaunchLinkedToTheSameSession(t *testing.T) {
+	home, workspaceRoot := setupCLIRecordWorkspace(t)
+	root := filepath.Dir(workspaceRoot)
+	ensureCLIGuidance(t, home, root)
+	var stdout, stderr bytes.Buffer
+	a := attemptTestApp(&stdout, &stderr, func(string, []string, string) error { return nil })
+	base := []string{"my", "ai", "--manifest", "acme", "--home", home, "--no-refresh", "--no-update-check"}
+	if err := a.run(append(append([]string{}, base...), "--new-session", "codex")); err != nil {
+		t.Fatalf("%v\nstderr: %s", err, stderr.String())
+	}
+	first := oneAttempt(t, root)
+	if first.Record.SessionID == "" || !strings.HasPrefix(first.Record.WorkDir, filepath.Join(root, "sessions")) {
+		t.Fatalf("session launch record = %+v", first.Record)
+	}
+	if err := a.run(append(append([]string{}, base...), "--resume", first.Record.SessionID, "codex")); err != nil {
+		t.Fatal(err)
+	}
+	entries := attemptEntries(t, root)
+	if len(entries) != 2 {
+		t.Fatalf("a resume must be its own launch record, got %d", len(entries))
+	}
+	if entries[0].ID == entries[1].ID || entries[1].Record.SessionID != first.Record.SessionID {
+		t.Fatalf("resume record = %+v, want a new id with session %s", entries[1].Record, first.Record.SessionID)
+	}
+}
+
+func TestListFiltersNeverHideRecordedErrors(t *testing.T) {
+	home, root := setupCLILaunchFixture(t)
+	var stdout, stderr bytes.Buffer
+	a := attemptTestApp(&stdout, &stderr, func(string, []string, string) error { return nil })
+	if err := a.run(attemptLaunchArgs(home)); err != nil { // materialize the umbrella
+		t.Fatal(err)
+	}
+	// One closed launch with no local change but an unreadable checkout, and
+	// one with a record-level error.
+	for _, rec := range []attempt.Record{
+		{Harness: "codex", ClosureReason: attempt.ClosureExited, After: &attempt.Observation{Kind: attempt.KindAfter, Repos: []attempt.RepoObs{{Label: "gone", Path: "/missing", Error: "checkout unavailable"}}}},
+		{Harness: "codex", ClosureReason: attempt.ClosureExited, Errors: []string{"child wait: interrupted"}},
+	} {
+		h, err := attempt.Begin(root, rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.Close()
+	}
+	for _, filter := range []string{"--local-changes", "--running", "--unclosed"} {
+		var out bytes.Buffer
+		a.stdout = &out
+		if err := a.run([]string{"my", "attempts", "list", filter, "--home", home, "--umbrella", root}); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out.String(), "checkout unavailable") || !strings.Contains(out.String(), "child wait: interrupted") {
+			t.Fatalf("%s hid a recorded error:\n%s", filter, out.String())
+		}
+	}
+	// Doctor names how many records carry errors, and stays bounded.
+	var warned bool
+	for _, item := range doctorAttempts(root) {
+		warned = warned || item.Status == "warn" && strings.Contains(item.Message, "2 launch records")
+	}
+	if !warned {
+		t.Fatalf("doctor did not warn about recorded errors: %+v", doctorAttempts(root))
 	}
 }

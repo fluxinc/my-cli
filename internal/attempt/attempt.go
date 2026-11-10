@@ -105,10 +105,12 @@ type ProcessRef struct {
 	StartedAt string `json:"started_at,omitempty"`
 }
 
-// Exit is a child exit the launcher observed.
+// Exit is a child exit the launcher observed. A child ended by a signal has
+// Code -1, as my ai has always reported it, and Signal names the signal.
 type Exit struct {
-	Code int    `json:"code"`
-	At   string `json:"at"`
+	Code   int    `json:"code"`
+	Signal string `json:"signal,omitempty"`
+	At     string `json:"at"`
 }
 
 // Entry is one attempt directory as seen by a reader.

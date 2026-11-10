@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/fluxinc/my-cli/internal/attempt"
 	"github.com/fluxinc/my-cli/internal/guidance"
 	"github.com/fluxinc/my-cli/internal/harness"
 	"github.com/fluxinc/my-cli/internal/selfskill"
@@ -992,7 +993,7 @@ func (a app) runHarness(path string, args []string, dir string) error {
 	if err := cmd.Wait(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return exitCodeError{code: exitErr.ExitCode()}
+			return exitCodeError{code: exitErr.ExitCode(), signal: attempt.ExitSignal(exitErr)}
 		}
 		return err
 	}

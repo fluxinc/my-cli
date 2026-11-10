@@ -412,3 +412,19 @@ func TestFinalizerWriteIsWhatAReconcilerSees(t *testing.T) {
 		t.Fatalf("a finalized record was reconciled: %+v", got.Record)
 	}
 }
+
+func TestProcessStartNotFoundOnlyWhenVerified(t *testing.T) {
+	// A process that certainly existed and is certainly gone.
+	child := exec.Command("true")
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	pid := child.Process.Pid
+	child.Wait()
+	if _, found, err := ProcessStart(pid); found || err != nil {
+		t.Fatalf("reaped pid %d: found=%v err=%v, want verified not found", pid, found, err)
+	}
+	if start, found, err := ProcessStart(os.Getpid()); !found || err != nil || start == "" {
+		t.Fatalf("own pid: start=%q found=%v err=%v", start, found, err)
+	}
+}
