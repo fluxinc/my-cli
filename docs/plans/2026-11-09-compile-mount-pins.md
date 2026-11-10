@@ -1,6 +1,6 @@
 # Commit pins for projected mounts in `my compile`
 
-Status: **implemented, unreleased**. Merged in [#61](https://github.com/fluxinc/my-cli/pull/61).
+Status: **shipped (v0.52.0)**. Merged in [#61](https://github.com/fluxinc/my-cli/pull/61).
 Extends the
 [compile launch plan](2026-06-14-compile-launch-plan.md).
 

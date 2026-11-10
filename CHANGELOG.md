@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.52.0 - 2026-11-10
+
 ### Added
 
 - `my compile --role <id> --umbrella DIR` adds a `pin` to each projected mount:

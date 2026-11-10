@@ -1,6 +1,6 @@
 # Service credential cache
 
-Status: implementation in review.
+Status: **shipped (v0.52.0)**.
 
 ## Problem
 

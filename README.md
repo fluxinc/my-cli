@@ -745,12 +745,12 @@ rationale.
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
-- **Implemented, unreleased — commit pins in the launch projection.**
+- **Shipped (v0.52.0) — commit pins in the launch projection.**
   `my compile --role <id> --umbrella DIR` adds a commit pin to each projected mount from that
   umbrella's base checkouts, using local Git only, so a contained runner can
   be given exact content. Plan:
   [compile mount pins](docs/plans/2026-11-09-compile-mount-pins.md).
-- **Implemented, unreleased — launch records.** `my ai` records local evidence
+- **Shipped (v0.52.0) — launch records.** `my ai` records local evidence
   of each launch: a per-launch lock for liveness, before and after observations of
   nearby checkouts, and an exit only when one was observed. `my attempts list`,
   one historical startup notice and a doctor row read them. Nothing is
@@ -759,7 +759,7 @@ indexed in [docs/plans/](docs/plans/README.md):
   proposed). Plan:
   [launch attempts](docs/plans/2026-11-09-launch-attempts.md).
 
-- **In review — service credential cache.** `op://` service keys are fetched
+- **Shipped (v0.52.0) — service credential cache.** `op://` service keys are fetched
   from 1Password once and held in memory by a per-user background process, with
   visible lifetimes, a lock and an opt-out, and no manifest change. Windows stays
   direct for now. Plan:
