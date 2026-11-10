@@ -35,6 +35,30 @@ type Options struct {
 	// ManifestCommit is the checkout's commit, recorded in the contract
 	// revision when known.
 	ManifestCommit string
+	// PinFor, when set, is asked once for each projected mount and its answer
+	// is added to that mount. When nil the projection carries no pin fields
+	// at all and is byte-for-byte what it was before pins existed.
+	PinFor func(manifest.Mount) MountPin
+}
+
+// Pin is local provenance for a projected mount. Commit is the full id of the
+// commit observed as HEAD of the mount's base checkout, which was an ancestor
+// of that checkout's locally cached upstream. It does not say the commit can
+// be fetched by anyone else. A consumer materializes exactly that commit or
+// fails; it never falls back to a branch tip. When no pin could be given,
+// Unavailable carries a reason code and Commit is empty.
+type Pin struct {
+	Commit      string `json:"commit,omitempty"`
+	Source      string `json:"source,omitempty"`
+	Unavailable string `json:"unavailable,omitempty"`
+}
+
+// MountPin is what a pin source reports for one mount. Dirty discloses that
+// the checkout had uncommitted changes, which are not part of Commit. It is
+// a best-effort observation taken beside the commit, not atomically with it.
+type MountPin struct {
+	Pin   Pin
+	Dirty bool
 }
 
 // Projection is the deterministic JSON artifact printed by `my compile`.
@@ -104,6 +128,10 @@ type Mount struct {
 	Mode         string   `json:"mode"`
 	GitURL       string   `json:"git_url"`
 	IncludePaths []string `json:"include_paths"`
+	// Pin and Dirty appear only when the projection was compiled with a pin
+	// source. See Pin for what they do and do not claim.
+	Pin   *Pin `json:"pin,omitempty"`
+	Dirty bool `json:"dirty,omitempty"`
 }
 
 // DataBinding projects one in-scope data binding.
@@ -188,7 +216,7 @@ func Compile(doc manifest.Document, opts Options) (Projection, error) {
 		return Projection{}, err
 	}
 
-	mounts, err := projectMounts(visibleMounts)
+	mounts, err := projectMounts(visibleMounts, opts.PinFor)
 	if err != nil {
 		return Projection{}, err
 	}
@@ -366,19 +394,27 @@ func projectGuidance(doc manifest.Document, role manifest.Role, hasRole bool, bi
 	return out
 }
 
-func projectMounts(mounts []manifest.Mount) ([]Mount, error) {
+func projectMounts(mounts []manifest.Mount, pinFor func(manifest.Mount) MountPin) ([]Mount, error) {
 	out := make([]Mount, 0, len(mounts))
 	for _, mount := range mounts {
 		if localGitURL(mount.GitURL) {
 			return nil, fmt.Errorf("mount %q git_url %q is local; publish the mount before compiling a contained launch projection", mount.ID, mount.GitURL)
 		}
-		out = append(out, Mount{
+		projected := Mount{
 			ID:           mount.ID,
 			Kind:         mount.Kind,
 			Mode:         mount.Mode,
 			GitURL:       mount.GitURL,
 			IncludePaths: append([]string(nil), mount.IncludePaths...),
-		})
+		}
+		if pinFor != nil {
+			observed := pinFor(mount)
+			pin := observed.Pin
+			projected.Pin = &pin
+			// Dirty only means something beside a commit.
+			projected.Dirty = observed.Dirty && pin.Commit != ""
+		}
+		out = append(out, projected)
 	}
 	return out, nil
 }

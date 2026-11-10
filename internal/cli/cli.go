@@ -242,7 +242,7 @@ Usage:
   my update [--check] [--version X.Y.Z] [--json] [--yes]
   my init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
   my publish [--manifest NAME] [--home DIR] [--print] [--json]
-  my compile --role ROLE [--manifest NAME] [--home DIR]
+  my compile --role ROLE [--manifest NAME] [--umbrella DIR] [--home DIR]
   my sync [--backend auto|gnit|builtin] [--push|--publish auto|never|direct|pr] [--record DOMAIN/ID] [--scope all|local|content|manifest|repos] [--no-derived] [--print] [--verbose] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
   my attempts list [--running|--unclosed|--local-changes] [--json]
   my session start [--slug SLUG] [--json] [--print] [harness] [-- harness args...]

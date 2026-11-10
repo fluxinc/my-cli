@@ -527,3 +527,48 @@ func TestCompileCarriesContractFileWithRevision(t *testing.T) {
 		t.Fatal("contract_file compiled without a manifest root")
 	}
 }
+
+func TestCompilePinsOnlyWhenAskedAndOnlyVisibleMounts(t *testing.T) {
+	root := filepath.Join("..", "..", "examples", "acme-workspace", "manifest")
+	doc, _, err := manifest.LoadDocument(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := Compile(doc, Options{Role: "operator"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plain.Mounts) == 0 {
+		t.Fatal("the example operator role projects no mounts")
+	}
+	var asked []string
+	pinned, err := Compile(doc, Options{Role: "operator", PinFor: func(m manifest.Mount) MountPin {
+		asked = append(asked, m.ID)
+		if m.ID == plain.Mounts[0].ID {
+			return MountPin{Pin: Pin{Commit: strings.Repeat("a", 40), Source: "umbrella"}, Dirty: true}
+		}
+		return MountPin{Pin: Pin{Unavailable: "missing_checkout"}}
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(asked) != len(plain.Mounts) {
+		t.Fatalf("pins were requested for %v, want exactly the %d projected mounts", asked, len(plain.Mounts))
+	}
+	for i, mount := range pinned.Mounts {
+		if mount.Pin == nil {
+			t.Fatalf("mount %s has no pin field although pins were requested", mount.ID)
+		}
+		if i == 0 && (mount.Pin.Commit == "" || !mount.Dirty) {
+			t.Fatalf("mount %s = %+v", mount.ID, mount)
+		}
+		if i > 0 && (mount.Pin.Unavailable != "missing_checkout" || mount.Pin.Commit != "" || mount.Dirty) {
+			t.Fatalf("mount %s = %+v", mount.ID, mount)
+		}
+	}
+	for _, mount := range plain.Mounts {
+		if mount.Pin != nil || mount.Dirty {
+			t.Fatalf("mount %s gained pin fields without being asked: %+v", mount.ID, mount)
+		}
+	}
+}

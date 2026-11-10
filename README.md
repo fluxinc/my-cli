@@ -214,7 +214,7 @@ my admin services add|edit|remove ...
 my admin roles add|edit|remove ...
 my admin manifest-mounts add|remove ...
 my setup --role operator
-my compile --role operator [--manifest NAME] [--home DIR]
+my compile --role operator [--manifest NAME] [--umbrella DIR] [--home DIR]
 ```
 
 Manifest `data_bindings` map stable data nouns (`customers`, `meetings`,
@@ -237,7 +237,15 @@ deterministic manifest-to-Clawdapus launch projection as JSON, without
 launching containers or resolving credentials. A role is required when the
 manifest declares roles; manifests with no roles compile unscoped. Governed
 projections include universal plus exact-role `policies[]` references and fail
-if an applicable policy mount is outside the selected role.
+if an applicable policy mount is outside the selected role. With
+`--umbrella DIR`, each projected mount also carries a `pin`: the commit
+observed as HEAD of that mount's base checkout in the umbrella, when it is an
+ancestor of the checkout's locally cached upstream. A pin is local provenance,
+not a promise that the commit can be fetched; a consumer materializes exactly
+that commit or fails. When no pin can be given the mount says why
+(`missing_checkout`, `no_upstream`, `repository_mismatch`, `ahead_of_upstream`
+or `error`). The probes are local Git only and cannot fetch. Without the flag
+the output is unchanged.
 
 ### Contract rules
 
@@ -737,6 +745,11 @@ rationale.
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
+- **In review — commit pins in the launch projection.** `my compile --role
+  <id> --umbrella DIR` adds a commit pin to each projected mount from that
+  umbrella's base checkouts, using local Git only, so a contained runner can
+  be given exact content. Plan:
+  [compile mount pins](docs/plans/2026-11-09-compile-mount-pins.md).
 - **In review — launch records.** `my ai` records local evidence of each
   launch: a per-launch lock for liveness, before and after observations of
   nearby checkouts, and an exit only when one was observed. `my attempts list`,

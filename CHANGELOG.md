@@ -4,6 +4,12 @@
 
 ### Added
 
+- `my compile --role <id> --umbrella DIR` adds a `pin` to each projected mount:
+  the commit checked out in that umbrella's copy of the mount, when it is an
+  ancestor of the copy's locally cached upstream. It is local provenance, not
+  a promise the commit can be fetched; a consumer uses exactly that commit or
+  fails. A mount with no pin says why. The probes use local Git only and
+  cannot fetch. Without `--umbrella` the output is unchanged.
 - `my ai` now leaves a local record of each launch under `.my-cli/attempts/`:
   the harness, the directory, what nearby Git checkouts looked like before and
   after, and the exit status when `my` saw one. `my attempts list

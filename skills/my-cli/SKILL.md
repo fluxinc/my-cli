@@ -143,7 +143,7 @@ my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--ski
                                     # verify guidance is current, compose launch-scoped org skills, then start a harness
                                     # --skills / --profile pick the org skill loadout (mutually exclusive); see the Skill model above
                                     # --setup reconciles the umbrella first when guidance is stale or missing
-my compile --role ROLE [--manifest NAME] [--home DIR]
+my compile --role ROLE [--manifest NAME] [--umbrella DIR] [--home DIR]
                                     # print deterministic role-scoped launch JSON, including applicable policy refs
 my doctor [--no-fetch] [--fix]   # git freshness, sessions, services, derived drift, last sync, manifests, tools
 ```
