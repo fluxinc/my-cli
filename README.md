@@ -750,8 +750,8 @@ indexed in [docs/plans/](docs/plans/README.md):
   umbrella's base checkouts, using local Git only, so a contained runner can
   be given exact content. Plan:
   [compile mount pins](docs/plans/2026-11-09-compile-mount-pins.md).
-- **In review — launch records.** `my ai` records local evidence of each
-  launch: a per-launch lock for liveness, before and after observations of
+- **Implemented, unreleased — launch records.** `my ai` records local evidence
+  of each launch: a per-launch lock for liveness, before and after observations of
   nearby checkouts, and an exit only when one was observed. `my attempts list`,
   one historical startup notice and a doctor row read them. Nothing is
   published; goals as live commitments belong to a bound service
