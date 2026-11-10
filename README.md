@@ -745,8 +745,8 @@ rationale.
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
-- **In review — commit pins in the launch projection.** `my compile --role
-  <id> --umbrella DIR` adds a commit pin to each projected mount from that
+- **Implemented, unreleased — commit pins in the launch projection.**
+  `my compile --role <id> --umbrella DIR` adds a commit pin to each projected mount from that
   umbrella's base checkouts, using local Git only, so a contained runner can
   be given exact content. Plan:
   [compile mount pins](docs/plans/2026-11-09-compile-mount-pins.md).
