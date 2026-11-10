@@ -33,6 +33,12 @@ Humans own agency — products, goals, decisions, ownership. That belongs in
 *content* (a manifest repo, handbook documents), not in CLI surface area. The
 CLI deliberately does not grow human-workflow verbs; it grows content kinds.
 
+One refinement ([ADR 0003](decisions/0003-launch-evidence-and-work-tracking.md),
+proposed): a goal as a statement of intent is content, but a goal as a live
+commitment — with an owner, a state and something it waits on — needs one
+authority and changes in minutes. That belongs to a service the organization
+binds, not to Git content and not to this CLI.
+
 ## 3. The eight concepts
 
 **Manifest** — an org's configuration in its own private Git repo, checked
@@ -328,3 +334,17 @@ The `identifiers` frontmatter list is the join currency with support records:
 `my fleet get` resolves any identifier and surfaces related incidents, and
 `my support add --identifier` warns when an identifier is unknown to the
 registry. Both nouns share the `internal/record` engine.
+
+## 11. Launch records
+
+`my ai` starts the harness and waits for it, so it is the one place that can
+record a launch without relying on the agent. Each launch gets a directory
+under `.my-cli/attempts/` with a lock the launcher holds for its whole life
+and a record replaced atomically. The record is evidence only: who and where,
+an optional opaque `--goal` reference, what nearby Git checkouts looked like
+before and after, and the child's exit when the launcher saw it. A reader that
+cannot take the lock knows the launcher is alive and changes nothing; a reader
+that takes it may finalize a record whose launcher is gone, and never invents
+an exit. `my attempts list`, one startup notice and a doctor row read these
+records. Nothing is published anywhere, and the non-goals in section 9 stand.
+Details and limits: [launch attempts plan](plans/2026-11-09-launch-attempts.md).

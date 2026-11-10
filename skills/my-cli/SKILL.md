@@ -244,6 +244,8 @@ my session finish [session-id] --land     # commit session content, merge into b
 my session finish [session-id] --publish  # land, then publish landed content per the sync policy
 my session finish [session-id] --discard  # delete the session's worktrees, branches, and directory
 my session leftovers [--json]             # inspect registered and raw worktrees on managed repos
+my attempts list [--unclosed|--local-changes] [--json]
+                                          # local evidence of earlier my ai launches; not work tracking
 my session close-worktree <path> --yes    # remove one clean leftover while preserving its branch
 ```
 

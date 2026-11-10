@@ -68,10 +68,13 @@ type app struct {
 	execHarness            func(path string, args []string, dir string) error
 	harnessEnvironment     []string
 	execHarnessEnvironment func(path string, args []string, dir string, env []string) error
-	updateSource           selfupdate.Source
-	updateNow              func() time.Time
-	updateCurrentVersion   string
-	updateTargetPath       string
+	// onHarnessStart, when set, is told the pid of a harness child this
+	// process started, before waiting for it.
+	onHarnessStart       func(pid int)
+	updateSource         selfupdate.Source
+	updateNow            func() time.Time
+	updateCurrentVersion string
+	updateTargetPath     string
 	// publishRunner overrides external gh invocations during my publish.
 	publishRunner manifest.Runner
 	// accessRunner overrides GitHub API calls during authorization checks.
@@ -201,6 +204,8 @@ func (a app) run(args []string) error {
 		return a.runRecord(args[2:])
 	case "session":
 		return a.runSession(args[2:])
+	case "attempts":
+		return a.runAttempts(args[2:])
 	case "work":
 		return a.runWork(args[2:])
 	case "customers":
@@ -230,12 +235,13 @@ Usage:
   my onboarding [--agent|--no-agent] [--harness NAME] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
   my onboarding --status|--complete [--manifest NAME] [--home DIR] [--umbrella DIR]
   my root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-  my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+  my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--goal REF] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
   my update [--check] [--version X.Y.Z] [--json] [--yes]
   my init <org-id> [--name NAME] [--path DIR] [--umbrella DIR] [--home DIR] [--setup] [--json]
   my publish [--manifest NAME] [--home DIR] [--print] [--json]
   my compile --role ROLE [--manifest NAME] [--home DIR]
   my sync [--backend auto|gnit|builtin] [--push|--publish auto|never|direct|pr] [--record DOMAIN/ID] [--scope all|local|content|manifest|repos] [--no-derived] [--print] [--verbose] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
+  my attempts list [--running|--unclosed|--local-changes] [--json]
   my session start [--slug SLUG] [--json] [--print] [harness] [-- harness args...]
   my session join <session-id> <harness> [-- harness args...]
   my session resume [session-id] [harness] [--json]

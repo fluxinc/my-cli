@@ -4,6 +4,16 @@
 
 ### Added
 
+- `my ai` now leaves a local record of each launch under `.my-cli/attempts/`:
+  the harness, the directory, what nearby Git checkouts looked like before and
+  after, and the exit status when `my` saw one. `my attempts list
+  [--running|--unclosed|--local-changes] [--json]` shows them, `my doctor`
+  summarizes them, and a launch prints one line when launches from the last
+  seven days observed local changes. A record is evidence only: it does not
+  say work was finished or published, and nothing is sent anywhere. `--print`
+  records nothing. Native Windows does not record launches yet.
+- `my ai --goal REF` stores an opaque reference on the launch record. It grants
+  and binds nothing.
 - `op://` service keys are fetched from 1Password once and then reused, instead
   of on every `my fleet` or `my support link` command. A background `my` process
   for your user holds them in memory only: until unused for 1 hour, or 8 hours

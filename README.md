@@ -119,7 +119,7 @@ Publish still requires `my publish --print` and explicit human approval.
 ```sh
 my root [--repo ID] [--no-refresh] [--no-update-check]
                                              # print the umbrella or repo path
-my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--no-refresh] [--no-update-check] [harness]
+my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--goal REF] [--setup] [--no-refresh] [--no-update-check] [harness]
                                              # verify guidance, then start a harness
 my ai codex --model gpt-5              # pass harness flags after the harness name
 my ai --new-session codex
@@ -129,6 +129,8 @@ my ai -r 2026-06-11-ab12 codex
 my ai --repo sample-service codex
 my ai --print codex                    # print cd <umbrella> && codex
 my session leftovers                   # raw worktrees not owned by an active session
+my attempts list [--running|--unclosed|--local-changes] [--json]
+                                       # local records of earlier my ai launches
 my session close-worktree <path> --yes # close a clean leftover; preserve its branch
 ```
 
@@ -153,6 +155,16 @@ rate-limited REST API. Notices are stderr-only so `cd "$(my root)"` stays
 path-pure.
 Use `--no-update-check` for one command, `MYCLI_NO_UPDATE_CHECK=1` globally, or
 `MYCLI_UPDATE_CHECK_TTL=12h` to tune the check window.
+
+Every `my ai` launch that starts a harness also leaves a local launch record
+under `.my-cli/attempts/`. It is evidence, not tracking: the harness, the
+directory, an optional `--goal REF` stored verbatim, what nearby Git checkouts
+looked like before and after, and the exit status when `my` saw one. It never
+says work was finished or published, checkouts shared by several agents are
+observed rather than attributed, and nothing is sent anywhere. If a launcher
+dies, the next launch or `my attempts list` marks its record as stopped
+without a recorded exit; it does not invent one. `--print` records nothing,
+and native Windows does not record launches yet.
 
 ### Updating My AI
 
@@ -630,7 +642,7 @@ read and write that service live, workflow moves go through `transition`, and
 ```sh
 my tools list                             # declared tools across selected manifests
 my tools info <name>                      # install hints for a declared tool
-my doctor [--no-fetch] [--fix]            # git freshness, sessions, services, derived drift, last sync, manifests, tools
+my doctor [--no-fetch] [--fix]            # git freshness, sessions, launch records, services, derived drift, last sync, manifests, tools
 ```
 
 Data-returning commands expose `--json` where shown. Structured errors use a
@@ -724,6 +736,15 @@ rationale.
 
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
+
+- **In review — launch records.** `my ai` records local evidence of each
+  launch: a per-launch lock for liveness, before and after observations of
+  nearby checkouts, and an exit only when one was observed. `my attempts list`,
+  one historical startup notice and a doctor row read them. Nothing is
+  published; goals as live commitments belong to a bound service
+  ([ADR 0003](docs/decisions/0003-launch-evidence-and-work-tracking.md),
+  proposed). Plan:
+  [launch attempts](docs/plans/2026-11-09-launch-attempts.md).
 
 - **In review — service credential cache.** `op://` service keys are fetched
   from 1Password once and held in memory by a per-user background process, with
