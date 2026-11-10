@@ -53,6 +53,13 @@ func loadCompileUmbrella(dir string) (string, umbrella.Workspace, error) {
 	if strings.TrimSpace(ws.Organization) == "" {
 		return "", umbrella.Workspace{}, fmt.Errorf("--umbrella %s records no organization", dir)
 	}
+	// The identity file must describe this directory. A copy of an umbrella's
+	// identity placed anywhere else, such as inside a session, names a
+	// different root and is refused. my setup rewrites the recorded root, so
+	// an umbrella that was moved is repaired by running it again.
+	if strings.TrimSpace(ws.WorkspaceRoot) == "" || canonicalPath(ws.WorkspaceRoot) != root {
+		return "", umbrella.Workspace{}, fmt.Errorf("--umbrella %s: its identity file records a different umbrella root; pass the umbrella's own directory, or run my setup there if it was moved", dir)
+	}
 	return root, ws, nil
 }
 
@@ -79,16 +86,19 @@ func validateCompileUmbrella(dir string, doc manifest.Document) (string, error) 
 type pinGitRunner func(dir string, args ...string) (stdout []byte, exit int, err error)
 
 // runPinGit is read-only and offline by construction, not by convention:
-//   - protocol.allow=never refuses every transport, so a partial clone cannot
-//     lazily fetch a missing object on any Git version;
+//   - GIT_ALLOW_PROTOCOL is set to an empty list. When that variable is set
+//     Git consults nothing else to decide whether a transport is allowed, so
+//     no protocol.allow or protocol.<name>.allow in any config can re-enable
+//     one, and a partial clone cannot lazily fetch a missing object;
 //   - GIT_NO_LAZY_FETCH says the same to Git versions that know it;
 //   - optional locks and terminal prompts are off, and no fsmonitor hook runs;
 //   - GIT_CEILING_DIRECTORIES stops discovery at the mount's parent, so a
 //     plain directory is never answered for by an ancestor repository.
 func runPinGit(dir string, args ...string) ([]byte, int, error) {
-	full := append([]string{"-C", dir, "-c", "protocol.allow=never", "-c", "core.fsmonitor=false"}, args...)
+	full := append([]string{"-C", dir, "-c", "core.fsmonitor=false"}, args...)
 	cmd := exec.Command("git", full...)
 	cmd.Env = append(os.Environ(),
+		"GIT_ALLOW_PROTOCOL=",
 		"GIT_NO_LAZY_FETCH=1",
 		"GIT_OPTIONAL_LOCKS=0",
 		"GIT_TERMINAL_PROMPT=0",

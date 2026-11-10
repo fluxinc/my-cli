@@ -57,9 +57,11 @@ a credential.
 ## Rules the implementation keeps
 
 - **Identity.** `--umbrella` must be the umbrella's own directory, carrying
-  `.my-cli/workspace.json` with a readable schema and the same organization as
-  the manifest being compiled. It is never found by walking up, so a session
-  directory is refused, not relabelled. When `--manifest` is omitted the
+  `.my-cli/workspace.json` with a readable schema, the same organization as
+  the manifest being compiled, and a recorded root equal to that directory.
+  It is never found by walking up, and a copy of the identity file placed
+  elsewhere names a different root, so a session directory is refused, not
+  relabelled. An umbrella that was moved is repaired by `my setup`. When `--manifest` is omitted the
   umbrella's recorded manifest is used.
 - **Base mounts only.** Session worktrees are never read.
 - **The right repository.** The mount must be its own repository top level,
@@ -69,11 +71,13 @@ a credential.
   reads as a mismatch.
 - **One HEAD.** HEAD is resolved once to a full commit id, and every later
   check uses that literal id.
-- **Offline and read-only by construction.** Every probe runs with
-  `protocol.allow=never`, `GIT_NO_LAZY_FETCH=1`, optional locks and terminal
-  prompts off, no fsmonitor hook, and discovery stopped at the mount's parent.
-  A partial clone cannot fetch a missing object to answer a probe; the answer
-  is `error`.
+- **Offline and read-only by construction.** Every probe runs with an empty
+  `GIT_ALLOW_PROTOCOL` list, which refuses every transport and cannot be
+  re-enabled by `protocol.allow` or `protocol.<name>.allow` in any Git
+  config, plus `GIT_NO_LAZY_FETCH=1`, optional locks and terminal prompts off,
+  no fsmonitor hook, and discovery stopped at the mount's parent. A partial
+  clone cannot fetch a missing object to answer a probe; the answer is
+  `error`.
 
 ## Not in this slice
 
@@ -89,6 +93,9 @@ inside an ancestor repository and an uninspectable repository; a stale cached
 upstream, asserting nothing is said about fetchability; a configured remote
 holding a credential, asserting it is never printed; HEAD resolved exactly
 once; a session directory and another organization's umbrella refused; an
-unknown workspace schema refused; missing history as `error` with nothing
-fetched; and the probe runner asked for an object only a reachable promisor
-remote has, with a control showing the same command fetching when unprotected.
+unknown workspace schema refused; an identity file recording no root, another
+root, or copied into a session refused; missing history as `error` with
+nothing fetched; and the probe runner asked for an object only a reachable
+promisor remote has, with repository config trying to re-enable transports, a
+Git that ignores the lazy-fetch variable, and a control showing the same
+command fetching when unprotected.

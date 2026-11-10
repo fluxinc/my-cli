@@ -250,6 +250,9 @@ func pinHasObject(mount, id string) bool {
 func TestPinGitRunnerCannotFetch(t *testing.T) {
 	_, origin, mount, _ := pinFixture(t)
 	missing, _ := partialCloneMissing(t, origin, mount, false)
+	// Repository config that tries to re-enable transports must not matter.
+	pinGit(t, mount, "config", "protocol.allow", "always")
+	pinGit(t, mount, "config", "protocol.file.allow", "always")
 	if _, exit, err := runPinGit(mount, "cat-file", "-e", missing); err != nil || exit == 0 {
 		t.Fatalf("the probe runner found an object the clone does not have: exit=%d err=%v", exit, err)
 	}
@@ -308,6 +311,24 @@ func TestCompileUmbrellaIdentity(t *testing.T) {
 	}
 	if _, err := validateCompileUmbrella(filepath.Join(root, "nope"), doc); err == nil {
 		t.Fatal("a missing directory was accepted as an umbrella")
+	}
+	// An identity that records no root, or another root, is not this umbrella.
+	moved, err := umbrella.LoadWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, recorded := range []string{"", filepath.Join(filepath.Dir(root), "elsewhere")} {
+		changed := moved
+		changed.WorkspaceRoot = recorded
+		if err := umbrella.SaveWorkspace(root, changed); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := validateCompileUmbrella(root, doc); err == nil || !strings.Contains(err.Error(), "different umbrella root") {
+			t.Fatalf("an identity recording root %q was accepted: %v", recorded, err)
+		}
+	}
+	if err := umbrella.SaveWorkspace(root, moved); err != nil {
+		t.Fatal(err)
 	}
 	// A workspace file from a newer schema is refused, not guessed at.
 	ws, err := umbrella.LoadWorkspace(root)
