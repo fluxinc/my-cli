@@ -232,6 +232,7 @@ my session status [--all] [--json]
 my session list [--all] [--json]
 my session finish [session-id] --land|--publish|--discard [--message TEXT] [--verbose] [--json]
 my session leftovers [--all] [--json]
+my attempts list [--running|--unclosed|--local-changes] [--json]
 my session close-worktree <path> [--yes] [--json]
 
 my work start|status|list|resume|finish ...  # deprecated alias of my session

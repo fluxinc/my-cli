@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/fluxinc/my-cli/internal/attempt"
 	"github.com/fluxinc/my-cli/internal/guidance"
 	"github.com/fluxinc/my-cli/internal/harness"
 	"github.com/fluxinc/my-cli/internal/selfskill"
@@ -127,6 +128,9 @@ type launchCommandOpts struct {
 	noRefresh                   bool
 	noUpdateCheck               bool
 	promptLaunchSkillCollisions bool
+	// goal is an opaque reference stored on the launch record. It grants and
+	// binds nothing.
+	goal string
 }
 
 func (a app) runLaunch(args []string) error {
@@ -300,7 +304,10 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 	if err := a.ensureLaunchOrgSkills(h, opts, doc, root, targetDir, selector); err != nil {
 		return err
 	}
-	return a.runContractHarness(h, binary, harnessArgs, targetDir, opts.home, doc.ref.Name, root)
+	a.attemptStartupNotice(root)
+	return a.withAttempt(attemptLaunch{harness: string(h), root: root, dir: targetDir, goal: opts.goal}, func(a app) error {
+		return a.runContractHarness(h, binary, harnessArgs, targetDir, opts.home, doc.ref.Name, root)
+	})
 }
 
 func (a app) printGovernedLaunchProjectionNotices(home, manifestName, root string) {
@@ -566,7 +573,7 @@ func launchGuidanceAutoRepairable(status string) bool {
 
 func (a app) printLaunchUsage() {
 	fmt.Fprintln(a.stderr, `Usage of my ai:
-  my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+  my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--goal REF] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
 
 Harness defaults to claude-code. By default, harnesses launch from the base
 umbrella, or from the current session when run inside one. Harness flags go
@@ -594,6 +601,7 @@ Options:
   -r, --resume [ID] resume an active session, picking the only active session or prompting on a TTY
   --no-session      ignore any current session and launch from the base umbrella
   --repo ID         run from repos/<id> under the umbrella
+  --goal REF        note an opaque goal reference on this launch's local record; it grants and binds nothing
   --skills VALUE    select org skills: all, none, or comma-separated manifest skill ids
   --profile ID      select a named manifest launch profile
   --setup           reconcile the umbrella first if guidance is stale or missing
@@ -639,7 +647,7 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			opts.noRefresh = true
 		case arg == "--no-update-check":
 			opts.noUpdateCheck = true
-		case arg == "--home" || arg == "--manifest" || arg == "--umbrella" || arg == "--repo" || arg == "--product" || arg == "--session" || arg == "--skills" || arg == "--profile":
+		case arg == "--home" || arg == "--manifest" || arg == "--umbrella" || arg == "--repo" || arg == "--product" || arg == "--session" || arg == "--skills" || arg == "--profile" || arg == "--goal":
 			i++
 			if i >= len(args) {
 				return opts, "", nil, false, fmt.Errorf("missing value for %s", arg)
@@ -667,6 +675,8 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			opts.skillsSelector = strings.TrimPrefix(arg, "--skills=")
 		case strings.HasPrefix(arg, "--profile="):
 			opts.profileID = strings.TrimPrefix(arg, "--profile=")
+		case strings.HasPrefix(arg, "--goal="):
+			opts.goal = strings.TrimPrefix(arg, "--goal=")
 		case isFlagArg(arg):
 			return opts, "", nil, false, fmt.Errorf("unknown my ai flag %q; put harness flags after the harness name", arg)
 		default:
@@ -694,6 +704,8 @@ func setLaunchValue(opts *launchCommandOpts, name, value string) {
 		opts.skillsSelector = value
 	case "profile":
 		opts.profileID = value
+	case "goal":
+		opts.goal = value
 	}
 }
 
@@ -970,10 +982,18 @@ func (a app) runHarness(path string, args []string, dir string) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	// Start and Wait are what Run does; splitting them exposes the child's
+	// pid to the launch record before waiting.
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	if a.onHarnessStart != nil {
+		a.onHarnessStart(cmd.Process.Pid)
+	}
+	if err := cmd.Wait(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return exitCodeError{code: exitErr.ExitCode()}
+			return exitCodeError{code: exitErr.ExitCode(), signal: attempt.ExitSignal(exitErr)}
 		}
 		return err
 	}
