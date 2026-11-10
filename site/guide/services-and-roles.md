@@ -13,7 +13,7 @@ my services get <id> [--manifest NAME] [--json]
 my roles list [--manifest NAME] [--json]
 my roles get <id> [--manifest NAME] [--json]
 my setup --role <id>
-my compile --role <id> [--manifest NAME] [--home DIR]
+my compile --role <id> [--manifest NAME] [--umbrella DIR] [--home DIR]
 ```
 
 ## Services
@@ -102,6 +102,15 @@ it prints a deterministic manifest-to-Clawdapus launch projection JSON artifact
 and writes nothing. It does not launch containers, call services, resolve
 credentials, or fetch `describe_ref` targets. A manifest with roles requires
 `--role`; a manifest with no roles compiles an unscoped projection.
+
+Pass `--umbrella DIR` to add a `pin` to each projected mount: the commit
+checked out in that umbrella's copy of the mount, when it is an ancestor of
+the copy's locally cached upstream. A pin is local provenance. It does not
+promise the commit can be fetched, so a runner must materialize exactly that
+commit or fail, never fall back to a branch tip. A mount with no pin carries
+`"pin": {"unavailable": "<reason>"}`. `"dirty": true` beside a pin means the
+copy had uncommitted changes, which are not part of the commit. The probes
+are local Git only and cannot fetch; without the flag the output is unchanged.
 
 ## MCP materialization
 

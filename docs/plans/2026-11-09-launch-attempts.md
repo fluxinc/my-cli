@@ -1,6 +1,7 @@
 # Launch attempts: local evidence of every `my ai` launch
 
-Status: **active**. Decision: [ADR 0003](../decisions/0003-launch-evidence-and-work-tracking.md).
+Status: **implemented, unreleased**. Merged in [#60](https://github.com/fluxinc/my-cli/pull/60).
+Decision: [ADR 0003](../decisions/0003-launch-evidence-and-work-tracking.md), still proposed.
 
 ## What ships in this slice
 
