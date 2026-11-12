@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fluxinc/my-cli/internal/guidance"
@@ -103,6 +104,7 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 	var report doctorReport
 	report.Prereqs = append(report.Prereqs, a.doctorPrereqs()...)
 	report.Version = append(report.Version, a.doctorVersion(home))
+	decideKeyCache := lazyCacheDecision(home)
 	var root string
 	if umbrellaRoot != "" {
 		resolved, err := resolveUmbrellaRoot(home, umbrellaRoot)
@@ -154,7 +156,7 @@ func (a app) buildDoctorReport(home, manifestName, umbrellaRoot string, opts doc
 		report.Derived = append(report.Derived, doctorContractReview(home, ref, doc, root)...)
 		report.Workspaces = append(report.Workspaces, doctorWorkspaces(home, ref.Name, doc.Workspaces)...)
 		report.Tools = append(report.Tools, doctorTools(ref.Name, doc.Tools)...)
-		report.Services = append(report.Services, doctorPersonalServices(home, ref, doc.Services)...)
+		report.Services = append(report.Services, doctorPersonalServices(home, ref, doc.Services, decideKeyCache)...)
 		if manifest.GovernanceConfigured(doc.Governance) {
 			status, statusErr := a.currentAccessMonitorStatus(home, ref.Name)
 			item := doctorItem{Name: ref.Name + ":access-monitor", Status: "error", Path: status.Descriptor, Message: status.Message}
@@ -1058,9 +1060,21 @@ func doctorTools(manifestName string, tools []manifest.Tool) []doctorItem {
 	return out
 }
 
-// Inspect references/verified expiry offline; doctor never reads a secret or
-// contacts a service just to diagnose local setup.
-func doctorPersonalServices(home string, ref manifest.Ref, services []manifest.Service) []doctorItem {
+// lazyCacheDecision decides key-cache eligibility at most once per doctor run,
+// and only when some service uses an op:// key.
+func lazyCacheDecision(home string) func() cacheDecision {
+	var once sync.Once
+	var d cacheDecision
+	return func() cacheDecision {
+		once.Do(func() { d = decideCache(home) })
+		return d
+	}
+}
+
+// Inspect references, verified expiry and key-cache eligibility without
+// reading a secret, starting the cache broker or contacting a service; the
+// only command run is op account list, and only for op:// keys.
+func doctorPersonalServices(home string, ref manifest.Ref, services []manifest.Service, decideKeyCache func() cacheDecision) []doctorItem {
 	effective := append([]manifest.Service(nil), services...)
 	personal := map[string]serviceauth.Entry{}
 	problems := map[string]doctorItem{}
@@ -1100,12 +1114,62 @@ func doctorPersonalServices(home string, ref manifest.Ref, services []manifest.S
 			}
 			items[i].Details = append(items[i].Details, "set up your personal key at "+s.AuthSetupURL+"; run my services auth set "+s.ID+" --ref <op:// or env:// reference>")
 		}
+		if s.Kind == "http" && strings.HasPrefix(s.AuthRef, "op://") {
+			doctorKeyCache(&items[i], decideKeyCache(), ok && !e.ExpiresAt.IsZero() && !e.ExpiresAt.After(time.Now()))
+		}
 		if items[i].Message == "" && items[i].Status != "ok" && len(items[i].Details) > 0 {
 			items[i].Message = items[i].Details[0]
 			items[i].Details = items[i].Details[1:]
 		}
 	}
 	return items
+}
+
+// doctorKeyCache adds one answer on whether this service's key can be cached.
+// A deliberate bypass is fine; an ambiguous setup is a warning, because every
+// command then asks 1Password; a configuration error fails those commands.
+func doctorKeyCache(item *doctorItem, d cacheDecision, expired bool) {
+	raise := func(status string) {
+		if doctorSeverity(status) > doctorSeverity(item.Status) {
+			item.Status = status
+		}
+	}
+	switch d.State() {
+	case "eligible":
+		if expired {
+			// Mirrors resolveServiceCredential: a key past its recorded expiry
+			// is used but not cached.
+			item.Details = append(item.Details, "key cache: not eligible, the recorded key expiry has passed (my services auth status rechecks it)")
+			return
+		}
+		item.Details = append(item.Details, "key cache: eligible, 1Password account "+d.AccountLabel()+" ("+describeAccountSource(d.AccountSource)+")")
+	case "bypassed":
+		if d.Bypass == "unsupported" {
+			item.Details = append(item.Details, "key cache: "+d.Reason)
+			return
+		}
+		item.Details = append(item.Details, "key cache: skipped ("+d.Bypass+")")
+	case "error":
+		raise("error")
+		item.Details = append(item.Details, "key cache: "+d.Err.Error())
+	default:
+		raise("warning")
+		line := "key cache: not eligible, " + d.Reason + "; each command asks 1Password"
+		if remedy := d.remedyLine(); remedy != "" {
+			line += "; " + remedy
+		}
+		item.Details = append(item.Details, line)
+	}
+}
+
+func doctorSeverity(status string) int {
+	switch status {
+	case "ok", "":
+		return 0
+	case "warning":
+		return 1
+	}
+	return 2
 }
 
 func doctorServices(manifestName, manifestRoot string, services []manifest.Service) []doctorItem {

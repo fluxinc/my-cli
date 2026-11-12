@@ -108,7 +108,7 @@ func TestDoctorUsesPersonalReferencesAndWarnsBeforeExpiry(t *testing.T) {
 	service := manifest.Service{ID: "registry", Kind: "http", AuthRef: "env://UNSET_ORG_REF", AuthSetupURL: "https://example.test/keys", Connection: manifest.ServiceConnection{URL: "https://example.test/api/v1"}}
 	t.Setenv("PERSONAL_REGISTRY_TOKEN", "not-read-by-doctor")
 	serviceauth.Set(home, serviceBinding(ref, service), serviceauth.Entry{Ref: "env://PERSONAL_REGISTRY_TOKEN", ExpiresAt: time.Now().Add(24 * time.Hour)})
-	got := doctorPersonalServices(home, ref, []manifest.Service{service})
+	got := doctorPersonalServices(home, ref, []manifest.Service{service}, lazyCacheDecision(home))
 	detail := fmt.Sprint(got)
 	if strings.Contains(detail, "UNSET_ORG_REF") || !strings.Contains(detail, "expires") || !strings.Contains(detail, "https://example.test/keys") {
 		t.Fatalf("doctor: %s", detail)
@@ -169,7 +169,7 @@ func TestStalePersonalBindingNeverFallsBackToSharedKey(t *testing.T) {
 	if _, err = svc.connect(); err == nil || !strings.Contains(err.Error(), "no longer matches") {
 		t.Fatalf("stale connect: %v", err)
 	}
-	report := doctorPersonalServices(home, docs[0].ref, doc.Services)
+	report := doctorPersonalServices(home, docs[0].ref, doc.Services, lazyCacheDecision(home))
 	if len(report) != 1 || report[0].Status != "error" || !strings.Contains(report[0].Message, "no longer matches") {
 		t.Fatalf("doctor=%+v", report)
 	}

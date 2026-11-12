@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Changed
+
+- `my services auth cache status` and `my doctor` now say whether `op://` keys
+  can actually be cached, not just whether caching is on: which 1Password
+  account is used and why (`OP_ACCOUNT`, the saved choice, or the only
+  account), or why keys are not cached and how to fix it, such as several
+  accounts with none chosen. A deliberate bypass, a setup problem, an empty
+  cache and a configuration error are reported separately; `--json` adds an
+  `effective` object. The check runs only `op account list`: it reads no key,
+  starts no cache process and contacts no service. Before this, the status
+  said "on" while a machine signed in to two accounts cached nothing.
+
 ## 0.52.0 - 2026-11-10
 
 ### Added
