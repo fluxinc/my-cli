@@ -135,41 +135,143 @@ func matchOPAccount(accounts []opAccount, want string) (opAccount, bool) {
 	return opAccount{}, false
 }
 
-// resolveOPAccount finds the one account a cached key belongs to and returns
-// its UUID, which is then passed to op read, so the key and the fetch cannot
-// disagree about the account. It never guesses: an ambiguous choice returns a
-// reason to stay uncached. `op account list` reads local metadata and does not
-// ask for authorization.
-func resolveOPAccount(settings credcache.Settings) (string, string, error) {
+// cacheDecision is whether an op:// key would be cached right now, and why.
+// Resolution and diagnosis (cache status, doctor) both read it, so what they
+// report cannot drift from what a command does. Making it runs at most
+// `op account list`, never op read, the broker, or the service. That command
+// reads local account metadata and is expected not to ask for authorization;
+// this has not been observed against a locked desktop app.
+type cacheDecision struct {
+	Settings credcache.Settings
+	Use      bool
+	// Bypass names a deliberate reason the cache is skipped: --no-cache,
+	// MYCLI_NO_CRED_CACHE, OP_SERVICE_ACCOUNT_TOKEN, OP_CONNECT_TOKEN, off or
+	// unsupported.
+	Bypass        string
+	Account       opAccount
+	AccountSource string // OP_ACCOUNT, saved or only account
+	// Reason and Remedy explain why a user who expects caching is not getting it.
+	Reason string
+	Remedy string
+	// unknown means the accounts could not be listed, so eligibility is unknown.
+	unknown bool
+	// Err is a configuration error that makes commands using op:// keys fail.
+	Err error
+}
+
+// State is the diagnostic summary: eligible, bypassed, ineligible, unknown
+// (accounts could not be listed) or error.
+func (d cacheDecision) State() string {
+	switch {
+	case d.Err != nil:
+		return "error"
+	case d.Use:
+		return "eligible"
+	case d.Bypass != "":
+		return "bypassed"
+	case d.unknown:
+		return "unknown"
+	}
+	return "ineligible"
+}
+
+// remedyLine is the remedy when the reason does not already carry it.
+func (d cacheDecision) remedyLine() string {
+	if d.Remedy == "" || strings.Contains(d.Reason, d.Remedy) {
+		return ""
+	}
+	return d.Remedy
+}
+
+// AccountLabel names the chosen account the way op account list shows it.
+func (d cacheDecision) AccountLabel() string {
+	for _, name := range []string{d.Account.URL, d.Account.Email, d.Account.AccountUUID} {
+		if name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+func decideCache(home string) (d cacheDecision) {
+	// A service account or Connect server never prompts: nothing to save.
+	for _, bypass := range []struct {
+		on   bool
+		name string
+	}{
+		{credNoCacheFlag, "--no-cache"},
+		{os.Getenv("MYCLI_NO_CRED_CACHE") != "", "MYCLI_NO_CRED_CACHE"},
+		{os.Getenv("OP_SERVICE_ACCOUNT_TOKEN") != "", "OP_SERVICE_ACCOUNT_TOKEN"},
+		{os.Getenv("OP_CONNECT_TOKEN") != "", "OP_CONNECT_TOKEN"},
+	} {
+		if bypass.on {
+			d.Bypass = bypass.name
+			return d
+		}
+	}
+	var err error
+	if d.Settings, err = credcache.LoadSettings(home); err != nil {
+		d.Err = fmt.Errorf("%w; fix or delete that file", err)
+		return d
+	}
+	if d.Settings.Disabled {
+		d.Bypass = "off"
+		return d
+	}
+	if !credcache.Supported {
+		d.Bypass, d.Reason = "unsupported", "the credential cache is not available on this platform yet"
+		return d
+	}
+	pickOPAccount(&d)
+	d.Use = d.Account.AccountUUID != "" && d.Err == nil
+	return d
+}
+
+// pickOPAccount finds the one account a cached key belongs to, whose UUID is
+// then passed to op read, so the key and the fetch cannot disagree about the
+// account. It never guesses: an ambiguous choice leaves a reason to stay
+// uncached.
+func pickOPAccount(d *cacheDecision) {
+	saved := d.Settings.Account
 	accounts, err := listOPAccounts()
 	if err != nil {
-		if settings.Account != "" {
-			return "", "", fmt.Errorf("could not confirm the saved 1Password account: %w", err)
+		if saved != "" {
+			d.Err = fmt.Errorf("could not confirm the saved 1Password account: %w", err)
+			return
 		}
-		return "", "could not list 1Password accounts", nil
+		d.Reason, d.Remedy, d.unknown = "could not list 1Password accounts", "check that the 1Password CLI (op) is installed and signed in", true
+		return
 	}
 	if want := os.Getenv("OP_ACCOUNT"); want != "" {
 		account, ok := matchOPAccount(accounts, want)
 		if !ok || account.AccountUUID == "" {
-			return "", "OP_ACCOUNT does not name exactly one 1Password account on this machine", nil
+			d.Reason, d.Remedy = "OP_ACCOUNT does not name exactly one 1Password account on this machine", "set OP_ACCOUNT to an account URL or UUID from op account list"
+			return
 		}
-		return account.AccountUUID, "", nil
+		d.Account, d.AccountSource = account, "OP_ACCOUNT"
+		return
 	}
-	if settings.Account != "" {
+	if saved != "" {
 		// A saved choice must not quietly become whichever account op picks.
-		account, ok := matchOPAccount(accounts, settings.Account)
+		account, ok := matchOPAccount(accounts, saved)
 		if !ok || account.AccountUUID == "" {
-			return "", "", errors.New("the saved 1Password account is no longer on this machine; choose one with my services auth cache account <email>")
+			d.Err = errors.New("the saved 1Password account is no longer on this machine; choose one with my services auth cache account <email>")
+			return
 		}
-		return account.AccountUUID, "", nil
+		d.Account, d.AccountSource = account, "saved"
+		return
 	}
 	if len(accounts) == 1 && accounts[0].AccountUUID != "" {
-		return accounts[0].AccountUUID, "", nil
+		d.Account, d.AccountSource = accounts[0], "only account"
+		return
 	}
 	if len(accounts) == 0 {
-		return "", "no 1Password account is set up on this machine", nil
+		d.Reason, d.Remedy = "no 1Password account is set up on this machine", "sign in with op account add"
+		return
 	}
-	return "", "several 1Password accounts are set up, so keys are not cached; choose one with my services auth cache account <email> or OP_ACCOUNT", nil
+	// The reason is also the runtime notice, which already names the fix.
+	d.Remedy = "choose one with my services auth cache account <email> or OP_ACCOUNT"
+	d.Reason = "several 1Password accounts are set up, so keys are not cached; " + d.Remedy
 }
 
 // cachePlan decides whether a reference uses the cache. A non-empty reason
@@ -178,21 +280,11 @@ func cachePlan(home, ref string) (settings credcache.Settings, account string, u
 	if !strings.HasPrefix(ref, "op://") {
 		return settings, "", false, "", nil
 	}
-	// A service account or Connect server never prompts: nothing to save.
-	if credNoCacheFlag || os.Getenv("MYCLI_NO_CRED_CACHE") != "" || os.Getenv("OP_SERVICE_ACCOUNT_TOKEN") != "" || os.Getenv("OP_CONNECT_TOKEN") != "" {
-		return settings, "", false, "", nil
+	d := decideCache(home)
+	if d.Err != nil {
+		return d.Settings, "", false, "", d.Err
 	}
-	if settings, err = credcache.LoadSettings(home); err != nil {
-		return settings, "", false, "", fmt.Errorf("%w; fix or delete that file", err)
-	}
-	if settings.Disabled {
-		return settings, "", false, "", nil
-	}
-	if !credcache.Supported {
-		return settings, "", false, "the credential cache is not available on this platform yet", nil
-	}
-	account, reason, err = resolveOPAccount(settings)
-	return settings, account, account != "", reason, err
+	return d.Settings, d.Account.AccountUUID, d.Use, d.Reason, nil
 }
 
 func credentialKey(binding serviceauth.Binding, ref, account string) credcache.Key {
@@ -429,11 +521,22 @@ func (a app) runServicesAuthCache(args []string) error {
 	}
 	idleLimit, hardLimit := settings.Limits()
 	enabled := !settings.Disabled && credcache.Supported
+	// The setting alone does not say whether a key can be cached here.
+	decision := decideCache(home)
 	if jsonOut {
 		if entries == nil {
 			entries = []credcache.EntryStatus{}
 		}
-		return printJSON(a.stdout, map[string]any{"enabled": enabled, "supported": credcache.Supported, "idle": idleLimit.String(), "max": hardLimit.String(), "account": settings.Account, "entries": entries})
+		effective := map[string]any{"state": decision.State(), "usable": decision.Use, "cold": decision.Use && len(entries) == 0}
+		for key, value := range map[string]string{"bypass": decision.Bypass, "account_uuid": decision.Account.AccountUUID, "account": decision.AccountLabel(), "account_source": decision.AccountSource, "reason": decision.Reason, "remedy": decision.Remedy} {
+			if value != "" {
+				effective[key] = value
+			}
+		}
+		if decision.Err != nil {
+			effective["error"] = decision.Err.Error()
+		}
+		return printJSON(a.stdout, map[string]any{"enabled": enabled, "supported": credcache.Supported, "idle": idleLimit.String(), "max": hardLimit.String(), "account": settings.Account, "effective": effective, "entries": entries})
 	}
 	state := "on"
 	switch {
@@ -443,13 +546,54 @@ func (a app) runServicesAuthCache(args []string) error {
 		state = "off"
 	}
 	fmt.Fprintf(a.stdout, "Credential cache: %s (unused %s, %s at most).\n", state, idleLimit, hardLimit)
+	if line := decision.summary(); line != "" {
+		fmt.Fprintln(a.stdout, line)
+	}
 	for _, entry := range entries {
 		fmt.Fprintf(a.stdout, "%s: cached until unused at %s, or %s at the latest\n", entry.Service, entry.IdleUntil.Local().Format("15:04"), entry.HardUntil.Local().Format("15:04"))
 	}
-	if len(entries) > 0 {
+	switch {
+	case len(entries) > 0:
 		fmt.Fprintln(a.stdout, "Cached keys stay usable after 1Password locks; my services auth lock clears them.")
+	case decision.Use:
+		fmt.Fprintln(a.stdout, "Nothing is cached yet; the next eligible lookup may request 1Password approval.")
 	}
+	fmt.Fprintln(a.stdout, "This check fetches no key; my services auth status <service> checks a key live.")
 	return nil
+}
+
+// summary says, in one or two lines, whether op:// keys can be cached now.
+// Eligibility is not a check that any key is valid.
+func (d cacheDecision) summary() string {
+	switch d.State() {
+	case "eligible":
+		return fmt.Sprintf("Keys can be cached in 1Password account %s (%s).", d.AccountLabel(), describeAccountSource(d.AccountSource))
+	case "bypassed":
+		if d.Bypass == "off" || d.Bypass == "unsupported" {
+			return ""
+		}
+		return "Keys will not be cached: " + d.Bypass + " is set, so 1Password is asked directly."
+	case "error":
+		return "Commands using 1Password keys will fail: " + d.Err.Error() + "."
+	}
+	line := "Keys will not be cached: " + d.Reason + "."
+	if strings.Contains(d.Reason, "not cached") {
+		line = strings.ToUpper(d.Reason[:1]) + d.Reason[1:] + "."
+	}
+	if remedy := d.remedyLine(); remedy != "" {
+		line += " To fix: " + remedy + "."
+	}
+	return line
+}
+
+func describeAccountSource(source string) string {
+	switch source {
+	case "OP_ACCOUNT":
+		return "chosen by OP_ACCOUNT, which overrides the saved choice"
+	case "saved":
+		return "saved by my services auth cache account"
+	}
+	return "the only account on this machine"
 }
 
 func applyCacheLimits(settings *credcache.Settings, idle, hard string) error {

@@ -439,6 +439,34 @@ func TestE2EAccountSelection(t *testing.T) {
 	}
 }
 
+func TestE2ECacheStatusExplainsEligibilityWithoutFetching(t *testing.T) {
+	w := newE2EWorld(t)
+	writeCLITestFile(t, filepath.Join(w.stubDir, "accounts.json"), `[{"account_uuid":"ACCT1","email":"same@example.test","url":"one.example.test"},{"account_uuid":"ACCT2","email":"same@example.test","url":"two.example.test"}]`)
+	out, stderr, err := w.run("services", "auth", "cache", "status", "--json", "--home", w.home)
+	if err != nil {
+		t.Fatal(stderr)
+	}
+	var got struct {
+		Enabled   bool `json:"enabled"`
+		Effective struct {
+			State  string `json:"state"`
+			Reason string `json:"reason"`
+		} `json:"effective"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Enabled || got.Effective.State != "ineligible" || !strings.Contains(got.Effective.Reason, "several 1Password accounts") {
+		t.Fatalf("status: %s", out)
+	}
+	if n := w.opReads(); n != 0 {
+		t.Fatalf("status read %d keys", n)
+	}
+	if w.killBroker() {
+		t.Fatal("status started a broker")
+	}
+}
+
 func TestE2EServiceAccountStaysDirect(t *testing.T) {
 	w := newE2EWorld(t)
 	cmd := w.command("fleet", "search", "box", "--home", w.home, "--manifest", "acme")

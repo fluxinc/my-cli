@@ -159,7 +159,7 @@ from any shell or harness. A background `my` process for your user holds it in
 memory only, never on disk, in the environment or on a command line.
 
 ```sh
-my services auth cache status      # expiries only; never a key, no live check
+my services auth cache status      # can keys be cached here, and what is held; never a key
 my services auth lock              # clear every key and stop fetches under way
 my services auth refresh registry  # fetch this key again and verify it
 my services auth cache off         # ask 1Password on every command
@@ -182,6 +182,17 @@ references, 1Password service accounts (`OP_SERVICE_ACCOUNT_TOKEN`) and Connect
 If several 1Password accounts are set up on the machine, choose one with
 `my services auth cache account <email>` or `OP_ACCOUNT`. Until you do, `my` says
 so and asks 1Password on each command.
+
+`my services auth cache status` and `my doctor` say whether a key can be cached
+here: in which 1Password account and why that one (`OP_ACCOUNT` overrides the
+saved choice), or why not and how to fix it. They name a deliberate bypass
+(`off`, `--no-cache`, `MYCLI_NO_CRED_CACHE`, a service account or Connect)
+separately from a setup problem, and an empty cache ("nothing cached yet")
+separately from one that cannot cache. To decide, they run only
+`op account list`, which reads local account metadata; they read no key, start
+no cache process and contact no service. Being eligible does not mean a key is
+valid: `my services auth status <service>` checks that live and may ask
+1Password.
 
 If the service rejects a key (401), `my` fetches it once more and retries reads
 only. A rejected write is reported and never replayed, so run it again. After a

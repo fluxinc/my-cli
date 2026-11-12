@@ -36,8 +36,10 @@ An op:// key is fetched once, then kept in memory by a background my process
 for this user: until unused for 1h, or 8h at most. A cached key stays usable
 after 1Password locks. Lock clears it and stops fetches under way; refresh
 fetches it again; cache off disables caching; --no-cache or
-MYCLI_NO_CRED_CACHE=1 skips it for one command. Cache status shows expiries,
-never keys, and makes no live check. env:// references are never cached.`)
+MYCLI_NO_CRED_CACHE=1 skips it for one command. Cache status says whether keys
+can be cached here (which 1Password account, or why not) and shows expiries;
+it runs only op account list, never reads a key and makes no live check.
+env:// references are never cached.`)
 		return nil
 	}
 	operation := args[0]
