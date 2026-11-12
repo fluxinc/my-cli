@@ -269,3 +269,28 @@ func TestDoctorReportsCacheEligibilityOffline(t *testing.T) {
 		}
 	})
 }
+
+func TestCacheExpiryShowsDateWhenNotToday(t *testing.T) {
+	zone := time.FixedZone("EST", -5*3600)
+	now := time.Date(2026, 11, 12, 9, 47, 0, 0, zone)
+	if got := cacheExpiry(now.Add(2*time.Hour), now); got != "11:47" {
+		t.Fatalf("same day: %q", got)
+	}
+	if got := cacheExpiry(now.Add(24*time.Hour), now); got != "Nov 13 09:47 EST" {
+		t.Fatalf("next day: %q", got)
+	}
+	if got := cacheExpiry(now.Add(15*time.Hour), now); got != "Nov 13 00:47 EST" {
+		t.Fatalf("after midnight: %q", got)
+	}
+	if got := cacheExpiry(time.Date(2026, 11, 12, 23, 59, 0, 0, zone), now); got != "23:59" {
+		t.Fatalf("last minute of today: %q", got)
+	}
+	// 03:30 UTC on Nov 13 is still Nov 12 in EST, so it is today's clock time.
+	if got := cacheExpiry(time.Date(2026, 11, 13, 3, 30, 0, 0, time.UTC), now); got != "22:30" {
+		t.Fatalf("UTC instant on today's local date: %q", got)
+	}
+	// 06:00 UTC on Nov 13 is 01:00 EST on Nov 13: a different local date.
+	if got := cacheExpiry(time.Date(2026, 11, 13, 6, 0, 0, 0, time.UTC), now); got != "Nov 13 01:00 EST" {
+		t.Fatalf("UTC instant across the local date boundary: %q", got)
+	}
+}

@@ -402,11 +402,23 @@ func credentialCacheError(err error) bool {
 	return errors.As(err, &failure)
 }
 
+// cacheExpiry shows a clock time when t falls on now's local calendar date,
+// and the date and zone otherwise, since a 24-hour key would read as if it
+// ended this morning. Callers capture one now per output so times agree.
+func cacheExpiry(t, now time.Time) string {
+	t = t.In(now.Location())
+	if y, m, d := t.Date(); y == now.Year() && m == now.Month() && d == now.Day() {
+		return t.Format("15:04")
+	}
+	return t.Format("Jan 2 15:04 MST")
+}
+
 func noteCredentialFetch(service string, grant credcache.Grant) {
+	now := time.Now()
 	switch {
 	case grant.Fetched && grant.Cached:
 		fmt.Fprintf(credNotices, "notice: %s key cached in memory until unused at %s, or %s at the latest. It stays usable after 1Password locks. Clear it with my services auth lock; turn caching off with my services auth cache off.\n",
-			service, grant.IdleUntil.Local().Format("15:04"), grant.HardUntil.Local().Format("15:04"))
+			service, cacheExpiry(grant.IdleUntil, now), cacheExpiry(grant.HardUntil, now))
 	case grant.Fetched:
 		fmt.Fprintf(credNotices, "notice: %s key was fetched for this command only; the cache was locked or stopped meanwhile\n", service)
 	}
@@ -549,8 +561,9 @@ func (a app) runServicesAuthCache(args []string) error {
 	if line := decision.summary(); line != "" {
 		fmt.Fprintln(a.stdout, line)
 	}
+	now := time.Now()
 	for _, entry := range entries {
-		fmt.Fprintf(a.stdout, "%s: cached until unused at %s, or %s at the latest\n", entry.Service, entry.IdleUntil.Local().Format("15:04"), entry.HardUntil.Local().Format("15:04"))
+		fmt.Fprintf(a.stdout, "%s: cached until unused at %s, or %s at the latest\n", entry.Service, cacheExpiry(entry.IdleUntil, now), cacheExpiry(entry.HardUntil, now))
 	}
 	switch {
 	case len(entries) > 0:
