@@ -14,6 +14,14 @@
   starts no cache process and contacts no service. Before this, the status
   said "on" while a machine signed in to two accounts cached nothing.
 
+### Fixed
+
+- Cached key expiry times now show the date and time zone when they fall on
+  another day, such as "until unused at Nov 13 09:47 EST", instead of a bare
+  clock time that read as if a 24-hour key expired this morning. This applies
+  to the fetch notice, `my services auth refresh` and `my services auth cache
+  status`.
+
 ## 0.52.0 - 2026-11-10
 
 ### Added

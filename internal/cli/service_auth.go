@@ -197,11 +197,12 @@ env:// references are never cached.`)
 	}
 	fmt.Fprintf(a.stdout, "%s: verified %s by live check; key %s expires %s\n", s.ID, strings.TrimSpace(identity.Issuer.Name), identity.Token.Name, identity.Token.ExpiresAt.Format(time.RFC3339))
 	if cached != nil {
+		now := time.Now()
 		source := "from the cache"
 		if cached.grant.Fetched {
 			source = "fetched now"
 		}
-		fmt.Fprintf(a.stdout, "Cached key %s; held until unused at %s, or %s at the latest.\n", source, cached.grant.IdleUntil.Local().Format("15:04"), cached.grant.HardUntil.Local().Format("15:04"))
+		fmt.Fprintf(a.stdout, "Cached key %s; held until unused at %s, or %s at the latest.\n", source, cacheExpiry(cached.grant.IdleUntil, now), cacheExpiry(cached.grant.HardUntil, now))
 	}
 	if operation == "set" {
 		fmt.Fprintln(a.stdout, "Personal reference saved locally. The key itself was not stored.")
