@@ -138,8 +138,9 @@ func matchOPAccount(accounts []opAccount, want string) (opAccount, bool) {
 // cacheDecision is whether an op:// key would be cached right now, and why.
 // Resolution and diagnosis (cache status, doctor) both read it, so what they
 // report cannot drift from what a command does. Making it runs at most
-// `op account list`, which reads local metadata and does not ask for
-// authorization: never op read, the broker, or the service.
+// `op account list`, never op read, the broker, or the service. That command
+// reads local account metadata and is expected not to ask for authorization;
+// this has not been observed against a locked desktop app.
 type cacheDecision struct {
 	Settings credcache.Settings
 	Use      bool

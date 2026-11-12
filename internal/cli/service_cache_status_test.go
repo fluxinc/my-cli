@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +32,13 @@ func diagnosticSandbox(t *testing.T, accounts string, listErr error) *[]string {
 		fleetAuthRunner, credBrokerSpawn, credNoCacheFlag, credNotices = previousRunner, previousSpawn, previousFlag, previousNotices
 	})
 	credNoCacheFlag, credNotices = false, io.Discard
+	// Doctor separately reports a missing op binary; give it a placeholder
+	// so results do not depend on the host. fleetAuthRunner means it never runs.
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "op"), []byte("#!/bin/sh\nexit 99\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
 	var calls []string
 	fleetAuthRunner = func(name string, args ...string) ([]byte, error) {
 		call := strings.Join(append([]string{name}, args...), " ")
@@ -224,6 +233,18 @@ func TestDoctorReportsCacheEligibilityOffline(t *testing.T) {
 		}
 		got := doctorPersonalServices(home, ref, []manifest.Service{opService}, lazyCacheDecision(home))
 		if detail := fmt.Sprint(got[0]); !strings.Contains(detail, "not eligible, the recorded key expiry has passed") || strings.Contains(detail, "eligible, 1Password account") {
+			t.Fatalf("doctor: %+v", got[0])
+		}
+	})
+	t.Run("missing op binary is still reported", func(t *testing.T) {
+		home := t.TempDir()
+		diagnosticSandbox(t, twoOPAccounts, nil)
+		if err := credcache.SaveSettings(home, credcache.Settings{Account: "WORK"}); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", t.TempDir())
+		got := doctorPersonalServices(home, ref, []manifest.Service{opService}, lazyCacheDecision(home))
+		if detail := fmt.Sprint(got[0]); got[0].Status != "warning" || !strings.Contains(detail, "op") || !strings.Contains(detail, "key cache: eligible") {
 			t.Fatalf("doctor: %+v", got[0])
 		}
 	})
