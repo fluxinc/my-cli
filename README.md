@@ -762,7 +762,8 @@ indexed in [docs/plans/](docs/plans/README.md):
 - **Shipped (v0.52.0) — service credential cache.** `op://` service keys are fetched
   from 1Password once and held in memory by a per-user background process, with
   visible lifetimes, a lock and an opt-out, and no manifest change. Windows stays
-  direct for now. Plan:
+  direct for now. v0.53.0 makes `my services auth cache status` and `my doctor`
+  say whether a key can actually be cached, and in which account. Plan:
   [service credential cache](docs/plans/2026-11-05-service-credential-cache.md).
 
 - **Shipped (v0.42.0) — reliable fresh-system onboarding.** Preserve real terminal input,

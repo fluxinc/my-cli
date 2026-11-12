@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.53.0 - 2026-11-12
+
 ### Changed
 
 - `my services auth cache status` and `my doctor` now say whether `op://` keys

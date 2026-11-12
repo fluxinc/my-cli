@@ -1,6 +1,6 @@
 # Service credential cache
 
-Status: **shipped (v0.52.0)**.
+Status: **shipped (v0.52.0)**; effective eligibility in cache status and doctor shipped in v0.53.0.
 
 ## Problem
 
