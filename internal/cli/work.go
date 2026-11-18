@@ -47,6 +47,9 @@ type sessionStartCommandReport struct {
 	LaunchCommand string `json:"launch_command,omitempty"`
 	JoinCommand   string `json:"join_command"`
 	FinishCommand string `json:"finish_command"`
+	// TTRoom is the Talking Stick room `tt room ensure` verified for the
+	// session during this command; omitted when none was verified.
+	TTRoom string `json:"tt_room,omitempty"`
 }
 
 func (a app) runSession(args []string) error {
@@ -510,17 +513,26 @@ func (a app) runWorkStart(args []string, group string) error {
 	if err != nil {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
+	// A harness launch ensures the session's room itself. Every other form
+	// ensures here, once, so its hints and report agree.
+	var room sessionRoom
+	if harnessName == "" || printOnly || opts.jsonOut {
+		room = a.ensureSessionRoom(session)
+	}
 	report := sessionStartReport(session, h, harnessArgs)
+	report.TTRoom = room.Pin
 	if opts.jsonOut {
+		printSessionRoom(a.stderr, room, false)
 		return printJSON(a.stdout, report)
 	}
 	if printOnly {
 		a.printSessionCreatedHint(a.stderr, session)
+		printSessionRoom(a.stderr, room, harnessName != "")
 		if harnessName == "" {
 			fmt.Fprintf(a.stdout, "cd %s\n", shellQuote(session.Path))
 			return nil
 		}
-		fmt.Fprintln(a.stdout, shellCommandLine(session.Path, h.CommandName(), harnessArgs))
+		fmt.Fprintln(a.stdout, harnessCommandLine(session.Path, room, h.CommandName(), harnessArgs))
 		return nil
 	}
 	if harnessName != "" {
@@ -529,6 +541,7 @@ func (a app) runWorkStart(args []string, group string) error {
 		return a.runLaunch(existingSessionLaunchArgs(opts, session.ID, harnessName, harnessArgs))
 	}
 	a.printSessionStarted(a.stdout, session)
+	printSessionRoom(a.stderr, room, false)
 	return nil
 }
 

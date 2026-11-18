@@ -73,6 +73,9 @@ type Record struct {
 	Umbrella      string `json:"umbrella"`
 	WorkDir       string `json:"work_dir"`
 	SessionID     string `json:"session_id,omitempty"`
+	// TTRoom is the Talking Stick room pinned for this launch after
+	// `tt room ensure` verified it; empty when none was verified.
+	TTRoom string `json:"tt_room,omitempty"`
 	// Goal is the opaque string given to --goal. It grants and binds nothing.
 	Goal      string      `json:"goal,omitempty"`
 	StartedAt string      `json:"started_at"`

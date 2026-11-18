@@ -737,3 +737,26 @@ func TestLandHoldsBaseIntentToAddFilesBeforeMerging(t *testing.T) {
 		t.Fatalf("base received a merge despite the hold: %q", got)
 	}
 }
+
+func TestRenderGuidanceExplainsConversationRoomWithoutClaimingOne(t *testing.T) {
+	session := Session{ID: "2026-11-17-a1b2", Path: "/u/sessions/2026-11-17-a1b2", Status: StatusActive}
+	got := string(RenderGuidance(session, GuidanceContext{}))
+	for _, want := range []string{
+		"## Conversation Room",
+		"MYCLI_SESSION_ID and\nMYCLI_SESSION_PATH",
+		"only Talking Stick's default room selector",
+		"`tt chat --in <room>`",
+		"`my session join 2026-11-17-a1b2 <harness>`",
+		"including its mount worktrees",
+		"not a write boundary",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("guidance missing %q:\n%s", want, got)
+		}
+	}
+	// Contract reconciliation re-renders this output and hashes it, so it
+	// must not depend on any one launch's room.
+	if strings.Contains(got, "Room: ") || strings.Contains(got, "TT_ROOM=") {
+		t.Fatalf("guidance names a per-launch room:\n%s", got)
+	}
+}

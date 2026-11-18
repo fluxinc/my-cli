@@ -201,8 +201,12 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 		if target.Created && target.Session != nil {
 			a.printSessionCreatedHint(a.stderr, *target.Session)
 		}
-		line := shellCommandLine(target.Dir, commandName, harnessArgs)
-		fmt.Fprintln(a.stdout, line)
+		var room sessionRoom
+		if target.Session != nil {
+			room = a.ensureSessionRoom(*target.Session)
+			printSessionRoom(a.stderr, room, true)
+		}
+		fmt.Fprintln(a.stdout, harnessCommandLine(target.Dir, room, commandName, harnessArgs))
 		return nil
 	}
 	doc, err := launchGuidanceDoc(opts.home, opts.manifestName, root)
@@ -273,30 +277,39 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 	}
 
 	createsNewSession := launchCreatesNewSession(opts)
-	var targetDir string
+	var target launchTargetResult
 	if !createsNewSession {
-		target, err := a.launchTarget(opts, root)
+		target, err = a.launchTarget(opts, root)
 		if err != nil {
 			return a.maybePrintStructuredCommandError(err)
 		}
-		targetDir = target.Dir
 	}
 	binary, err := a.lookupHarnessBinary(h)
 	if err != nil {
-		a.printLaunchMissingHarness(h, targetDir, harnessArgs, createsNewSession, err)
+		a.printLaunchMissingHarness(h, target.Dir, harnessArgs, createsNewSession, err)
 		return errAlreadyPrinted
 	}
 	if createsNewSession {
-		target, err := a.launchTarget(opts, root)
+		target, err = a.launchTarget(opts, root)
 		if err != nil {
 			return a.maybePrintStructuredCommandError(err)
 		}
-		targetDir = target.Dir
 		if target.Created && target.Session != nil {
 			a.printSessionCreatedHint(a.stderr, *target.Session)
-			fmt.Fprintf(a.stderr, "launching %s...\n", commandName)
 		}
 	}
+	targetDir := target.Dir
+	// One ensure per launch decides the room for the hint, the harness
+	// environment and the launch record alike.
+	var room sessionRoom
+	if target.Session != nil {
+		room = a.ensureSessionRoom(*target.Session)
+		printSessionRoom(a.stderr, room, true)
+	}
+	if createsNewSession && target.Created && target.Session != nil {
+		fmt.Fprintf(a.stderr, "launching %s...\n", commandName)
+	}
+	a.launchEnv = sessionLaunchEnvironment(os.Environ(), target.Session, room)
 	if err := ensureSessionLaunchGuidance(root, targetDir, doc); err != nil {
 		return err
 	}
@@ -305,7 +318,7 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 		return err
 	}
 	a.attemptStartupNotice(root)
-	return a.withAttempt(attemptLaunch{harness: string(h), root: root, dir: targetDir, goal: opts.goal}, func(a app) error {
+	return a.withAttempt(attemptLaunch{harness: string(h), root: root, dir: targetDir, goal: opts.goal, ttRoom: room.Pin}, func(a app) error {
 		return a.runContractHarness(h, binary, harnessArgs, targetDir, opts.home, doc.ref.Name, root)
 	})
 }
@@ -578,6 +591,11 @@ func (a app) printLaunchUsage() {
 Harness defaults to claude-code. By default, harnesses launch from the base
 umbrella, or from the current session when run inside one. Harness flags go
 after the harness name.
+
+A session launch sets MYCLI_SESSION_ID and MYCLI_SESSION_PATH. When tt is
+installed, it also runs tt room ensure on the session and sets TT_ROOM to the
+room it verified. If that fails, the launch goes ahead with any inherited
+TT_ROOM and a notice. --print puts only TT_ROOM on the printed command.
 
 Examples:
   my ai claude-code

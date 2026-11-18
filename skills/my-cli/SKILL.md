@@ -267,6 +267,14 @@ that launch record. Check the bound work service for tracked task status when
 one is configured. `--print` and native Windows launches produce no attempt
 record.
 
+When `tt` (Talking Stick) is installed, each `my` launch into a session pins
+`TT_ROOM` to that session's room once `tt` confirms it. It then prints a
+`tt chat --in <room>` line for people. If the check fails, it says why. `TT_ROOM` alone
+does not prove which room you are in. Harnesses that `my` launches into a session
+also get `MYCLI_SESSION_ID` and `MYCLI_SESSION_PATH`. The room is for the
+session's conversation. Landing or building in base checkouts still needs a turn
+in the room that coordinates them.
+
 Use `my session join <id> <harness>` to run multiple harnesses in the same
 session; for example, `my session join <id> claude-code` and
 `my session join <id> codex` launch into the same session directory. The bot-stable
