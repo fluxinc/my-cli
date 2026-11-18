@@ -737,3 +737,27 @@ func TestLandHoldsBaseIntentToAddFilesBeforeMerging(t *testing.T) {
 		t.Fatalf("base received a merge despite the hold: %q", got)
 	}
 }
+
+func TestRenderGuidanceNamesConversationRoomOnlyWhenPinned(t *testing.T) {
+	session := Session{ID: "2026-11-17-a1b2", Path: "/u/sessions/2026-11-17-a1b2", Status: StatusActive}
+
+	without := string(RenderGuidance(session, GuidanceContext{}))
+	if strings.Contains(without, "Conversation Room") || strings.Contains(without, "TT_ROOM") {
+		t.Fatalf("guidance without a verified room mentions one:\n%s", without)
+	}
+
+	pin := "/u/sessions/2026-11-17-a1b2 copy"
+	with := string(RenderGuidance(session, GuidanceContext{RoomPin: pin}))
+	for _, want := range []string{
+		"## Conversation Room",
+		"- Room: " + pin + "\n",
+		"tt chat '" + pin + "'",
+		"including its mount worktrees",
+		"not a write boundary",
+		"my session finish --land",
+	} {
+		if !strings.Contains(with, want) {
+			t.Fatalf("guidance missing %q:\n%s", want, with)
+		}
+	}
+}

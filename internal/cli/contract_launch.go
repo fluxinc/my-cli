@@ -17,7 +17,11 @@ import (
 )
 
 func (a app) runContractHarness(h harness.Harness, binary string, args []string, target, home, name, root string) error {
-	a.harnessEnvironment = contractLaunchEnvironment(os.Environ(), "", "", "")
+	base := a.launchEnv
+	if base == nil {
+		base = os.Environ()
+	}
+	a.harnessEnvironment = contractLaunchEnvironment(base, "", "", "")
 	state, err := contractstate.Load(home, name)
 	if err != nil || state.Active == nil || !state.Active.Configured && state.Active.Text == "" {
 		return a.runHarness(binary, args, target)
@@ -89,7 +93,7 @@ func (a app) runContractHarness(h harness.Harness, binary string, args []string,
 			return err
 		}
 	}
-	a.harnessEnvironment = contractLaunchEnvironment(os.Environ(), home, name, instance.ID)
+	a.harnessEnvironment = contractLaunchEnvironment(base, home, name, instance.ID)
 	fmt.Fprintf(a.stderr, "contract\t%s\t%s\t%s\n", instance.ID, delivery, message)
 	defer func() {
 		_, _ = contractstate.Update(home, name, func(s *contractstate.State) error {

@@ -22,6 +22,7 @@ type attemptLaunch struct {
 	root    string
 	dir     string
 	goal    string
+	ttRoom  string
 }
 
 // withAttempt records local evidence of one harness launch around run. It
@@ -38,6 +39,7 @@ func (a app) withAttempt(meta attemptLaunch, run func(app) error) error {
 		WorkDir:   meta.dir,
 		SessionID: attemptSessionID(meta.root, meta.dir),
 		Goal:      meta.goal,
+		TTRoom:    meta.ttRoom,
 		StartedAt: now.UTC().Format(time.RFC3339),
 		Launcher:  attempt.ProcessRef{PID: os.Getpid()},
 		Before:    attempt.Observe(attempt.KindBefore, repos, attempt.RunGit, now),

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Added
+
+- A launch into a session now joins that session's Talking Stick room when
+  `tt` is installed, instead of the umbrella's room. `my` runs
+  `tt room ensure <session path>` and sets `TT_ROOM` on the harness to the
+  room it verified. The session's `AGENTS.md` and the launch output name the
+  room and the `tt chat` command for people.
+  - `my session start` and `my session resume` without a harness run the same
+    check, and `--print` puts `TT_ROOM` on the harness command.
+  - Without `tt` nothing changes. If the check fails, `my` says why, keeps any
+    inherited `TT_ROOM`, and claims no room.
+  - Session launches also set `MYCLI_SESSION_ID` and `MYCLI_SESSION_PATH`, and
+    other launches drop inherited ones.
+  - The room routes conversation only. Landing and builds in base checkouts
+    still need the coordinating room's turn.
+
 ## 0.53.0 - 2026-11-12
 
 ### Changed

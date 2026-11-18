@@ -24,11 +24,12 @@ import (
 // Run executes the CLI and returns a process exit code.
 func Run(args []string) int {
 	a := app{
-		stdout:      os.Stdout,
-		stderr:      os.Stderr,
-		stdin:       bufio.NewReader(os.Stdin),
-		interactive: isTerminal(os.Stdin) && isTerminal(os.Stdout),
-		memo:        newGovernedMemo(),
+		stdout:       os.Stdout,
+		stderr:       os.Stderr,
+		stdin:        bufio.NewReader(os.Stdin),
+		interactive:  isTerminal(os.Stdin) && isTerminal(os.Stdout),
+		memo:         newGovernedMemo(),
+		ttRoomEnsure: runTTRoomEnsure,
 	}
 	if err := a.run(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -68,6 +69,13 @@ type app struct {
 	execHarness            func(path string, args []string, dir string) error
 	harnessEnvironment     []string
 	execHarnessEnvironment func(path string, args []string, dir string, env []string) error
+	// launchEnv is the base harness environment for this launch, before the
+	// contract variables; nil means os.Environ().
+	launchEnv []string
+	// ttRoomEnsure declares and names a session's Talking Stick room. Nil
+	// (the test default) means Talking Stick is not in use.
+	ttRoomEnsure       ttRoomEnsureFunc
+	sessionRoomTimeout time.Duration
 	// onHarnessStart, when set, is told the pid of a harness child this
 	// process started, before waiting for it.
 	onHarnessStart       func(pid int)

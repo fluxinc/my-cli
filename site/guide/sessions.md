@@ -78,6 +78,37 @@ Work leaves a session only through `my session finish`:
 - `--publish` lands and publishes through the normal sync policy,
 - `--discard` drops the worktrees and branches.
 
+## Conversation room
+
+When Talking Stick (`tt`) is installed, every launch into a session runs `tt room ensure <session path>`.
+That declares the session's own room, or finds it when it already exists. The
+launched harness then gets `TT_ROOM` set to that room, so the session's agents
+meet there instead of in the umbrella's room. That holds even after they `cd`
+into a mount worktree. `my session start` and `my session resume` without a
+harness ensure the room too, so the commands they print point at a real room.
+People join from any directory with `tt chat <session path>`.
+
+```text
+room	/home/me/acme/sessions/2026-11-17-notes-ab12	created	people join with: tt chat /home/me/acme/sessions/2026-11-17-notes-ab12
+```
+
+- `my` never joins a room, takes a turn, or moves a harness that is already
+  running. An agent elsewhere joins by launching with
+  `my session join <id> <harness>`.
+- The room is checked again on every launch and stored nowhere. The session's
+  `AGENTS.md` names it only after that check succeeds.
+- If `tt` is missing, nothing is printed and nothing changes. If the check
+  fails, the launch still goes ahead. `my` prints why, keeps any `TT_ROOM` the
+  shell already had, and claims no room.
+- `--print` runs the check and puts `TT_ROOM=<room>` on the harness command.
+- Every launch into a session also sets `MYCLI_SESSION_ID` and
+  `MYCLI_SESSION_PATH`. A launch outside a session drops any inherited ones.
+
+The room routes conversation for the session, including its mount worktrees.
+It is not a write boundary. Landing (`my session finish --land`) and builds in
+the base checkouts change shared state, so they still need a turn in the room
+that coordinates those checkouts.
+
 ## Guard rails
 
 `my sync` holds outbound publish of any mount that has a dirty or unlanded
