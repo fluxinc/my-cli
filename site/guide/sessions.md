@@ -80,28 +80,33 @@ Work leaves a session only through `my session finish`:
 
 ## Conversation room
 
-When Talking Stick (`tt`) is installed, every launch into a session runs `tt room ensure <session path>`.
-That declares the session's own room, or finds it when it already exists. The
-launched harness then gets `TT_ROOM` set to that room, so the session's agents
-meet there instead of in the umbrella's room. That holds even after they `cd`
-into a mount worktree. `my session start` and `my session resume` without a
-harness ensure the room too, so the commands they print point at a real room.
-People join from any directory with `tt chat <session path>`.
+When Talking Stick (`tt`) is installed, every launch into a session runs
+`tt room ensure <session path>`. That declares the session's own room, or finds
+it when it already exists. The launched harness then gets `TT_ROOM` set to that
+room, so the session's agents meet there instead of in the umbrella's room. That
+holds even after they `cd` into a mount worktree. `my session start` without a
+harness ensures the room too, so the commands it prints point at a real room.
+People join with the `tt chat --in <room>` line from the launch output, from any
+directory. Use `--in` rather than a bare path: an inherited `TT_ROOM` outranks a
+path argument, but `--in` outranks `TT_ROOM`.
 
 ```text
-room	/home/me/acme/sessions/2026-11-17-notes-ab12	created	people join with: tt chat /home/me/acme/sessions/2026-11-17-notes-ab12
+room	/home/me/acme/sessions/2026-11-17-notes-ab12	created	people join with: tt chat --in /home/me/acme/sessions/2026-11-17-notes-ab12
 ```
 
 - `my` never joins a room, takes a turn, or moves a harness that is already
   running. An agent elsewhere joins by launching with
   `my session join <id> <harness>`.
 - The room is checked again on every launch and stored nowhere. The session's
-  `AGENTS.md` names it only after that check succeeds.
+  `AGENTS.md` explains this but names no room, because any reconcile rewrites
+  it. `TT_ROOM` on its own is only Talking Stick's default selector: after a
+  fallback it can still name a parent room.
 - If `tt` is missing, nothing is printed and nothing changes. If the check
   fails, the launch still goes ahead. `my` prints why, keeps any `TT_ROOM` the
   shell already had, and claims no room.
 - `--print` runs the check and puts `TT_ROOM=<room>` on the harness command.
-- Every launch into a session also sets `MYCLI_SESSION_ID` and
+  The printed command is a manual launch, so it carries only that.
+- Every launch `my` performs into a session also sets `MYCLI_SESSION_ID` and
   `MYCLI_SESSION_PATH`. A launch outside a session drops any inherited ones.
 
 The room routes conversation for the session, including its mount worktrees.

@@ -148,7 +148,7 @@ func printSessionRoom(w io.Writer, room sessionRoom, launch bool) {
 	inherited, hasInherited := os.LookupEnv(ttRoomEnv)
 	switch {
 	case room.Pin != "":
-		fmt.Fprintf(w, "room\t%s\t%s\tpeople join with: tt chat %s\n", room.Pin, room.Status, shellQuote(room.Pin))
+		fmt.Fprintf(w, "room\t%s\t%s\tpeople join with: tt chat --in %s\n", room.Pin, room.Status, shellQuote(room.Pin))
 		if launch && hasInherited && inherited != "" && filepath.Clean(inherited) != filepath.Clean(room.Pin) {
 			fmt.Fprintf(w, "notice\ttalking-stick\treplaced inherited TT_ROOM %s with this session's room\n", inherited)
 		}

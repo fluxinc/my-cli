@@ -101,10 +101,6 @@ type GuidanceContext struct {
 	OrganizationName string
 	SelectedRole     string
 	BaseGuidance     []byte
-	// RoomPin is the absolute Talking Stick room path that the current
-	// command verified with `tt room ensure`. Empty means no room was
-	// verified, and the guidance then names none.
-	RoomPin string
 }
 
 // MountStatus is one mount's live git state inside a session.
@@ -409,16 +405,21 @@ func RenderGuidance(session Session, guidance GuidanceContext) []byte {
 	b.WriteString("- Use scratch/ for unversioned session-local files; never commit them.\n")
 	b.WriteString("- Commit changes inside the worktrees as you go; `my session status` shows\n  dirty and unlanded state.\n")
 	b.WriteString("- Work leaves the session only through\n  `my session finish --land | --publish | --discard`.\n")
-	if guidance.RoomPin != "" {
-		b.WriteString("\n## Conversation Room\n\n")
-		b.WriteString("Harnesses that `my` launches into this session have TT_ROOM set to this\nsession's Talking Stick room.\n\n")
-		fmt.Fprintf(&b, "- Room: %s\n", guidance.RoomPin)
-		fmt.Fprintf(&b, "- People join with: `tt chat %s`\n", shellQuote(guidance.RoomPin))
-		fmt.Fprintf(&b, "- Another harness joins with: `my session join %s <harness>`\n", session.ID)
-		b.WriteString("\nThe room routes conversation for this session, including its mount worktrees.\n")
-		b.WriteString("It is not a write boundary: landing (`my session finish --land`) and builds in\n")
-		b.WriteString("base checkouts still need a turn in the room that coordinates those checkouts.\n")
-	}
+	// Session guidance is contract-managed output that any reconcile
+	// re-renders, so this section names no per-launch room. The harness's own
+	// TT_ROOM is the source of truth.
+	b.WriteString("\n## Conversation Room\n\n")
+	b.WriteString("Harnesses that `my` launches into this session get MYCLI_SESSION_ID and\n")
+	b.WriteString("MYCLI_SESSION_PATH. When Talking Stick (`tt`) is installed and confirms this\n")
+	b.WriteString("session's room, `my` also sets TT_ROOM to it and prints the\n")
+	b.WriteString("`tt chat --in <room>` line people use to join; otherwise the launch output\n")
+	b.WriteString("says why. TT_ROOM on its own is only Talking Stick's default room selector:\n")
+	b.WriteString("after a fallback it can still name a parent room, and without it `tt` picks\n")
+	b.WriteString("the room from the working directory. Another harness joins this session with\n")
+	fmt.Fprintf(&b, "`my session join %s <harness>`.\n\n", session.ID)
+	b.WriteString("The room routes conversation for this session, including its mount worktrees.\n")
+	b.WriteString("It is not a write boundary: landing (`my session finish --land`) and builds in\n")
+	b.WriteString("base checkouts still need a turn in the room that coordinates those checkouts.\n")
 	if base := strings.TrimSpace(string(guidance.BaseGuidance)); base != "" {
 		b.WriteString("\n## Base Umbrella Guidance\n\n")
 		b.WriteString("The generated umbrella guidance below still applies inside this session. Interpret base-layout paths relative to the umbrella root above.\n\n")

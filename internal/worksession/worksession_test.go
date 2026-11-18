@@ -738,26 +738,25 @@ func TestLandHoldsBaseIntentToAddFilesBeforeMerging(t *testing.T) {
 	}
 }
 
-func TestRenderGuidanceNamesConversationRoomOnlyWhenPinned(t *testing.T) {
+func TestRenderGuidanceExplainsConversationRoomWithoutClaimingOne(t *testing.T) {
 	session := Session{ID: "2026-11-17-a1b2", Path: "/u/sessions/2026-11-17-a1b2", Status: StatusActive}
-
-	without := string(RenderGuidance(session, GuidanceContext{}))
-	if strings.Contains(without, "Conversation Room") || strings.Contains(without, "TT_ROOM") {
-		t.Fatalf("guidance without a verified room mentions one:\n%s", without)
-	}
-
-	pin := "/u/sessions/2026-11-17-a1b2 copy"
-	with := string(RenderGuidance(session, GuidanceContext{RoomPin: pin}))
+	got := string(RenderGuidance(session, GuidanceContext{}))
 	for _, want := range []string{
 		"## Conversation Room",
-		"- Room: " + pin + "\n",
-		"tt chat '" + pin + "'",
+		"MYCLI_SESSION_ID and\nMYCLI_SESSION_PATH",
+		"only Talking Stick's default room selector",
+		"`tt chat --in <room>`",
+		"`my session join 2026-11-17-a1b2 <harness>`",
 		"including its mount worktrees",
 		"not a write boundary",
-		"my session finish --land",
 	} {
-		if !strings.Contains(with, want) {
-			t.Fatalf("guidance missing %q:\n%s", want, with)
+		if !strings.Contains(got, want) {
+			t.Fatalf("guidance missing %q:\n%s", want, got)
 		}
+	}
+	// Contract reconciliation re-renders this output and hashes it, so it
+	// must not depend on any one launch's room.
+	if strings.Contains(got, "Room: ") || strings.Contains(got, "TT_ROOM=") {
+		t.Fatalf("guidance names a per-launch room:\n%s", got)
 	}
 }

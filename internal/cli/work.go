@@ -514,16 +514,10 @@ func (a app) runWorkStart(args []string, group string) error {
 		return a.maybeJSONError(opts.jsonOut, err)
 	}
 	// A harness launch ensures the session's room itself. Every other form
-	// ensures here, once, so its hints, guidance and report agree.
+	// ensures here, once, so its hints and report agree.
 	var room sessionRoom
 	if harnessName == "" || printOnly || opts.jsonOut {
 		room = a.ensureSessionRoom(session)
-		if room.Pin != "" {
-			guidanceCtx.RoomPin = room.Pin
-			if err := worksession.EnsureGuidance(session, guidanceCtx); err != nil {
-				return a.maybeJSONError(opts.jsonOut, err)
-			}
-		}
 	}
 	report := sessionStartReport(session, h, harnessArgs)
 	report.TTRoom = room.Pin
@@ -801,14 +795,9 @@ Options:
 		if err != nil {
 			return a.maybeJSONError(opts.jsonOut, err)
 		}
-		// Rewriting the guidance re-verifies the room it names, so a stale
-		// room section never survives a failed ensure.
-		room := a.ensureSessionRoom(session)
-		guidanceCtx.RoomPin = room.Pin
 		if err := worksession.EnsureGuidance(session, guidanceCtx); err != nil {
 			return a.maybeJSONError(opts.jsonOut, err)
 		}
-		printSessionRoom(a.stderr, room, false)
 	}
 	if opts.jsonOut {
 		return printJSON(a.stdout, session)

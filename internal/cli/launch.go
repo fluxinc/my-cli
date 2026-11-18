@@ -299,8 +299,8 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 		}
 	}
 	targetDir := target.Dir
-	// One ensure per launch decides the room for the hint, the guidance, the
-	// harness environment and the launch record alike.
+	// One ensure per launch decides the room for the hint, the harness
+	// environment and the launch record alike.
 	var room sessionRoom
 	if target.Session != nil {
 		room = a.ensureSessionRoom(*target.Session)
@@ -310,7 +310,7 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 		fmt.Fprintf(a.stderr, "launching %s...\n", commandName)
 	}
 	a.launchEnv = sessionLaunchEnvironment(os.Environ(), target.Session, room)
-	if err := ensureSessionLaunchGuidance(root, targetDir, doc, room.Pin); err != nil {
+	if err := ensureSessionLaunchGuidance(root, targetDir, doc); err != nil {
 		return err
 	}
 	a.reconcileContractRootsWarning(opts.home, doc.ref.Name, root)
@@ -595,7 +595,7 @@ after the harness name.
 A session launch sets MYCLI_SESSION_ID and MYCLI_SESSION_PATH. When tt is
 installed, it also runs tt room ensure on the session and sets TT_ROOM to the
 room it verified. If that fails, the launch goes ahead with any inherited
-TT_ROOM and a notice.
+TT_ROOM and a notice. --print puts only TT_ROOM on the printed command.
 
 Examples:
   my ai claude-code
@@ -847,7 +847,7 @@ func sessionGuidanceContext(root string, doc registeredDoc) (worksession.Guidanc
 	}, nil
 }
 
-func ensureSessionLaunchGuidance(root, targetDir string, doc registeredDoc, roomPin string) error {
+func ensureSessionLaunchGuidance(root, targetDir string, doc registeredDoc) error {
 	if samePath(root, targetDir) {
 		return nil
 	}
@@ -862,7 +862,6 @@ func ensureSessionLaunchGuidance(root, targetDir string, doc registeredDoc, room
 	if err != nil {
 		return err
 	}
-	guidance.RoomPin = roomPin
 	return worksession.EnsureGuidance(session, guidance)
 }
 

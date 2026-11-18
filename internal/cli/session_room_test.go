@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fluxinc/my-cli/internal/attempt"
+	"github.com/fluxinc/my-cli/internal/contractstate"
 	"github.com/fluxinc/my-cli/internal/worksession"
 )
 
@@ -198,7 +199,7 @@ func TestSessionJoinPinsVerifiedRoomOnEveryLaunch(t *testing.T) {
 			t.Fatalf("launch %d: dir %q env TT_ROOM=%q id=%q path=%q", i, launch.dir, launch.env["TT_ROOM"], launch.env["MYCLI_SESSION_ID"], launch.env["MYCLI_SESSION_PATH"])
 		}
 		if !strings.Contains(launch.stderr, "room\t"+session.Path) ||
-			!strings.Contains(launch.stderr, "tt chat "+shellQuote(session.Path)) ||
+			!strings.Contains(launch.stderr, "tt chat --in "+shellQuote(session.Path)) ||
 			!strings.Contains(launch.stderr, "replaced inherited TT_ROOM "+umbrellaRoot) {
 			t.Fatalf("launch %d stderr = %q", i, launch.stderr)
 		}
@@ -207,8 +208,8 @@ func TestSessionJoinPinsVerifiedRoomOnEveryLaunch(t *testing.T) {
 		t.Fatalf("status not reported: %q / %q", first.stderr, second.stderr)
 	}
 	guidance := readSessionAgents(t, session.Path)
-	if !strings.Contains(guidance, "## Conversation Room") || !strings.Contains(guidance, "- Room: "+session.Path) {
-		t.Fatalf("AGENTS.md lacks the verified room:\n%s", guidance)
+	if !strings.Contains(guidance, "## Conversation Room") || strings.Contains(guidance, "Room: ") {
+		t.Fatalf("AGENTS.md should explain the room without naming one:\n%s", guidance)
 	}
 	if rooms := attemptRooms(t, umbrellaRoot); len(rooms) != 2 || rooms[0] != session.Path || rooms[1] != session.Path {
 		t.Fatalf("launch record rooms = %#v", rooms)
@@ -239,6 +240,7 @@ func TestSessionRoomFailurePreservesInheritedRoomAndClaimsNothing(t *testing.T) 
 			// A verified room first, so the failed launch must also retract it.
 			tt := &fakeTT{replies: []fakeTTReply{{out: ensureJSON("created", session.Path)}, tc.reply}}
 			runSessionLaunch(t, tt, 50*time.Millisecond, "session", "join", session.ID, "codex", "--home", home)
+			afterSuccess := readSessionAgents(t, session.Path)
 			failed := runSessionLaunch(t, tt, 50*time.Millisecond, "session", "join", session.ID, "codex", "--home", home)
 
 			if failed.env["TT_ROOM"] != umbrellaRoot {
@@ -255,8 +257,8 @@ func TestSessionRoomFailurePreservesInheritedRoomAndClaimsNothing(t *testing.T) 
 			if strings.Contains(failed.stderr, "room\t") || strings.Contains(failed.stderr, "tt chat") {
 				t.Fatalf("failed launch still claims a room: %q", failed.stderr)
 			}
-			if guidance := readSessionAgents(t, session.Path); strings.Contains(guidance, "Conversation Room") {
-				t.Fatalf("stale room section kept after failed ensure:\n%s", guidance)
+			if guidance := readSessionAgents(t, session.Path); guidance != afterSuccess {
+				t.Fatalf("guidance depends on the ensure outcome:\n%s", guidance)
 			}
 			if rooms := attemptRooms(t, umbrellaRoot); len(rooms) != 2 || rooms[1] != "" {
 				t.Fatalf("launch record rooms = %#v, want none for the failed launch", rooms)
@@ -265,34 +267,74 @@ func TestSessionRoomFailurePreservesInheritedRoomAndClaimsNothing(t *testing.T) 
 	}
 }
 
-func TestSessionResumeRewritesRoomSectionFromAFreshEnsure(t *testing.T) {
+func TestSessionResumeWithoutHarnessNeverCallsTT(t *testing.T) {
 	home, workspaceRoot := setupCLIRecordWorkspace(t)
 	ensureCLIGuidance(t, home, filepath.Dir(workspaceRoot))
 	session := startTestSession(t, home)
-	unsetEnv(t, "TT_ROOM")
-	tt := &fakeTT{replies: []fakeTTReply{{out: ensureJSON("created", session.Path)}, {out: "garbage"}}}
-	resume := func() string {
-		var stdout, stderr bytes.Buffer
-		a := app{stdout: &stdout, stderr: &stderr, ttRoomEnsure: tt.ensure}
-		if err := a.run([]string{"my", "session", "resume", session.ID, "--home", home}); err != nil {
-			t.Fatalf("session resume: %v\nstderr: %s", err, stderr.String())
-		}
-		if stdout.String() != "cd "+shellQuote(session.Path)+"\n" {
-			t.Fatalf("resume stdout = %q", stdout.String())
-		}
-		return stderr.String()
+	tt := &fakeTT{}
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr, ttRoomEnsure: tt.ensure}
+	if err := a.run([]string{"my", "session", "resume", session.ID, "--home", home}); err != nil {
+		t.Fatalf("session resume: %v\nstderr: %s", err, stderr.String())
 	}
+	if len(tt.calls) != 0 || stdout.String() != "cd "+shellQuote(session.Path)+"\n" || strings.Contains(stderr.String(), "talking-stick") {
+		t.Fatalf("calls=%d stdout=%q stderr=%q", len(tt.calls), stdout.String(), stderr.String())
+	}
+}
 
-	first := resume()
-	if !strings.Contains(first, "room\t"+session.Path) || !strings.Contains(readSessionAgents(t, session.Path), "- Room: "+session.Path) {
-		t.Fatalf("verified room not written: %q", first)
+func TestActiveContractLaunchKeepsSessionGuidanceCurrent(t *testing.T) {
+	home, workspace := setupCLIRecordWorkspace(t)
+	manifestPath := filepath.Join(home, ".local", "share", "my-cli", "manifests", "acme", "manifest.json")
+	raw, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
 	}
-	second := resume()
-	if !strings.Contains(second, "session room not set: ") || strings.Contains(second, "TT_ROOM") {
-		t.Fatalf("resume failure stderr = %q", second)
+	configured := strings.Replace(string(raw), `"manifest_version": 1,`, `"manifest_version": 1, "contract": ["Fixture rule."],`, 1)
+	if configured == string(raw) {
+		t.Fatal("fixture manifest did not take the contract")
 	}
-	if strings.Contains(readSessionAgents(t, session.Path), "Conversation Room") {
-		t.Fatal("resume kept a room section after a failed ensure")
+	if err := os.WriteFile(manifestPath, []byte(configured), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ensureCLIGuidance(t, home, filepath.Dir(workspace))
+	session := startTestSession(t, home)
+	tt := &fakeTT{replies: []fakeTTReply{{out: ensureJSON("exists", session.Path)}}}
+	got := runSessionLaunch(t, tt, 0, "session", "join", session.ID, "codex", "--home", home)
+	if got.env[contractInstanceEnv] == "" || got.env[ttRoomEnv] != session.Path || got.env[sessionIDEnv] != session.ID {
+		t.Fatalf("instance=%q TT_ROOM=%q id=%q", got.env[contractInstanceEnv], got.env[ttRoomEnv], got.env[sessionIDEnv])
+	}
+	if !strings.Contains(readSessionAgents(t, session.Path), "## Conversation Room") {
+		t.Fatal("session guidance lost its conversation room section")
+	}
+	state, err := contractstate.Load(home, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := state.Roots[session.Path]; !ok {
+		t.Fatalf("session root not registered with the contract: %#v", state.Roots)
+	}
+	if state.Pending(session.Path) {
+		t.Fatal("session guidance differs from what contract reconciliation installed")
+	}
+}
+
+func TestPrintedResumeAfterFailedEnsureLeavesNoRoomClaim(t *testing.T) {
+	home, workspace := setupCLIRecordWorkspace(t)
+	ensureCLIGuidance(t, home, filepath.Dir(workspace))
+	session := startTestSession(t, home)
+	unsetEnv(t, "TT_ROOM")
+	tt := &fakeTT{replies: []fakeTTReply{{out: ensureJSON("exists", session.Path)}}}
+	runSessionLaunch(t, tt, 0, "session", "join", session.ID, "codex", "--home", home)
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr, ttRoomEnsure: func(context.Context, string, []string) ([]byte, error) { return []byte("bad JSON"), nil }}
+	if err := a.run([]string{"my", "ai", "--print", "-r", session.ID, "codex", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stdout.String(), "TT_ROOM=") || !strings.Contains(stderr.String(), "session room not set") {
+		t.Fatalf("stdout %q stderr %q", stdout.String(), stderr.String())
+	}
+	if guidance := readSessionAgents(t, session.Path); strings.Contains(guidance, "Room: ") {
+		t.Fatalf("guidance claims a room:\n%s", guidance)
 	}
 }
 
@@ -415,8 +457,8 @@ func TestSessionStartJSONAndPrintCarryVerifiedRoom(t *testing.T) {
 	if report.TTRoom != report.Path {
 		t.Fatalf("tt_room = %q, want %q", report.TTRoom, report.Path)
 	}
-	if guidance := readSessionAgents(t, report.Path); !strings.Contains(guidance, "- Room: "+report.Path) {
-		t.Fatalf("AGENTS.md lacks the room:\n%s", guidance)
+	if guidance := readSessionAgents(t, report.Path); strings.Contains(guidance, "Room: ") {
+		t.Fatalf("AGENTS.md names a per-command room:\n%s", guidance)
 	}
 
 	stdout.Reset()
