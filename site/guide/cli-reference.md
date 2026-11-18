@@ -38,8 +38,8 @@ my onboarding [--agent|--no-agent] [--harness NAME] [--manifest NAME] [--home DI
 my onboarding --status|--complete [--manifest NAME] [--home DIR] [--umbrella DIR]
 my setup [harness...] | --all [--interactive] [--print] [--copy] [--link] [--force] [--verbose] [--role ROLE] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
 my root [--repo ID] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check]
-my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
-my sync [--backend auto|gnit|builtin] [--push|--publish auto|never|direct|pr] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--verbose] [--json]
+my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--goal REF] [--setup] [--print] [--manifest NAME] [--home DIR] [--umbrella DIR] [--no-refresh] [--no-update-check] [harness] [-- harness args...]
+my sync [--backend auto|gnit|builtin] [--push|--publish auto|never|direct|pr] [--record DOMAIN/ID] [--scope all|local|content|manifest|repos] [--manifest NAME] [--home DIR] [--umbrella DIR] [--message TEXT] [--no-derived] [--print] [--verbose] [--json]
 my doctor [--no-fetch] [--fix] [--json]
 my update [--check] [--version X.Y.Z] [--json] [--yes]
 my version
@@ -52,17 +52,14 @@ prints manifest-scoped follow-up commands for setup, launch, and publish. Both
 repos work offline and report `local-only` until published.
 
 `my onboarding` is the guided first-run path. In an interactive terminal it
-launches a harness with the bundled Agent-Operated Onboarding guidance. The
-model greets the operator, starts a split-pane learn-by-example walkthrough, and
-has the operator run small sets of validated `my` commands with a pause after
-each set. A harness is auto-detected when the choice is unambiguous; pass
-`--harness NAME` to choose. `--agent` forces the harness path from
-non-interactive contexts. A registered-but-unsynced manifest launches a
-JOIN_BOOTSTRAP conversation from the current directory instead of failing
-before the agent can help; after authentication and manifest sync, onboarding
-continues through the normal setup-backed JOIN path. If no supported harness is
-installed, onboarding stops with the agent-first prerequisite and a resumable
-command.
+launches a harness from a neutral temporary directory. The assistant runs
+routine setup steps and explains them as it goes, handing off sign-in and
+other operator decisions. A harness is auto-detected when the choice is
+unambiguous. Pass `--harness NAME` to choose or `--agent` to launch from a
+non-interactive context. With a registered but unsynced manifest, the assistant
+starts by guiding authentication and manifest sync. If no supported harness
+is installed, the CLI prints the prerequisite and a command to resume.
+See [Onboarding](./onboarding.md) for the walkthrough.
 
 At the end of the walkthrough, `my onboarding --complete` records local tour
 completion after setup and required tools are present. `--status` reports that
@@ -261,8 +258,8 @@ my fleet search <text> [--no-semantic]
 my fleet get <id|identifier|path>
 my fleet add <id>
 my fleet set <id> KEY=VALUE... [--confirm ID]...
-my fleet transition <id> <operation> [KEY=VALUE...]   # unreleased
-my fleet index [--rebuild]                            # unreleased
+my fleet transition <id> <operation> [KEY=VALUE...]
+my fleet index [--rebuild]
 
 my record adopt <path>
 
@@ -277,6 +274,9 @@ my tools list
 my tools info <name>
 my services list [--manifest NAME] [--home DIR] [--json]
 my services get <id> [--manifest NAME] [--home DIR] [--json]
+my services auth status <service> [--manifest NAME] [--home DIR] [--json]
+my services auth cache status [--home DIR] [--json]
+my services auth cache account <email|url|uuid> [--home DIR]
 my roles list [--manifest NAME] [--home DIR] [--json]
 my roles get <id> [--manifest NAME] [--home DIR] [--json]
 my contract list [--manifest NAME] [--home DIR] [--json]
@@ -307,11 +307,10 @@ content mount paths are also held; create records with `my customers add`,
 content. Held-back JSON results include `reason_code` and, where the remedy is
 unambiguous, `next_command`; text output shows that command as `next=...` on the
 held-back row. A manifest can set top-level
-`sync.publish_policy` to `auto`, `never`, or `pr` as the mode for `--push`; an
-explicit `--publish` flag always wins. Non-print syncs write
-`.my-cli/last-sync.json`; `my doctor`
-reports that audit, per-checkout Git freshness, active and archived work
-sessions, service health, derived guidance/MCP drift, and legacy global
+`sync.publish_policy` to `auto`, `never`, or `pr` for `--push`. Governed
+manifests require PR mode for outbound sync. See [Sync and Doctor](./sync-and-doctor.md).
+Non-print syncs write `.my-cli/last-sync.json`. `my doctor` reports that audit,
+per-checkout Git freshness, active and archived work sessions, service health, derived guidance/MCP drift, and legacy global
 org-skill drift, and legacy `work/<id>` session directories that can be migrated.
 Doctor fetches
 refs before behind/ahead checks unless `--no-fetch` is passed for an offline
@@ -336,6 +335,15 @@ before exec. Repo launches use `--repo <id>` and are not included in sessions ye
 one command, `MYCLI_NO_AUTO_REFRESH=1` globally, or `MYCLI_REFRESH_TTL=30m` to
 tune the default six-hour window.
 
+Use `my attempts list` to inspect local launch records. `--running` filters
+for live launchers, `--unclosed` for stopped launchers without a recorded exit,
+and `--local-changes` for observations of uncommitted or unpublished changes.
+Read and observation errors remain visible with any filter. The optional
+`my ai --goal REF` stores an opaque reference on the local record. Launch
+records show local observations. Check the bound work service for tracked
+task status when one is configured. Capture excludes `--print` and is
+unavailable on native Windows.
+
 Manifest roles are selected locally with `my setup --role <id>`. The choice
 is stored in `.my-cli/state.json`, appends that role's guidance fragments to
 `AGENTS.md`, and scopes generated `.mcp.json` to MCP services selected by the
@@ -347,6 +355,9 @@ credentials, or fetching service descriptors. Governed projections include
 only universal and exact-role `policies[]` references with id, title, version,
 digest, mount, path, summary, and topics. Compile fails if an applicable policy
 mount is not visible to the role; non-governed projections omit the field.
+See [Services and Roles](./services-and-roles.md#roles) for the `--umbrella`
+commit pin contract and [Key caching](./services-and-roles.md#key-caching) for
+local cache eligibility versus live credential checks.
 
 Those startup commands also emit a stderr-only notice when a newer My AI release
 is available. Stdout remains clean for command substitutions such as

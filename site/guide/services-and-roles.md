@@ -154,9 +154,9 @@ expired credentials leave the previous configuration intact.
 
 ### Key caching
 
-An `op://` key is fetched from 1Password once, then reused by later commands
-from any shell or harness. A background `my` process for your user holds it in
-memory only, never on disk, in the environment or on a command line.
+When caching is eligible, `my` fetches an `op://` key from 1Password and
+reuses it for later commands from any shell or harness running as your user.
+The background `my` process holds the fetched key only in memory.
 
 ```sh
 my services auth cache status      # can keys be cached here, and what is held; never a key
@@ -168,7 +168,8 @@ my services auth cache on --idle 30m --max 4h
 
 A key lasts until it goes unused for 1 hour, or 8 hours at most (24 hours is the
 ceiling), and never past the recorded expiry of a personal key. The first fetch
-prints both times.
+prints both times. Cache notices and status show local clock time for today
+and include the date and time zone for other days.
 
 **A cached key stays usable after 1Password locks**, until it expires or you run
 `my services auth lock`. Any process running as your user can reach the cache,
@@ -179,9 +180,10 @@ For one command, pass `--no-cache` or set `MYCLI_NO_CRED_CACHE=1`. `env://`
 references, 1Password service accounts (`OP_SERVICE_ACCOUNT_TOKEN`) and Connect
 (`OP_CONNECT_TOKEN`) are never cached.
 
-If several 1Password accounts are set up on the machine, choose one with
-`my services auth cache account <email>` or `OP_ACCOUNT`. Until you do, `my` says
-so and asks 1Password on each command.
+If several 1Password accounts are configured, choose one with
+`my services auth cache account <email|url|uuid>` or `OP_ACCOUNT`. Use the
+account URL or UUID when an email matches multiple accounts. Without a choice,
+`my` reports the ambiguity and resolves the key through 1Password on each call.
 
 `my services auth cache status` and `my doctor` say whether a key can be cached
 here: in which 1Password account and why that one (`OP_ACCOUNT` overrides the
@@ -207,9 +209,9 @@ Only the `op://` or `env://` reference, service binding and verified expiry are 
 under `~/.config/my-cli/service-auth.json` with mode 0600. The secret stays in
 your password manager or environment. Overrides apply only to that manifest,
 service and exact API URL. `unset` returns to the manifest's `auth_ref`.
-`my doctor` checks the effective reference and warns before the verified expiry,
-without resolving secrets or making network requests. `status` checks live
-access whenever you need to verify or renew it.
+The credential check in `my doctor` inspects the effective reference and
+warns before the verified expiry. This check resolves no secrets and makes no
+network requests. Use `my services auth status <service>` to verify live access.
 
 Admins can publish the setup link with:
 

@@ -49,9 +49,10 @@ my sync --no-derived          # skip the derived reconcile
 my sync --push --message TEXT # commit message for published content
 ```
 
-A manifest can set `sync.publish_policy` as the mode used by `--push`; an
-explicit `--publish` flag always wins. Bare `my sync` ignores that policy and
-stays pull-only. `--backend auto` is target-aware: exact Gnit roster members
+A manifest can set `sync.publish_policy` as the mode used by `--push`.
+`--publish pr` submits eligible changes through GitHub pull requests. Governed
+manifests require PR mode for outbound sync and reject `--publish direct`.
+Bare `my sync` stays pull-only. `--backend auto` is target-aware: exact Gnit roster members
 use coordinated publication, while unrostered checkouts use the guarded
 built-in Git path. Before delegating, My AI verifies that whole-workspace Gnit
 push cannot exceed the selected scope. Every non-print sync writes an audit to
@@ -67,8 +68,11 @@ The dry run for workspace repair. It reports manifest validity, per-checkout
 Git freshness (fetching refs first unless `--no-fetch`), derived
 guidance/MCP drift, legacy global org-skill drift, service materialization health,
 session health, registered and raw worktree leftovers, partial Gnit topology,
-legacy session layout migration, and the last sync audit. Worktree findings
-name `my session leftovers` for exact path-bound remediation. Every
+legacy session layout migration, historical launch observations, and the last
+sync audit. Worktree findings name `my session leftovers` for exact path-bound
+remediation. For HTTP services with an `op://` reference, doctor reports
+[key cache eligibility](./services-and-roles.md#key-caching) without reading
+credentials or calling the service. Every
 repairable finding is marked
 `would ...` with a closing fixable count; nothing changes until you re-run
 with `--fix`, which applies exactly that plan. Findings `--fix` cannot repair

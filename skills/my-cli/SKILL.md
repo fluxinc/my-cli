@@ -84,19 +84,22 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
 
 ## Operational vs Admin
 
-`my` splits its surface by risk. This boundary matters for an agent:
+Use workspace commands for day-to-day work and admin commands for shared
+configuration.
 
-- **Operational** commands are read-only or only touch local per-user state.
-  They are safe to run freely: `my skills list/show/status`,
+- **Operational** commands cover workspace and service work. Start with
+  inspection and use write or publish commands when the task calls for them.
+  Common commands include `my skills list/show/status`,
   `my meetings list/search/get`, `my support list/search/get`,
   `my fleet list/search/get` (with service-backed fleet these call the
   bound service and resolve its credential),
   `my customers list`,
   `my products list`, `my repos list/add/remove`, `my tools list/info`,
   `my services list/get`,
-  `my services auth set/status/unset/refresh/lock/cache` (local references only; `op://` keys are cached in memory, `cache status` shows expiries), `my roles list/get`, `my contract list`,
+  `my services auth set/status/unset/refresh/lock/cache` (personal API access and
+  the in-memory `op://` key cache), `my roles list/get`, `my contract list`,
   `my policy list/show/status/acceptances`,
-  `my compile`, `my root`,
+  `my compile`, `my root`, `my attempts list`,
   `my ai`, `my doctor`, `my manifests list`, `my mounts list`,
   `my session start/join/status/list/resume/finish` (sessions are local execution-plane
   state; `finish --publish` only publishes what the sync policy allows),
@@ -121,8 +124,8 @@ Run `my --help` (or `my <command> --help`) for the authoritative surface.
   Do not run them to "fix" something unless the user asked to change the
   organization's configuration.
 
-When unsure, reach for the operational form first; it cannot damage shared
-state.
+When unsure, inspect the current state first and use `--print` to preview
+publication.
 
 ## Common Tasks
 
@@ -139,7 +142,7 @@ my setup [--manifest NAME] [--role ROLE] [--interactive] [--no-refresh] [--no-up
                                     # create umbrella, write guidance/MCP config, install self-skill, sync mounts
 my root [--repo ID] [--no-refresh] [--no-update-check]
                                     # print the umbrella (or repo) path
-my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--setup] [--print] [--no-refresh] [--no-update-check] [harness]
+my ai [--new-session|--session ID|--resume [ID]|--no-session] [--repo ID] [--skills all|none|ID,...] [--profile ID] [--goal REF] [--setup] [--print] [--no-refresh] [--no-update-check] [harness]
                                     # verify guidance is current, compose launch-scoped org skills, then start a harness
                                     # --skills / --profile pick the org skill loadout (mutually exclusive); see the Skill model above
                                     # --setup reconciles the umbrella first when guidance is stale or missing
@@ -198,6 +201,13 @@ error because contained launches must not leak host paths. Governed projections
 carry universal plus exact-role `policies[]` references; compilation fails if
 an applicable policy's mount is outside the selected role.
 
+Pass `--umbrella DIR` to observe commit pins from the umbrella's **base** mount
+checkouts. A pin identifies the checked-out commit when it is reachable from
+that repository's locally cached upstream. Git probes are local and do not
+fetch. If the projection has a pin, the runner must materialize that exact
+commit or fail. When there is no pin, `pin.unavailable` gives the reason.
+`dirty: true` reports uncommitted changes outside the pinned commit.
+
 For a governed launch, generated guidance already names every applicable
 policy and its topics. When the current task touches a named topic, run every
 matching `my policy show <id>` before acting and follow the exact text. Do not
@@ -244,10 +254,18 @@ my session finish [session-id] --land     # commit session content, merge into b
 my session finish [session-id] --publish  # land, then publish landed content per the sync policy
 my session finish [session-id] --discard  # delete the session's worktrees, branches, and directory
 my session leftovers [--json]             # inspect registered and raw worktrees on managed repos
-my attempts list [--unclosed|--local-changes] [--json]
+my attempts list [--running|--unclosed|--local-changes] [--json]
                                           # local evidence of earlier my ai launches; not work tracking
 my session close-worktree <path> --yes    # remove one clean leftover while preserving its branch
 ```
+
+`my attempts list` shows local launch evidence, including nearby checkout
+observations and exits that `my` recorded. `--unclosed` finds launches whose
+launcher stopped without recording an exit. A shared checkout can change
+independently of any one launch. `my ai --goal REF` adds an opaque reference to
+that launch record. Check the bound work service for tracked task status when
+one is configured. `--print` and native Windows launches produce no attempt
+record.
 
 Use `my session join <id> <harness>` to run multiple harnesses in the same
 session; for example, `my session join <id> claude-code` and
@@ -510,14 +528,13 @@ built-in Git path, even when the umbrella contains unrelated Gnit metadata.
 Before delegating, My AI holds if whole-workspace Gnit push would exceed the
 selected scope. Run `my sync --push --print` first to see the explicit publish
 plan; do not ask employees to choose a backend.
-GitHub PR creation is a My AI policy layer planned on top of Gnit and `gh`; it
-is not implemented in the current CLI yet. A manifest can set top-level
-`sync.publish_policy` to `auto`, `never`, or `pr` as the default mode for
-`--push`; an explicit `--publish` flag always wins. Bare `my sync` ignores that
-policy and stays pull-only. A non-print sync writes `.my-cli/last-sync.json`;
-use `my doctor` to review the last publish/sync audit. `my doctor` fetches
-refs before reporting behind/ahead counts by default; pass `--no-fetch` for an
-offline view labeled as of the last fetch. It also reports service
+`my sync --publish pr` submits eligible changes through GitHub pull requests
+using `gh`. A manifest can set `sync.publish_policy` to `auto`, `never`, or `pr`
+for `--push`. Governed manifests route outbound sync through pull requests
+and reject `--publish direct`. Bare `my sync` stays pull-only. A non-print sync
+writes `.my-cli/last-sync.json`. Use `my doctor` to review the last sync audit.
+Doctor fetches refs before reporting behind/ahead counts by default. Pass
+`--no-fetch` to use the local tracking refs. It also reports service
 materialization health (URL-only MCP descriptors, missing checked-in
 descriptors, unset referenced environment variables, and missing optional
 resolver tools such as `op`), active work-session health, missing session
@@ -526,6 +543,18 @@ fast-forwards clean stale manifest/content checkouts and reconciles generated
 guidance, umbrella `.mcp.json`, plus legacy global org-skill cleanup; it reports dirty,
 diverged, repo, remote-unknown checkouts, and session work instead of touching
 them.
+
+## Personal key cache
+
+Run `my services auth cache status` or `my doctor` to diagnose whether an
+`op://` service key can be cached. The eligibility check can list local
+1Password accounts without reading a key or calling the service. An eligible
+cache can still be empty. If multiple accounts are configured, save an
+unambiguous choice with `my services auth cache account <email|url|uuid>`.
+`OP_ACCOUNT` takes precedence over the saved choice. Cache settings apply to
+the current user, and `my services auth lock` clears the keys held in memory.
+Use `my services auth status <service>` to verify access live. It may request
+1Password approval.
 
 ## Agent-Operated Onboarding
 
