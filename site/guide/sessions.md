@@ -97,9 +97,10 @@ room	/home/me/acme/sessions/2026-11-17-notes-ab12	created	people join with: tt c
 - `my` never joins a room, takes a turn, or moves a harness that is already
   running. An agent elsewhere joins by launching with
   `my session join <id> <harness>`.
-- The room is checked again on every launch and stored nowhere. The session's
-  `AGENTS.md` explains this but names no room, because any reconcile rewrites
-  it. `TT_ROOM` on its own is only Talking Stick's default selector: after a
+- The room is checked again on every launch. The session registry keeps no
+  room selector; each launch record keeps the pin that launch verified. The
+  session's `AGENTS.md` explains this but names no room, because any reconcile
+  rewrites it. `TT_ROOM` on its own is only Talking Stick's default selector: after a
   fallback it can still name a parent room.
 - If `tt` is missing, nothing is printed and nothing changes. If the check
   fails, the launch still goes ahead. `my` prints why, keeps any `TT_ROOM` the
