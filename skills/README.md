@@ -1,6 +1,6 @@
 # Bundled Skills
 
-This directory holds the **`my` CLI self-skill** (`my/SKILL.md`): a generic,
+This directory holds the **`my` CLI self-skill** ([`my-cli/SKILL.md`](my-cli/SKILL.md)): a generic,
 public-safe skill that teaches a harness how to operate inside a My AI workspace.
 It is embedded in the `my` binary, installed into supported harnesses during
 installation, and kept aligned with the running CLI version. It carries no
