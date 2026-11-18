@@ -156,7 +156,8 @@ expired credentials leave the previous configuration intact.
 
 When caching is eligible, `my` fetches an `op://` key from 1Password and
 reuses it for later commands from any shell or harness running as your user.
-The background `my` process holds the fetched key only in memory.
+The background `my` process holds the fetched key in memory only, never on
+disk, in the environment, or on a command line.
 
 ```sh
 my services auth cache status      # can keys be cached here, and what is held; never a key

@@ -274,8 +274,12 @@ my tools list
 my tools info <name>
 my services list [--manifest NAME] [--home DIR] [--json]
 my services get <id> [--manifest NAME] [--home DIR] [--json]
+my services auth set <service> --ref op://Private/item/credential [--manifest NAME] [--home DIR]
 my services auth status <service> [--manifest NAME] [--home DIR] [--json]
-my services auth cache status [--home DIR] [--json]
+my services auth unset <service> [--manifest NAME] [--home DIR]
+my services auth refresh <service> [--manifest NAME] [--home DIR] [--json]
+my services auth lock [--home DIR]
+my services auth cache status|on|off [--idle 1h] [--max 8h] [--home DIR] [--json]
 my services auth cache account <email|url|uuid> [--home DIR]
 my roles list [--manifest NAME] [--home DIR] [--json]
 my roles get <id> [--manifest NAME] [--home DIR] [--json]
