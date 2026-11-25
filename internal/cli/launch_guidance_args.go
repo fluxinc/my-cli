@@ -54,21 +54,79 @@ func launchGuidanceArgs(h harness.Harness, opts launchCommandOpts, root, targetD
 
 // launchGuidanceEnvPairs returns harness-specific KEY=VALUE environment
 // overrides needed for umbrella guidance to reach the model without placing
-// private contract text in process arguments or clobbering user config:
+// private contract text in process arguments or clobbering user config, along
+// with an actionable non-secret diagnostic if an inherited config could not be
+// merged:
 //   - OpenCode --repo launches: OpenCode stops parent AGENTS.md discovery at a
 //     nested git repo boundary, but merges OPENCODE_CONFIG_CONTENT's
 //     instructions array with the user's opencode.json instructions.
-func launchGuidanceEnvPairs(h harness.Harness, opts launchCommandOpts, root string, baseEnv []string) []string {
+func launchGuidanceEnvPairs(h harness.Harness, opts launchCommandOpts, root, targetDir string, baseEnv []string) ([]string, string) {
 	if h != harness.OpenCode || opts.repoID == "" || root == "" {
-		return nil
+		return nil, ""
 	}
 	umbrellaAgents := filepath.Join(root, "AGENTS.md")
 	existing := envValue(baseEnv, openCodeConfigContentEnv)
-	merged, ok := mergeOpenCodeInstructionsJSON(existing, umbrellaAgents)
+	merged, ok := mergeOpenCodeInstructionsJSON(existing, targetDir, umbrellaAgents)
 	if !ok {
-		return nil
+		return nil, fmt.Sprintf("OPENCODE_CONFIG_CONTENT could not be merged; keeping it unchanged without adding umbrella AGENTS.md automatically. Fix OPENCODE_CONFIG_CONTENT or add %s to instructions.", umbrellaAgents)
 	}
-	return []string{openCodeConfigContentEnv + "=" + merged}
+	return []string{openCodeConfigContentEnv + "=" + merged}, ""
+}
+
+func usesInheritedOpenCodeConfig(h harness.Harness, opts launchCommandOpts, baseEnv []string) bool {
+	return h == harness.OpenCode && opts.repoID != "" && strings.TrimSpace(envValue(baseEnv, openCodeConfigContentEnv)) != ""
+}
+
+func rerunnableMyAICommand(opts launchCommandOpts, harnessName string, callerArgs []string) string {
+	args := []string{"ai"}
+	if opts.home != "" {
+		args = append(args, "--home", opts.home)
+	}
+	if opts.manifestName != "" {
+		args = append(args, "--manifest", opts.manifestName)
+	}
+	if opts.umbrellaRoot != "" {
+		args = append(args, "--umbrella", opts.umbrellaRoot)
+	}
+	if opts.repoID != "" {
+		args = append(args, "--repo", opts.repoID)
+	}
+	if opts.sessionID != "" {
+		args = append(args, "--session", opts.sessionID)
+	}
+	if opts.resumeSession {
+		args = append(args, "--resume")
+		if opts.resumeSessionID != "" {
+			args = append(args, opts.resumeSessionID)
+		}
+	}
+	if opts.newSession {
+		args = append(args, "--new-session")
+	}
+	if opts.noSession {
+		args = append(args, "--no-session")
+	}
+	if opts.profileID != "" {
+		args = append(args, "--profile", opts.profileID)
+	}
+	if opts.skillsSelector != "" {
+		args = append(args, "--skills", opts.skillsSelector)
+	}
+	if opts.goal != "" {
+		args = append(args, "--goal", opts.goal)
+	}
+	if opts.noRefresh {
+		args = append(args, "--no-refresh")
+	}
+	if opts.noUpdateCheck {
+		args = append(args, "--no-update-check")
+	}
+	args = append(args, harnessName)
+	if len(callerArgs) > 0 {
+		args = append(args, "--")
+		args = append(args, callerArgs...)
+	}
+	return shellCommandLine("", "my", args)
 }
 
 func applyEnvPairs(env []string, pairs []string) []string {
@@ -93,7 +151,7 @@ func envValue(env []string, key string) string {
 	return val
 }
 
-func mergeOpenCodeInstructionsJSON(existing, instructionPath string) (string, bool) {
+func mergeOpenCodeInstructionsJSON(existing, targetDir, instructionPath string) (string, bool) {
 	doc := map[string]json.RawMessage{}
 	if strings.TrimSpace(existing) != "" {
 		if err := json.Unmarshal([]byte(existing), &doc); err != nil || doc == nil {
@@ -108,7 +166,7 @@ func mergeOpenCodeInstructionsJSON(existing, instructionPath string) (string, bo
 	}
 	found := false
 	for _, item := range instructions {
-		if samePath(item, instructionPath) {
+		if samePathInDir(targetDir, item, instructionPath) {
 			found = true
 			break
 		}
@@ -126,6 +184,44 @@ func mergeOpenCodeInstructionsJSON(existing, instructionPath string) (string, bo
 		return "", false
 	}
 	return string(encodedDoc), true
+}
+
+// samePathInDir reports whether paths a and b refer to the same file when
+// relative paths are resolved against baseDir (never the caller's cwd). If a
+// relative path cannot be resolved because baseDir is empty, it returns false.
+func samePathInDir(baseDir, a, b string) bool {
+	normA, okA := resolvePathInDir(baseDir, a)
+	normB, okB := resolvePathInDir(baseDir, b)
+	if !okA || !okB {
+		return false
+	}
+	return normA == normB
+}
+
+func resolvePathInDir(baseDir, p string) (string, bool) {
+	if strings.TrimSpace(p) == "" {
+		return "", false
+	}
+	var joined string
+	if filepath.IsAbs(p) {
+		joined = filepath.Clean(p)
+	} else {
+		if strings.TrimSpace(baseDir) == "" {
+			return "", false
+		}
+		if !filepath.IsAbs(baseDir) {
+			absBase, err := filepath.Abs(baseDir)
+			if err != nil {
+				return "", false
+			}
+			baseDir = absBase
+		}
+		joined = filepath.Join(baseDir, p)
+	}
+	if resolved, err := filepath.EvalSymlinks(joined); err == nil {
+		return filepath.Clean(resolved), true
+	}
+	return filepath.Clean(joined), true
 }
 
 func marshalJSONNoEscapeHTML(v any) ([]byte, error) {

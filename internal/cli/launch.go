@@ -210,8 +210,20 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 			room = a.ensureSessionRoom(*target.Session)
 			printSessionRoom(a.stderr, room, true)
 		}
+		if usesInheritedOpenCodeConfig(h, opts, os.Environ()) {
+			if _, warning := launchGuidanceEnvPairs(h, opts, root, target.Dir, os.Environ()); warning != "" {
+				fmt.Fprintf(a.stderr, "notice\tguidance\t%s\n", warning)
+			} else {
+				fmt.Fprintln(a.stderr, "notice\tguidance\tOPENCODE_CONFIG_CONTENT is inherited from your environment and merged only when my ai runs, so it is not printed")
+			}
+			fmt.Fprintln(a.stdout, rerunnableMyAICommand(opts, harnessName, callerArgs))
+			return nil
+		}
 		printArgs := append(launchGuidanceArgs(h, opts, root, target.Dir, harnessArgs), harnessArgs...)
-		printEnv := launchGuidanceEnvPairs(h, opts, root, os.Environ())
+		printEnv, warning := launchGuidanceEnvPairs(h, opts, root, target.Dir, os.Environ())
+		if warning != "" {
+			fmt.Fprintf(a.stderr, "notice\tguidance\t%s\n", warning)
+		}
 		fmt.Fprintln(a.stdout, harnessCommandLineWithEnv(target.Dir, room, printEnv, commandName, printArgs))
 		return nil
 	}
@@ -292,8 +304,18 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 	}
 	binary, err := a.lookupHarnessBinary(h)
 	if err != nil {
+		if usesInheritedOpenCodeConfig(h, opts, os.Environ()) {
+			if _, warning := launchGuidanceEnvPairs(h, opts, root, target.Dir, os.Environ()); warning != "" {
+				fmt.Fprintf(a.stderr, "notice\tguidance\t%s\n", warning)
+			}
+			fmt.Fprintf(a.stderr, "%s not found on PATH; install %s, then rerun:\n%s\n", commandName, commandName, rerunnableMyAICommand(opts, harnessName, callerArgs))
+			return errAlreadyPrinted
+		}
 		fallbackArgs := append(launchGuidanceArgs(h, opts, root, target.Dir, harnessArgs), harnessArgs...)
-		fallbackEnv := launchGuidanceEnvPairs(h, opts, root, os.Environ())
+		fallbackEnv, warning := launchGuidanceEnvPairs(h, opts, root, target.Dir, os.Environ())
+		if warning != "" {
+			fmt.Fprintf(a.stderr, "notice\tguidance\t%s\n", warning)
+		}
 		a.printLaunchMissingHarness(h, target.Dir, fallbackEnv, fallbackArgs, createsNewSession, err)
 		return errAlreadyPrinted
 	}
@@ -318,7 +340,11 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 		fmt.Fprintf(a.stderr, "launching %s...\n", commandName)
 	}
 	baseEnv := sessionLaunchEnvironment(os.Environ(), target.Session, room)
-	a.launchEnv = applyEnvPairs(baseEnv, launchGuidanceEnvPairs(h, opts, root, baseEnv))
+	guidanceEnv, warning := launchGuidanceEnvPairs(h, opts, root, targetDir, baseEnv)
+	if warning != "" {
+		fmt.Fprintf(a.stderr, "notice\tguidance\t%s\n", warning)
+	}
+	a.launchEnv = applyEnvPairs(baseEnv, guidanceEnv)
 	if err := ensureSessionLaunchGuidance(root, targetDir, doc); err != nil {
 		return err
 	}
