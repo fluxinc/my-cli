@@ -190,11 +190,25 @@ func sessionLaunchEnvironment(inherited []string, session *worksession.Session, 
 // harnessCommandLine is shellCommandLine with the verified room assigned on
 // the harness command itself, not on the preceding cd.
 func harnessCommandLine(dir string, room sessionRoom, command string, args []string) string {
-	if room.Pin == "" {
+	return harnessCommandLineWithEnv(dir, room, nil, command, args)
+}
+
+func harnessCommandLineWithEnv(dir string, room sessionRoom, extraEnv []string, command string, args []string) string {
+	var envParts []string
+	if room.Pin != "" {
+		envParts = append(envParts, ttRoomEnv+"="+shellQuote(room.Pin))
+	}
+	for _, pair := range extraEnv {
+		key, val, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		envParts = append(envParts, key+"="+shellQuote(val))
+	}
+	if len(envParts) == 0 {
 		return shellCommandLine(dir, command, args)
 	}
-	line := shellCommandLine("", command, args)
-	line = ttRoomEnv + "=" + shellQuote(room.Pin) + " " + line
+	line := strings.Join(envParts, " ") + " " + shellCommandLine("", command, args)
 	if dir == "" {
 		return line
 	}

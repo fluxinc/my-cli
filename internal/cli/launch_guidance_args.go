@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -8,6 +10,8 @@ import (
 	"github.com/fluxinc/my-cli/internal/harness"
 	"github.com/fluxinc/my-cli/internal/umbrella"
 )
+
+const openCodeConfigContentEnv = "OPENCODE_CONFIG_CONTENT"
 
 // launchGuidanceArgs returns harness-specific CLI flags that ensure the
 // organization contract, umbrella guidance, and skills reach the model in
@@ -46,6 +50,92 @@ func launchGuidanceArgs(h harness.Harness, opts launchCommandOpts, root, targetD
 		}
 	}
 	return extra
+}
+
+// launchGuidanceEnvPairs returns harness-specific KEY=VALUE environment
+// overrides needed for umbrella guidance to reach the model without placing
+// private contract text in process arguments or clobbering user config:
+//   - OpenCode --repo launches: OpenCode stops parent AGENTS.md discovery at a
+//     nested git repo boundary, but merges OPENCODE_CONFIG_CONTENT's
+//     instructions array with the user's opencode.json instructions.
+func launchGuidanceEnvPairs(h harness.Harness, opts launchCommandOpts, root string, baseEnv []string) []string {
+	if h != harness.OpenCode || opts.repoID == "" || root == "" {
+		return nil
+	}
+	umbrellaAgents := filepath.Join(root, "AGENTS.md")
+	existing := envValue(baseEnv, openCodeConfigContentEnv)
+	merged, ok := mergeOpenCodeInstructionsJSON(existing, umbrellaAgents)
+	if !ok {
+		return nil
+	}
+	return []string{openCodeConfigContentEnv + "=" + merged}
+}
+
+func applyEnvPairs(env []string, pairs []string) []string {
+	out := env
+	for _, pair := range pairs {
+		key, _, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		out = append(withoutEnv(out, key), pair)
+	}
+	return out
+}
+
+func envValue(env []string, key string) string {
+	val := ""
+	for _, entry := range env {
+		if envKeyIs(entry, key) {
+			_, val, _ = strings.Cut(entry, "=")
+		}
+	}
+	return val
+}
+
+func mergeOpenCodeInstructionsJSON(existing, instructionPath string) (string, bool) {
+	doc := map[string]json.RawMessage{}
+	if strings.TrimSpace(existing) != "" {
+		if err := json.Unmarshal([]byte(existing), &doc); err != nil || doc == nil {
+			return "", false
+		}
+	}
+	var instructions []string
+	if raw, ok := doc["instructions"]; ok && len(bytes.TrimSpace(raw)) > 0 {
+		if err := json.Unmarshal(raw, &instructions); err != nil {
+			return "", false
+		}
+	}
+	found := false
+	for _, item := range instructions {
+		if samePath(item, instructionPath) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		instructions = append(instructions, instructionPath)
+	}
+	encodedInstr, err := marshalJSONNoEscapeHTML(instructions)
+	if err != nil {
+		return "", false
+	}
+	doc["instructions"] = encodedInstr
+	encodedDoc, err := marshalJSONNoEscapeHTML(doc)
+	if err != nil {
+		return "", false
+	}
+	return string(encodedDoc), true
+}
+
+func marshalJSONNoEscapeHTML(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
 // buildLaunchGuidancePointer emits a short, neutral instruction pointing the

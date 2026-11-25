@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -600,5 +601,110 @@ func TestChangeNoticeOrdersLaunchGuidanceArgsBeforePrompt(t *testing.T) {
 				t.Fatalf("notice state = %#v, want Noticed=%s", state, head)
 			}
 		})
+	}
+}
+
+func TestRunHarnessSetsPWDAndOpenCodeRepoGuidanceEnv(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchFixture(t)
+	if err := os.MkdirAll(filepath.Join(umbrellaRoot, ".my-cli"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repoDir := filepath.Join(umbrellaRoot, "repos", "sample-service")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Run from a separate directory so caller PWD differs from targetDir.
+	callerDir := t.TempDir()
+	t.Chdir(callerDir)
+	t.Setenv("PWD", callerDir)
+	t.Setenv("OPENCODE_CONFIG_CONTENT", `{"model":"custom/model","instructions":["/existing/rules.md"]}`)
+
+	// 1. Live launch: PWD aligns with repoDir, and OPENCODE_CONFIG_CONTENT preserves
+	//    existing JSON keys and instructions while adding umbrella AGENTS.md.
+	var stdout, stderr bytes.Buffer
+	var gotDir string
+	var gotEnv []string
+	a := app{
+		stdout:   &stdout,
+		stderr:   &stderr,
+		lookPath: func(name string) (string, error) { return "/test/bin/" + name, nil },
+		execHarnessEnvironment: func(_ string, _ []string, dir string, env []string) error {
+			gotDir = dir
+			gotEnv = append([]string(nil), env...)
+			return nil
+		},
+	}
+	if err := a.run([]string{"my", "ai", "--home", home, "--manifest", "acme", "--no-refresh", "--no-update-check", "--repo", "sample-service", "opencode"}); err != nil {
+		t.Fatalf("opencode --repo launch: %v\n%s", err, stderr.String())
+	}
+	if !samePath(gotDir, repoDir) {
+		t.Fatalf("launch dir = %q, want %q", gotDir, repoDir)
+	}
+	if gotPWD := envValue(gotEnv, "PWD"); !samePath(gotPWD, repoDir) {
+		t.Fatalf("launch PWD = %q, want %q", gotPWD, repoDir)
+	}
+	rawCfg := envValue(gotEnv, openCodeConfigContentEnv)
+	var cfg struct {
+		Model        string   `json:"model"`
+		Instructions []string `json:"instructions"`
+	}
+	if err := json.Unmarshal([]byte(rawCfg), &cfg); err != nil {
+		t.Fatalf("unmarshal OPENCODE_CONFIG_CONTENT %q: %v", rawCfg, err)
+	}
+	if cfg.Model != "custom/model" {
+		t.Fatalf("model = %q, want custom/model", cfg.Model)
+	}
+	wantAgents := filepath.Join(umbrellaRoot, "AGENTS.md")
+	if len(cfg.Instructions) != 2 || cfg.Instructions[0] != "/existing/rules.md" || !samePath(cfg.Instructions[1], wantAgents) {
+		t.Fatalf("instructions = %#v, want [/existing/rules.md %s]", cfg.Instructions, wantAgents)
+	}
+
+	// 2. --print parity includes OPENCODE_CONFIG_CONTENT.
+	stdout.Reset()
+	stderr.Reset()
+	aPrint := app{stdout: &stdout, stderr: &stderr}
+	if err := aPrint.run([]string{"my", "ai", "--home", home, "--manifest", "acme", "--repo", "sample-service", "--print", "opencode"}); err != nil {
+		t.Fatalf("opencode --repo --print: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "OPENCODE_CONFIG_CONTENT=") || !strings.Contains(stdout.String(), wantAgents) {
+		t.Fatalf("opencode --repo --print = %q, want OPENCODE_CONFIG_CONTENT with %s", stdout.String(), wantAgents)
+	}
+}
+
+func TestEnsureLaunchSelfSkillAllowsLaunchWhenLegacyCleanupFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod read-only parent dir test is unix-specific")
+	}
+	home := t.TempDir()
+	// Seed a managed legacy ~/.agents/skills/my-cli symlink inside a read-only parent
+	// so cleanupLegacySkillDirs cannot remove it.
+	sourceRoot := filepath.Join(home, ".local", "share", "my-cli", "skills")
+	oldSource := filepath.Join(sourceRoot, "my-cli")
+	writeCLITestFile(t, filepath.Join(oldSource, "SKILL.md"), "---\nname: my-cli\n---\nold\n")
+	writeCLITestFile(t, filepath.Join(oldSource, ".my-cli-managed.json"), `{"installer":"my-cli","canonical_id":"my:self"}`+"\n")
+	legacyParent := filepath.Join(home, ".agents", "skills")
+	if err := os.MkdirAll(legacyParent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldLink := filepath.Join(legacyParent, "my-cli")
+	if err := os.Symlink(oldSource, oldLink); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(legacyParent, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(legacyParent, 0o755) })
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.ensureLaunchSelfSkill(harness.Antigravity, home); err != nil {
+		t.Fatalf("ensureLaunchSelfSkill should allow launch when primary install succeeds and only legacy cleanup fails: %v\nstderr:\n%s", err, stderr.String())
+	}
+	newLink := filepath.Join(home, ".gemini", "config", "skills", "my-cli")
+	if _, err := os.Stat(filepath.Join(newLink, "SKILL.md")); err != nil {
+		t.Fatalf("primary antigravity self-skill missing: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "notice\tself-skill\tcould not clean up legacy") {
+		t.Fatalf("expected non-fatal legacy cleanup notice in stderr, got:\n%s", stderr.String())
 	}
 }
