@@ -1,43 +1,30 @@
 # my
 
-`my` sets up the organization that a group of AI agents works inside. It gives
-every agent the same contract, the same roles, the same skills and the same
-reference material, whichever harness the agent runs in: Claude Code, Codex,
-OpenCode, Antigravity, Grok or Cursor. All of it comes from one organization
-manifest, a Git repository you control.
-
-Documentation: https://my-cli.com/ · Rooms: [shrooms](https://github.com/mostlydev/shrooms#readme)
+When several projects share one conversation, a decision about one can start
+to sound like a rule for all of them. A studio can give the team drawing a
+poster its own workshop. The artists keep the sketches, revisions and reasons
+for their choices together. When the print team needs the approved dimensions,
+it can ask for those without taking on the whole design conversation.
 
 ## Rooms, and why the work is split into them
 
-Put every agent in one shared space, with nothing separating one project from
-another, and their contexts drift together. Each agent reads every other
-agent's messages and carries every other piece of work along with its own. The
-shared context converges on all of it at once, then collapses: no agent still
-holds the working detail of its own subject.
+A room gives the people and agents working on one folder's project a place to
+keep that conversation. Each room has its own identity, topic and members.
+One member holds the talking stick to change shared files while others read,
+test in isolation or review. A shrooms member can be an agent session, meaning
+one conversation in a harness. A **my-cli session** is the workspace that can
+host several of those conversations.
 
-People are no different. A team in its own workshop keeps its craft. Teams
-that share one crowded room spend their attention on each other, and they work
-together best by sending each other complete briefs.
-
-So agents work in rooms. A room is one folder's shared space: its members, its
-messages and one talking stick, the single turn to change shared files. A room
-has its own identity and its own topic, and it keeps the knowledge of that
-topic. Rooms coordinate by asking each other, not by merging.
-[shrooms](https://github.com/mostlydev/shrooms#readme) (the `tt` command) runs
-the rooms. `my` makes every room part of the same organization.
-
-Picture a street of small workshops. In each one, a few agents work at their
-benches on one piece of work and take turns changing what is on the shared
-table. Every workshop keeps the same house rules, draws on the same library
-and hands finished work on through the same doors. When the house rules
-change, each person is told what changed the next time they start work.
+`my` prepares the workspace from an organization manifest, a Git repository
+you control. It supplies the contract, reference material and the tools and
+skills selected for the work. Shrooms manages room membership, messages and
+turns. [CLI documentation](https://my-cli.com/) · [Shrooms README](https://github.com/mostlydev/shrooms#readme)
 
 ### A piece of work gets its own room
 
 A my-cli session is one piece of work: a folder under `sessions/<id>` with its
 own Git worktree of each content mount, its own scratch space and its own
-generated guidance. When `tt` is installed, a my-cli session gets its own room.
+generated guidance. When `tt` confirms the session room, `my` points the harness at it.
 `--print` shows what a launch would run without starting it (paths shortened):
 
 ```console
@@ -56,8 +43,7 @@ the session only through `my session finish`.
 
 ### What every room shares
 
-- **The contract.** A short list of rules every agent in the organization
-  follows. Put the reason in the rule: an agent that knows why a rule exists
+- **The contract.** The rules the organization gives its agents. Put the reason in the rule: an agent that knows why a rule exists
   can serve its purpose in a case the wording did not foresee.
 - **An organization role**, chosen for an umbrella with `my setup --role`. It
   decides which guidance, mounts, skills, tools and services a launch loads.
@@ -67,17 +53,14 @@ the session only through `my session finish`.
 - **Skills and reference material.** The organization's skills, its handbook
   and its records, mounted into the umbrella.
 - **The change notice.** When the manifest changes, the next session start
-  shows each person what changed, with a link to the pull request.
+  shows each person what changed, with links when the manifest has a supported remote.
 
 ### Briefs between rooms
 
-A room cannot see another room's conversation, so a message to a room has to
-carry what the room needs: who will use the result, what they need to do with
+A visitor may know earlier decisions the room has never seen. Include who will use the result, what they need to do with
 it, which earlier decisions matter, and how to tell it works. It should be
 enough for the room to carry on if the sender went away. A member that cannot
-work out why something is wanted asks the sender before building. What counts
-is that the result works for its purpose, not that a list of instructions was
-followed. The generated guidance tells every agent this.
+work out why something is wanted asks the sender before building. Test the result where the recipient will use it.
 
 ## Install
 
@@ -232,6 +215,33 @@ Where you start decides what the launch sees:
 *(The per-harness table, covering the instruction file read, the skill folder
 read, `--repo` behavior and the live contract hook, is filled in from the
 final audit of the release candidate.)*
+
+## When the contract changes
+
+A studio might ask for approval before publishing a layered source file
+because it can contain sketches the artist left out of the final image.
+Knowing the reason tells the reviewer what to check. Open the file the
+recipient will receive and inspect its layers. The rule guides the agent.
+If publication requires a second person's approval, enforce that requirement
+in the publishing service. Editing the contract cannot recall a published file.
+
+The first successful harness launch records a starting revision for that
+user and manifest. After a sync brings in changes, the next launch prints
+a summary. When `my` supplies the opening prompt, it asks the agent to read
+the changes and explain them. In a studio fixture, the agent reported three
+changes:
+
+- Approval before publishing an image now also covers its layered source file.
+- Captions must credit every collaborator by name.
+- The studio added `magick` to convert artwork between print and web formats.
+
+For a GitHub origin the notice links to the revisions and, when found in
+commit history, the pull requests. A local-path origin shows the commit IDs.
+When the harness starts with the notice prompt, `my` records the revision as
+seen. If you supply your own harness arguments, the terminal still shows the
+summary and the notice stays pending. Run `my changes` to read and record it,
+or `my changes --peek` to read it without advancing the record. If the
+comparison is incomplete, it stays pending for another attempt.
 
 ## Commands
 
