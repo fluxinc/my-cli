@@ -289,6 +289,7 @@ my contract pending [--manifest NAME] [--instance ID] [--hook claude|codex]
 my contract register --manifest NAME --harness NAME --root DIR [--home DIR]
 my contract status [--manifest NAME] [--home DIR] [--json]
 my contract diff [--from REV] [--to REV] [--manifest NAME] [--home DIR] [--json]
+my changes [--since REV [--to REV]] [--peek] [--all] [--reset] [--manifest NAME] [--home DIR] [--json]
 my compile --role <id> [--manifest NAME] [--umbrella DIR] [--home DIR]
 ```
 

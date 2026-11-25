@@ -373,11 +373,17 @@ my contract show                 # the contract file as written, with its blob i
 my contract status               # active/installed revisions and per-launch emission state
 my contract pending              # local pending update; manual output never records receipt
 my contract diff --from REV --to REV # local historical contract diff (no fetch)
+my changes                       # manifest changes you have not been told about; records them as seen
 ```
 
 Before a new task in a long session, check `my contract status`. Apply contract
 updates printed by `my` within the existing instruction hierarchy, including
 explicit retractions. Emission receipts do not prove model acceptance.
+
+If a session opens with a summary of manifest changes, or asks you to run a
+`my changes` command, tell the user in plain words what changed before anything
+else, with every link it prints. A session that opened without one runs
+`my changes` once before its first task.
 
 For advisory conflict review, use `my admin contract review --harness claude
 --model MODEL` (or an explicit manifest selection). Review reads the whole
