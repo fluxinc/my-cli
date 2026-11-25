@@ -1459,7 +1459,7 @@ func TestCursorAgentCollisionDiagnosticNamesWrongProduct(t *testing.T) {
 	t.Run("existing launch target", func(t *testing.T) {
 		var stderr bytes.Buffer
 		a := app{stderr: &stderr}
-		a.printLaunchMissingHarness(harness.Cursor, "/tmp/work", []string{"hello"}, false, lookupErr)
+		a.printLaunchMissingHarness(harness.Cursor, "/tmp/work", nil, []string{"hello"}, false, lookupErr)
 		out := stderr.String()
 		for _, want := range []string{
 			"resolved `agent` executable belongs to another harness",
@@ -1475,7 +1475,7 @@ func TestCursorAgentCollisionDiagnosticNamesWrongProduct(t *testing.T) {
 	t.Run("new session remains uncreated", func(t *testing.T) {
 		var stderr bytes.Buffer
 		a := app{stderr: &stderr}
-		a.printLaunchMissingHarness(harness.Cursor, "", []string{"hello"}, true, lookupErr)
+		a.printLaunchMissingHarness(harness.Cursor, "", nil, []string{"hello"}, true, lookupErr)
 		out := stderr.String()
 		for _, want := range []string{
 			"resolved `agent` executable belongs to another harness",

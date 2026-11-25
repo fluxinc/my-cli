@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -209,8 +210,21 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 			room = a.ensureSessionRoom(*target.Session)
 			printSessionRoom(a.stderr, room, true)
 		}
+		if usesInheritedOpenCodeConfig(h, opts, os.Environ()) {
+			if _, warning := launchGuidanceEnvPairs(h, opts, root, target.Dir, os.Environ()); warning != "" {
+				fmt.Fprintf(a.stderr, "notice\tguidance\t%s\n", warning)
+			} else {
+				fmt.Fprintln(a.stderr, "notice\tguidance\tOPENCODE_CONFIG_CONTENT is inherited from your environment and merged only when my ai runs, so it is not printed")
+			}
+			fmt.Fprintln(a.stdout, rerunnableMyAICommand(opts, harnessName, callerArgs))
+			return nil
+		}
 		printArgs := append(launchGuidanceArgs(h, opts, root, target.Dir, harnessArgs), harnessArgs...)
-		fmt.Fprintln(a.stdout, harnessCommandLine(target.Dir, room, commandName, printArgs))
+		printEnv, warning := launchGuidanceEnvPairs(h, opts, root, target.Dir, os.Environ())
+		if warning != "" {
+			fmt.Fprintf(a.stderr, "notice\tguidance\t%s\n", warning)
+		}
+		fmt.Fprintln(a.stdout, harnessCommandLineWithEnv(target.Dir, room, printEnv, commandName, printArgs))
 		return nil
 	}
 	doc, err := launchGuidanceDoc(opts.home, opts.manifestName, root)
@@ -290,8 +304,19 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 	}
 	binary, err := a.lookupHarnessBinary(h)
 	if err != nil {
+		if usesInheritedOpenCodeConfig(h, opts, os.Environ()) {
+			if _, warning := launchGuidanceEnvPairs(h, opts, root, target.Dir, os.Environ()); warning != "" {
+				fmt.Fprintf(a.stderr, "notice\tguidance\t%s\n", warning)
+			}
+			fmt.Fprintf(a.stderr, "%s not found on PATH; install %s, then rerun:\n%s\n", commandName, commandName, rerunnableMyAICommand(opts, harnessName, callerArgs))
+			return errAlreadyPrinted
+		}
 		fallbackArgs := append(launchGuidanceArgs(h, opts, root, target.Dir, harnessArgs), harnessArgs...)
-		a.printLaunchMissingHarness(h, target.Dir, fallbackArgs, createsNewSession, err)
+		fallbackEnv, warning := launchGuidanceEnvPairs(h, opts, root, target.Dir, os.Environ())
+		if warning != "" {
+			fmt.Fprintf(a.stderr, "notice\tguidance\t%s\n", warning)
+		}
+		a.printLaunchMissingHarness(h, target.Dir, fallbackEnv, fallbackArgs, createsNewSession, err)
 		return errAlreadyPrinted
 	}
 	if createsNewSession {
@@ -314,7 +339,12 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 	if createsNewSession && target.Created && target.Session != nil {
 		fmt.Fprintf(a.stderr, "launching %s...\n", commandName)
 	}
-	a.launchEnv = sessionLaunchEnvironment(os.Environ(), target.Session, room)
+	baseEnv := sessionLaunchEnvironment(os.Environ(), target.Session, room)
+	guidanceEnv, warning := launchGuidanceEnvPairs(h, opts, root, targetDir, baseEnv)
+	if warning != "" {
+		fmt.Fprintf(a.stderr, "notice\tguidance\t%s\n", warning)
+	}
+	a.launchEnv = applyEnvPairs(baseEnv, guidanceEnv)
 	if err := ensureSessionLaunchGuidance(root, targetDir, doc); err != nil {
 		return err
 	}
@@ -445,7 +475,7 @@ func (a app) maybePrintStructuredCommandError(err error) error {
 	return err
 }
 
-func (a app) printLaunchMissingHarness(h harness.Harness, targetDir string, args []string, newSession bool, lookupErr error) {
+func (a app) printLaunchMissingHarness(h harness.Harness, targetDir string, extraEnv, args []string, newSession bool, lookupErr error) {
 	commandName := h.CommandName()
 	if h == harness.Cursor && lookupErr != nil && strings.Contains(lookupErr.Error(), "not Cursor CLI") {
 		fmt.Fprintln(a.stderr, "Cursor CLI not found: the resolved `agent` executable belongs to another harness")
@@ -455,7 +485,7 @@ func (a app) printLaunchMissingHarness(h harness.Harness, targetDir string, args
 			return
 		}
 		fmt.Fprintln(a.stderr, "install Cursor CLI from https://cursor.com/docs/cli/installation, then rerun:")
-		fmt.Fprintln(a.stderr, shellCommandLine(targetDir, commandName, args))
+		fmt.Fprintln(a.stderr, harnessCommandLineWithEnv(targetDir, sessionRoom{}, extraEnv, commandName, args))
 		return
 	}
 	if newSession {
@@ -463,7 +493,7 @@ func (a app) printLaunchMissingHarness(h harness.Harness, targetDir string, args
 		fmt.Fprintf(a.stderr, "install %s, then rerun the same my ai command\n", commandName)
 		return
 	}
-	line := shellCommandLine(targetDir, commandName, args)
+	line := harnessCommandLineWithEnv(targetDir, sessionRoom{}, extraEnv, commandName, args)
 	fmt.Fprintf(a.stderr, "%s not found on PATH; run:\n%s\n", commandName, line)
 }
 
@@ -546,20 +576,45 @@ func (a app) ensureLaunchSelfSkill(h harness.Harness, home string) error {
 	if len(results) == 0 {
 		return fmt.Errorf("unexpected self-skill install result count: 0")
 	}
+	resolvedHome, err := resolveHome(home)
+	if err != nil {
+		return err
+	}
+	primaryPath := h.SkillTargetPath(resolvedHome, selfskill.Name)
 	installed := false
-	for _, result := range results {
+	var primaryBlock *skills.Result
+	var legacyWarnings []skills.Result
+	for i := range results {
+		result := results[i]
 		switch result.Status {
 		case skills.StatusInstalled, skills.StatusUpdated:
 			installed = true
 		case skills.StatusMigrated:
 		default:
-			a.printLaunchSelfSkillBlock(result)
-			return errAlreadyPrinted
+			if result.TargetPath != "" && filepath.Clean(result.TargetPath) != filepath.Clean(primaryPath) {
+				legacyWarnings = append(legacyWarnings, result)
+				continue
+			}
+			if primaryBlock == nil {
+				r := result
+				primaryBlock = &r
+			}
 		}
+	}
+	if primaryBlock != nil {
+		a.printLaunchSelfSkillBlock(*primaryBlock)
+		return errAlreadyPrinted
 	}
 	if !installed {
 		a.printLaunchSelfSkillBlock(results[0])
 		return errAlreadyPrinted
+	}
+	for _, warn := range legacyWarnings {
+		msg := warn.Message
+		if msg == "" && warn.Err != nil {
+			msg = warn.Err.Error()
+		}
+		fmt.Fprintf(a.stderr, "notice\tself-skill\tcould not clean up legacy %s copy at %s: %s\n", warn.Harness, warn.TargetPath, msg)
 	}
 	return nil
 }
@@ -1040,15 +1095,26 @@ func (a app) probeCursorAgent(path string) (bool, error) {
 }
 
 func (a app) runHarness(path string, args []string, dir string) error {
+	env := a.harnessEnvironment
+	if dir != "" {
+		base := env
+		if base == nil {
+			base = os.Environ()
+		}
+		// Keep PWD aligned with cmd.Dir so harnesses that inspect $PWD
+		// (such as OpenCode) resolve workspace guidance in dir rather than
+		// the caller's shell directory.
+		env = append(withoutEnv(base, "PWD"), "PWD="+dir)
+	}
 	if a.execHarnessEnvironment != nil {
-		return a.harnessSeamStarted(a.execHarnessEnvironment(path, args, dir, a.harnessEnvironment))
+		return a.harnessSeamStarted(a.execHarnessEnvironment(path, args, dir, env))
 	}
 	if a.execHarness != nil {
 		return a.harnessSeamStarted(a.execHarness(path, args, dir))
 	}
 	cmd := exec.Command(path, args...)
-	if a.harnessEnvironment != nil {
-		cmd.Env = a.harnessEnvironment
+	if env != nil {
+		cmd.Env = env
 	}
 	cmd.Dir = dir
 	cmd.Stdin = os.Stdin

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -600,5 +601,202 @@ func TestChangeNoticeOrdersLaunchGuidanceArgsBeforePrompt(t *testing.T) {
 				t.Fatalf("notice state = %#v, want Noticed=%s", state, head)
 			}
 		})
+	}
+}
+
+func TestRunHarnessSetsPWDAndOpenCodeRepoGuidanceEnv(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchFixture(t)
+	if err := os.MkdirAll(filepath.Join(umbrellaRoot, ".my-cli"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repoDir := filepath.Join(umbrellaRoot, "repos", "sample-service")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wantAgents := filepath.Join(umbrellaRoot, "AGENTS.md")
+	callerDir := t.TempDir()
+	t.Chdir(callerDir)
+	t.Setenv("PWD", callerDir)
+
+	// 1. Without inherited OPENCODE_CONFIG_CONTENT: --print and missing-binary
+	//    fallback include the safe generated OPENCODE_CONFIG_CONTENT.
+	t.Setenv("OPENCODE_CONFIG_CONTENT", "")
+	var stdout, stderr bytes.Buffer
+	aPrint := app{stdout: &stdout, stderr: &stderr}
+	if err := aPrint.run([]string{"my", "ai", "--home", home, "--manifest", "acme", "--repo", "sample-service", "--print", "opencode"}); err != nil {
+		t.Fatalf("opencode --repo --print (no inherited config): %v", err)
+	}
+	if !strings.Contains(stdout.String(), "OPENCODE_CONFIG_CONTENT=") || !strings.Contains(stdout.String(), wantAgents) {
+		t.Fatalf("opencode --repo --print = %q, want OPENCODE_CONFIG_CONTENT with %s", stdout.String(), wantAgents)
+	}
+
+	// 2. With inherited OPENCODE_CONFIG_CONTENT containing a synthetic secret:
+	//    live launch preserves and merges it in child env only; --print stdout
+	//    and missing-binary stderr emit a rerunnable my ai command and NEVER
+	//    disclose the synthetic secret on either stream.
+	const syntheticSecret = "SYNTHETIC_API_KEY_DO_NOT_LEAK_9911"
+	t.Setenv("OPENCODE_CONFIG_CONTENT", `{"provider":{"example":{"options":{"apiKey":"`+syntheticSecret+`"}}},"instructions":["/existing/rules.md"]}`)
+
+	stdout.Reset()
+	stderr.Reset()
+	var gotDir string
+	var gotEnv []string
+	a := app{
+		stdout:   &stdout,
+		stderr:   &stderr,
+		lookPath: func(name string) (string, error) { return "/test/bin/" + name, nil },
+		execHarnessEnvironment: func(_ string, _ []string, dir string, env []string) error {
+			gotDir = dir
+			gotEnv = append([]string(nil), env...)
+			return nil
+		},
+	}
+	if err := a.run([]string{"my", "ai", "--home", home, "--manifest", "acme", "--no-refresh", "--no-update-check", "--repo", "sample-service", "opencode"}); err != nil {
+		t.Fatalf("opencode --repo launch: %v\n%s", err, stderr.String())
+	}
+	if !samePath(gotDir, repoDir) {
+		t.Fatalf("launch dir = %q, want %q", gotDir, repoDir)
+	}
+	if gotPWD := envValue(gotEnv, "PWD"); !samePath(gotPWD, repoDir) {
+		t.Fatalf("launch PWD = %q, want %q", gotPWD, repoDir)
+	}
+	rawCfg := envValue(gotEnv, openCodeConfigContentEnv)
+	if !strings.Contains(rawCfg, syntheticSecret) {
+		t.Fatalf("child env OPENCODE_CONFIG_CONTENT lost inherited provider apiKey")
+	}
+	var cfg struct {
+		Instructions []string `json:"instructions"`
+	}
+	if err := json.Unmarshal([]byte(rawCfg), &cfg); err != nil {
+		t.Fatalf("unmarshal OPENCODE_CONFIG_CONTENT %q: %v", rawCfg, err)
+	}
+	if len(cfg.Instructions) != 2 || cfg.Instructions[0] != "/existing/rules.md" || !samePath(cfg.Instructions[1], wantAgents) {
+		t.Fatalf("instructions = %#v, want [/existing/rules.md %s]", cfg.Instructions, wantAgents)
+	}
+
+	// --print with inherited config: rerunnable my ai command, zero secret disclosure on stdout or stderr.
+	stdout.Reset()
+	stderr.Reset()
+	if err := aPrint.run([]string{"my", "ai", "--home", home, "--manifest", "acme", "--repo", "sample-service", "--setup", "--print", "opencode", "--", "--model", "opencode/big-pickle"}); err != nil {
+		t.Fatalf("opencode --repo --print (inherited config): %v", err)
+	}
+	if strings.Contains(stdout.String(), syntheticSecret) || strings.Contains(stderr.String(), syntheticSecret) {
+		t.Fatalf("secret leaked in --print output!\nstdout=%q\nstderr=%q", stdout.String(), stderr.String())
+	}
+	if strings.Contains(stdout.String(), "OPENCODE_CONFIG_CONTENT=") {
+		t.Fatalf("--print serialized inherited OPENCODE_CONFIG_CONTENT: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "--onboard") || !strings.Contains(stdout.String(), "my ai") || !strings.Contains(stdout.String(), "--repo sample-service") || !strings.Contains(stdout.String(), "opencode -- --model opencode/big-pickle") {
+		t.Fatalf("--print = %q, want rerunnable my ai command", stdout.String())
+	}
+
+	// Missing-binary fallback with inherited config: rerunnable my ai command, zero secret disclosure on stdout or stderr.
+	stdout.Reset()
+	stderr.Reset()
+	aMissing := app{
+		stdout:   &stdout,
+		stderr:   &stderr,
+		lookPath: func(string) (string, error) { return "", exec.ErrNotFound },
+	}
+	err := aMissing.run([]string{"my", "ai", "--home", home, "--manifest", "acme", "--no-refresh", "--no-update-check", "--repo", "sample-service", "opencode", "--", "--model", "opencode/big-pickle"})
+	if !errors.Is(err, errAlreadyPrinted) {
+		t.Fatalf("missing binary err = %v, want errAlreadyPrinted", err)
+	}
+	if strings.Contains(stdout.String(), syntheticSecret) || strings.Contains(stderr.String(), syntheticSecret) {
+		t.Fatalf("secret leaked in missing-binary fallback!\nstdout=%q\nstderr=%q", stdout.String(), stderr.String())
+	}
+	if strings.Contains(stderr.String(), "OPENCODE_CONFIG_CONTENT=") {
+		t.Fatalf("missing-binary fallback serialized inherited OPENCODE_CONFIG_CONTENT: %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "my ai") || !strings.Contains(stderr.String(), "--repo sample-service") || !strings.Contains(stderr.String(), "opencode -- --model opencode/big-pickle") {
+		t.Fatalf("missing-binary stderr = %q, want rerunnable my ai command", stderr.String())
+	}
+
+	// 3. Unmergeable inherited OPENCODE_CONFIG_CONTENT: preserve unchanged in child env,
+	//    emit actionable non-secret diagnostic on stderr, never disclose raw contents.
+	const badSecret = "SYNTHETIC_MALFORMED_SECRET_4422"
+	badRaw := `{"apiKey":"` + badSecret + `", not-json`
+	t.Setenv("OPENCODE_CONFIG_CONTENT", badRaw)
+	stdout.Reset()
+	stderr.Reset()
+	gotEnv = nil
+	if err := a.run([]string{"my", "ai", "--home", home, "--manifest", "acme", "--no-refresh", "--no-update-check", "--repo", "sample-service", "opencode"}); err != nil {
+		t.Fatalf("opencode --repo launch with invalid config: %v", err)
+	}
+	if got := envValue(gotEnv, openCodeConfigContentEnv); got != badRaw {
+		t.Fatalf("invalid OPENCODE_CONFIG_CONTENT was modified: got %q, want %q", got, badRaw)
+	}
+	if strings.Contains(stderr.String(), badSecret) || strings.Contains(stdout.String(), badSecret) {
+		t.Fatalf("malformed config contents leaked on output!\nstdout=%q\nstderr=%q", stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "OPENCODE_CONFIG_CONTENT could not be merged") || !strings.Contains(stderr.String(), "without adding umbrella AGENTS.md") {
+		t.Fatalf("expected actionable diagnostic for unmergeable OPENCODE_CONFIG_CONTENT, got stderr=%q", stderr.String())
+	}
+
+	// 4. Relative instruction paths are deduplicated against launch targetDir, not caller cwd.
+	t.Chdir(umbrellaRoot)
+	mergedRelRepo, ok := mergeOpenCodeInstructionsJSON(`{"instructions":["AGENTS.md"]}`, repoDir, wantAgents)
+	if !ok {
+		t.Fatal("mergeOpenCodeInstructionsJSON failed for repo-relative AGENTS.md")
+	}
+	var relCfg struct {
+		Instructions []string `json:"instructions"`
+	}
+	if err := json.Unmarshal([]byte(mergedRelRepo), &relCfg); err != nil {
+		t.Fatal(err)
+	}
+	if len(relCfg.Instructions) != 2 || relCfg.Instructions[0] != "AGENTS.md" || !samePath(relCfg.Instructions[1], wantAgents) {
+		t.Fatalf("relative AGENTS.md in repoDir was wrongly deduplicated against caller cwd: %#v", relCfg.Instructions)
+	}
+
+	t.Chdir(callerDir)
+	mergedRelParent, ok := mergeOpenCodeInstructionsJSON(`{"instructions":["../../AGENTS.md"]}`, repoDir, wantAgents)
+	if !ok {
+		t.Fatal("mergeOpenCodeInstructionsJSON failed for ../../AGENTS.md")
+	}
+	relCfg.Instructions = nil
+	if err := json.Unmarshal([]byte(mergedRelParent), &relCfg); err != nil {
+		t.Fatal(err)
+	}
+	if len(relCfg.Instructions) != 1 || relCfg.Instructions[0] != "../../AGENTS.md" {
+		t.Fatalf("expected ../../AGENTS.md relative to repoDir to deduplicate with umbrella AGENTS.md, got %#v", relCfg.Instructions)
+	}
+}
+
+func TestEnsureLaunchSelfSkillAllowsLaunchWhenLegacyCleanupFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod read-only parent dir test is unix-specific")
+	}
+	home := t.TempDir()
+	// Seed a managed legacy ~/.agents/skills/my-cli symlink inside a read-only parent
+	// so cleanupLegacySkillDirs cannot remove it.
+	sourceRoot := filepath.Join(home, ".local", "share", "my-cli", "skills")
+	oldSource := filepath.Join(sourceRoot, "my-cli")
+	writeCLITestFile(t, filepath.Join(oldSource, "SKILL.md"), "---\nname: my-cli\n---\nold\n")
+	writeCLITestFile(t, filepath.Join(oldSource, ".my-cli-managed.json"), `{"installer":"my-cli","canonical_id":"my:self"}`+"\n")
+	legacyParent := filepath.Join(home, ".agents", "skills")
+	if err := os.MkdirAll(legacyParent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldLink := filepath.Join(legacyParent, "my-cli")
+	if err := os.Symlink(oldSource, oldLink); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(legacyParent, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(legacyParent, 0o755) })
+
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.ensureLaunchSelfSkill(harness.Antigravity, home); err != nil {
+		t.Fatalf("ensureLaunchSelfSkill should allow launch when primary install succeeds and only legacy cleanup fails: %v\nstderr:\n%s", err, stderr.String())
+	}
+	newLink := filepath.Join(home, ".gemini", "config", "skills", "my-cli")
+	if _, err := os.Stat(filepath.Join(newLink, "SKILL.md")); err != nil {
+		t.Fatalf("primary antigravity self-skill missing: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "notice\tself-skill\tcould not clean up legacy") {
+		t.Fatalf("expected non-fatal legacy cleanup notice in stderr, got:\n%s", stderr.String())
 	}
 }

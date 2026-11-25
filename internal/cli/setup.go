@@ -722,7 +722,7 @@ func (a app) runOnboardAgentDirect(opts onboardOptions, h harness.Harness, promp
 	}
 	binary, err := a.lookupHarnessBinary(h)
 	if err != nil {
-		a.printLaunchMissingHarness(h, cwd, args, false, err)
+		a.printLaunchMissingHarness(h, cwd, nil, args, false, err)
 		return errAlreadyPrinted
 	}
 	return a.runHarness(binary, args, cwd)
