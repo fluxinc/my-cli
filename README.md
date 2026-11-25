@@ -241,22 +241,24 @@ Where you start decides what the launch sees:
   `developer_instructions`), and Grok receives a neutral `--rules` pointer to
   both `AGENTS.md` files without placing contract text in process arguments.
 
-| Harness | Instruction file | Global `my-cli` skill | Launch-root org skills | `--repo` umbrella guidance | Live contract hook |
-| --- | --- | --- | --- | --- | --- |
-| Claude Code (`claude`) | `CLAUDE.md` (points to `AGENTS.md`) | `~/.claude/skills` | `.claude/skills` (deferred on `--repo`) | Walks up to umbrella `CLAUDE.md` | `--settings` (`>= 2.1.310`) |
-| Codex (`codex`) | `AGENTS.md` | `~/.codex/skills` | `.agents/skills` (also loaded on `--repo`) | `-c project_root_markers=[".my-cli"]` | `-c hooks.*` (`>= 0.163.0`, after `/hooks` trust) |
-| Antigravity (`agy`) | `AGENTS.md` | `~/.gemini/config/skills` | `.agents/skills` (also loaded on `--repo`) | `--add-dir <umbrella>` | `~/.gemini/config/hooks.json` (`>= 1.5.15`) |
-| Grok (`grok`) | `AGENTS.md` (plus `--rules` pointer) | `~/.grok/skills` | `.grok/skills` (requires trusted dir) | Neutral `--rules` pointer to both `AGENTS.md` files | None; restart to reload |
-| Cursor (`cursor-agent`) | `AGENTS.md` | `~/.cursor/skills` | `.agents/skills` | `--add-dir <umbrella>` | None; restart to reload |
-| OpenCode (`opencode`) | `AGENTS.md` | `~/.config/opencode/skills` | Global compatibility install | Umbrella root or manual reload | None; restart to reload |
+| Harness | Instruction file | Global `my-cli` skill | Launch-root org skills | `--repo` umbrella guidance | Live contract hook | Confirmed by a real launch |
+| --- | --- | --- | --- | --- | --- | --- |
+| Claude Code (`claude`) | `CLAUDE.md` (points to `AGENTS.md`) | `~/.claude/skills` | `.claude/skills` (deferred on `--repo`) | Walks up to umbrella `CLAUDE.md` | `--settings` (`>= 2.1.310`) | Umbrella, session, `--repo`; live hook; change notice |
+| Codex (`codex`) | `AGENTS.md` | `~/.codex/skills` | `.agents/skills` (also loaded on `--repo`) | `-c project_root_markers=[".my-cli"]` | `-c hooks.*` (`>= 0.163.0`, after `/hooks` trust) | Umbrella, session, `--repo`; change notice (hook left untrusted) |
+| Antigravity (`agy`) | `AGENTS.md` | `~/.gemini/config/skills` | `.agents/skills` (also loaded on `--repo`) | `--add-dir <umbrella>` | `~/.gemini/config/hooks.json` (`>= 1.5.15`) | Umbrella, session, `--repo`; change notice |
+| Grok (`grok`) | `AGENTS.md` (plus `--rules` pointer) | `~/.grok/skills` | `.grok/skills` (requires trusted dir) | Neutral `--rules` pointer to both `AGENTS.md` files | None; restart to reload | Umbrella, `--repo` |
+| Cursor (`cursor-agent`) | `AGENTS.md` | `~/.cursor/skills` | `.agents/skills` | `--add-dir <umbrella>` | None; restart to reload | Not run (not logged in) |
+| OpenCode (`opencode`) | `AGENTS.md` | `~/.config/opencode/skills` | Global compatibility install | Umbrella root or manual reload | None; restart to reload | Not run (global plugins failed to load) |
 
 Grok skips project `AGENTS.md` and project skills in untrusted directories and
 rejects `--add-dir` at runtime, so `my` passes a neutral `--rules` pointer to
 the generated `AGENTS.md` file(s) instead of putting rule text in command-line
-arguments. Real launches were verified for Claude Code, Codex, Antigravity and
-Grok. Cursor and OpenCode were not: on the test machine Cursor was not logged
-in and OpenCode's global plugins failed to load, so their rows come from the
-code and its unit tests.
+arguments. The last column is what a real launch on the test machine
+confirmed: the model quoted the contract and listed the organization skill, or
+went over a pending change notice. The other cells describe how `my` configures
+each harness. Cursor and OpenCode were not launched (Cursor was not logged in
+and OpenCode's global plugins failed to load), so their rows come from the code
+and its unit tests.
 
 ## When the contract changes
 
@@ -871,7 +873,7 @@ into a pull or publish hold.
 | Claude Code | `~/.claude/skills/<skill>` |
 | Codex | `~/.codex/skills/<skill>` |
 | OpenCode | `~/.config/opencode/skills/<skill>` |
-| Antigravity | `~/.agents/skills/<skill>` |
+| Antigravity | `~/.gemini/config/skills/<skill>` |
 | Grok | `~/.grok/skills/<skill>` |
 | Cursor | `~/.cursor/skills/<skill>` |
 
