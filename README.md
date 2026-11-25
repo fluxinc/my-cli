@@ -209,12 +209,28 @@ Where you start decides what the launch sees:
   to resume one): runs in `sessions/<id>` with session guidance, the session's
   own mount worktrees and its organization skills.
 - **Repository** (`my ai --repo <id> <harness>`): runs in `repos/<id>` with the
-  repository's own files and `AGENTS.md`, plus the organization guidance
-  *(details to be filled in from the final audit once the `--repo` fixes land)*.
+  repository's own files and `AGENTS.md`, plus the organization guidance:
+  Claude Code walks up to the umbrella `CLAUDE.md`, Antigravity and Cursor
+  receive `--add-dir <umbrella>`, Codex receives
+  `-c project_root_markers=[".my-cli"]` (preserving any preconfigured
+  `developer_instructions`), and Grok receives a neutral `--rules` pointer to
+  both `AGENTS.md` files without placing contract text in process arguments.
 
-*(The per-harness table, covering the instruction file read, the skill folder
-read, `--repo` behavior and the live contract hook, is filled in from the
-final audit of the release candidate.)*
+| Harness | Instruction file | Global `my-cli` skill | Launch-root org skills | `--repo` umbrella guidance | Live contract hook |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code (`claude`) | `CLAUDE.md` (points to `AGENTS.md`) | `~/.claude/skills` | `.claude/skills` (deferred on `--repo`) | Walks up to umbrella `CLAUDE.md` | `--settings` (`>= 2.1.310`) |
+| Codex (`codex`) | `AGENTS.md` | `~/.codex/skills` | `.agents/skills` (also loaded on `--repo`) | `-c project_root_markers=[".my-cli"]` | `-c hooks.*` (`>= 0.163.0`, after `/hooks` trust) |
+| Antigravity (`agy`) | `AGENTS.md` | `~/.gemini/config/skills` | `.agents/skills` (also loaded on `--repo`) | `--add-dir <umbrella>` | `~/.gemini/config/hooks.json` (`>= 1.5.15`) |
+| Grok (`grok`) | `AGENTS.md` (plus `--rules` pointer) | `~/.grok/skills` | `.grok/skills` (requires trusted dir) | Neutral `--rules` pointer to both `AGENTS.md` files | None; restart to reload |
+| Cursor (`cursor-agent`) | `AGENTS.md` | `~/.cursor/skills` | `.agents/skills` | `--add-dir <umbrella>` | None; restart to reload |
+| OpenCode (`opencode`) | `AGENTS.md` | `~/.config/opencode/skills` | Global compatibility install | Umbrella root or manual reload | None; restart to reload |
+
+Grok skips project `AGENTS.md` and project skills in untrusted directories and
+rejects `--add-dir` at runtime, so `my` passes a neutral `--rules` pointer to
+the generated `AGENTS.md` file(s) instead of putting rule text in command-line
+arguments. Real launches were verified for Claude Code, Codex, Antigravity and
+Grok; Cursor CLI and OpenCode follow the same documented paths and are covered
+by unit tests.
 
 ## When the contract changes
 
@@ -238,12 +254,13 @@ three changes:
 
 For a GitHub origin, the notice links to the compare view (or commits, if
 history diverged) and any pull requests referenced in commit subjects; a
-local-path origin shows commit IDs. When the harness starts with the notice
-prompt, `my` records that revision as seen so the next launch does not
-repeat it. If you pass your own harness arguments, the terminal still
-prints the summary and leaves the notice pending. Run `my changes` to read
-and record unseen changes, or `my changes --peek` to inspect them without
-advancing the record. An incomplete comparison never advances the record.
+local-path origin shows no links beyond the header's short commit range.
+When the harness starts with the notice prompt, `my` records that revision
+as seen so the next launch does not repeat it. If you pass your own harness
+arguments, the terminal still prints the summary and leaves the notice
+pending. Run `my changes` to read and record unseen changes, or
+`my changes --peek` to inspect them without advancing the record. An
+incomplete comparison never advances the record.
 
 ## Commands
 
