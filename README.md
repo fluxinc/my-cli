@@ -1,31 +1,52 @@
 # my
 
-When several projects share one conversation, a decision about one can start
-to sound like a rule for all of them. A studio can give the team drawing a
-poster its own workshop. The artists keep the sketches, revisions and reasons
-for their choices together. When the print team needs the approved dimensions,
-it can ask for those without taking on the whole design conversation.
+`my` sets up the organization that a group of AI agents works inside: the same
+contract, roles, skills and reference material for every agent, whichever
+harness it runs in (Claude Code, Codex, OpenCode, Antigravity, Grok or Cursor).
+All of it comes from one organization manifest, a Git repository you control.
+
+[CLI documentation](https://my-cli.com/) · [Shrooms README](https://github.com/mostlydev/shrooms#readme)
 
 ## Rooms, and why the work is split into them
 
-A room gives the people and agents working on one folder's project a place to
-keep that conversation. Each room has its own identity, topic and members.
-One member holds the talking stick to change shared files while others read,
-test in isolation or review. A shrooms member can be an agent session, meaning
-one conversation in a harness. A **my-cli session** is the workspace that can
-host several of those conversations.
+Put every agent in one shared space, with nothing separating one project from
+another, and their contexts drift together. Each agent carries every other
+piece of work along with its own, and a decision about one project starts to
+read like a rule for all of them. The shared context converges, then
+collapses: no agent still holds the working detail of its own subject.
 
-`my` prepares the workspace from an organization manifest, a Git repository
-you control. It supplies the contract, reference material and the tools and
-skills selected for the work. Shrooms manages room membership, messages and
-turns. [CLI documentation](https://my-cli.com/) · [Shrooms README](https://github.com/mostlydev/shrooms#readme)
+People work the same way. A team in its own workshop keeps its craft, and
+teams work together by sending each other complete briefs, not by sharing one
+crowded room. A studio can give the team drawing a poster its own workshop.
+The artists keep the sketches, revisions and reasons for their choices
+together. When the print team needs the approved dimensions, it asks for those
+without taking on the whole design conversation.
+
+So agents work in rooms. A room gives the people and agents working on one
+folder's project a place to keep that conversation. Each room has its own
+identity, topic and members. One member holds the talking stick to change
+shared files while others read, test in isolation or review. Rooms coordinate
+by asking each other, not by merging. A shrooms member can be an agent
+session, meaning one conversation in a harness. A **my-cli session** is the
+workspace that can host several of those conversations.
+
+`my` prepares the workspace from the organization manifest. It supplies the
+contract, reference material and the tools and skills selected for the work.
+[Shrooms](https://github.com/mostlydev/shrooms#readme) (the `tt` command)
+manages room membership, messages and turns.
+
+Picture a street of small workshops. In each one, a few agents work at their
+benches on one piece of work and take turns changing what is on the shared
+table. Every workshop keeps the same house rules, draws on the same library
+and hands finished work on through the same doors. When the house rules
+change, each person is told what changed the next time they start work.
 
 ### A piece of work gets its own room
 
 A my-cli session is one piece of work: a folder under `sessions/<id>` with its
 own Git worktree of each content mount, its own scratch space and its own
-generated guidance. When `tt` confirms the session room, `my` points the harness at it.
-`--print` shows what a launch would run without starting it (paths shortened):
+generated guidance. When `tt` confirms the session room, `my` points the
+harness at it. `--print` shows what a launch would run without starting it (paths shortened):
 
 ```console
 $ my ai --new-session --print codex
@@ -57,10 +78,14 @@ the session only through `my session finish`.
 
 ### Briefs between rooms
 
-A visitor may know earlier decisions the room has never seen. Include who will use the result, what they need to do with
-it, which earlier decisions matter, and how to tell it works. It should be
-enough for the room to carry on if the sender went away. A member that cannot
-work out why something is wanted asks the sender before building. Test the result where the recipient will use it.
+A room cannot see another room's conversation, and a visitor may know earlier
+decisions the room has never seen. So a message to a room carries who will use
+the result, what they need to do with it, which earlier decisions matter, and
+how to tell it works: enough for the room to carry on if the sender went away.
+A member that cannot work out why something is wanted asks the sender before
+building. Test the result where the recipient will use it. What counts is that
+the result works for its purpose, not that a list of instructions was
+followed.
 
 ## Install
 
@@ -229,8 +254,9 @@ Grok skips project `AGENTS.md` and project skills in untrusted directories and
 rejects `--add-dir` at runtime, so `my` passes a neutral `--rules` pointer to
 the generated `AGENTS.md` file(s) instead of putting rule text in command-line
 arguments. Real launches were verified for Claude Code, Codex, Antigravity and
-Grok; Cursor CLI and OpenCode follow the same documented paths and are covered
-by unit tests.
+Grok. Cursor and OpenCode were not: on the test machine Cursor was not logged
+in and OpenCode's global plugins failed to load, so their rows come from the
+code and its unit tests.
 
 ## When the contract changes
 
