@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/fluxinc/my-cli/internal/harness"
 )
@@ -16,9 +18,9 @@ const antigravityContractHookGroup = "my-cli-contract"
 
 // ensureAntigravityContractHooks installs or updates the env-gated My AI live
 // contract hook group in <home>/.gemini/config/hooks.json while preserving all
-// foreign hook groups. Antigravity does not accept hooks via --settings or
-// project-local hooks.json, so gating on MYCLI_CONTRACT_INSTANCE keeps non-my
-// agy sessions untouched. installed is true only when the group is newly added.
+// foreign hook groups byte-for-byte, preserving dotfile symlinks, refusing to
+// overwrite user-edited my-cli-contract groups, and serializing concurrent
+// updates with an exclusive file lock.
 func ensureAntigravityContractHooks(home, executable string) (installed bool, hooksPath string, err error) {
 	if home == "" {
 		home, err = os.UserHomeDir()
@@ -29,8 +31,22 @@ func ensureAntigravityContractHooks(home, executable string) (installed bool, ho
 	configDir := harness.Antigravity.ConfigDir(home)
 	hooksPath = filepath.Join(configDir, "hooks.json")
 
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		return false, hooksPath, fmt.Errorf("create antigravity config dir: %w", err)
+	}
+	unlock, err := lockAntigravityHooks(filepath.Join(configDir, ".hooks.json.lock"))
+	if err != nil {
+		return false, hooksPath, err
+	}
+	defer unlock()
+
+	writePath, err := resolveAntigravityHooksWriteTarget(hooksPath)
+	if err != nil {
+		return false, hooksPath, err
+	}
+
 	var existing []byte
-	data, readErr := os.ReadFile(hooksPath)
+	data, readErr := os.ReadFile(writePath)
 	if readErr != nil && !errors.Is(readErr, fs.ErrNotExist) {
 		return false, hooksPath, fmt.Errorf("read antigravity hooks.json: %w", readErr)
 	}
@@ -38,21 +54,22 @@ func ensureAntigravityContractHooks(home, executable string) (installed bool, ho
 		existing = data
 	}
 
-	merged, changed, newlyAdded, err := mergeAntigravityContractHooks(existing, executable)
+	merged, changed, newlyAdded, err := mergeAntigravityContractHooks(existing, hooksPath, executable)
 	if err != nil {
 		return false, hooksPath, err
 	}
 	if !changed {
 		return false, hooksPath, nil
 	}
-	if err := writeAntigravityHooksAtomic(configDir, hooksPath, merged); err != nil {
+	if err := writeAntigravityHooksAtomic(writePath, merged); err != nil {
 		return false, hooksPath, err
 	}
 	return newlyAdded, hooksPath, nil
 }
 
-// removeAntigravityContractHooks removes only the My AI contract hook group
-// from <home>/.gemini/config/hooks.json, leaving foreign groups intact.
+// removeAntigravityContractHooks removes only a My AI-managed my-cli-contract
+// hook group from <home>/.gemini/config/hooks.json, preserving foreign groups
+// byte-for-byte, dotfile symlinks, and user-edited my-cli-contract groups.
 func removeAntigravityContractHooks(home string, dryRun bool) (removed bool, hooksPath string, err error) {
 	if home == "" {
 		home, err = os.UserHomeDir()
@@ -63,71 +80,153 @@ func removeAntigravityContractHooks(home string, dryRun bool) (removed bool, hoo
 	configDir := harness.Antigravity.ConfigDir(home)
 	hooksPath = filepath.Join(configDir, "hooks.json")
 
-	existing, readErr := os.ReadFile(hooksPath)
+	if _, err := os.Lstat(hooksPath); errors.Is(err, fs.ErrNotExist) {
+		return false, hooksPath, nil
+	}
+	unlock, err := lockAntigravityHooks(filepath.Join(configDir, ".hooks.json.lock"))
+	if err != nil {
+		return false, hooksPath, err
+	}
+	defer unlock()
+
+	writePath, err := resolveAntigravityHooksWriteTarget(hooksPath)
+	if err != nil {
+		return false, hooksPath, err
+	}
+
+	existing, readErr := os.ReadFile(writePath)
 	if errors.Is(readErr, fs.ErrNotExist) {
 		return false, hooksPath, nil
 	}
 	if readErr != nil {
 		return false, hooksPath, fmt.Errorf("read antigravity hooks.json: %w", readErr)
 	}
-	root := map[string]any{}
-	if trimmed := bytes.TrimSpace(existing); len(trimmed) != 0 {
-		if err := json.Unmarshal(trimmed, &root); err != nil {
-			return false, hooksPath, fmt.Errorf("parse antigravity hooks.json: %w", err)
-		}
-		if root == nil {
-			return false, hooksPath, fmt.Errorf("antigravity hooks.json must be a JSON object")
-		}
+	root, err := parseAntigravityHooksRoot(existing)
+	if err != nil {
+		return false, hooksPath, err
 	}
-	if _, exists := root[antigravityContractHookGroup]; !exists {
+	rawGroup, exists := root[antigravityContractHookGroup]
+	if !exists {
 		return false, hooksPath, nil
+	}
+	if !isManagedAntigravityHookGroup(rawGroup) {
+		return false, hooksPath, fmt.Errorf("%s hook group in %s was modified or is not My AI-managed; leaving it intact", antigravityContractHookGroup, hooksPath)
 	}
 	if dryRun {
 		return true, hooksPath, nil
 	}
 	delete(root, antigravityContractHookGroup)
-	out, err := json.MarshalIndent(root, "", "  ")
+	out, err := marshalAntigravityHooksRoot(root)
 	if err != nil {
 		return false, hooksPath, err
 	}
-	out = append(out, '\n')
-	if err := writeAntigravityHooksAtomic(configDir, hooksPath, out); err != nil {
+	if err := writeAntigravityHooksAtomic(writePath, out); err != nil {
 		return false, hooksPath, err
 	}
 	return true, hooksPath, nil
 }
 
-func writeAntigravityHooksAtomic(configDir, hooksPath string, data []byte) error {
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		return fmt.Errorf("create antigravity config dir: %w", err)
+// resolveAntigravityHooksWriteTarget keeps dotfile symlinks intact by writing
+// atomically to the resolved target file instead of replacing the symlink.
+func resolveAntigravityHooksWriteTarget(hooksPath string) (string, error) {
+	info, err := os.Lstat(hooksPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return hooksPath, nil
 	}
-	tmp, err := os.CreateTemp(configDir, ".hooks-*.json")
+	if err != nil {
+		return "", fmt.Errorf("inspect antigravity hooks.json: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		return hooksPath, nil
+	}
+	resolved, err := filepath.EvalSymlinks(hooksPath)
+	if err != nil {
+		return "", fmt.Errorf("antigravity hooks.json at %s is a broken or unreadable symlink; fix the symlink target before installing hooks: %w", hooksPath, err)
+	}
+	return resolved, nil
+}
+
+func writeAntigravityHooksAtomic(targetPath string, data []byte) error {
+	dir := filepath.Dir(targetPath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create antigravity hooks dir: %w", err)
+	}
+	perm := fs.FileMode(0o644)
+	if info, err := os.Stat(targetPath); err == nil {
+		perm = info.Mode().Perm()
+	}
+	tmp, err := os.CreateTemp(dir, ".hooks-*.json")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(tmp.Name())
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return err
+	}
 	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), hooksPath)
+	return os.Rename(tmp.Name(), targetPath)
 }
 
-func mergeAntigravityContractHooks(existing []byte, executable string) (merged []byte, changed bool, newlyAdded bool, err error) {
-	root := map[string]any{}
-	if trimmed := bytes.TrimSpace(existing); len(trimmed) != 0 {
-		if err := json.Unmarshal(trimmed, &root); err != nil {
-			return nil, false, false, fmt.Errorf("parse antigravity hooks.json: %w", err)
-		}
-		if root == nil {
-			return nil, false, false, fmt.Errorf("antigravity hooks.json must be a JSON object")
-		}
+func parseAntigravityHooksRoot(existing []byte) (map[string]json.RawMessage, error) {
+	root := map[string]json.RawMessage{}
+	trimmed := bytes.TrimSpace(existing)
+	if len(trimmed) == 0 {
+		return root, nil
 	}
-	_, hadGroup := root[antigravityContractHookGroup]
+	if err := json.Unmarshal(trimmed, &root); err != nil {
+		return nil, fmt.Errorf("parse antigravity hooks.json: %w", err)
+	}
+	if root == nil {
+		return nil, fmt.Errorf("antigravity hooks.json must be a JSON object")
+	}
+	return root, nil
+}
 
+func marshalAntigravityHooksRoot(root map[string]json.RawMessage) ([]byte, error) {
+	keys := make([]string, 0, len(root))
+	for k := range root {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var buf bytes.Buffer
+	buf.WriteString("{")
+	for i, k := range keys {
+		if i > 0 {
+			buf.WriteString(",")
+		}
+		buf.WriteString("\n  ")
+		keyJSON, err := json.Marshal(k)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(keyJSON)
+		buf.WriteString(": ")
+		var indented bytes.Buffer
+		if err := json.Indent(&indented, bytes.TrimSpace(root[k]), "  ", "  "); err != nil {
+			return nil, err
+		}
+		buf.Write(indented.Bytes())
+	}
+	if len(keys) > 0 {
+		buf.WriteString("\n")
+	}
+	buf.WriteString("}\n")
+	return buf.Bytes(), nil
+}
+
+func buildAntigravityContractHookGroup(executable string) (json.RawMessage, error) {
 	hookCmd := func(event string) string {
 		return fmt.Sprintf(
 			`if [ -n "${%s:-}" ]; then %s contract pending --hook antigravity --event %s; else printf '{}\n'; fi`,
@@ -142,21 +241,83 @@ func mergeAntigravityContractHooks(existing []byte, executable string) (merged [
 			{"type": "command", "command": hookCmd("PreInvocation"), "timeout": 10},
 		},
 	}
+	raw, err := json.Marshal(group)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(raw), nil
+}
 
-	before, _ := json.Marshal(root)
-	root[antigravityContractHookGroup] = group
-	after, err := json.Marshal(root)
+// isManagedAntigravityHookGroup verifies that an existing my-cli-contract
+// entry matches My AI's exact managed hook schema and commands (allowing only
+// the quoted executable path to differ across upgrades). User-created or
+// user-edited groups fail this check and are preserved untouched.
+func isManagedAntigravityHookGroup(raw json.RawMessage) bool {
+	var events map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &events); err != nil || len(events) != 2 {
+		return false
+	}
+	for _, event := range []string{"SessionStart", "PreInvocation"} {
+		entriesRaw, ok := events[event]
+		if !ok {
+			return false
+		}
+		var entries []map[string]json.RawMessage
+		if err := json.Unmarshal(entriesRaw, &entries); err != nil || len(entries) != 1 {
+			return false
+		}
+		entry := entries[0]
+		if len(entry) != 3 {
+			return false
+		}
+		var typ, cmd string
+		var timeout int
+		if err := json.Unmarshal(entry["type"], &typ); err != nil || typ != "command" {
+			return false
+		}
+		if err := json.Unmarshal(entry["timeout"], &timeout); err != nil || timeout != 10 {
+			return false
+		}
+		if err := json.Unmarshal(entry["command"], &cmd); err != nil {
+			return false
+		}
+		prefix := fmt.Sprintf(`if [ -n "${%s:-}" ]; then `, contractInstanceEnv)
+		suffix := fmt.Sprintf(` contract pending --hook antigravity --event %s; else printf '{}\n'; fi`, event)
+		if !strings.HasPrefix(cmd, prefix) || !strings.HasSuffix(cmd, suffix) {
+			return false
+		}
+		execPart := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(cmd, prefix), suffix))
+		if execPart == "" || strings.ContainsAny(execPart, ";|&\n") {
+			return false
+		}
+	}
+	return true
+}
+
+func mergeAntigravityContractHooks(existing []byte, hooksPath, executable string) (merged []byte, changed bool, newlyAdded bool, err error) {
+	root, err := parseAntigravityHooksRoot(existing)
 	if err != nil {
 		return nil, false, false, err
 	}
-	if len(existing) != 0 && bytes.Equal(before, after) {
-		return existing, false, false, nil
+	prevRaw, hadGroup := root[antigravityContractHookGroup]
+	if hadGroup && !isManagedAntigravityHookGroup(prevRaw) {
+		return nil, false, false, fmt.Errorf("%s hook group in %s was modified or is not My AI-managed; leaving it intact", antigravityContractHookGroup, hooksPath)
 	}
-	out, err := json.MarshalIndent(root, "", "  ")
+	newGroup, err := buildAntigravityContractHookGroup(executable)
 	if err != nil {
 		return nil, false, false, err
 	}
-	out = append(out, '\n')
+	if hadGroup {
+		var prevCompact, newCompact bytes.Buffer
+		if json.Compact(&prevCompact, prevRaw) == nil && json.Compact(&newCompact, newGroup) == nil && bytes.Equal(prevCompact.Bytes(), newCompact.Bytes()) {
+			return existing, false, false, nil
+		}
+	}
+	root[antigravityContractHookGroup] = newGroup
+	out, err := marshalAntigravityHooksRoot(root)
+	if err != nil {
+		return nil, false, false, err
+	}
 	return out, true, !hadGroup, nil
 }
 

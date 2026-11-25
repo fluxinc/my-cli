@@ -209,7 +209,8 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 			room = a.ensureSessionRoom(*target.Session)
 			printSessionRoom(a.stderr, room, true)
 		}
-		fmt.Fprintln(a.stdout, harnessCommandLine(target.Dir, room, commandName, harnessArgs))
+		printArgs := append(launchGuidanceArgs(h, opts, root, target.Dir, harnessArgs), harnessArgs...)
+		fmt.Fprintln(a.stdout, harnessCommandLine(target.Dir, room, commandName, printArgs))
 		return nil
 	}
 	doc, err := launchGuidanceDoc(opts.home, opts.manifestName, root)
@@ -289,7 +290,8 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 	}
 	binary, err := a.lookupHarnessBinary(h)
 	if err != nil {
-		a.printLaunchMissingHarness(h, target.Dir, harnessArgs, createsNewSession, err)
+		fallbackArgs := append(launchGuidanceArgs(h, opts, root, target.Dir, harnessArgs), harnessArgs...)
+		a.printLaunchMissingHarness(h, target.Dir, fallbackArgs, createsNewSession, err)
 		return errAlreadyPrinted
 	}
 	if createsNewSession {
@@ -352,7 +354,7 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 		}
 		fmt.Fprintln(a.stderr)
 	}
-	effectiveArgs := append(launchGuidanceArgs(h, opts, doc, root, targetDir, harnessArgs), harnessArgs...)
+	effectiveArgs := append(launchGuidanceArgs(h, opts, root, targetDir, harnessArgs), harnessArgs...)
 	return a.withAttempt(attemptLaunch{harness: string(h), root: root, dir: targetDir, goal: opts.goal, ttRoom: room.Pin}, func(a app) error {
 		return a.runContractHarness(h, binary, effectiveArgs, targetDir, opts.home, doc.ref.Name, root)
 	})

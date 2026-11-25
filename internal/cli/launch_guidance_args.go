@@ -1,26 +1,30 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/fluxinc/my-cli/internal/harness"
+	"github.com/fluxinc/my-cli/internal/umbrella"
 )
 
 // launchGuidanceArgs returns harness-specific CLI flags that ensure the
-// organization contract and umbrella guidance reach the model in launch modes
-// where the harness would otherwise miss them, without placing private contract
-// text in process argv:
+// organization contract, umbrella guidance, and skills reach the model in
+// launch modes where the harness would otherwise miss them, without placing
+// private contract text in process argv or overriding user developer
+// instructions:
 //   - --repo launches: nested git checkouts stop Antigravity, Cursor, and Codex
-//     from discovering the parent umbrella's AGENTS.md (Claude Code already
-//     walks up to umbrella CLAUDE.md). Antigravity and Cursor accept
-//     --add-dir <umbrella>; Codex accepts -c developer_instructions=<pointer>.
+//     from discovering the parent umbrella's AGENTS.md and .agents/skills
+//     (Claude Code already walks up to umbrella CLAUDE.md). Antigravity and
+//     Cursor accept --add-dir <umbrella>; Codex accepts
+//     -c project_root_markers=[".my-cli"], which lets Codex walk up past the
+//     nested .git to load umbrella AGENTS.md, repo AGENTS.md, and umbrella
+//     .agents/skills while preserving preconfigured developer_instructions.
 //   - Grok launches: Grok skips project AGENTS.md and project skills when a
 //     directory is untrusted (every new umbrella and session dir), so passing a
 //     neutral --rules pointer tells Grok to read the generated AGENTS.md file.
-func launchGuidanceArgs(h harness.Harness, opts launchCommandOpts, doc registeredDoc, root, targetDir string, existing []string) []string {
+func launchGuidanceArgs(h harness.Harness, opts launchCommandOpts, root, targetDir string, existing []string) []string {
 	var extra []string
 	if opts.repoID != "" && root != "" {
 		switch h {
@@ -29,13 +33,8 @@ func launchGuidanceArgs(h harness.Harness, opts launchCommandOpts, doc registere
 				extra = append(extra, "--add-dir", root)
 			}
 		case harness.Codex:
-			if !hasCodexConfigKey(existing, "developer_instructions") {
-				if text := buildLaunchGuidancePointer(root, targetDir); text != "" {
-					encoded, err := json.Marshal(text)
-					if err == nil {
-						extra = append(extra, "-c", "developer_instructions="+string(encoded))
-					}
-				}
+			if !hasCodexConfigKey(existing, "project_root_markers") {
+				extra = append(extra, "-c", fmt.Sprintf(`project_root_markers=["%s"]`, umbrella.DirName))
 			}
 		case harness.Grok:
 			if !hasFlagWithValue(existing, "--add-dir", root) {

@@ -3,22 +3,26 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/fluxinc/my-cli/internal/contractstate"
 	"github.com/fluxinc/my-cli/internal/harness"
 )
 
-func TestEnsureAndRemoveAntigravityContractHooksPreservesForeignGroups(t *testing.T) {
+func TestEnsureAndRemoveAntigravityContractHooksPreservesForeignGroupsAndLargeIntegers(t *testing.T) {
 	home := t.TempDir()
 	hooksPath := filepath.Join(home, ".gemini", "config", "hooks.json")
 	writeCLITestFile(t, hooksPath, `{
   "herdr": {
-    "PreInvocation": [{"type": "command", "command": "herdr hook", "timeout": 10}]
+    "PreInvocation": [{"type": "command", "command": "herdr hook", "timeout": 10}],
+    "big_id": 9007199254740993
   },
   "shrooms-antigravity": {
     "SessionStart": [{"type": "command", "command": "tt antigravity-hook SessionStart", "timeout": 3}]
@@ -36,7 +40,10 @@ func TestEnsureAndRemoveAntigravityContractHooksPreservesForeignGroups(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	var parsed map[string]any
+	if !strings.Contains(string(first), "9007199254740993") {
+		t.Fatalf("64-bit integer corrupted across install:\n%s", string(first))
+	}
+	var parsed map[string]json.RawMessage
 	if err := json.Unmarshal(first, &parsed); err != nil {
 		t.Fatal(err)
 	}
@@ -46,18 +53,8 @@ func TestEnsureAndRemoveAntigravityContractHooksPreservesForeignGroups(t *testin
 	if _, ok := parsed["shrooms-antigravity"]; !ok {
 		t.Fatal("foreign shrooms-antigravity hook group dropped")
 	}
-	group, ok := parsed[antigravityContractHookGroup].(map[string]any)
-	if !ok {
-		t.Fatalf("missing %s hook group: %#v", antigravityContractHookGroup, parsed)
-	}
-	if _, ok := group["SessionStart"]; !ok {
-		t.Fatal("missing SessionStart hook")
-	}
-	if _, ok := group["PreInvocation"]; !ok {
-		t.Fatal("missing PreInvocation hook")
-	}
-	if !strings.Contains(string(first), contractInstanceEnv) || !strings.Contains(string(first), "--hook antigravity --event PreInvocation") {
-		t.Fatalf("unexpected hooks.json content: %s", string(first))
+	if !isManagedAntigravityHookGroup(parsed[antigravityContractHookGroup]) {
+		t.Fatalf("installed group failed managed check: %s", string(parsed[antigravityContractHookGroup]))
 	}
 
 	// Second call must be a no-op with installed=false.
@@ -73,7 +70,8 @@ func TestEnsureAndRemoveAntigravityContractHooksPreservesForeignGroups(t *testin
 		t.Fatal("ensureAntigravityContractHooks rewrote unchanged hooks.json")
 	}
 
-	// Uninstall via `my skills self uninstall antigravity` removes only our group.
+	// Uninstall via `my skills self uninstall antigravity` removes only our group
+	// and still preserves 64-bit integers in foreign groups.
 	var stdout, stderr bytes.Buffer
 	a := app{stdout: &stdout, stderr: &stderr}
 	if err := a.run([]string{"my", "skills", "self", "uninstall", "antigravity", "--home", home}); err != nil {
@@ -86,18 +84,18 @@ func TestEnsureAndRemoveAntigravityContractHooksPreservesForeignGroups(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	var afterParsed map[string]any
+	if !strings.Contains(string(afterUninstall), "9007199254740993") {
+		t.Fatalf("64-bit integer corrupted across uninstall:\n%s", string(afterUninstall))
+	}
+	var afterParsed map[string]json.RawMessage
 	if err := json.Unmarshal(afterUninstall, &afterParsed); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := afterParsed[antigravityContractHookGroup]; ok {
 		t.Fatal("my-cli-contract group still present after uninstall")
 	}
-	if _, ok := afterParsed["herdr"]; !ok {
-		t.Fatal("foreign herdr hook group dropped during uninstall")
-	}
-	if _, ok := afterParsed["shrooms-antigravity"]; !ok {
-		t.Fatal("foreign shrooms-antigravity hook group dropped during uninstall")
+	if _, ok := afterParsed["herdr"]; !ok || afterParsed["shrooms-antigravity"] == nil {
+		t.Fatal("foreign hook groups dropped during uninstall")
 	}
 
 	// Malformed hooks.json must fail without overwriting.
@@ -108,6 +106,127 @@ func TestEnsureAndRemoveAntigravityContractHooksPreservesForeignGroups(t *testin
 	after, _ := os.ReadFile(hooksPath)
 	if string(after) != `{invalid json` {
 		t.Fatal("malformed hooks.json was overwritten")
+	}
+}
+
+func TestAntigravityContractHooksPreservesSymlinkOnInstallAndRemove(t *testing.T) {
+	home := t.TempDir()
+	dotfilesDir := filepath.Join(home, "dotfiles")
+	realHooks := filepath.Join(dotfilesDir, "agy-hooks.json")
+	writeCLITestFile(t, realHooks, `{"herdr":{"big":9007199254740993}}`+"\n")
+
+	configDir := filepath.Join(home, ".gemini", "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hooksLink := filepath.Join(configDir, "hooks.json")
+	if err := os.Symlink(realHooks, hooksLink); err != nil {
+		t.Fatal(err)
+	}
+
+	installed, _, err := ensureAntigravityContractHooks(home, "/usr/local/bin/my")
+	if err != nil {
+		t.Fatalf("install through symlink failed: %v", err)
+	}
+	if !installed {
+		t.Fatal("expected installed=true")
+	}
+	info, err := os.Lstat(hooksLink)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("hooks.json symlink was replaced with non-symlink: info=%v err=%v", info, err)
+	}
+	targetData, err := os.ReadFile(realHooks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(targetData), antigravityContractHookGroup) || !strings.Contains(string(targetData), "9007199254740993") {
+		t.Fatalf("symlink target missing expected content:\n%s", string(targetData))
+	}
+
+	removed, _, err := removeAntigravityContractHooks(home, false)
+	if err != nil || !removed {
+		t.Fatalf("remove through symlink = (%v, %v), want (true, nil)", removed, err)
+	}
+	info, err = os.Lstat(hooksLink)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("hooks.json symlink was replaced during remove: info=%v err=%v", info, err)
+	}
+	afterRemove, _ := os.ReadFile(realHooks)
+	if strings.Contains(string(afterRemove), antigravityContractHookGroup) || !strings.Contains(string(afterRemove), "9007199254740993") {
+		t.Fatalf("symlink target after remove unexpected:\n%s", string(afterRemove))
+	}
+}
+
+func TestAntigravityContractHooksRefusesUserEditedOrCollidingGroup(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "foreign collision",
+			body: `{"my-cli-contract":{"PreInvocation":[{"type":"command","command":"my-custom-hook","timeout":5}]}}` + "\n",
+		},
+		{
+			name: "user modified managed group",
+			body: `{"my-cli-contract":{"SessionStart":[{"type":"command","command":"if [ -n \"${MYCLI_CONTRACT_INSTANCE:-}\" ]; then /usr/local/bin/my contract pending --hook antigravity --event SessionStart; else printf '{}\\n'; fi","timeout":10}],"PreInvocation":[{"type":"command","command":"if [ -n \"${MYCLI_CONTRACT_INSTANCE:-}\" ]; then /usr/local/bin/my contract pending --hook antigravity --event PreInvocation; else printf '{}\\n'; fi","timeout":10}],"Stop":[{"type":"command","command":"custom-stop","timeout":5}]}}` + "\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			hooksPath := filepath.Join(home, ".gemini", "config", "hooks.json")
+			writeCLITestFile(t, hooksPath, tc.body)
+
+			if _, _, err := ensureAntigravityContractHooks(home, "/usr/local/bin/my"); err == nil || !strings.Contains(err.Error(), "leaving it intact") {
+				t.Fatalf("install error = %v, want diagnostic leaving it intact", err)
+			}
+			got, _ := os.ReadFile(hooksPath)
+			if string(got) != tc.body {
+				t.Fatalf("install overwrote user-edited group:\ngot:  %s\nwant: %s", string(got), tc.body)
+			}
+
+			if _, _, err := removeAntigravityContractHooks(home, false); err == nil || !strings.Contains(err.Error(), "leaving it intact") {
+				t.Fatalf("remove error = %v, want diagnostic leaving it intact", err)
+			}
+			got, _ = os.ReadFile(hooksPath)
+			if string(got) != tc.body {
+				t.Fatalf("remove modified user-edited group:\ngot:  %s\nwant: %s", string(got), tc.body)
+			}
+		})
+	}
+}
+
+func TestAntigravityContractHooksSerializesConcurrentEdits(t *testing.T) {
+	home := t.TempDir()
+	hooksPath := filepath.Join(home, ".gemini", "config", "hooks.json")
+	writeCLITestFile(t, hooksPath, `{"foreign":{"id":9007199254740993}}`+"\n")
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, _, err := ensureAntigravityContractHooks(home, "/usr/local/bin/my"); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("concurrent ensureAntigravityContractHooks error: %v", err)
+	}
+	data, err := os.ReadFile(hooksPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("corrupted JSON after concurrent updates: %v\n%s", err, string(data))
+	}
+	if !strings.Contains(string(data), "9007199254740993") || !isManagedAntigravityHookGroup(parsed[antigravityContractHookGroup]) {
+		t.Fatalf("unexpected final hooks.json:\n%s", string(data))
 	}
 }
 
@@ -210,55 +329,91 @@ func TestParseLaunchArgsStripsDoubleDashAfterHarness(t *testing.T) {
 	}
 }
 
-func TestLaunchGuidanceArgsRepoAndGrokKeepPrivateContractOutOfArgv(t *testing.T) {
+func TestLaunchGuidanceArgsRepoAndGrokPreserveUserConfigAndAvoidArgvSecrets(t *testing.T) {
 	body := `{"manifest_version":1,"organization":{"id":"acme","name":"Acme Example"},"contract":["PRIVATE-SECRET-RULE-99"]}`
 	home, root, _, _, _ := setupCLITrackedManifestBody(t, body)
-	doc, err := loadSingleRegisteredDoc(home, "acme")
-	if err != nil {
-		t.Fatal(err)
-	}
 	repoDir := filepath.Join(root, "repos", "sample-service")
 
 	// Antigravity --repo gets --add-dir <umbrella>.
-	agyArgs := launchGuidanceArgs(harness.Antigravity, launchCommandOpts{repoID: "sample-service"}, doc, root, repoDir, nil)
+	agyArgs := launchGuidanceArgs(harness.Antigravity, launchCommandOpts{repoID: "sample-service"}, root, repoDir, nil)
 	if !reflect.DeepEqual(agyArgs, []string{"--add-dir", root}) {
 		t.Fatalf("agy --repo args = %#v, want --add-dir %q", agyArgs, root)
 	}
-	if dup := launchGuidanceArgs(harness.Antigravity, launchCommandOpts{repoID: "sample-service"}, doc, root, repoDir, []string{"--add-dir", root}); len(dup) != 0 {
+	if dup := launchGuidanceArgs(harness.Antigravity, launchCommandOpts{repoID: "sample-service"}, root, repoDir, []string{"--add-dir", root}); len(dup) != 0 {
 		t.Fatalf("agy duplicate --add-dir = %#v", dup)
 	}
 
 	// Claude --repo already walks up parent dirs to umbrella CLAUDE.md, so no extra args.
-	if claudeArgs := launchGuidanceArgs(harness.ClaudeCode, launchCommandOpts{repoID: "sample-service"}, doc, root, repoDir, nil); len(claudeArgs) != 0 {
+	if claudeArgs := launchGuidanceArgs(harness.ClaudeCode, launchCommandOpts{repoID: "sample-service"}, root, repoDir, nil); len(claudeArgs) != 0 {
 		t.Fatalf("claude --repo args = %#v, want empty", claudeArgs)
 	}
 
-	// Codex --repo gets neutral developer_instructions pointer (no private rule text in argv).
-	codexArgs := launchGuidanceArgs(harness.Codex, launchCommandOpts{repoID: "sample-service"}, doc, root, repoDir, nil)
-	if len(codexArgs) != 2 || codexArgs[0] != "-c" || !strings.HasPrefix(codexArgs[1], "developer_instructions=") || !strings.Contains(codexArgs[1], "AGENTS.md") {
-		t.Fatalf("codex --repo args = %#v", codexArgs)
+	// Codex --repo uses project_root_markers=[".my-cli"] so preconfigured developer_instructions
+	// in config.toml/profiles are never overridden and umbrella AGENTS.md + skills load natively.
+	codexArgs := launchGuidanceArgs(harness.Codex, launchCommandOpts{repoID: "sample-service"}, root, repoDir, nil)
+	wantCodex := []string{"-c", `project_root_markers=[".my-cli"]`}
+	if !reflect.DeepEqual(codexArgs, wantCodex) {
+		t.Fatalf("codex --repo args = %#v, want %#v", codexArgs, wantCodex)
 	}
-	if strings.Contains(strings.Join(codexArgs, " "), "PRIVATE-SECRET-RULE-99") {
-		t.Fatalf("codex argv leaked private contract rule: %#v", codexArgs)
-	}
-	if dup := launchGuidanceArgs(harness.Codex, launchCommandOpts{repoID: "sample-service"}, doc, root, repoDir, []string{"-c", "developer_instructions=\"custom\""}); len(dup) != 0 {
-		t.Fatalf("codex override ignored: %#v", dup)
+	if dup := launchGuidanceArgs(harness.Codex, launchCommandOpts{repoID: "sample-service"}, root, repoDir, []string{"-c", `project_root_markers=[".git"]`}); len(dup) != 0 {
+		t.Fatalf("codex project_root_markers override ignored: %#v", dup)
 	}
 
 	// Grok gets neutral --rules pointer (no private rule text in argv) and --add-dir on --repo.
-	grokUmb := launchGuidanceArgs(harness.Grok, launchCommandOpts{}, doc, root, root, nil)
+	grokUmb := launchGuidanceArgs(harness.Grok, launchCommandOpts{}, root, root, nil)
 	if len(grokUmb) != 2 || grokUmb[0] != "--rules" || !strings.Contains(grokUmb[1], "AGENTS.md") {
 		t.Fatalf("grok umbrella args = %#v", grokUmb)
 	}
 	if strings.Contains(strings.Join(grokUmb, " "), "PRIVATE-SECRET-RULE-99") {
 		t.Fatalf("grok argv leaked private contract rule: %#v", grokUmb)
 	}
-	grokRepo := launchGuidanceArgs(harness.Grok, launchCommandOpts{repoID: "sample-service"}, doc, root, repoDir, nil)
+	grokRepo := launchGuidanceArgs(harness.Grok, launchCommandOpts{repoID: "sample-service"}, root, repoDir, nil)
 	if len(grokRepo) != 4 || grokRepo[0] != "--add-dir" || grokRepo[1] != root || grokRepo[2] != "--rules" || !strings.Contains(grokRepo[3], "AGENTS.md") {
 		t.Fatalf("grok --repo args = %#v", grokRepo)
 	}
-	if dup := launchGuidanceArgs(harness.Grok, launchCommandOpts{}, doc, root, root, []string{"--rules", "mine"}); len(dup) != 0 {
+	if dup := launchGuidanceArgs(harness.Grok, launchCommandOpts{}, root, root, []string{"--rules", "mine"}); len(dup) != 0 {
 		t.Fatalf("grok --rules override ignored: %#v", dup)
+	}
+	_ = home
+}
+
+func TestLaunchPrintAndMissingBinaryFallbackIncludeGuidanceArgs(t *testing.T) {
+	home, umbrellaRoot := setupCLILaunchFixture(t)
+	if err := os.MkdirAll(filepath.Join(umbrellaRoot, ".my-cli"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repoDir := filepath.Join(umbrellaRoot, "repos", "sample-service")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Run from inside the inherited umbrella workspace with user flags.
+	t.Chdir(umbrellaRoot)
+
+	// --print for antigravity --repo with user flags
+	var stdout, stderr bytes.Buffer
+	a := app{stdout: &stdout, stderr: &stderr}
+	if err := a.run([]string{"my", "ai", "--home", home, "--manifest", "acme", "--repo", "sample-service", "--print", "agy", "--", "--model", "gemini-4"}); err != nil {
+		t.Fatal(err)
+	}
+	gotPrint := strings.TrimSpace(stdout.String())
+	if !strings.Contains(gotPrint, "--add-dir "+umbrellaRoot) || !strings.HasSuffix(gotPrint, "--model gemini-4") {
+		t.Fatalf("agy --repo --print = %q, want --add-dir %s and user flags", gotPrint, umbrellaRoot)
+	}
+
+	// Missing-binary fallback for codex --repo with user flags
+	stdout.Reset()
+	stderr.Reset()
+	aMissing := app{
+		stdout:   &stdout,
+		stderr:   &stderr,
+		lookPath: func(string) (string, error) { return "", exec.ErrNotFound },
+	}
+	err := aMissing.run([]string{"my", "ai", "--home", home, "--manifest", "acme", "--no-refresh", "--no-update-check", "--repo", "sample-service", "codex", "--", "--profile", "work"})
+	if !errors.Is(err, errAlreadyPrinted) {
+		t.Fatalf("missing binary err = %v, want errAlreadyPrinted", err)
+	}
+	if !strings.Contains(stderr.String(), `project_root_markers=[".my-cli"]`) || !strings.Contains(stderr.String(), "--profile work") {
+		t.Fatalf("missing binary fallback stderr = %q, want project_root_markers and user flags", stderr.String())
 	}
 }
 
