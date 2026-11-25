@@ -35,10 +35,15 @@ func ParseRemote(remote string) (WebRepository, bool) {
 			return WebRepository{}, false
 		}
 		host, path = u.Hostname(), u.Path
+	case strings.HasPrefix(remote, "/") || strings.HasPrefix(remote, "."):
+		return WebRepository{}, false
 	case strings.Contains(remote, ":"):
-		at := strings.LastIndex(remote, "@")
-		rest := remote[at+1:]
+		// scp-style user@host:owner/name
+		rest := remote[strings.LastIndex(remote, "@")+1:]
 		colon := strings.Index(rest, ":")
+		if colon <= 0 {
+			return WebRepository{}, false
+		}
 		host, path = rest[:colon], rest[colon+1:]
 	default:
 		return WebRepository{}, false
@@ -81,22 +86,28 @@ func PullRequests(subjects []string) []int {
 	return out
 }
 
-// Links returns where a person reads the detail of a change: its pull
-// requests when they are few enough, otherwise (or when there are none) the
-// compare view for the range. Without a web repository there are no links.
-func Links(repo WebRepository, ok bool, from, to string, prs []int) []string {
+// Links returns where a person reads the detail of a change. For a range
+// that moved forward (linear), that is each pull request when there are few
+// enough, plus the compare view of the whole range, since commits made
+// outside a pull request are part of it too. When the two revisions diverged,
+// a compare view would start from their merge base and not match the
+// summary, so both commits are linked instead. Without a web repository
+// there are no links.
+func Links(repo WebRepository, ok bool, from, to string, prs []int, linear bool) []string {
 	if !ok || to == "" {
 		return nil
-	}
-	if len(prs) > 0 && len(prs) <= maxLinks {
-		out := make([]string, 0, len(prs))
-		for _, n := range prs {
-			out = append(out, fmt.Sprintf("%s/pull/%d", repo.base(), n))
-		}
-		return out
 	}
 	if from == "" {
 		return []string{repo.base() + "/commit/" + to}
 	}
-	return []string{repo.base() + "/compare/" + from + "..." + to}
+	if !linear {
+		return []string{repo.base() + "/commit/" + from, repo.base() + "/commit/" + to}
+	}
+	var out []string
+	if len(prs) <= maxLinks {
+		for _, n := range prs {
+			out = append(out, fmt.Sprintf("%s/pull/%d", repo.base(), n))
+		}
+	}
+	return append(out, repo.base()+"/compare/"+from+"..."+to)
 }

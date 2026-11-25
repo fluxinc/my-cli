@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/fluxinc/my-cli/internal/attempt"
 	"github.com/fluxinc/my-cli/internal/changenotice"
 	"github.com/fluxinc/my-cli/internal/manifest"
 )
@@ -16,39 +19,47 @@ import (
 // changesReport is the JSON form of `my changes`.
 type changesReport struct {
 	changenotice.Notice
-	// Baseline means no earlier revision was recorded for this person, so the
-	// current one became the starting point and nothing is listed.
+	// Baseline means no earlier revision was recorded for this person.
 	Baseline bool `json:"baseline,omitempty"`
 	// MarkedSeen means this command recorded To as told to this person.
 	MarkedSeen bool `json:"marked_seen"`
 }
 
 func (a app) runChanges(args []string) error {
-	var home, name, root, since string
-	var jsonOut, peek bool
+	var home, name, root, since, to string
+	var jsonOut, peek, all, reset bool
 	fs := newFlagSet("my changes", a.stderr)
 	fs.StringVar(&home, "home", "", "override home directory")
 	fs.StringVar(&name, "manifest", "", "select a registered manifest")
 	fs.StringVar(&root, "umbrella", "", "select an umbrella root")
 	fs.StringVar(&since, "since", "", "list changes since this manifest commit; records nothing")
+	fs.StringVar(&to, "to", "", "with --since, list changes up to this commit instead of the current one")
 	fs.BoolVar(&peek, "peek", false, "list unseen changes without recording them as seen")
+	fs.BoolVar(&all, "all", false, "list every change in full, without the launch summary's limit")
+	fs.BoolVar(&reset, "reset", false, "record the current revision as your starting point without listing anything")
 	fs.BoolVar(&jsonOut, "json", false, "print JSON")
 	fs.Usage = func() {
-		fmt.Fprintln(a.stderr, `Usage: my changes [--since REV] [--peek] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
+		fmt.Fprintln(a.stderr, `Usage: my changes [--since REV [--to REV]] [--peek] [--all] [--reset] [--json] [--manifest NAME] [--home DIR] [--umbrella DIR]
 
 Lists what changed in the organization manifest since you were last told:
-contract rules added, amended or retracted, guidance files updated, and
-skills, tools, services, mounts, policies and roles added, removed or updated,
-with links to the pull requests. Listing them records them as seen, so the
-next session start does not repeat them. --peek lists without recording;
---since lists any range and records nothing.`)
+contract rules added, amended or retracted; guidance files added, removed or
+updated; skills, tools, services, mounts, policies and roles added, removed or
+updated; other manifest settings that changed; and links to the pull requests
+and the whole range. Listing them records them as seen, so your next session
+start does not repeat them. A listing that could not be read in full is never
+recorded.
+
+  --peek    list without recording
+  --since   list any range (to the current revision, or --to); records nothing
+  --all     list everything in full
+  --reset   make the current revision your starting point, listing nothing`)
 	}
-	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true, "manifest": true, "umbrella": true, "since": true})
+	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true, "manifest": true, "umbrella": true, "since": true, "to": true})
 	if err != nil {
 		return err
 	}
-	if len(rest) != 0 {
-		return fmt.Errorf("usage: my changes [--since REV] [--peek] [--json]")
+	if len(rest) != 0 || to != "" && since == "" || reset && (since != "" || peek) {
+		return fmt.Errorf("usage: my changes [--since REV [--to REV]] [--peek] [--all] [--reset] [--json]")
 	}
 	if name == "" {
 		name = os.Getenv(contractManifestEnv)
@@ -73,61 +84,120 @@ next session start does not repeat them. --peek lists without recording;
 		return a.maybeJSONError(jsonOut, err)
 	}
 	report := changesReport{Notice: changenotice.Notice{Manifest: ref.Name, To: head, Changes: []changenotice.Change{}}}
-	from := since
+	if reset {
+		if err := changenotice.Record(stateHome, ref.Name, head, true, time.Now()); err != nil {
+			return a.maybeJSONError(jsonOut, err)
+		}
+		report.Baseline, report.MarkedSeen = true, true
+		return a.printChanges(report, jsonOut, all)
+	}
 	if since != "" {
-		from, err = gitStdout(ref.LocalPath, "rev-parse", "--verify", "--end-of-options", since+"^{commit}")
-		if err != nil {
-			return a.maybeJSONError(jsonOut, fmt.Errorf("cannot resolve manifest revision %q", since))
-		}
-	} else {
-		state, found, err := changenotice.Load(stateHome, ref.Name)
+		from, err := resolveManifestCommit(ref.LocalPath, since)
 		if err != nil {
 			return a.maybeJSONError(jsonOut, err)
 		}
-		if !found {
-			if !peek {
-				if err := changenotice.Save(stateHome, ref.Name, head, true, time.Now()); err != nil {
-					return a.maybeJSONError(jsonOut, err)
-				}
+		if to != "" {
+			if report.To, err = resolveManifestCommit(ref.LocalPath, to); err != nil {
+				return a.maybeJSONError(jsonOut, err)
 			}
-			report.Baseline, report.MarkedSeen = true, !peek
-			return a.printChanges(report, jsonOut)
 		}
-		from = state.Noticed
+		if from != report.To {
+			report.Notice = manifestChangeNotice(ref, from, report.To)
+		}
+		return a.printChanges(report, jsonOut, all)
 	}
+	state, found, err := changenotice.Load(stateHome, ref.Name)
+	if err != nil {
+		return a.maybeJSONError(jsonOut, err)
+	}
+	if !found {
+		report.Baseline = true
+		if !peek {
+			// Print before recording: a listing that never reached the
+			// person must not count as told.
+			report.MarkedSeen = true
+		}
+		if err := a.printChanges(report, jsonOut, all); err != nil {
+			return err
+		}
+		if !peek {
+			_, err := changenotice.Update(stateHome, ref.Name, func(s *changenotice.State, found bool) (bool, error) {
+				if found {
+					return false, nil
+				}
+				s.Noticed, s.NoticedAt, s.Baseline = head, time.Now().UTC().Format(time.RFC3339), true
+				return true, nil
+			})
+			return err
+		}
+		return nil
+	}
+	from := state.Noticed
 	if from != head {
-		notice := manifestChangeNotice(ref, from, head)
-		notice.Changes = append([]changenotice.Change{}, notice.Changes...)
-		report.Notice = notice
+		report.Notice = manifestChangeNotice(ref, from, head)
 	}
-	if since == "" && !peek && from != head {
-		if err := changenotice.Save(stateHome, ref.Name, head, false, time.Now()); err != nil {
-			return a.maybeJSONError(jsonOut, err)
+	record := !peek && from != head && !report.Incomplete
+	report.MarkedSeen = record
+	if err := a.printChanges(report, jsonOut, all); err != nil {
+		return err
+	}
+	if record {
+		if _, err := changenotice.Advance(stateHome, ref.Name, from, head, "", time.Now()); err != nil {
+			return err
 		}
-		report.MarkedSeen = true
-	}
-	return a.printChanges(report, jsonOut)
-}
-
-func (a app) printChanges(report changesReport, jsonOut bool) error {
-	if jsonOut {
-		return printJSON(a.stdout, report)
-	}
-	switch {
-	case report.Baseline:
-		fmt.Fprintf(a.stdout, "No earlier revision of %s is recorded for you. %s is now the starting point; later changes will be listed here and at your next session start.\n", report.Manifest, changenotice.Short(report.To))
-	case report.Empty():
-		fmt.Fprintf(a.stdout, "No changes to %s since your last session (at %s).\n", report.Manifest, changenotice.Short(report.To))
-	default:
-		fmt.Fprint(a.stdout, changenotice.Render(report.Notice))
 	}
 	return nil
 }
 
-// launchChangeNotice returns the changes this person has not been told about,
-// or nil. A first launch records the current revision as the starting point
-// and reports nothing. Failures are printed and never stop a launch.
-func (a app) launchChangeNotice(home string, ref manifest.Ref) (*changenotice.Notice, func()) {
+func (a app) printChanges(report changesReport, jsonOut, all bool) error {
+	if report.Changes == nil {
+		report.Changes = []changenotice.Change{}
+	}
+	if jsonOut {
+		return printJSON(a.stdout, report)
+	}
+	var err error
+	switch {
+	case report.Baseline && report.MarkedSeen:
+		_, err = fmt.Fprintf(a.stdout, "%s is now your starting point for %s; later changes will be listed here and at your next session start.\n", changenotice.Short(report.To), report.Manifest)
+	case report.Baseline:
+		_, err = fmt.Fprintf(a.stdout, "No earlier revision of %s is recorded for you, and --peek records nothing. Run my changes to make %s your starting point.\n", report.Manifest, changenotice.Short(report.To))
+	case report.Empty():
+		_, err = fmt.Fprintf(a.stdout, "No changes to %s since your last session (at %s).\n", report.Manifest, changenotice.Short(report.To))
+	case all:
+		_, err = io.WriteString(a.stdout, changenotice.RenderAll(report.Notice))
+	default:
+		_, err = io.WriteString(a.stdout, changenotice.Render(report.Notice))
+	}
+	return err
+}
+
+// noticeClaim is one launch's reservation of a range to present.
+type noticeClaim struct {
+	home, manifest, from, to, token string
+	stderr                          io.Writer
+}
+
+// seen records the range as told, if nobody moved the record meanwhile, and
+// drops this launch's reservation.
+func (c noticeClaim) seen() {
+	if _, err := changenotice.Advance(c.home, c.manifest, c.from, c.to, c.token, time.Now()); err != nil {
+		fmt.Fprintf(c.stderr, "notice\tchanges\tcould not record these changes as seen: %v\n", err)
+	}
+}
+
+// release drops this launch's reservation and nothing else. After seen it
+// finds nothing to do.
+func (c noticeClaim) release() {
+	_ = changenotice.Release(c.home, c.manifest, c.token)
+}
+
+// launchChangeNotice returns the changes this person has not been told
+// about and a claim on presenting them, or nil. A first launch records the
+// current revision as the starting point and reports nothing. A launch that
+// overlaps another one presenting the same range stays quiet. Failures are
+// printed and never stop a launch.
+func (a app) launchChangeNotice(home string, ref manifest.Ref) (*changenotice.Notice, *noticeClaim) {
 	stateHome, err := resolveHome(home)
 	if err != nil {
 		return nil, nil
@@ -136,73 +206,135 @@ func (a app) launchChangeNotice(home string, ref manifest.Ref) (*changenotice.No
 	if err != nil {
 		return nil, nil
 	}
-	state, found, err := changenotice.Load(stateHome, ref.Name)
+	token, err := changenotice.NewToken()
 	if err != nil {
-		fmt.Fprintf(a.stderr, "notice\tchanges\tcould not read which manifest changes you were shown: %v\n", err)
 		return nil, nil
 	}
-	if !found {
-		if err := changenotice.Save(stateHome, ref.Name, head, true, time.Now()); err != nil {
-			fmt.Fprintf(a.stderr, "notice\tchanges\tcould not record the manifest revision: %v\n", err)
+	now := time.Now()
+	pid := os.Getpid()
+	processStart, _, _ := attempt.ProcessStart(pid)
+	var claim *noticeClaim
+	busy := false
+	_, err = changenotice.Update(stateHome, ref.Name, func(s *changenotice.State, found bool) (bool, error) {
+		if !found {
+			s.Noticed, s.NoticedAt, s.Baseline = head, now.UTC().Format(time.RFC3339), true
+			return true, nil
 		}
-		return nil, nil
-	}
-	if state.Noticed == head {
-		return nil, nil
-	}
-	notice := manifestChangeNotice(ref, state.Noticed, head)
-	seen := func() {
-		if err := changenotice.Save(stateHome, ref.Name, head, false, time.Now()); err != nil {
-			fmt.Fprintf(a.stderr, "notice\tchanges\tcould not record these changes as seen: %v\n", err)
+		if s.Noticed == head {
+			return false, nil
 		}
+		if r := s.Reserved; r != nil && r.To == head && r.From == s.Noticed && r.PID != pid && r.Live(now, attempt.ProcessStart) {
+			busy = true
+			return false, nil
+		}
+		s.Reserved = &changenotice.Reservation{Token: token, From: s.Noticed, To: head, PID: pid, ProcessStart: processStart, At: now.UTC().Format(time.RFC3339)}
+		claim = &noticeClaim{home: stateHome, manifest: ref.Name, from: s.Noticed, to: head, token: token, stderr: a.stderr}
+		return true, nil
+	})
+	if err != nil {
+		fmt.Fprintf(a.stderr, "notice\tchanges\tcould not check which manifest changes you were shown: %v\n", err)
+		return nil, nil
 	}
-	if notice.Empty() {
+	if busy {
+		fmt.Fprintln(a.stderr, "notice\tchanges\tanother launch is presenting the latest manifest changes; run my changes to see them here")
+		return nil, nil
+	}
+	if claim == nil {
+		return nil, nil
+	}
+	notice := manifestChangeNotice(ref, claim.from, claim.to)
+	if notice.Empty() && !notice.Incomplete {
 		// Only files nobody is told about changed (for example a README).
-		seen()
+		claim.seen()
 		return nil, nil
 	}
-	return &notice, seen
+	return &notice, claim
+}
+
+// changesPrompt asks the agent to read the range itself, so the
+// organization's rule text never appears in the harness's command line.
+func changesPrompt(manifestName, home string, notice changenotice.Notice, initialPrompt string) string {
+	command := []string{myCommandForAgent(), "changes", "--manifest", shellQuote(manifestName)}
+	if home != "" {
+		command = append(command, "--home", shellQuote(home))
+	}
+	command = append(command, "--since", notice.From, "--to", notice.To, "--all")
+	prompt := "Before anything else, run `" + strings.Join(command, " ") + "` and tell me in plain words what changed in my organization's manifest since my last session, including every link it prints, so I can read the details. Then carry on."
+	if initialPrompt != "" {
+		prompt += "\n\n" + initialPrompt
+	}
+	return prompt
+}
+
+// myCommandForAgent is how an agent runs this same my: plain `my` when that
+// is what PATH finds, else the quoted path of this executable.
+func myCommandForAgent() string {
+	self, err := os.Executable()
+	if err != nil {
+		return "my"
+	}
+	if found, err := exec.LookPath("my"); err == nil && sameExecutable(found, self) {
+		return "my"
+	}
+	return shellQuote(self)
+}
+
+func sameExecutable(a, b string) bool {
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	ia, errA := os.Stat(ra)
+	ib, errB := os.Stat(rb)
+	return errA == nil && errB == nil && os.SameFile(ia, ib)
 }
 
 // manifestChangeNotice compares two manifest commits. It always returns a
-// notice; what could not be read is explained in its Note.
+// notice. Anything it could not read is explained in Note and marks the
+// notice incomplete, so the range is retried rather than recorded.
 func manifestChangeNotice(ref manifest.Ref, from, to string) changenotice.Notice {
 	notice := changenotice.Notice{Manifest: ref.Name, From: from, To: to}
 	repo := ref.LocalPath
 	web, webOK := manifestWebRepository(repo)
-	if _, err := gitStdout(repo, "cat-file", "-e", from+"^{commit}"); err != nil {
-		notice.Note = fmt.Sprintf("The revision you last saw (%s) is no longer in the local manifest history, so the changes cannot be listed. Run `my contract list` to read the rules in force.", changenotice.Short(from))
-		notice.Links = changenotice.Links(web, webOK, "", to, nil)
+	incomplete := func(note string) changenotice.Notice {
+		notice.Note, notice.Incomplete = note, true
+		notice.Changes = nil
+		notice.Links = changenotice.Links(web, webOK, "", to, nil, false)
 		return notice
+	}
+	if _, err := gitStdout(repo, "cat-file", "-e", from+"^{commit}"); err != nil {
+		return incomplete(fmt.Sprintf("The revision you last saw (%s) cannot be read from the local manifest checkout, so the changes cannot be listed yet. Run my sync to retry, my contract list to read the rules in force, or my changes --reset to start from the current revision.", changenotice.Short(from)))
 	}
 	newRev, err := manifestRevisionAt(repo, to)
 	if err != nil {
-		notice.Note = "The current manifest revision could not be read: " + err.Error()
-		return notice
+		return incomplete("The current manifest revision could not be read, so the changes cannot be listed yet: " + err.Error())
 	}
 	oldRev, err := manifestRevisionAt(repo, from)
 	if err != nil {
-		notice.Note = fmt.Sprintf("The revision you last saw (%s) could not be read, so only links are listed: %v", changenotice.Short(from), err)
+		return incomplete(fmt.Sprintf("The revision you last saw (%s) could not be read, so the changes cannot be listed yet: %v", changenotice.Short(from), err))
+	}
+	out, err := gitStdout(repo, "diff", "--name-only", "-z", from, to, "--")
+	if err != nil {
+		return incomplete("The files changed in the manifest could not be listed, so the changes cannot be listed yet: " + err.Error())
 	}
 	var changed []string
-	if out, err := gitStdout(repo, "diff", "--name-only", "-z", from, to, "--"); err == nil {
-		for _, p := range strings.Split(out, "\x00") {
-			if p != "" {
-				changed = append(changed, p)
-			}
+	for _, p := range strings.Split(out, "\x00") {
+		if p != "" {
+			changed = append(changed, p)
 		}
 	}
-	if notice.Note == "" {
-		notice.Changes = changenotice.Diff(oldRev, newRev, changed)
-	}
+	notice.Changes = changenotice.Diff(oldRev, newRev, changed)
+	linear := false
 	var prs []int
 	if _, err := gitStdout(repo, "merge-base", "--is-ancestor", from, to); err == nil {
+		linear = true
 		if out, err := gitStdout(repo, "log", "--format=%s", from+".."+to); err == nil {
 			prs = changenotice.PullRequests(strings.Split(out, "\n"))
 		}
 	}
-	if len(notice.Changes) > 0 || notice.Note != "" {
-		notice.Links = changenotice.Links(web, webOK, from, to, prs)
+	if len(notice.Changes) > 0 {
+		notice.Links = changenotice.Links(web, webOK, from, to, prs, linear)
 	}
 	return notice
 }
@@ -235,7 +367,15 @@ func manifestRevisionAt(repo, commit string) (changenotice.Revision, error) {
 	if err != nil {
 		return changenotice.Revision{}, err
 	}
-	return changenotice.Revision{Doc: doc, Rules: contract.Rules()}, nil
+	return changenotice.Revision{Doc: doc, Rules: contract.Rules(), Raw: []byte(raw)}, nil
+}
+
+func resolveManifestCommit(repo, rev string) (string, error) {
+	commit, err := gitStdout(repo, "rev-parse", "--verify", "--end-of-options", rev+"^{commit}")
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve manifest revision %q", rev)
+	}
+	return commit, nil
 }
 
 func manifestHead(repo string) (string, error) {
@@ -243,7 +383,7 @@ func manifestHead(repo string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("manifest checkout %s has no commit", repo)
 	}
-	return strings.TrimSpace(head), nil
+	return head, nil
 }
 
 func manifestWebRepository(repo string) (changenotice.WebRepository, bool) {
@@ -255,7 +395,7 @@ func manifestWebRepository(repo string) (changenotice.WebRepository, bool) {
 }
 
 // gitStdout runs git in repo and returns stdout only, so warnings on stderr
-// never mix into file contents.
+// never mix into file contents. Output other than file contents is trimmed.
 func gitStdout(repo string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1")

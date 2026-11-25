@@ -2,11 +2,13 @@
 // between two revisions, so a person is told about new or amended contract
 // rules, skills, tools and guidance instead of having them arrive silently.
 //
-// Everything here is pure: callers read both revisions from Git and pass the
+// The diff is pure: callers read both revisions from Git and pass the
 // documents, contract rules and changed paths in.
 package changenotice
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"path"
 	"sort"
@@ -17,7 +19,8 @@ import (
 
 // Change is one line of a notice.
 type Change struct {
-	// Kind is contract, guidance, skill, tool, service, mount, policy or role.
+	// Kind is contract, guidance, skill, tool, service, mount, policy, role
+	// or manifest.
 	Kind string `json:"kind"`
 	// Action is added, amended, retracted, removed or updated.
 	Action string `json:"action"`
@@ -37,6 +40,9 @@ type Notice struct {
 	Links    []string `json:"links,omitempty"`
 	// Note explains a summary that could not be computed in full.
 	Note string `json:"note,omitempty"`
+	// Incomplete means part of the range could not be read. An incomplete
+	// notice is shown but never recorded as seen, so it is retried.
+	Incomplete bool `json:"incomplete,omitempty"`
 }
 
 // Empty reports whether there is nothing to tell the person.
@@ -48,6 +54,9 @@ func (n Notice) Empty() bool {
 type Revision struct {
 	Doc   manifest.Document
 	Rules []string
+	// Raw is manifest.json as committed, used to notice settings that have
+	// no item of their own.
+	Raw []byte
 }
 
 // Diff compares two revisions. changedPaths are the manifest repository paths
@@ -56,13 +65,14 @@ type Revision struct {
 func Diff(old, new Revision, changedPaths []string) []Change {
 	var out []Change
 	out = append(out, DiffRules(old.Rules, new.Rules)...)
-	out = append(out, changedGuidance(new.Doc, changedPaths)...)
-	out = append(out, diffItems("skill", skillItems(old.Doc), skillItems(new.Doc), skillUpdates(old.Doc, new.Doc, changedPaths))...)
-	out = append(out, diffItems("tool", toolItems(old.Doc), toolItems(new.Doc), nil)...)
-	out = append(out, diffItems("service", serviceItems(old.Doc), serviceItems(new.Doc), nil)...)
-	out = append(out, diffItems("mount", mountItems(old.Doc), mountItems(new.Doc), nil)...)
-	out = append(out, diffItems("policy", policyItems(old.Doc), policyItems(new.Doc), nil)...)
-	out = append(out, diffItems("role", roleItems(old.Doc), roleItems(new.Doc), nil)...)
+	out = append(out, diffGuidance(old.Doc, new.Doc, changedPaths)...)
+	out = append(out, diffItems("skill", itemsOf(old.Doc.Skills, skillKey, noSummary), itemsOf(new.Doc.Skills, skillKey, noSummary), skillUpdates(old.Doc, new.Doc, changedPaths))...)
+	out = append(out, diffItems("tool", itemsOf(old.Doc.Tools, toolKey, toolSummary), itemsOf(new.Doc.Tools, toolKey, toolSummary), nil)...)
+	out = append(out, diffItems("service", itemsOf(old.Doc.Services, serviceKey, serviceSummary), itemsOf(new.Doc.Services, serviceKey, serviceSummary), nil)...)
+	out = append(out, diffItems("mount", itemsOf(old.Doc.Mounts, mountKey, noSummaryMount), itemsOf(new.Doc.Mounts, mountKey, noSummaryMount), nil)...)
+	out = append(out, diffItems("policy", itemsOf(old.Doc.Governance.Policies, policyKey, policySummary), itemsOf(new.Doc.Governance.Policies, policyKey, policySummary), nil)...)
+	out = append(out, diffItems("role", itemsOf(old.Doc.Roles, roleKey, roleSummary), itemsOf(new.Doc.Roles, roleKey, roleSummary), nil)...)
+	out = append(out, otherSettings(old.Raw, new.Raw)...)
 	return out
 }
 
@@ -181,24 +191,83 @@ func words(s string) map[string]bool {
 	return out
 }
 
-// diffItems compares id → description maps. updated names ids whose content
-// changed even though their description did not.
-func diffItems(kind string, old, new map[string]string, updated map[string]string) []Change {
+// item is one declared manifest entry: a one-line summary for people and its
+// full declaration, field by field, for noticing any change.
+type item struct {
+	summary string
+	fields  map[string]string
+}
+
+func itemsOf[T any](list []T, key func(T) string, summary func(T) string) map[string]item {
+	out := map[string]item{}
+	for _, v := range list {
+		out[key(v)] = item{summary: summary(v), fields: jsonFields(v)}
+	}
+	return out
+}
+
+// jsonFields is a value's top-level JSON fields in compact form.
+func jsonFields(v any) map[string]string {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		return nil
+	}
+	out := make(map[string]string, len(raw))
+	for k, value := range raw {
+		var compact bytes.Buffer
+		if json.Compact(&compact, value) == nil {
+			out[k] = compact.String()
+		}
+	}
+	return out
+}
+
+// changedFields names the fields whose value differs, sorted.
+func changedFields(old, new map[string]string) []string {
+	var out []string
+	for k, v := range new {
+		if old[k] != v {
+			out = append(out, k)
+		}
+	}
+	for k := range old {
+		if _, ok := new[k]; !ok {
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// diffItems compares declarations by id. extra names ids whose files changed
+// even though their declaration did not.
+func diffItems(kind string, old, new map[string]item, extra map[string]string) []Change {
 	var out []Change
 	for _, id := range sortedKeys(new) {
 		before, existed := old[id]
+		after := new[id]
 		switch {
 		case !existed:
-			out = append(out, Change{Kind: kind, Action: "added", ID: id, Text: new[id]})
-		case before != new[id]:
-			out = append(out, Change{Kind: kind, Action: "updated", ID: id, Text: describeUpdate(before, new[id])})
-		case updated[id] != "":
-			out = append(out, Change{Kind: kind, Action: "updated", ID: id, Text: updated[id]})
+			out = append(out, Change{Kind: kind, Action: "added", ID: id, Text: after.summary})
+		case before.summary != after.summary:
+			out = append(out, Change{Kind: kind, Action: "updated", ID: id, Text: describeUpdate(before.summary, after.summary)})
+		default:
+			fields := changedFields(before.fields, after.fields)
+			switch {
+			case len(fields) > 0:
+				out = append(out, Change{Kind: kind, Action: "updated", ID: id, Text: "changed " + strings.Join(fields, ", ")})
+			case extra[id] != "":
+				out = append(out, Change{Kind: kind, Action: "updated", ID: id, Text: extra[id]})
+			}
 		}
 	}
 	for _, id := range sortedKeys(old) {
 		if _, kept := new[id]; !kept {
-			out = append(out, Change{Kind: kind, Action: "removed", ID: id, Text: old[id]})
+			out = append(out, Change{Kind: kind, Action: "removed", ID: id, Text: old[id].summary})
 		}
 	}
 	return out
@@ -214,7 +283,7 @@ func describeUpdate(before, after string) string {
 	return before + " → " + after
 }
 
-func sortedKeys(m map[string]string) []string {
+func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -223,12 +292,24 @@ func sortedKeys(m map[string]string) []string {
 	return keys
 }
 
-func skillItems(doc manifest.Document) map[string]string {
-	out := map[string]string{}
-	for _, s := range doc.Skills {
-		out[s.ID] = ""
+func skillKey(s manifest.Skill) string     { return s.ID }
+func toolKey(t manifest.Tool) string       { return t.ID }
+func serviceKey(s manifest.Service) string { return s.ID }
+func mountKey(m manifest.Mount) string     { return m.ID }
+func policyKey(p manifest.Policy) string   { return p.ID }
+func roleKey(r manifest.Role) string       { return r.ID }
+
+func noSummary(manifest.Skill) string          { return "" }
+func noSummaryMount(manifest.Mount) string     { return "" }
+func toolSummary(t manifest.Tool) string       { return t.Purpose }
+func serviceSummary(s manifest.Service) string { return s.Purpose }
+func roleSummary(r manifest.Role) string       { return r.Purpose }
+func policySummary(p manifest.Policy) string {
+	title := p.Title
+	if title == "" {
+		title = p.ID
 	}
-	return out
+	return title + " (version " + p.Version + ")"
 }
 
 // skillUpdates names manifest-repo skills whose files changed.
@@ -249,65 +330,92 @@ func skillUpdates(old, new manifest.Document, changedPaths []string) map[string]
 	return out
 }
 
-func toolItems(doc manifest.Document) map[string]string {
-	out := map[string]string{}
-	for _, t := range doc.Tools {
-		out[t.ID] = t.Purpose
+func guidancePaths(doc manifest.Document) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range doc.AgentGuidance.Paths {
+		out[path.Clean(p)] = true
 	}
-	return out
-}
-
-func serviceItems(doc manifest.Document) map[string]string {
-	out := map[string]string{}
-	for _, s := range doc.Services {
-		out[s.ID] = s.Purpose
-	}
-	return out
-}
-
-func mountItems(doc manifest.Document) map[string]string {
-	out := map[string]string{}
-	for _, m := range doc.Mounts {
-		out[m.ID] = ""
-	}
-	return out
-}
-
-func policyItems(doc manifest.Document) map[string]string {
-	out := map[string]string{}
-	for _, p := range doc.Governance.Policies {
-		title := p.Title
-		if title == "" {
-			title = p.ID
+	for _, r := range doc.Roles {
+		for _, p := range r.GuidancePaths {
+			out[path.Clean(p)] = true
 		}
-		out[p.ID] = title + " (version " + p.Version + ")"
 	}
 	return out
 }
 
-func roleItems(doc manifest.Document) map[string]string {
-	out := map[string]string{}
-	for _, r := range doc.Roles {
-		out[r.ID] = r.Purpose
-	}
-	return out
-}
-
-// changedGuidance lists organization and role guidance files that changed.
-func changedGuidance(doc manifest.Document, changedPaths []string) []Change {
-	paths := append([]string{}, doc.AgentGuidance.Paths...)
-	for _, r := range doc.Roles {
-		paths = append(paths, r.GuidancePaths...)
-	}
-	seen := map[string]bool{}
+// diffGuidance reports guidance files that were declared, dropped or edited.
+func diffGuidance(old, new manifest.Document, changedPaths []string) []Change {
+	before, after := guidancePaths(old), guidancePaths(new)
 	var out []Change
-	for _, p := range paths {
-		clean := path.Clean(p)
-		if seen[clean] || !anyUnder(changedPaths, clean) {
-			continue
+	for _, p := range sortedKeys(after) {
+		switch {
+		case !before[p]:
+			out = append(out, Change{Kind: "guidance", Action: "added", ID: p})
+		case anyUnder(changedPaths, p):
+			out = append(out, Change{Kind: "guidance", Action: "updated", ID: p})
 		}
-		seen[clean] = true
-		out = append(out, Change{Kind: "guidance", Action: "updated", ID: clean})
+	}
+	for _, p := range sortedKeys(before) {
+		if !after[p] {
+			out = append(out, Change{Kind: "guidance", Action: "removed", ID: p})
+		}
+	}
+	return out
+}
+
+// itemized are the manifest keys whose changes the other kinds already
+// report.
+var itemized = map[string]bool{
+	"contract": true, "contract_file": true, "contract_source": true,
+	"agent_guidance": true, "skills": true, "tools": true, "services": true,
+	"mounts": true, "roles": true,
+}
+
+// otherSettings reports top-level manifest settings that changed and have no
+// item of their own, so no change goes unmentioned.
+func otherSettings(oldRaw, newRaw []byte) []Change {
+	old, new := topLevel(oldRaw), topLevel(newRaw)
+	if old == nil || new == nil {
+		return nil
+	}
+	var names []string
+	for _, k := range changedFields(old, new) {
+		if !itemized[k] {
+			names = append(names, k)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	return []Change{{Kind: "manifest", Action: "updated", Text: "settings changed: " + strings.Join(names, ", ")}}
+}
+
+// topLevel is manifest.json's top-level fields, with governance policies
+// set aside because policies are reported as items.
+func topLevel(raw []byte) map[string]string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil {
+		return nil
+	}
+	out := map[string]string{}
+	for k, v := range fields {
+		if k == "governance" {
+			var gov map[string]json.RawMessage
+			if json.Unmarshal(v, &gov) == nil {
+				delete(gov, "policies")
+				if len(gov) == 0 {
+					continue
+				}
+				v, _ = json.Marshal(gov)
+			}
+		}
+		var compact bytes.Buffer
+		if json.Compact(&compact, v) == nil {
+			out[k] = compact.String()
+		}
 	}
 	return out
 }
@@ -331,16 +439,24 @@ func Short(commit string) string {
 	return commit
 }
 
-// maxRuleChars bounds one rule in a notice; the full text is in the links and
-// in my changes.
+// maxRuleChars bounds one rule in a capped notice.
 const maxRuleChars = 400
 
-// maxLines bounds a notice so a launch prompt stays small.
+// maxLines bounds a capped notice so the terminal at launch stays readable.
 const maxLines = 40
 
-// Render is the plain-text notice shown on the terminal and handed to the
-// agent. It never includes more than maxLines changes.
+// Render is the capped plain-text notice shown on the terminal at launch.
+// The cap line names the command that lists everything.
 func Render(n Notice) string {
+	return render(n, true)
+}
+
+// RenderAll is the complete listing, with no cap and no clipping.
+func RenderAll(n Notice) string {
+	return render(n, false)
+}
+
+func render(n Notice, capped bool) string {
 	var b strings.Builder
 	switch {
 	case n.From != "":
@@ -356,23 +472,23 @@ func Render(n Notice) string {
 		var lines []string
 		for _, c := range n.Changes {
 			if c.Kind == kind {
-				lines = append(lines, renderChange(c))
+				lines = append(lines, renderChange(c, capped))
 			}
 		}
-		if len(lines) == 0 {
+		if len(lines) == 0 || capped && shown == maxLines {
 			continue
 		}
 		fmt.Fprintf(&b, "%s:\n", kindTitle[kind])
 		for _, line := range lines {
-			if shown == maxLines {
+			if capped && shown == maxLines {
 				break
 			}
 			fmt.Fprintf(&b, "  - %s\n", line)
 			shown++
 		}
 	}
-	if hidden := len(n.Changes) - shown; hidden > 0 {
-		fmt.Fprintf(&b, "  ... and %d more; run `my changes --since %s` to see them all.\n", hidden, Short(n.From))
+	if hidden := len(n.Changes) - shown; capped && hidden > 0 {
+		fmt.Fprintf(&b, "  ... and %d more; run %s to list them all.\n", hidden, "`my changes --manifest "+n.Manifest+" --since "+Short(n.From)+" --to "+Short(n.To)+" --all`")
 	}
 	if len(n.Links) > 0 {
 		fmt.Fprintf(&b, "Details: %s\n", strings.Join(n.Links, " "))
@@ -380,7 +496,7 @@ func Render(n Notice) string {
 	return b.String()
 }
 
-var kindOrder = []string{"contract", "guidance", "skill", "tool", "service", "mount", "policy", "role"}
+var kindOrder = []string{"contract", "guidance", "skill", "tool", "service", "mount", "policy", "role", "manifest"}
 
 var kindTitle = map[string]string{
 	"contract": "Contract rules",
@@ -391,25 +507,32 @@ var kindTitle = map[string]string{
 	"mount":    "Content mounts",
 	"policy":   "Policies",
 	"role":     "Roles",
+	"manifest": "Other settings",
 }
 
-func renderChange(c Change) string {
+func renderChange(c Change, capped bool) string {
+	text, before := c.Text, c.Before
+	if capped {
+		text, before = clip(text), clip(before)
+	}
 	switch c.Kind {
 	case "contract":
 		switch c.Action {
 		case "amended":
-			return fmt.Sprintf("Amended: %q (was %q)", clip(c.Text), clip(c.Before))
+			return fmt.Sprintf("Amended: %q (was %q)", text, before)
 		case "retracted":
-			return fmt.Sprintf("Retracted: %q", clip(c.Text))
+			return fmt.Sprintf("Retracted: %q", text)
 		default:
-			return fmt.Sprintf("Added: %q", clip(c.Text))
+			return fmt.Sprintf("Added: %q", text)
 		}
 	case "guidance":
-		return "Updated " + c.ID
+		return capitalize(c.Action) + " " + c.ID
+	case "manifest":
+		return capitalize(text)
 	}
 	line := capitalize(c.Action) + " " + c.ID
-	if c.Text != "" {
-		line += ": " + clip(c.Text)
+	if text != "" {
+		line += ": " + text
 	}
 	return line
 }
@@ -427,11 +550,4 @@ func capitalize(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
-}
-
-// AgentPrompt is the initial prompt that asks an agent to tell the person
-// about the changes before anything else.
-func AgentPrompt(n Notice) string {
-	return "Before anything else, tell me in plain words what changed in my organization's manifest since my last session, " +
-		"including every link below so I can read the details. Keep it short, then wait for my next request.\n\n" + Render(n)
 }
