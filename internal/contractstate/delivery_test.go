@@ -357,3 +357,63 @@ func TestDeliveryRecoversWithNoInstanceRegistry(t *testing.T) {
 		t.Fatalf("recovery without a registry failed: %q %#v", out.String(), state.Instances)
 	}
 }
+
+func TestDeliveryAntigravitySessionStartAndPreInvocation(t *testing.T) {
+	home := t.TempDir()
+	_, err := Update(home, "acme", func(s *State) error {
+		s.Observe(Snapshot{Configured: true, Revision: Revision{ManifestCommit: "one", Blob: "one"}, Text: "- Old rule.\n"})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, err := Register(home, "acme", "antigravity", "/base", "", "untrusted", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := Deliver(home, "acme", inst.ID, "antigravity", HookInput{Event: "SessionStart", ConversationID: "agy-conv-1"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(out.String()) != "{}" {
+		t.Fatalf("SessionStart output = %q, want {}", out.String())
+	}
+	state, _ := Load(home, "acme")
+	if state.Instances[inst.ID].NativeID != "agy-conv-1" || state.Instances[inst.ID].Emitted != nil {
+		t.Fatalf("SessionStart should bind NativeID without prematurely marking emitted: %#v", state.Instances[inst.ID])
+	}
+
+	out.Reset()
+	if err := Deliver(home, "acme", inst.ID, "antigravity", HookInput{Event: "PreInvocation", ConversationID: "agy-conv-1"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"injectSteps"`) || !strings.Contains(out.String(), "Old rule.") {
+		t.Fatalf("PreInvocation output = %q, want injectSteps with rule", out.String())
+	}
+	state, _ = Load(home, "acme")
+	if state.Instances[inst.ID].Delivery != "emitted" || state.Instances[inst.ID].Emitted == nil {
+		t.Fatalf("PreInvocation did not stamp emitted receipt: %#v", state.Instances[inst.ID])
+	}
+
+	// Unchanged PreInvocation must return {} without rewriting state.
+	path, _ := Path(home, "acme")
+	before, _ := os.ReadFile(path)
+	out.Reset()
+	if err := Deliver(home, "acme", inst.ID, "antigravity", HookInput{Event: "PreInvocation", ConversationID: "agy-conv-1"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := os.ReadFile(path)
+	if strings.TrimSpace(out.String()) != "{}" || !bytes.Equal(before, after) {
+		t.Fatalf("unchanged PreInvocation output=%q stateChanged=%v", out.String(), !bytes.Equal(before, after))
+	}
+
+	// Contract update emits retraction + addition on next PreInvocation.
+	updateDelivery(t, home, "two", "- New rule.\n")
+	out.Reset()
+	if err := Deliver(home, "acme", inst.ID, "antigravity", HookInput{Event: "PreInvocation", ConversationID: "agy-conv-1"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"injectSteps"`) || !strings.Contains(out.String(), "RETRACTED") || !strings.Contains(out.String(), "New rule.") {
+		t.Fatalf("updated PreInvocation output = %q", out.String())
+	}
+}

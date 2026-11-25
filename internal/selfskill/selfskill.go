@@ -109,7 +109,11 @@ func Install(hs []harness.Harness, opts Options) ([]skills.Result, error) {
 		if skipInstall[h] {
 			continue
 		}
-		results = append(results, skills.Install(self, h, installOpts))
+		installRes := skills.Install(self, h, installOpts)
+		results = append(results, installRes)
+		if installRes.Status == skills.StatusInstalled || installRes.Status == skills.StatusUpdated || installRes.Status == skills.StatusDryRun {
+			results = append(results, cleanupLegacySkillDirs(h, home, opts)...)
+		}
 	}
 	return results, nil
 }
@@ -165,15 +169,10 @@ func Inspect(hs []harness.Harness, opts Options) ([]Status, error) {
 			CanonicalID: CanonicalID,
 		}
 		row.TargetPath = h.SkillTargetPath(home, Name)
-		if _, err := os.Stat(h.ConfigDir(home)); errors.Is(err, fs.ErrNotExist) {
+		if !harnessPresent(h, home) {
 			row.Status = "missing-harness"
 			row.Message = "harness config directory not found"
 			row.Remedy = installRemedy(h, opts.Home)
-			rows = append(rows, row)
-			continue
-		} else if err != nil {
-			row.Status = skills.StatusFailed
-			row.Message = err.Error()
 			rows = append(rows, row)
 			continue
 		}
@@ -211,6 +210,7 @@ func SyncExisting(opts Options) ([]skills.Result, error) {
 	}
 	existing := map[harness.Harness]fs.FileInfo{}
 	legacy := map[harness.Harness]fs.FileInfo{}
+	legacyDirOnly := map[harness.Harness]fs.FileInfo{}
 	for _, h := range harness.All() {
 		target := h.SkillTargetPath(home, Name)
 		info, err := os.Lstat(target)
@@ -218,6 +218,9 @@ func SyncExisting(opts Options) ([]skills.Result, error) {
 			legacyTarget := h.SkillTargetPath(home, legacyName)
 			legacyInfo, legacyErr := os.Lstat(legacyTarget)
 			if errors.Is(legacyErr, fs.ErrNotExist) {
+				if oldInfo, ok := findManagedLegacyDirSelfSkill(h, home); ok && harnessPresent(h, home) {
+					legacyDirOnly[h] = oldInfo
+				}
 				continue
 			}
 			if legacyErr != nil {
@@ -256,7 +259,7 @@ func SyncExisting(opts Options) ([]skills.Result, error) {
 			}}, nil
 		}
 	}
-	if len(existing) == 0 && len(legacy) == 0 {
+	if len(existing) == 0 && len(legacy) == 0 && len(legacyDirOnly) == 0 {
 		return nil, nil
 	}
 
@@ -284,6 +287,10 @@ func SyncExisting(opts Options) ([]skills.Result, error) {
 			ensure[h] = true
 		}
 	}
+	for h, info := range legacyDirOnly {
+		preferLink[h] = info.Mode()&os.ModeSymlink != 0
+		ensure[h] = true
+	}
 	for _, h := range harness.All() {
 		if !ensure[h] {
 			continue
@@ -293,7 +300,11 @@ func SyncExisting(opts Options) ([]skills.Result, error) {
 		if errors.Is(err, fs.ErrNotExist) {
 			installOpts := baseOpts
 			installOpts.Link = preferLink[h]
-			results = append(results, skills.Install(self, h, installOpts))
+			res := skills.Install(self, h, installOpts)
+			results = append(results, res)
+			if res.Status == skills.StatusInstalled || res.Status == skills.StatusUpdated {
+				results = append(results, cleanupLegacySkillDirs(h, home, opts)...)
+			}
 			continue
 		}
 		if err != nil {
@@ -325,6 +336,7 @@ func SyncExisting(opts Options) ([]skills.Result, error) {
 			})
 			continue
 		}
+		results = append(results, cleanupLegacySkillDirs(h, home, opts)...)
 		if !inspection.Stale && (info.Mode()&os.ModeSymlink == 0 || currentSelfSkillLink(target, info, self.SourcePath)) {
 			continue
 		}
@@ -460,6 +472,82 @@ func removeLegacySource(sourceRoot string) skills.Result {
 func isManagedSelfSkill(dir string) bool {
 	marker, ok := readManagedMarker(dir)
 	return ok && marker.CanonicalID == CanonicalID
+}
+
+func harnessPresent(h harness.Harness, home string) bool {
+	if _, err := os.Stat(h.ConfigDir(home)); err == nil {
+		return true
+	}
+	presenceDir := h.PresenceDir(home)
+	if presenceDir != "" && presenceDir != h.ConfigDir(home) {
+		if _, err := os.Stat(presenceDir); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func findManagedLegacyDirSelfSkill(h harness.Harness, home string) (fs.FileInfo, bool) {
+	for _, skillName := range []string{Name, legacyName} {
+		for _, legacyPath := range h.LegacySkillTargetPaths(home, skillName) {
+			info, err := os.Lstat(legacyPath)
+			if err != nil {
+				continue
+			}
+			if isManagedSelfSkill(legacyPath) {
+				return info, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func cleanupLegacySkillDirs(h harness.Harness, home string, opts Options) []skills.Result {
+	var results []skills.Result
+	for _, skillName := range []string{Name, legacyName} {
+		for _, legacyPath := range h.LegacySkillTargetPaths(home, skillName) {
+			info, err := os.Lstat(legacyPath)
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				results = append(results, skills.Result{
+					Harness:     h,
+					Skill:       Name,
+					CanonicalID: CanonicalID,
+					TargetPath:  legacyPath,
+					Status:      skills.StatusFailed,
+					Err:         err,
+				})
+				continue
+			}
+			if !isManagedSelfSkill(legacyPath) {
+				continue
+			}
+			res := skills.Result{
+				Harness:     h,
+				Skill:       Name,
+				CanonicalID: CanonicalID,
+				TargetPath:  legacyPath,
+			}
+			if opts.DryRun {
+				res.Status = skills.StatusDryRun
+				res.Message = fmt.Sprintf("would remove superseded self-skill at %s", legacyPath)
+				results = append(results, res)
+				continue
+			}
+			if err := removePath(legacyPath, info); err != nil {
+				res.Status = skills.StatusFailed
+				res.Err = err
+				results = append(results, res)
+				continue
+			}
+			res.Status = skills.StatusMigrated
+			res.Message = fmt.Sprintf("removed superseded self-skill at %s", legacyPath)
+			results = append(results, res)
+		}
+	}
+	return results
 }
 
 func readManagedMarker(dir string) (bundle.Marker, bool) {

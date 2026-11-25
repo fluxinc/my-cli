@@ -273,7 +273,7 @@ func TestLaunchPrintsResolvedCommandWithoutCheckingOrWritingGuidance(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "cd " + filepath.Join(home, "acme", "repos", "sample-service") + " && codex --model gpt-5\n"
+	want := "cd " + filepath.Join(home, "acme", "repos", "sample-service") + " && codex -c 'project_root_markers=[\".my-cli\"]' --model gpt-5\n"
 	if stdout.String() != want {
 		t.Fatalf("launch --print stdout = %q, want %q", stdout.String(), want)
 	}
@@ -1221,7 +1221,7 @@ func TestLaunchRepoDefaultsToBaseCheckout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "cd " + filepath.Join(home, "acme", "repos", "sample-service") + " && codex\n"
+	want := "cd " + filepath.Join(home, "acme", "repos", "sample-service") + " && codex -c 'project_root_markers=[\".my-cli\"]'\n"
 	if stdout.String() != want {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
@@ -1341,9 +1341,9 @@ func TestLaunchPrintGrokCommandUsesGrokBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := strings.TrimSpace(stdout.String())
-	wantPrefix := "cd " + umbrellaRoot + " && grok"
-	if got != wantPrefix {
-		t.Fatalf("launch --print grok stdout = %q, want %q", stdout.String(), wantPrefix+"\n")
+	wantPrefix := "cd " + umbrellaRoot + " && grok --rules "
+	if !strings.HasPrefix(got, wantPrefix) || !strings.Contains(got, filepath.Join(umbrellaRoot, "AGENTS.md")) {
+		t.Fatalf("launch --print grok stdout = %q, want prefix %q with AGENTS.md pointer", stdout.String(), wantPrefix)
 	}
 }
 

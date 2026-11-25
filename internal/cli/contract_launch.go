@@ -34,14 +34,17 @@ func (a app) runContractHarness(h harness.Harness, binary string, args []string,
 	if runtime.GOOS == "windows" {
 		delivery = "unsupported"
 		message = "Native Windows live adapters are not verified; restart or manually reload the contract."
-	} else if h != harness.ClaudeCode && h != harness.Codex {
+	} else if h != harness.ClaudeCode && h != harness.Codex && h != harness.Antigravity {
 		delivery = "unsupported"
 		message = "This harness has no verified live contract adapter; restart or manually reload the contract."
 	} else {
 		version, probeErr := a.probeContractHarness(binary)
 		minimum := [3]int{0, 163, 0}
-		if h == harness.ClaudeCode {
+		switch h {
+		case harness.ClaudeCode:
 			minimum = [3]int{2, 1, 310}
+		case harness.Antigravity:
+			minimum = [3]int{1, 5, 15}
 		}
 		if probeErr != nil || !contractVersionAtLeast(version, minimum) {
 			delivery = "unsupported"
@@ -54,9 +57,16 @@ func (a app) runContractHarness(h harness.Harness, binary string, args []string,
 			if err != nil {
 				return err
 			}
-			adapterArgs, err = contractAdapterArgs(home, h, executable)
-			if err != nil {
-				return err
+			if h == harness.Antigravity {
+				if hookErr := a.ensureAntigravityHooksWithNotice(home); hookErr != nil {
+					delivery = "unsupported"
+					message = fmt.Sprintf("Could not install Antigravity live contract hooks: %v", hookErr)
+				}
+			} else {
+				adapterArgs, err = contractAdapterArgs(home, h, executable)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -160,6 +170,17 @@ func contractResumeTarget(h harness.Harness, args []string) string {
 				if conversationIDPattern.MatchString(next) {
 					return next
 				}
+			}
+			return ""
+		case h == harness.Antigravity && (strings.HasPrefix(arg, "--resume=") || strings.HasPrefix(arg, "--conversation=")):
+			_, value, _ := strings.Cut(arg, "=")
+			if conversationIDPattern.MatchString(value) {
+				return value
+			}
+			return ""
+		case h == harness.Antigravity && (arg == "--resume" || arg == "--conversation" || arg == "-r"):
+			if i+1 < len(args) && conversationIDPattern.MatchString(args[i+1]) {
+				return args[i+1]
 			}
 			return ""
 		}

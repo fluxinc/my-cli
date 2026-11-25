@@ -23,12 +23,14 @@ const (
 // spec is the single source of harness facts. Methods stay I/O-free so
 // tests can exercise resolution without touching the real home directory.
 type spec struct {
-	name         Harness
-	aliases      []string
-	command      string
-	commands     []string
-	configDir    []string
-	loginMarkers [][]string
+	name            Harness
+	aliases         []string
+	command         string
+	commands        []string
+	configDir       []string
+	presenceDir     []string
+	legacySkillDirs [][]string
+	loginMarkers    [][]string
 	// promptFlag is empty for a positional initial prompt. Non-empty values
 	// are passed as a flag name immediately before the prompt string.
 	promptFlag   string
@@ -66,13 +68,20 @@ var specs = []spec{
 		promptFlag: "--prompt",
 	},
 	{
-		name:      Antigravity,
-		aliases:   []string{"agy"},
-		command:   "agy",
-		configDir: []string{".agents"},
+		name:        Antigravity,
+		aliases:     []string{"agy"},
+		command:     "agy",
+		configDir:   []string{".gemini", "config"},
+		presenceDir: []string{".gemini"},
+		legacySkillDirs: [][]string{
+			{".agents", "skills"},
+			{".gemini", "skills"},
+			{".gemini", "antigravity-cli", "skills"},
+		},
 		loginMarkers: [][]string{
 			{".gemini", "antigravity", "user_settings.pb"},
 			{".gemini", "antigravity", "installation_id"},
+			{".gemini", "antigravity-cli", "user_settings.pb"},
 			{".antigravity", "auth.json"},
 		},
 		promptFlag:   "--prompt-interactive",
@@ -217,9 +226,37 @@ func (h Harness) ConfigDir(home string) string {
 	return joinHome(home, s.configDir)
 }
 
+// PresenceDir returns the directory whose existence indicates this harness is
+// installed for a user, when it differs from ConfigDir (for example Antigravity
+// creates ~/.gemini before ~/.gemini/config exists). Defaults to ConfigDir.
+func (h Harness) PresenceDir(home string) string {
+	s, ok := lookup(h)
+	if !ok {
+		return ""
+	}
+	if len(s.presenceDir) != 0 {
+		return joinHome(home, s.presenceDir)
+	}
+	return h.ConfigDir(home)
+}
+
 // SkillTargetPath returns where a skill directory should land for a harness.
 func (h Harness) SkillTargetPath(home, skillName string) string {
 	return filepath.Join(h.ConfigDir(home), "skills", skillName)
+}
+
+// LegacySkillTargetPaths returns older global skill locations for this harness
+// that should be cleaned up when My AI-managed self-skills are migrated.
+func (h Harness) LegacySkillTargetPaths(home, skillName string) []string {
+	s, ok := lookup(h)
+	if !ok || len(s.legacySkillDirs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(s.legacySkillDirs))
+	for _, parts := range s.legacySkillDirs {
+		out = append(out, filepath.Join(joinHome(home, parts), skillName))
+	}
+	return out
 }
 
 // ReadsAgentsSkills reports whether the harness reads launch-root

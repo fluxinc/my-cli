@@ -344,6 +344,11 @@ func (a app) runSetup(args []string) (err error) {
 		return err
 	}
 	skillResults = append(skillResults, selfSkillResults...)
+	if !opts.print && harnessSelected(hs, harness.Antigravity) && (!opts.all || antigravityPresentInHome(opts.home)) {
+		if err := a.ensureAntigravityHooksWithNotice(opts.home); err != nil {
+			fmt.Fprintf(a.stderr, "warning: could not install Antigravity live contract hooks: %v\n", err)
+		}
+	}
 	if opts.jsonOut {
 		if err := printJSON(a.stdout, struct {
 			Umbrella umbrella.Workspace     `json:"umbrella"`
