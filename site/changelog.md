@@ -4,6 +4,27 @@
 
 ### Added
 
+- The first launch after the organization manifest changes now tells each
+  person what changed since they were last told: contract rules added,
+  amended or retracted; guidance files, skills, tools, services, mounts,
+  policies and roles added, removed or updated; other manifest settings that
+  changed; and links to the pull requests and the whole range.
+  - The summary is printed on the terminal. When `my` owns the first prompt
+    (no harness arguments after the harness name), the agent is also asked
+    to run `my changes --since FROM --to TO --all` and go over it with you
+    before anything else. The rule text never goes into the harness command
+    line.
+  - It counts as seen, per user, once the harness has started with it. A
+    launch that passes its own harness arguments, `--print`, or a failed
+    start leaves it pending. A range that cannot be read in full is shown
+    but never recorded, so it is retried. Your first launch records a
+    starting point instead of listing history.
+  - `my changes` lists pending changes and records them as seen. Add `--all` for
+    the full listing. Use `--peek` or `--since REV [--to REV]` to read without
+    recording. Use `--reset` to make the current revision your starting point.
+  - The generated guidance tells agents to relay such a summary, to run
+    `my changes` when a session opened without one, and to work from the
+    purpose of a rule or request, asking when the purpose is missing.
 - A launch into a session now joins that session's Talking Stick room when
   `tt` is installed, instead of the umbrella's room. `my` runs
   `tt room ensure <session path>` and sets `TT_ROOM` on the harness to the

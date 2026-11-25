@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/fluxinc/my-cli/internal/attempt"
+	"github.com/fluxinc/my-cli/internal/changenotice"
 	"github.com/fluxinc/my-cli/internal/guidance"
 	"github.com/fluxinc/my-cli/internal/harness"
 	"github.com/fluxinc/my-cli/internal/selfskill"
@@ -151,6 +152,8 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 	if err != nil {
 		return err
 	}
+	// The arguments the caller passed to the harness, before my adds a prompt.
+	callerArgs := append([]string(nil), harnessArgs...)
 	if initialPrompt != "" {
 		promptArgs, err := initialPromptArgs(h, initialPrompt)
 		if err != nil {
@@ -318,6 +321,37 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 		return err
 	}
 	a.attemptStartupNotice(root)
+	notice, claim, baseline := a.launchChangeNotice(opts.home, doc.ref)
+	if baseline != nil {
+		a.onHarnessStarted = baseline
+	}
+	if notice != nil {
+		fmt.Fprintln(a.stderr)
+		fmt.Fprint(a.stderr, changenotice.Render(*notice))
+		// The notice can ride the first prompt only when my owns that prompt:
+		// a caller's own arguments may already hold a prompt or a resume.
+		if len(callerArgs) == 0 || initialPrompt != "" {
+			promptArgs, err := initialPromptArgs(h, changesPrompt(doc.ref.Name, opts.home, *notice, initialPrompt))
+			if err != nil {
+				claim.release()
+				return err
+			}
+			harnessArgs = append(callerArgs, promptArgs...)
+			if notice.Incomplete {
+				// Nothing will be recorded, so nothing is held back.
+				claim.release()
+			} else {
+				// Recorded at start; a launch that never starts lets go.
+				a.onHarnessStarted = claim.seen
+				defer claim.release()
+			}
+			fmt.Fprintf(a.stderr, "notice\tchanges\t%s will go over these changes with you first\n", commandName)
+		} else {
+			claim.release()
+			fmt.Fprintln(a.stderr, "notice\tchanges\tthis launch passes its own harness arguments, so the agent was not asked to go over these changes; they stay pending until you or the agent run my changes")
+		}
+		fmt.Fprintln(a.stderr)
+	}
 	return a.withAttempt(attemptLaunch{harness: string(h), root: root, dir: targetDir, goal: opts.goal, ttRoom: room.Pin}, func(a app) error {
 		return a.runContractHarness(h, binary, harnessArgs, targetDir, opts.home, doc.ref.Name, root)
 	})
@@ -987,10 +1021,10 @@ func (a app) probeCursorAgent(path string) (bool, error) {
 
 func (a app) runHarness(path string, args []string, dir string) error {
 	if a.execHarnessEnvironment != nil {
-		return a.execHarnessEnvironment(path, args, dir, a.harnessEnvironment)
+		return a.harnessSeamStarted(a.execHarnessEnvironment(path, args, dir, a.harnessEnvironment))
 	}
 	if a.execHarness != nil {
-		return a.execHarness(path, args, dir)
+		return a.harnessSeamStarted(a.execHarness(path, args, dir))
 	}
 	cmd := exec.Command(path, args...)
 	if a.harnessEnvironment != nil {
@@ -1008,6 +1042,9 @@ func (a app) runHarness(path string, args []string, dir string) error {
 	if a.onHarnessStart != nil {
 		a.onHarnessStart(cmd.Process.Pid)
 	}
+	if a.onHarnessStarted != nil {
+		a.onHarnessStarted()
+	}
 	if err := cmd.Wait(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
@@ -1016,4 +1053,14 @@ func (a app) runHarness(path string, args []string, dir string) error {
 		return err
 	}
 	return nil
+}
+
+// harnessSeamStarted treats a test seam's run as started unless it failed
+// before the child existed: an exit status means the child ran.
+func (a app) harnessSeamStarted(err error) error {
+	var exit exitCodeError
+	if a.onHarnessStarted != nil && (err == nil || errors.As(err, &exit)) {
+		a.onHarnessStarted()
+	}
+	return err
 }

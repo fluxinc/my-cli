@@ -78,7 +78,10 @@ type app struct {
 	sessionRoomTimeout time.Duration
 	// onHarnessStart, when set, is told the pid of a harness child this
 	// process started, before waiting for it.
-	onHarnessStart       func(pid int)
+	onHarnessStart func(pid int)
+	// onHarnessStarted runs once a harness child has started, for work that
+	// must happen only when the launch really went ahead.
+	onHarnessStarted     func()
 	updateSource         selfupdate.Source
 	updateNow            func() time.Time
 	updateCurrentVersion string
@@ -231,6 +234,8 @@ func (a app) run(args []string) error {
 		return a.runRoles(args[2:])
 	case "contract":
 		return a.runContract(args[2:])
+	case "changes":
+		return a.runChanges(args[2:])
 	case "admin":
 		return a.runAdmin(args[2:])
 	default:
@@ -326,6 +331,7 @@ Usage:
   my roles list [--manifest NAME] [--json]
   my roles get <id> [--manifest NAME] [--json]
   my contract list [--manifest NAME] [--json]
+  my changes [--since REV] [--peek] [--json] [--manifest NAME]
   my doctor [--no-fetch] [--fix] [--json]
   my access check --dry-run [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]
   my access activate --yes [--manifest NAME] [--home DIR] [--umbrella DIR] [--json]

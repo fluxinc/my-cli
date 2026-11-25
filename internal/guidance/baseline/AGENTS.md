@@ -42,6 +42,20 @@ Organization contract updates:
 - If a `my` command prints an organization contract update, apply the new
   snapshot and stop applying explicitly retracted rules, within the existing
   instruction hierarchy. A delivery receipt proves emission, not acceptance.
+- If the session opens with a summary of changes to the organization
+  manifest, tell the user about them in plain words before anything else and
+  give them every link in it. If it opened without one, run `my changes` once
+  before your first task: it shows anything the user has not been told yet and
+  records it as seen, so relay what it prints.
+
+Working with purpose:
+
+- Rules, roles and requests exist for a reason. Serve the reason, not only
+  the wording, and check the result in the situation it was requested for.
+- When you hand work to someone else, say who will use the result, what they
+  need to do with it, which earlier decisions matter, and how to tell it works.
+- If a missing detail would change what you build or how you test it, ask the
+  sender before building.
 
 Fleet work contract:
 

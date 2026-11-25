@@ -180,6 +180,54 @@ Live delivery uses a separate launch instance and an emitted snapshot for each
 harness conversation. An emission receipt proves only that the CLI wrote the
 complete update into the hook path, not that the harness accepted or followed it.
 
+### Change notice
+
+Each person is told what changed in the manifest since they were last told.
+At the first launch after the manifest moves, `my` prints the changes on the
+terminal:
+
+```text
+Changes to the acme organization manifest since your last session (23c71c9..4793afa):
+Contract rules:
+  - Amended: "Ask before publishing an image or its layered source file, because a published file cannot be taken back and a source file can hold sketches the artist left out." (was "Ask before publishing an image, because a published file cannot be taken back.")
+  - Added: "Credit every collaborator by name in the caption."
+Tools:
+  - Added magick: Convert artwork between print and web formats
+```
+
+The summary covers contract rules added, amended or retracted; guidance files,
+skills, tools, services, mounts, policies and roles added, removed or updated;
+and other top-level manifest settings that changed. A GitHub manifest adds
+links to the pull requests in the range and to the compare view of the whole
+range, or to both commits when the history diverged.
+
+When `my` owns the harness's first prompt, meaning no harness arguments follow
+the harness name, the agent is also asked to run a read-only
+`my changes --since FROM --to TO --all` and go over the changes with you before
+anything else. The prompt carries only that command, never rule text, so the
+rules stay out of the process list. Claude Code 2.1.331 and Codex 0.171.0 were
+verified with real interactive launches.
+
+- **Seen.** The record advances, per user and manifest, once the harness has
+  started with the notice. State lives under
+  `~/.local/share/my-cli/state/notice/<manifest>.json`.
+- **Pending.** A launch that passes its own harness arguments (a prompt or a
+  resume), `--print`, or a failed start leaves the changes pending.
+- **Overlapping launches.** Two launches starting together present the changes
+  once. A launch that dies before starting does not hold them back.
+- **Unreadable ranges.** If the revision you last saw cannot be read, for
+  example after a history rewrite or in a shallow checkout, the notice says
+  so, is never recorded, and is retried.
+- **First launch.** It records a starting point and lists nothing.
+
+```sh
+my changes                        # list pending changes and record them as seen
+my changes --peek                 # list without recording
+my changes --since REV [--to REV] # list any range; records nothing
+my changes --all                  # list pending changes in full and record them as seen
+my changes --reset                # start over from the current revision
+```
+
 ### Live contract delivery
 
 New `my ai` launches register independently of workspace session IDs. The
