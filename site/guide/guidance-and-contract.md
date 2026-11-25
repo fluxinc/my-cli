@@ -212,8 +212,7 @@ verified with real interactive launches.
   started with the notice. State lives under
   `~/.local/share/my-cli/state/notice/<manifest>.json`.
 - **Pending.** A launch that passes its own harness arguments (a prompt or a
-  resume), `--print`, or a failed start leaves the changes pending, and the
-  terminal says so.
+  resume), `--print`, or a failed start leaves the changes pending.
 - **Overlapping launches.** Two launches starting together present the changes
   once. A launch that dies before starting does not hold them back.
 - **Unreadable ranges.** If the revision you last saw cannot be read, for
@@ -225,7 +224,7 @@ verified with real interactive launches.
 my changes                        # list pending changes and record them as seen
 my changes --peek                 # list without recording
 my changes --since REV [--to REV] # list any range; records nothing
-my changes --all                  # list everything in full
+my changes --all                  # list pending changes in full and record them as seen
 my changes --reset                # start over from the current revision
 ```
 

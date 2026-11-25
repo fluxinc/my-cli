@@ -19,9 +19,9 @@
     start leaves it pending. A range that cannot be read in full is shown
     but never recorded, so it is retried. Your first launch records a
     starting point instead of listing history.
-  - `my changes` lists pending changes and records them as seen; `--peek`,
-    `--since REV [--to REV]` and `--all` only list, and `--reset` makes the
-    current revision your starting point.
+  - `my changes` lists pending changes and records them as seen. Add `--all` for
+    the full listing. Use `--peek` or `--since REV [--to REV]` to read without
+    recording. Use `--reset` to make the current revision your starting point.
   - The generated guidance tells agents to relay such a summary, to run
     `my changes` when a session opened without one, and to work from the
     purpose of a rule or request, asking when the purpose is missing.
