@@ -1,17 +1,85 @@
 # my
 
-`my` is a small, dependency-free CLI that bootstraps an AI agent's working
-environment from a single organization manifest. One command turns a fresh
-machine into one where installed AI harnesses — Claude Code, Codex, OpenCode,
-Antigravity, Grok, and Cursor — share the same company context,
-manifest-defined launch profiles, and local tooling.
+`my` sets up the organization that a group of AI agents works inside. It gives
+every agent the same contract, the same roles, the same skills and the same
+reference material, whichever harness the agent runs in: Claude Code, Codex,
+OpenCode, Antigravity, Grok or Cursor. All of it comes from one organization
+manifest, a Git repository you control.
 
-It is built for a world where **agents are the primary operators**. Humans own
-intent — goals, products, decisions — and express it as content in a Git repo.
-`my` is the deterministic, machine-friendly bridge that gets that content and
-those capabilities onto every agent surface, the same way, every time.
+Documentation: https://my-cli.com/ · Rooms: [shrooms](https://github.com/mostlydev/shrooms#readme)
 
-Documentation: https://my-cli.com/
+## Rooms, and why the work is split into them
+
+Put every agent in one shared space, with nothing separating one project from
+another, and their contexts drift together. Each agent reads every other
+agent's messages and carries every other piece of work along with its own. The
+shared context converges on all of it at once, then collapses: no agent still
+holds the working detail of its own subject.
+
+People are no different. A team in its own workshop keeps its craft. Teams
+that share one crowded room spend their attention on each other, and they work
+together best by sending each other complete briefs.
+
+So agents work in rooms. A room is one folder's shared space: its members, its
+messages and one talking stick, the single turn to change shared files. A room
+has its own identity and its own topic, and it keeps the knowledge of that
+topic. Rooms coordinate by asking each other, not by merging.
+[shrooms](https://github.com/mostlydev/shrooms#readme) (the `tt` command) runs
+the rooms. `my` makes every room part of the same organization.
+
+Picture a street of small workshops. In each one, a few agents work at their
+benches on one piece of work and take turns changing what is on the shared
+table. Every workshop keeps the same house rules, draws on the same library
+and hands finished work on through the same doors. When the house rules
+change, each person is told what changed the next time they start work.
+
+### A piece of work gets its own room
+
+A my-cli session is one piece of work: a folder under `sessions/<id>` with its
+own Git worktree of each content mount, its own scratch space and its own
+generated guidance. When `tt` is installed, a my-cli session gets its own room.
+`--print` shows what a launch would run without starting it (paths shortened):
+
+```console
+$ my ai --new-session --print codex
+started session 2026-11-25-089d (path: …/acme/sessions/2026-11-25-089d)
+  join (another harness): my session join 2026-11-25-089d <harness>
+  finish:                 my session finish 2026-11-25-089d --land|--publish|--discard
+room	…/acme/sessions/2026-11-25-089d	created	people join with: tt chat --in …/acme/sessions/2026-11-25-089d
+cd …/acme/sessions/2026-11-25-089d && TT_ROOM=…/acme/sessions/2026-11-25-089d codex
+```
+
+Without `--print`, `my` starts the harness itself, pointed at that room. Other
+agents join the same session and room with `my session join <id> <harness>`,
+and a person joins the conversation with the `tt chat --in` line. Work leaves
+the session only through `my session finish`.
+
+### What every room shares
+
+- **The contract.** A short list of rules every agent in the organization
+  follows. Put the reason in the rule: an agent that knows why a rule exists
+  can serve its purpose in a case the wording did not foresee.
+- **An organization role**, chosen for an umbrella with `my setup --role`. It
+  decides which guidance, mounts, skills, tools and services a launch loads.
+  It is not a room role. Room roles (architect, implementer, tester, reviewer,
+  scribe) are set per room in shrooms and say what a member is responsible for
+  there.
+- **Skills and reference material.** The organization's skills, its handbook
+  and its records, mounted into the umbrella.
+- **The change notice.** When the manifest changes, the next session start
+  shows each person what changed, with a link to the pull request.
+
+### Briefs between rooms
+
+A room cannot see another room's conversation, so a message to a room has to
+carry what the room needs: who will use the result, what they need to do with
+it, which earlier decisions matter, and how to tell it works. It should be
+enough for the room to carry on if the sender went away. A member that cannot
+work out why something is wanted asks the sender before building. What counts
+is that the result works for its purpose, not that a list of instructions was
+followed. The generated guidance tells every agent this.
+
+## Install
 
 Bootstrap prerequisites: a POSIX shell and standard utilities (including `tty`),
 `curl`, gzip-capable `tar` (`gzip` on GNU systems), a SHA256 verifier (`sha256sum`
@@ -72,7 +140,7 @@ so agents know how to use the CLI itself.
 
 ## The Model
 
-`my` has eight concepts. Everything in the CLI is one of these:
+`my` has ten concepts. Everything in the CLI is one of these:
 
 | Concept | What it is |
 |---|---|
@@ -84,6 +152,8 @@ so agents know how to use the CLI itself.
 | **Catalog** | JSON inventories for products (business entities, which may link repos) and repos (the organization's repositories). Users opt specific repos into their umbrella on demand. Customer identities are mounted workspace records, not manifest catalog rows. |
 | **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared and role-specific fragments. `CLAUDE.md` points to the same file. |
 | **Tool** | An external executable the org depends on. `my` reports presence and install hints — it never silently installs tools. |
+| **Contract** | The organization's rules for agents, kept in the manifest (inline or in a contract file). Every launch writes them into the generated guidance; harnesses with a live adapter also receive changes during a session. |
+| **Room** | One folder's shared space in [shrooms](https://github.com/mostlydev/shrooms#readme): members, messages and the talking stick. A my-cli session gets its own room when `tt` is installed. |
 
 Skills arrive from two places, split by a public/private line. The `my-cli`
 self-skill is **public** and travels **inside the CLI binary** — it is
