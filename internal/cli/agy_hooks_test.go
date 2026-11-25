@@ -170,6 +170,10 @@ func TestAntigravityContractHooksRefusesUserEditedOrCollidingGroup(t *testing.T)
 			name: "user modified managed group",
 			body: `{"my-cli-contract":{"SessionStart":[{"type":"command","command":"if [ -n \"${MYCLI_CONTRACT_INSTANCE:-}\" ]; then /usr/local/bin/my contract pending --hook antigravity --event SessionStart; else printf '{}\\n'; fi","timeout":10}],"PreInvocation":[{"type":"command","command":"if [ -n \"${MYCLI_CONTRACT_INSTANCE:-}\" ]; then /usr/local/bin/my contract pending --hook antigravity --event PreInvocation; else printf '{}\\n'; fi","timeout":10}],"Stop":[{"type":"command","command":"custom-stop","timeout":5}]}}` + "\n",
 		},
+		{
+			name: "user added extra flag after executable",
+			body: `{"my-cli-contract":{"SessionStart":[{"type":"command","command":"if [ -n \"${MYCLI_CONTRACT_INSTANCE:-}\" ]; then /bin/my --custom contract pending --hook antigravity --event SessionStart; else printf '{}\\n'; fi","timeout":10}],"PreInvocation":[{"type":"command","command":"if [ -n \"${MYCLI_CONTRACT_INSTANCE:-}\" ]; then /bin/my --custom contract pending --hook antigravity --event PreInvocation; else printf '{}\\n'; fi","timeout":10}]}}` + "\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -227,6 +231,51 @@ func TestAntigravityContractHooksSerializesConcurrentEdits(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "9007199254740993") || !isManagedAntigravityHookGroup(parsed[antigravityContractHookGroup]) {
 		t.Fatalf("unexpected final hooks.json:\n%s", string(data))
+	}
+}
+
+func TestAntigravityContractHooksSpecialCharactersAndRelocation(t *testing.T) {
+	home := t.TempDir()
+	hooksPath := filepath.Join(home, ".gemini", "config", "hooks.json")
+
+	// Special shell characters (& and space, plus apostrophe) must round-trip cleanly across install, re-install, relocation, and removal.
+	firstExec := "/Studio A&B/bin/my"
+	installed, _, err := ensureAntigravityContractHooks(home, firstExec)
+	if err != nil || !installed {
+		t.Fatalf("first install(%q) = (%v, %v), want (true, nil)", firstExec, installed, err)
+	}
+	installed, _, err = ensureAntigravityContractHooks(home, firstExec)
+	if err != nil || installed {
+		t.Fatalf("second install(%q) = (%v, %v), want (false, nil)", firstExec, installed, err)
+	}
+
+	// Genuine executable relocation updates the managed group without treating it as user-modified.
+	relocatedExec := "/Studio O'Brien & Co/bin/my"
+	installed, _, err = ensureAntigravityContractHooks(home, relocatedExec)
+	if err != nil || installed {
+		t.Fatalf("relocated install(%q) = (%v, %v), want (false, nil)", relocatedExec, installed, err)
+	}
+	data, err := os.ReadFile(hooksPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		Group struct {
+			PreInvocation []struct {
+				Command string `json:"command"`
+			} `json:"PreInvocation"`
+		} `json:"my-cli-contract"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Group.PreInvocation) != 1 || !strings.Contains(parsed.Group.PreInvocation[0].Command, shellQuote(relocatedExec)) || strings.Contains(string(data), "Studio A&B") {
+		t.Fatalf("relocation did not update executable path cleanly:\n%s", string(data))
+	}
+
+	removed, _, err := removeAntigravityContractHooks(home, false)
+	if err != nil || !removed {
+		t.Fatalf("remove after relocation = (%v, %v), want (true, nil)", removed, err)
 	}
 }
 

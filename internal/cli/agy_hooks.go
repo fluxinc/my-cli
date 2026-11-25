@@ -19,8 +19,8 @@ const antigravityContractHookGroup = "my-cli-contract"
 // ensureAntigravityContractHooks installs or updates the env-gated My AI live
 // contract hook group in <home>/.gemini/config/hooks.json while preserving all
 // foreign hook groups byte-for-byte, preserving dotfile symlinks, refusing to
-// overwrite user-edited my-cli-contract groups, and serializing concurrent
-// updates with an exclusive file lock.
+// overwrite user-edited my-cli-contract groups, and serializing concurrent my
+// writers with an exclusive file lock.
 func ensureAntigravityContractHooks(home, executable string) (installed bool, hooksPath string, err error) {
 	if home == "" {
 		home, err = os.UserHomeDir()
@@ -241,22 +241,26 @@ func buildAntigravityContractHookGroup(executable string) (json.RawMessage, erro
 			{"type": "command", "command": hookCmd("PreInvocation"), "timeout": 10},
 		},
 	}
-	raw, err := json.Marshal(group)
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(group); err != nil {
 		return nil, err
 	}
-	return json.RawMessage(raw), nil
+	return json.RawMessage(bytes.TrimSpace(buf.Bytes())), nil
 }
 
 // isManagedAntigravityHookGroup verifies that an existing my-cli-contract
-// entry matches My AI's exact managed hook schema and commands (allowing only
-// the quoted executable path to differ across upgrades). User-created or
-// user-edited groups fail this check and are preserved untouched.
+// entry matches My AI's exact managed hook schema and commands for one
+// canonical shell-quoted absolute executable path (allowing the executable
+// path to relocate across upgrades). User-created or user-edited groups fail
+// this check and are preserved untouched.
 func isManagedAntigravityHookGroup(raw json.RawMessage) bool {
 	var events map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &events); err != nil || len(events) != 2 {
 		return false
 	}
+	var commonExec string
 	for _, event := range []string{"SessionStart", "PreInvocation"} {
 		entriesRaw, ok := events[event]
 		if !ok {
@@ -286,12 +290,54 @@ func isManagedAntigravityHookGroup(raw json.RawMessage) bool {
 		if !strings.HasPrefix(cmd, prefix) || !strings.HasSuffix(cmd, suffix) {
 			return false
 		}
-		execPart := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(cmd, prefix), suffix))
-		if execPart == "" || strings.ContainsAny(execPart, ";|&\n") {
+		execPart := strings.TrimSuffix(strings.TrimPrefix(cmd, prefix), suffix)
+		unquoted, ok := parseCanonicalShellQuotedPath(execPart)
+		if !ok || !filepath.IsAbs(unquoted) {
+			return false
+		}
+		if commonExec == "" {
+			commonExec = unquoted
+		} else if commonExec != unquoted {
 			return false
 		}
 	}
-	return true
+	return commonExec != ""
+}
+
+// parseCanonicalShellQuotedPath parses a single argument produced by shellQuote
+// and rejects unquoted whitespace, extra arguments, or non-canonical quoting.
+func parseCanonicalShellQuotedPath(token string) (string, bool) {
+	if token == "" {
+		return "", false
+	}
+	if !strings.HasPrefix(token, "'") {
+		if shellQuote(token) != token {
+			return "", false
+		}
+		return token, true
+	}
+	if len(token) < 2 || !strings.HasSuffix(token, "'") {
+		return "", false
+	}
+	inner := token[1 : len(token)-1]
+	var b strings.Builder
+	for i := 0; i < len(inner); {
+		if inner[i] == '\'' {
+			if strings.HasPrefix(inner[i:], `'\''`) {
+				b.WriteByte('\'')
+				i += 4
+				continue
+			}
+			return "", false
+		}
+		b.WriteByte(inner[i])
+		i++
+	}
+	unquoted := b.String()
+	if unquoted == "" || shellQuote(unquoted) != token {
+		return "", false
+	}
+	return unquoted, true
 }
 
 func mergeAntigravityContractHooks(existing []byte, hooksPath, executable string) (merged []byte, changed bool, newlyAdded bool, err error) {
