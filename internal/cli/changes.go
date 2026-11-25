@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -193,32 +194,33 @@ func (c noticeClaim) release() {
 }
 
 // launchChangeNotice returns the changes this person has not been told
-// about and a claim on presenting them, or nil. A first launch records the
-// current revision as the starting point and reports nothing. A launch that
-// overlaps another one presenting the same range stays quiet. Failures are
-// printed and never stop a launch.
-func (a app) launchChangeNotice(home string, ref manifest.Ref) (*changenotice.Notice, *noticeClaim) {
+// about and a claim on presenting them, or nil. For a person with no record
+// yet it returns instead a baseline function to run once the harness has
+// started, which records the current revision as the starting point. A
+// launch that overlaps another one presenting the same range stays quiet.
+// Failures are printed and never stop a launch.
+func (a app) launchChangeNotice(home string, ref manifest.Ref) (*changenotice.Notice, *noticeClaim, func()) {
 	stateHome, err := resolveHome(home)
 	if err != nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	head, err := manifestHead(ref.LocalPath)
 	if err != nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	token, err := changenotice.NewToken()
 	if err != nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	now := time.Now()
 	pid := os.Getpid()
 	processStart, _, _ := attempt.ProcessStart(pid)
 	var claim *noticeClaim
-	busy := false
+	busy, first := false, false
 	_, err = changenotice.Update(stateHome, ref.Name, func(s *changenotice.State, found bool) (bool, error) {
 		if !found {
-			s.Noticed, s.NoticedAt, s.Baseline = head, now.UTC().Format(time.RFC3339), true
-			return true, nil
+			first = true
+			return false, nil
 		}
 		if s.Noticed == head {
 			return false, nil
@@ -233,37 +235,66 @@ func (a app) launchChangeNotice(home string, ref manifest.Ref) (*changenotice.No
 	})
 	if err != nil {
 		fmt.Fprintf(a.stderr, "notice\tchanges\tcould not check which manifest changes you were shown: %v\n", err)
-		return nil, nil
+		return nil, nil, nil
+	}
+	if first {
+		return nil, nil, func() {
+			_, err := changenotice.Update(stateHome, ref.Name, func(s *changenotice.State, found bool) (bool, error) {
+				if found {
+					return false, nil
+				}
+				s.Noticed, s.NoticedAt, s.Baseline = head, time.Now().UTC().Format(time.RFC3339), true
+				return true, nil
+			})
+			if err != nil {
+				fmt.Fprintf(a.stderr, "notice\tchanges\tcould not record the manifest revision: %v\n", err)
+			}
+		}
 	}
 	if busy {
 		fmt.Fprintln(a.stderr, "notice\tchanges\tanother launch is presenting the latest manifest changes; run my changes to see them here")
-		return nil, nil
+		return nil, nil, nil
 	}
 	if claim == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	notice := manifestChangeNotice(ref, claim.from, claim.to)
 	if notice.Empty() && !notice.Incomplete {
 		// Only files nobody is told about changed (for example a README).
 		claim.seen()
-		return nil, nil
+		return nil, nil, nil
 	}
-	return &notice, claim
+	return &notice, claim, nil
 }
 
 // changesPrompt asks the agent to read the range itself, so the
-// organization's rule text never appears in the harness's command line.
+// organization's rule text never appears in the harness's command line. The
+// revisions come from a state file, so they are used only when both are full
+// Git object ids; otherwise, and for a range that could not be read, the
+// agent gets the read-only listing of pending changes, which explains what
+// went wrong and how to recover.
 func changesPrompt(manifestName, home string, notice changenotice.Notice, initialPrompt string) string {
 	command := []string{myCommandForAgent(), "changes", "--manifest", shellQuote(manifestName)}
 	if home != "" {
 		command = append(command, "--home", shellQuote(home))
 	}
-	command = append(command, "--since", notice.From, "--to", notice.To, "--all")
+	if !notice.Incomplete && validObjectID(notice.From) && validObjectID(notice.To) {
+		command = append(command, "--since", shellQuote(notice.From), "--to", shellQuote(notice.To), "--all")
+	} else {
+		command = append(command, "--peek", "--all")
+	}
 	prompt := "Before anything else, run `" + strings.Join(command, " ") + "` and tell me in plain words what changed in my organization's manifest since my last session, including every link it prints, so I can read the details. Then carry on."
 	if initialPrompt != "" {
 		prompt += "\n\n" + initialPrompt
 	}
 	return prompt
+}
+
+var objectIDPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
+
+// validObjectID reports whether s is a full SHA-1 or SHA-256 Git object id.
+func validObjectID(s string) bool {
+	return objectIDPattern.MatchString(s)
 }
 
 // myCommandForAgent is how an agent runs this same my: plain `my` when that
@@ -302,6 +333,10 @@ func manifestChangeNotice(ref manifest.Ref, from, to string) changenotice.Notice
 		notice.Changes = nil
 		notice.Links = changenotice.Links(web, webOK, "", to, nil, false)
 		return notice
+	}
+	if !validObjectID(from) {
+		notice.From = ""
+		return incomplete("The revision recorded as your last notice is not a valid commit id, so the changes cannot be listed. Run my contract list to read the rules in force, or my changes --reset to start from the current revision.")
 	}
 	if _, err := gitStdout(repo, "cat-file", "-e", from+"^{commit}"); err != nil {
 		return incomplete(fmt.Sprintf("The revision you last saw (%s) cannot be read from the local manifest checkout, so the changes cannot be listed yet. Run my sync to retry, my contract list to read the rules in force, or my changes --reset to start from the current revision.", changenotice.Short(from)))

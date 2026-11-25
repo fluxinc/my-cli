@@ -321,9 +321,11 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 		return err
 	}
 	a.attemptStartupNotice(root)
-	if notice, claim := a.launchChangeNotice(opts.home, doc.ref); notice != nil {
-		// Whatever happens below, this launch's reservation ends with it.
-		defer claim.release()
+	notice, claim, baseline := a.launchChangeNotice(opts.home, doc.ref)
+	if baseline != nil {
+		a.onHarnessStarted = baseline
+	}
+	if notice != nil {
 		fmt.Fprintln(a.stderr)
 		fmt.Fprint(a.stderr, changenotice.Render(*notice))
 		// The notice can ride the first prompt only when my owns that prompt:
@@ -331,14 +333,21 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 		if len(callerArgs) == 0 || initialPrompt != "" {
 			promptArgs, err := initialPromptArgs(h, changesPrompt(doc.ref.Name, opts.home, *notice, initialPrompt))
 			if err != nil {
+				claim.release()
 				return err
 			}
 			harnessArgs = append(callerArgs, promptArgs...)
-			if !notice.Incomplete {
+			if notice.Incomplete {
+				// Nothing will be recorded, so nothing is held back.
+				claim.release()
+			} else {
+				// Recorded at start; a launch that never starts lets go.
 				a.onHarnessStarted = claim.seen
+				defer claim.release()
 			}
 			fmt.Fprintf(a.stderr, "notice\tchanges\t%s will go over these changes with you first\n", commandName)
 		} else {
+			claim.release()
 			fmt.Fprintln(a.stderr, "notice\tchanges\tthis launch passes its own harness arguments, so the agent was not asked to go over these changes; they stay pending until you or the agent run my changes")
 		}
 		fmt.Fprintln(a.stderr)

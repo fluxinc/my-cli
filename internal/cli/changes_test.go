@@ -221,6 +221,14 @@ func TestChangeNoticeUnreadableRangeIsShownButRetried(t *testing.T) {
 	if got.err != nil || len(got.args) != 1 || !strings.Contains(got.stderr, "cannot be read from the local manifest checkout") {
 		t.Fatalf("launch err=%v args=%q stderr=%s", got.err, got.args, got.stderr)
 	}
+	// The agent gets a command that works: the read-only pending listing,
+	// which carries the recovery note and the link to the current revision.
+	if !strings.Contains(got.args[0], " --peek --all`") || strings.Contains(got.args[0], "--since") {
+		t.Fatalf("recovery prompt = %s", got.args[0])
+	}
+	if report := runChangesJSON(t, f, "--peek", "--all"); !report.Incomplete || !strings.Contains(report.Note, "my changes --reset") || len(report.Links) != 1 || !strings.HasSuffix(report.Links[0], "/commit/"+head) {
+		t.Fatalf("the agent's recovery command = %#v", report)
+	}
 	if state := f.noticed(t); state.Noticed != gone || state.Reserved != nil {
 		t.Fatalf("an incomplete notice was recorded: %#v", state)
 	}
@@ -294,7 +302,14 @@ func TestChangeNoticeStaysPendingWhenTheLaunchPassesItsOwnArguments(t *testing.T
 	before := f.noticed(t).Noticed
 	head := f.amend(t)
 
-	got := f.launch(t, nil, "--", "resume", "--last")
+	got := f.launch(t, func([]string) error {
+		// Nobody presents these changes, so nothing may be held back while
+		// this resumed harness runs.
+		if state := f.noticed(t); state.Reserved != nil {
+			t.Fatalf("a pass-through launch holds a reservation while it runs: %#v", state.Reserved)
+		}
+		return nil
+	}, "--", "resume", "--last")
 	if got.err != nil {
 		t.Fatalf("launch: %v\n%s", got.err, got.stderr)
 	}
@@ -381,4 +396,48 @@ func runChangesJSON(t *testing.T, f changesFixture, extra ...string) changesRepo
 		t.Fatalf("decode %s: %v", stdout.String(), err)
 	}
 	return report
+}
+
+func TestChangeNoticeNeverTurnsAMalformedRecordIntoACommand(t *testing.T) {
+	f := setupChangesFixture(t)
+	f.launch(t, nil)
+	f.amend(t)
+	marker := filepath.Join(t.TempDir(), "ran")
+	bad := "x; touch " + marker + " $(touch " + marker + ")"
+	if err := changenotice.Record(f.home, "acme", bad, false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	got := f.launch(t, nil)
+	if got.err != nil || len(got.args) != 1 {
+		t.Fatalf("launch err=%v args=%q", got.err, got.args)
+	}
+	if strings.Contains(got.args[0], "touch") || strings.Contains(got.stderr, "touch") || !strings.Contains(got.args[0], " --peek --all`") {
+		t.Fatalf("malformed record reached the prompt or terminal:\nprompt: %s\nstderr: %s", got.args[0], got.stderr)
+	}
+	report := runChangesJSON(t, f, "--peek")
+	if !report.Incomplete || strings.Contains(report.Note, "touch") || report.From != "" {
+		t.Fatalf("my changes echoed the malformed record: %#v", report)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("the malformed record ran a command")
+	}
+	if state := f.noticed(t); state.Noticed != bad {
+		t.Fatalf("a notice that could not be read was recorded: %#v", state)
+	}
+}
+
+func TestChangeNoticeFirstBaselineWaitsForAStartedHarness(t *testing.T) {
+	f := setupChangesFixture(t)
+	got := f.launch(t, func([]string) error { return errors.New("exec format error") })
+	if got.err == nil {
+		t.Fatal("start failure lost")
+	}
+	if _, found, _ := changenotice.Load(f.home, "acme"); found {
+		t.Fatal("a launch that never started recorded the starting point")
+	}
+	head := strings.TrimSpace(gitCLIOutput(t, f.cache, "rev-parse", "HEAD"))
+	f.launch(t, nil)
+	if state := f.noticed(t); state.Noticed != head || !state.Baseline {
+		t.Fatalf("baseline after a started launch = %#v", state)
+	}
 }
