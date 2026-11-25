@@ -79,6 +79,9 @@ func usesInheritedOpenCodeConfig(h harness.Harness, opts launchCommandOpts, base
 
 func rerunnableMyAICommand(opts launchCommandOpts, harnessName string, callerArgs []string) string {
 	args := []string{"ai"}
+	if opts.onboard {
+		args = append(args, "--onboard")
+	}
 	if opts.home != "" {
 		args = append(args, "--home", opts.home)
 	}

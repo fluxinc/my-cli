@@ -677,7 +677,7 @@ func TestRunHarnessSetsPWDAndOpenCodeRepoGuidanceEnv(t *testing.T) {
 	// --print with inherited config: rerunnable my ai command, zero secret disclosure on stdout or stderr.
 	stdout.Reset()
 	stderr.Reset()
-	if err := aPrint.run([]string{"my", "ai", "--home", home, "--manifest", "acme", "--repo", "sample-service", "--print", "opencode", "--", "--model", "opencode/big-pickle"}); err != nil {
+	if err := aPrint.run([]string{"my", "ai", "--home", home, "--manifest", "acme", "--repo", "sample-service", "--setup", "--print", "opencode", "--", "--model", "opencode/big-pickle"}); err != nil {
 		t.Fatalf("opencode --repo --print (inherited config): %v", err)
 	}
 	if strings.Contains(stdout.String(), syntheticSecret) || strings.Contains(stderr.String(), syntheticSecret) {
@@ -686,7 +686,7 @@ func TestRunHarnessSetsPWDAndOpenCodeRepoGuidanceEnv(t *testing.T) {
 	if strings.Contains(stdout.String(), "OPENCODE_CONFIG_CONTENT=") {
 		t.Fatalf("--print serialized inherited OPENCODE_CONFIG_CONTENT: %q", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "my ai") || !strings.Contains(stdout.String(), "--repo sample-service") || !strings.Contains(stdout.String(), "opencode -- --model opencode/big-pickle") {
+	if !strings.Contains(stdout.String(), "--onboard") || !strings.Contains(stdout.String(), "my ai") || !strings.Contains(stdout.String(), "--repo sample-service") || !strings.Contains(stdout.String(), "opencode -- --model opencode/big-pickle") {
 		t.Fatalf("--print = %q, want rerunnable my ai command", stdout.String())
 	}
 
