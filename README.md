@@ -163,43 +163,75 @@ you control and appear only once you add and sync that manifest, so they can
 carry guidance specific to your team. Nothing organization-specific is ever
 baked into the public CLI.
 
-### Roles: setting up a bench
+## Organization roles
 
-An organization manifest can define named roles — separate benches for different kinds of work inside the same organization. A role declares two things: its `purpose` (what this bench is responsible for) and its scope (`mounts`, `skills`, `tools`, `services`, `guidance_paths`, and role-filtered `policies`).
+An organization manifest can define roles, one for each kind of work the
+organization does. A role declares its purpose and its scope: the mounts,
+skills, tools, services and guidance files that kind of work uses. Policies
+can name the roles they apply to. These are organization roles. Room roles in
+shrooms are a separate thing (see [What every room shares](#what-every-room-shares)).
 
-Giving a role a clear purpose matters as much as listing its tools. When an agent knows why a bench exists, it can handle edge cases in line with that job — and ask when a request leaves out the reason or asks for work outside its scope.
+Write the purpose as carefully as the scope. An agent that knows what a role
+is for can handle a case its guidance did not foresee, and can ask when a
+request leaves out its reason or falls outside the role.
 
-Assign a role during setup, or pick it interactively:
+Each umbrella has one selected role:
 
-```sh
-my roles list
-my setup --role operator
-my setup --interactive
+```console
+$ my roles list
+illustrator - Draws and prepares artwork for print and web.
+$ my setup --role illustrator
 ```
 
-`my` records the choice in `.my-cli/state.json` inside your umbrella and rebuilds every derived surface around it:
+`my` stores the choice in `.my-cli/state.json` in the umbrella and rebuilds
+what depends on it:
 
-- **Guidance (`AGENTS.md` / `CLAUDE.md`):** appends that role's `guidance_paths` fragments and lists only universal policies plus policies matching that role. Other roles' policies are never exposed.
-- **Organization skills:** `my ai` composes only the skills in the role's scope into the launch directory (unless you override with `--skills` or `--profile`, still closure-checked against the role's mounts, services, and tools).
-- **MCP services (`.mcp.json`):** includes only services visible to that role.
-- **Launch projection (`my compile --role <id>`):** fails closed if a skill depends on a mount, service, or tool outside the role.
+- **Guidance** (`AGENTS.md`, with `CLAUDE.md` pointing to it) adds the role's
+  `guidance_paths` and lists the policies that apply to everyone plus those
+  that name this role. Policies limited to other roles are left out.
+- **Organization skills.** `my ai` puts only the role's skills into the launch
+  directory. `--skills` or `--profile` choose differently, and the choice is
+  still checked against the mounts, services and tools the role has.
+- **MCP services** (`.mcp.json`) include only the services the role can see.
+- **`my compile --role <id>`** refuses a role whose skills need a mount,
+  service or tool the role does not include.
 
-Switching roles is a single `my setup --role <other>` followed by a fresh launch.
+To switch, run `my setup --role <other>` and start a new launch.
 
 ### What reaches each harness at launch
 
-When you run `my ai <harness>`, `my` reconciles three layers before starting the harness process:
+Before `my ai <harness>` starts the harness, it brings three things up to date:
 
-1. **Workspace guidance:** generated `AGENTS.md` (with `CLAUDE.md` aliased to it) at the umbrella root, and a session-specific `AGENTS.md` / `CLAUDE.md` inside `sessions/<id>` that wraps the umbrella guidance with session worktree rules.
-2. **Skills:** the bundled `my-cli` self-skill is installed into each harness's own global skills folder (`~/.claude/skills`, `~/.codex/skills`, `~/.gemini/config/skills` for Antigravity, `~/.grok/skills`, `~/.cursor/skills`, `~/.config/opencode/skills`). Organization skills from the manifest are materialized per launch under `<launch-root>/.agents/skills` (plus `.claude/skills` for Claude Code and `.grok/skills` for Grok) so different umbrellas and roles do not bleed into one another.
-3. **Contract and change delivery:** harnesses with a verified hook adapter receive live contract updates during long-running sessions; all harnesses receive pending manifest change notices on their first session start after the manifest moves.
+1. **Guidance.** The generated `AGENTS.md` at the umbrella root (with
+   `CLAUDE.md` pointing to it), and in a session, a session `AGENTS.md` and
+   `CLAUDE.md` that wrap the umbrella guidance with the session's worktree
+   rules.
+2. **Skills.** The bundled `my-cli` skill goes into each harness's own global
+   skills folder: `~/.claude/skills`, `~/.codex/skills`,
+   `~/.gemini/config/skills` for Antigravity, `~/.grok/skills`,
+   `~/.cursor/skills` and `~/.config/opencode/skills`. Organization skills are
+   placed per launch under `<launch-root>/.agents/skills`, plus
+   `.claude/skills` for Claude Code and `.grok/skills` for Grok, so umbrellas
+   and roles do not mix.
+3. **The contract and its changes.** Harnesses with a verified hook adapter
+   receive contract changes during a long session. When the manifest has
+   changed since a person was last told, the launch shows what changed and,
+   when `my` owns the first prompt, asks the agent to go over it first.
 
-Launch scope depends on where you start:
-- **Umbrella root (`my ai <harness>`):** loads umbrella guidance, role-scoped org skills, and `.mcp.json`.
-- **Work session (`my ai --new-session <harness>` or `my ai -r <id> <harness>`):** launches inside `sessions/<id>` with session-wrapped guidance, isolated mount worktrees, and session-scoped skills.
-- **Code repository (`my ai --repo <id> <harness>`):** launches inside `repos/<id>` with the repository's own files and `AGENTS.md`, while preserving organization contract visibility *(details finalized from final audit matrix once `--repo` fixes land)*.
+Where you start decides what the launch sees:
 
-*(Final per-harness verification table — instruction file read, skill dir read, `--repo` behavior, live-contract hook status — will be filled directly from the final PR head audit run.)*
+- **Umbrella root** (`my ai <harness>`): umbrella guidance, the role's
+  organization skills and `.mcp.json`.
+- **Session** (`my ai --new-session <harness>`, or `my ai -r <id> <harness>`
+  to resume one): runs in `sessions/<id>` with session guidance, the session's
+  own mount worktrees and its organization skills.
+- **Repository** (`my ai --repo <id> <harness>`): runs in `repos/<id>` with the
+  repository's own files and `AGENTS.md`, plus the organization guidance
+  *(details to be filled in from the final audit once the `--repo` fixes land)*.
+
+*(The per-harness table, covering the instruction file read, the skill folder
+read, `--repo` behavior and the live contract hook, is filled in from the
+final audit of the release candidate.)*
 
 ## Commands
 
