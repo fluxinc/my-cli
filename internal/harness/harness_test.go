@@ -16,7 +16,7 @@ func TestConfigDirAndSkillTargetPath(t *testing.T) {
 		{ClaudeCode, "/tmp/my-home/.claude", "/tmp/my-home/.claude/skills/demo"},
 		{Codex, "/tmp/my-home/.codex", "/tmp/my-home/.codex/skills/demo"},
 		{OpenCode, "/tmp/my-home/.config/opencode", "/tmp/my-home/.config/opencode/skills/demo"},
-		{Antigravity, "/tmp/my-home/.agents", "/tmp/my-home/.agents/skills/demo"},
+		{Antigravity, "/tmp/my-home/.gemini/config", "/tmp/my-home/.gemini/config/skills/demo"},
 		{Grok, "/tmp/my-home/.grok", "/tmp/my-home/.grok/skills/demo"},
 		{Cursor, "/tmp/my-home/.cursor", "/tmp/my-home/.cursor/skills/demo"},
 	}
@@ -164,7 +164,31 @@ func TestInitialPromptArgs(t *testing.T) {
 	if got := OpenCode.InitialPromptArgs("hello"); !reflect.DeepEqual(got, []string{"--prompt", "hello"}) {
 		t.Fatalf("OpenCode.InitialPromptArgs() = %#v", got)
 	}
+	if got := Antigravity.InitialPromptArgs("hello"); !reflect.DeepEqual(got, []string{"--prompt-interactive", "hello"}) {
+		t.Fatalf("Antigravity.InitialPromptArgs() = %#v, want --prompt-interactive flag", got)
+	}
 	if got := Grok.InitialPromptArgs(""); got != nil {
 		t.Fatalf("empty prompt args = %#v, want nil", got)
+	}
+}
+
+func TestAntigravityPresenceAndLegacySkillPaths(t *testing.T) {
+	home := "/tmp/my-home"
+	if got := Antigravity.PresenceDir(home); got != "/tmp/my-home/.gemini" {
+		t.Fatalf("Antigravity.PresenceDir() = %q, want /tmp/my-home/.gemini", got)
+	}
+	if got := Codex.PresenceDir(home); got != "/tmp/my-home/.codex" {
+		t.Fatalf("Codex.PresenceDir() = %q, want /tmp/my-home/.codex", got)
+	}
+	wantLegacy := []string{
+		"/tmp/my-home/.agents/skills/my-cli",
+		"/tmp/my-home/.gemini/skills/my-cli",
+		"/tmp/my-home/.gemini/antigravity-cli/skills/my-cli",
+	}
+	if got := Antigravity.LegacySkillTargetPaths(home, "my-cli"); !reflect.DeepEqual(got, wantLegacy) {
+		t.Fatalf("Antigravity.LegacySkillTargetPaths() = %#v, want %#v", got, wantLegacy)
+	}
+	if got := Codex.LegacySkillTargetPaths(home, "my-cli"); got != nil {
+		t.Fatalf("Codex.LegacySkillTargetPaths() = %#v, want nil", got)
 	}
 }

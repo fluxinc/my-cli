@@ -352,8 +352,9 @@ func (a app) runLaunchWithInitialPrompt(args []string, initialPrompt string) (er
 		}
 		fmt.Fprintln(a.stderr)
 	}
+	effectiveArgs := append(launchGuidanceArgs(h, opts, doc, root, targetDir, harnessArgs), harnessArgs...)
 	return a.withAttempt(attemptLaunch{harness: string(h), root: root, dir: targetDir, goal: opts.goal, ttRoom: room.Pin}, func(a app) error {
-		return a.runContractHarness(h, binary, harnessArgs, targetDir, opts.home, doc.ref.Name, root)
+		return a.runContractHarness(h, binary, effectiveArgs, targetDir, opts.home, doc.ref.Name, root)
 	})
 }
 
@@ -540,17 +541,25 @@ func (a app) ensureLaunchSelfSkill(h harness.Harness, home string) error {
 	if err != nil {
 		return err
 	}
-	if len(results) != 1 {
-		return fmt.Errorf("unexpected self-skill install result count: %d", len(results))
+	if len(results) == 0 {
+		return fmt.Errorf("unexpected self-skill install result count: 0")
 	}
-	result := results[0]
-	switch result.Status {
-	case skills.StatusInstalled, skills.StatusUpdated:
-		return nil
-	default:
-		a.printLaunchSelfSkillBlock(result)
+	installed := false
+	for _, result := range results {
+		switch result.Status {
+		case skills.StatusInstalled, skills.StatusUpdated:
+			installed = true
+		case skills.StatusMigrated:
+		default:
+			a.printLaunchSelfSkillBlock(result)
+			return errAlreadyPrinted
+		}
+	}
+	if !installed {
+		a.printLaunchSelfSkillBlock(results[0])
 		return errAlreadyPrinted
 	}
+	return nil
 }
 
 func (a app) printLaunchSelfSkillBlock(result skills.Result) {
@@ -641,6 +650,8 @@ Examples:
   my ai --repo sample-service codex
   my ai --print grok
   my ai grok
+  my ai --print antigravity
+  my ai agy
   my ai --print cursor
   my ai cursor
 
@@ -688,7 +699,7 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 			if i+1 < len(args) && !isFlagArg(args[i+1]) {
 				next := args[i+1]
 				if parsed, err := harness.Parse(next); err == nil {
-					return opts, string(parsed), args[i+2:], false, nil
+					return opts, string(parsed), stripLeadingArgSeparator(args[i+2:]), false, nil
 				}
 				opts.resumeSessionID = next
 				i++
@@ -732,10 +743,17 @@ func parseLaunchArgs(args []string) (launchCommandOpts, string, []string, bool, 
 		case isFlagArg(arg):
 			return opts, "", nil, false, fmt.Errorf("unknown my ai flag %q; put harness flags after the harness name", arg)
 		default:
-			return opts, arg, args[i+1:], false, nil
+			return opts, arg, stripLeadingArgSeparator(args[i+1:]), false, nil
 		}
 	}
 	return opts, harnessName, nil, false, nil
+}
+
+func stripLeadingArgSeparator(args []string) []string {
+	if len(args) > 0 && args[0] == "--" {
+		return args[1:]
+	}
+	return args
 }
 
 func setLaunchValue(opts *launchCommandOpts, name, value string) {

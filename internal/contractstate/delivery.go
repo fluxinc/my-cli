@@ -34,10 +34,11 @@ type Instance struct {
 }
 
 type HookInput struct {
-	SessionID string `json:"session_id"`
-	Event     string `json:"hook_event_name"`
-	Source    string `json:"source"`
-	AgentID   string `json:"agent_id"`
+	SessionID      string `json:"session_id"`
+	ConversationID string `json:"conversationId"`
+	Event          string `json:"hook_event_name"`
+	Source         string `json:"source"`
+	AgentID        string `json:"agent_id"`
 }
 
 var instanceIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
@@ -204,17 +205,33 @@ func fullSnapshotEvent(input HookInput) bool { return input.Event == "SessionSta
 // The state lock serializes concurrent hooks. It does not fetch or read Git.
 // A receipt proves emission into the hook path, never model acceptance.
 func Deliver(home, name, id, adapter string, input HookInput, w io.Writer) error {
-	if adapter != "claude" && adapter != "codex" {
+	if adapter == "agy" {
+		adapter = "antigravity"
+	}
+	if adapter != "claude" && adapter != "codex" && adapter != "antigravity" {
 		return fmt.Errorf("unsupported contract hook adapter %q", adapter)
 	}
-	switch input.Event {
-	case "SessionStart", "UserPromptSubmit", "PostToolUse", "PreToolUse", "SessionEnd":
-	default:
-		return fmt.Errorf("unsupported contract hook event %q", input.Event)
+	if adapter == "antigravity" {
+		switch input.Event {
+		case "SessionStart", "PreInvocation", "Stop", "SessionEnd":
+		default:
+			return fmt.Errorf("unsupported contract hook event %q", input.Event)
+		}
+	} else {
+		switch input.Event {
+		case "SessionStart", "UserPromptSubmit", "PostToolUse", "PreToolUse", "SessionEnd":
+		default:
+			return fmt.Errorf("unsupported contract hook event %q", input.Event)
+		}
 	}
-	if input.SessionID == "" {
+	sessionID := input.SessionID
+	if sessionID == "" {
+		sessionID = input.ConversationID
+	}
+	if sessionID == "" {
 		return fmt.Errorf("contract hook requires a native session_id")
 	}
+	input.SessionID = sessionID
 	// A subagent must not consume its parent conversation's delivery cursor.
 	if input.AgentID != "" {
 		return nil
@@ -224,9 +241,15 @@ func Deliver(home, name, id, adapter string, input HookInput, w io.Writer) error
 	if current, err := Load(home, name); err == nil && !fullSnapshotEvent(input) && input.Event != "SessionEnd" {
 		if instance, err := ResolveInstance(current, id, input.SessionID); err == nil && instance.NativeID == input.SessionID && instance.ClosedAt == "" {
 			if instance.Delivery == "unsupported" {
+				if adapter == "antigravity" {
+					_, _ = w.Write([]byte("{}\n"))
+				}
 				return nil
 			}
 			if !instance.NeedsSnapshot && instance.Emitted != nil && current.Active != nil && instance.Emitted.Revision == current.Active.Revision {
+				if adapter == "antigravity" {
+					_, _ = w.Write([]byte("{}\n"))
+				}
 				return nil
 			}
 		}
@@ -253,6 +276,9 @@ func Deliver(home, name, id, adapter string, input HookInput, w io.Writer) error
 			return fmt.Errorf("hook adapter does not match registered harness")
 		}
 		if instance.Delivery == "unsupported" {
+			if adapter == "antigravity" {
+				_, _ = w.Write([]byte("{}\n"))
+			}
 			return nil
 		}
 		now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -291,6 +317,9 @@ func Deliver(home, name, id, adapter string, input HookInput, w io.Writer) error
 		if input.Event == "SessionEnd" {
 			instance.ClosedAt = now
 			s.Instances[instance.ID] = instance
+			if adapter == "antigravity" {
+				_, _ = w.Write([]byte("{}\n"))
+			}
 			return nil
 		}
 		if s.Active == nil {
@@ -299,8 +328,19 @@ func Deliver(home, name, id, adapter string, input HookInput, w io.Writer) error
 		if fullSnapshotEvent(input) {
 			instance.NeedsSnapshot = true
 		}
+		// Antigravity injects system messages on PreInvocation (which fires
+		// before turn 1 and every subsequent turn), not SessionStart. Bind the
+		// conversation on SessionStart and leave emission to PreInvocation.
+		if adapter == "antigravity" && input.Event == "SessionStart" {
+			s.Instances[instance.ID] = instance
+			_, _ = w.Write([]byte("{}\n"))
+			return nil
+		}
 		if !instance.NeedsSnapshot && instance.Emitted != nil && instance.Emitted.Revision == s.Active.Revision {
 			s.Instances[instance.ID] = instance
+			if adapter == "antigravity" {
+				_, _ = w.Write([]byte("{}\n"))
+			}
 			return nil
 		}
 		context := Context(instance, *s.Active)
@@ -308,7 +348,12 @@ func Deliver(home, name, id, adapter string, input HookInput, w io.Writer) error
 			instance.Delivery = "incomplete"
 			instance.Message = fmt.Sprintf("contract context exceeds %d bytes; manually reload the full contract", MaxContextBytes)
 			s.Instances[instance.ID] = instance
-			payload, _ := json.Marshal(map[string]string{"systemMessage": instance.Message})
+			var payload []byte
+			if adapter == "antigravity" {
+				payload, _ = json.Marshal(antigravityHookPayload(instance.Message))
+			} else {
+				payload, _ = json.Marshal(map[string]string{"systemMessage": instance.Message})
+			}
 			payload = append(payload, '\n')
 			n, err := w.Write(payload)
 			if err != nil {
@@ -319,7 +364,12 @@ func Deliver(home, name, id, adapter string, input HookInput, w io.Writer) error
 
 			return nil
 		}
-		payload, err := json.Marshal(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": input.Event, "additionalContext": context}})
+		var payload []byte
+		if adapter == "antigravity" {
+			payload, err = json.Marshal(antigravityHookPayload(context))
+		} else {
+			payload, err = json.Marshal(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": input.Event, "additionalContext": context}})
+		}
 		if err != nil {
 			return err
 		}
@@ -349,6 +399,18 @@ func Deliver(home, name, id, adapter string, input HookInput, w io.Writer) error
 		return err
 	}
 	return outputErr
+}
+
+func antigravityHookPayload(text string) map[string]any {
+	return map[string]any{
+		"injectSteps": []map[string]any{
+			{
+				"systemMessage": map[string]string{
+					"systemMessage": text,
+				},
+			},
+		},
+	}
 }
 
 func InstanceStatus(instance Instance, active *Snapshot) string {

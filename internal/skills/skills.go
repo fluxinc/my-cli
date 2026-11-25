@@ -279,7 +279,15 @@ func Install(s Skill, h harness.Harness, opts InstallOpts) Result {
 
 	configDir := h.ConfigDir(home)
 	if opts.SkipMissing {
-		if _, err := os.Stat(configDir); errors.Is(err, fs.ErrNotExist) {
+		present := false
+		if _, err := os.Stat(configDir); err == nil {
+			present = true
+		} else if presenceDir := h.PresenceDir(home); presenceDir != "" && presenceDir != configDir {
+			if _, err := os.Stat(presenceDir); err == nil {
+				present = true
+			}
+		}
+		if !present {
 			res.Status = StatusSkipped
 			res.Message = fmt.Sprintf("harness not present: %s", configDir)
 			return res

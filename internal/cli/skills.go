@@ -135,6 +135,11 @@ func (a app) runSkillsSelfInstall(args []string) error {
 	if err != nil {
 		return err
 	}
+	if !opts.print && harnessSelected(hs, harness.Antigravity) && (!opts.all || antigravityPresentInHome(opts.home)) {
+		if err := a.ensureAntigravityHooksWithNotice(opts.home); err != nil {
+			fmt.Fprintf(a.stderr, "warning: could not install Antigravity live contract hooks: %v\n", err)
+		}
+	}
 	return a.printResults(results, opts.jsonOut)
 }
 
@@ -165,6 +170,19 @@ func (a app) runSkillsSelfUninstall(args []string) error {
 	})
 	if err != nil {
 		return err
+	}
+	if harnessSelected(hs, harness.Antigravity) {
+		removed, hooksPath, hookErr := removeAntigravityContractHooks(opts.home, opts.print)
+		if hookErr != nil {
+			return hookErr
+		}
+		if removed && !opts.jsonOut && a.stderr != nil {
+			if opts.print {
+				fmt.Fprintf(a.stderr, "antigravity\thooks\tdry-run\twould remove %s from %s\n", antigravityContractHookGroup, hooksPath)
+			} else {
+				fmt.Fprintf(a.stderr, "antigravity\thooks\tremoved\t%s from %s\n", antigravityContractHookGroup, hooksPath)
+			}
+		}
 	}
 	return a.printResults(results, opts.jsonOut)
 }

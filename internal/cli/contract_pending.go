@@ -18,16 +18,21 @@ const contractHomeEnv = "MYCLI_CONTRACT_HOME"
 
 func (a app) runContractPending(args []string) error {
 	home, name, id := os.Getenv(contractHomeEnv), os.Getenv(contractManifestEnv), os.Getenv(contractInstanceEnv)
-	var adapter string
+	var adapter, event string
 	var jsonOut bool
 	fs := newFlagSet("my contract pending", a.stderr)
 	fs.StringVar(&home, "home", home, "override home directory")
 	fs.StringVar(&name, "manifest", name, "registered manifest")
 	fs.StringVar(&id, "instance", id, "launch instance id (defaults to launch environment)")
-	fs.StringVar(&adapter, "hook", "", "native hook adapter: claude or codex")
+	fs.StringVar(&adapter, "hook", "", "native hook adapter: claude, codex, or antigravity")
+	fs.StringVar(&event, "event", "", "hook event name when not supplied in stdin JSON")
 	fs.BoolVar(&jsonOut, "json", false, "print pending context as JSON without a receipt")
-	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true, "manifest": true, "instance": true, "hook": true})
+	rest, err := parseInterspersed(fs, args, map[string]bool{"home": true, "manifest": true, "instance": true, "hook": true, "event": true})
 	if err != nil {
+		return err
+	}
+	if (adapter == "antigravity" || adapter == "agy") && (name == "" || id == "") {
+		_, err = io.WriteString(a.stdout, "{}\n")
 		return err
 	}
 	if len(rest) != 0 || name == "" || id == "" {
@@ -45,6 +50,9 @@ func (a app) runContractPending(args []string) error {
 		decoder := json.NewDecoder(io.LimitReader(reader, 1024*1024))
 		if err := decoder.Decode(&input); err != nil {
 			return fmt.Errorf("read contract hook input: %w", err)
+		}
+		if input.Event == "" && event != "" {
+			input.Event = event
 		}
 		return contractstate.Deliver(home, name, id, adapter, input, a.stdout)
 	}
@@ -94,7 +102,7 @@ func (a app) runContractRegister(args []string) error {
 	delivery, message := "unsupported", "External runtime: restart or manually load the contract; no verified adapter is installed."
 	// Registration is not evidence of hook installation or trust. A runtime
 	// attaching the documented adapters must still prove emission with a hook.
-	if h == harness.ClaudeCode || h == harness.Codex {
+	if h == harness.ClaudeCode || h == harness.Codex || h == harness.Antigravity {
 		delivery = "untrusted"
 		message = "External runtime must install and trust the native adapter; registration alone proves no delivery."
 	}
