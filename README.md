@@ -249,19 +249,20 @@ Where you start decides what the launch sees:
 | Claude Code (`claude`) | `CLAUDE.md` (points to `AGENTS.md`) | `~/.claude/skills` | `.claude/skills` (deferred on `--repo`) | Walks up to umbrella `CLAUDE.md` | `--settings` (`>= 2.1.310`) | Umbrella & session: `CLAUDE.md`, org skill, live hook; `--repo`: umbrella `CLAUDE.md` and live hook (org skills deferred, repo `AGENTS.md` unread); change notice |
 | Codex (`codex`) | `AGENTS.md` | `~/.codex/skills` | `.agents/skills` (also loaded on `--repo`) | `-c project_root_markers=[".my-cli"]` | `-c hooks.*` (`>= 0.163.0`, after `/hooks` trust) | Umbrella, session & `--repo`: `AGENTS.md` and org skill (repo preserves user `developer_instructions`); change notice; live hook untrusted until `/hooks` |
 | Antigravity (`agy`) | `AGENTS.md` | `~/.gemini/config/skills` | `.agents/skills` (also loaded on `--repo`) | `--add-dir <umbrella>` | `~/.gemini/config/hooks.json` (`>= 1.5.15`) | Umbrella, session & `--repo`: `AGENTS.md` and org skill; change notice (hook adapter unit-tested) |
-| Grok (`grok`) | `AGENTS.md` (plus `--rules` pointer) | `~/.grok/skills` | `.grok/skills` (requires trusted dir) | Neutral `--rules` pointer to both `AGENTS.md` files | None; restart to reload | Umbrella, session & `--repo`: `AGENTS.md` via `--rules`; project skills unread in untrusted dirs; terminal notice shown (TUI prompts for folder trust) |
-| OpenCode (`opencode`) | `AGENTS.md` | `~/.config/opencode/skills` | Global compatibility install | `OPENCODE_CONFIG_CONTENT` `instructions` | None; restart to reload | Umbrella, session & `--repo` (isolated config): `AGENTS.md` and global org skill (repo merges with user `opencode.json` instructions) |
-| Cursor (`cursor-agent`) | `AGENTS.md` | `~/.cursor/skills` | `.agents/skills` | `--add-dir <umbrella>` | None; restart to reload | Not run (not logged in) |
+| Grok (`grok`) | `AGENTS.md` (plus `--rules` pointer) | `~/.grok/skills` | `.grok/skills` (requires trusted dir) | Neutral `--rules` pointer to both `AGENTS.md` files | None; restart to reload | Umbrella, session & `--repo`: `AGENTS.md` via `--rules`; project skills unread in untrusted dirs; terminal notice only (TUI waits on folder trust before running the opening prompt) |
+| OpenCode (`opencode`) | `AGENTS.md` | `~/.config/opencode/skills` | Global compatibility install | `OPENCODE_CONFIG_CONTENT` `instructions` | None; restart to reload | Umbrella, session & `--repo` (isolated config): `AGENTS.md` and global org skill (repo merges with user `opencode.json` instructions); change notice |
+| Cursor (`cursor-agent`) | `AGENTS.md` | `~/.cursor/skills` | `.agents/skills` | `--add-dir <umbrella>` | None; restart to reload | CLI started, authentication prevented a model response |
 
 Grok skips project `AGENTS.md` and project skills in untrusted directories and
 rejects `--add-dir` at runtime, so `my` passes a neutral `--rules` pointer to
 the generated `AGENTS.md` file(s) instead of putting rule text in command-line
 arguments. The last column reports what the model actually read in real
-launches on the test machine, distinguishing live hook emission from
-model-visible instructions and skills; the earlier columns describe how `my`
-configures each harness. OpenCode was verified in an isolated XDG config
-without user plugins; Cursor was not launched because it was not logged in, so
-its row comes from the code and its unit tests.
+launches on the test machine, distinguishing live hook emission and terminal
+output from model-visible instructions, skills and notice replies; the earlier
+columns describe how `my` configures each harness. OpenCode was verified in an
+isolated XDG config without user plugins; for Cursor, the CLI started, and
+authentication prevented a model response, so its row comes from the code and
+its unit tests.
 
 ## When the contract changes
 
