@@ -22,8 +22,10 @@ import (
 //     nested .git to load umbrella AGENTS.md, repo AGENTS.md, and umbrella
 //     .agents/skills while preserving preconfigured developer_instructions.
 //   - Grok launches: Grok skips project AGENTS.md and project skills when a
-//     directory is untrusted (every new umbrella and session dir), so passing a
-//     neutral --rules pointer tells Grok to read the generated AGENTS.md file.
+//     directory is untrusted (every new umbrella and session dir), and rejects
+//     --add-dir at runtime ("additionalDirectories is not supported: a session
+//     works only in its cwd"), so passing a neutral --rules pointer tells Grok
+//     to read the generated AGENTS.md file(s).
 func launchGuidanceArgs(h harness.Harness, opts launchCommandOpts, root, targetDir string, existing []string) []string {
 	var extra []string
 	if opts.repoID != "" && root != "" {
@@ -35,10 +37,6 @@ func launchGuidanceArgs(h harness.Harness, opts launchCommandOpts, root, targetD
 		case harness.Codex:
 			if !hasCodexConfigKey(existing, "project_root_markers") {
 				extra = append(extra, "-c", fmt.Sprintf(`project_root_markers=["%s"]`, umbrella.DirName))
-			}
-		case harness.Grok:
-			if !hasFlagWithValue(existing, "--add-dir", root) {
-				extra = append(extra, "--add-dir", root)
 			}
 		}
 	}

@@ -417,7 +417,7 @@ func TestLaunchGuidanceArgsRepoAndGrokPreserveUserConfigAndAvoidArgvSecrets(t *t
 		t.Fatalf("grok argv leaked private contract rule: %#v", grokUmb)
 	}
 	grokRepo := launchGuidanceArgs(harness.Grok, launchCommandOpts{repoID: "sample-service"}, root, repoDir, nil)
-	if len(grokRepo) != 4 || grokRepo[0] != "--add-dir" || grokRepo[1] != root || grokRepo[2] != "--rules" || !strings.Contains(grokRepo[3], "AGENTS.md") {
+	if len(grokRepo) != 2 || grokRepo[0] != "--rules" || !strings.Contains(grokRepo[1], filepath.Join(root, "AGENTS.md")) || !strings.Contains(grokRepo[1], filepath.Join(repoDir, "AGENTS.md")) {
 		t.Fatalf("grok --repo args = %#v", grokRepo)
 	}
 	if dup := launchGuidanceArgs(harness.Grok, launchCommandOpts{}, root, root, []string{"--rules", "mine"}); len(dup) != 0 {
@@ -491,5 +491,114 @@ func TestEnsureLaunchSelfSkillMigratesLegacyAntigravityInstall(t *testing.T) {
 	}
 	if _, err := os.Lstat(oldLink); !os.IsNotExist(err) {
 		t.Fatalf("legacy ~/.agents/skills/my-cli was not removed: %v", err)
+	}
+}
+
+func TestChangeNoticeOrdersLaunchGuidanceArgsBeforePrompt(t *testing.T) {
+	cases := []struct {
+		name         string
+		harnessArg   string
+		repoLaunch   bool
+		wantPrefix   []string
+		wantPromptAt int
+		wantFlag     string
+	}{
+		{
+			name:         "antigravity repo launch",
+			harnessArg:   "agy",
+			repoLaunch:   true,
+			wantPrefix:   []string{"--add-dir", "<ROOT>"},
+			wantFlag:     "--prompt-interactive",
+			wantPromptAt: 3,
+		},
+		{
+			name:         "codex repo launch",
+			harnessArg:   "codex",
+			repoLaunch:   true,
+			wantPrefix:   []string{"-c", `project_root_markers=[".my-cli"]`},
+			wantPromptAt: 2,
+		},
+		{
+			name:         "grok umbrella launch",
+			harnessArg:   "grok",
+			repoLaunch:   false,
+			wantPrefix:   []string{"--rules", "<POINTER>"},
+			wantPromptAt: 2,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := setupChangesFixture(t)
+			if tc.repoLaunch {
+				repoDir := filepath.Join(f.root, "repos", "sample-service")
+				if err := os.MkdirAll(repoDir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			runLaunch := func() ([]string, string, error) {
+				var stdout, stderr bytes.Buffer
+				var gotArgs []string
+				a := app{
+					stdout:   &stdout,
+					stderr:   &stderr,
+					lookPath: func(name string) (string, error) { return "/test/bin/" + name, nil },
+					execHarnessEnvironment: func(_ string, args []string, _ string, _ []string) error {
+						gotArgs = append([]string(nil), args...)
+						return nil
+					},
+				}
+				args := []string{"my", "ai", "--home", f.home, "--umbrella", f.root, "--no-refresh", "--no-update-check"}
+				if tc.repoLaunch {
+					args = append(args, "--repo", "sample-service")
+				} else {
+					args = append(args, "--no-session")
+				}
+				args = append(args, tc.harnessArg)
+				err := a.run(args)
+				return gotArgs, stderr.String(), err
+			}
+
+			// Baseline launch records starting revision.
+			if _, stderr, err := runLaunch(); err != nil {
+				t.Fatalf("baseline launch: %v\n%s", err, stderr)
+			}
+			head := f.amend(t)
+
+			// Launch after manifest change must place launchGuidanceArgs before notice prompt args.
+			gotArgs, stderr, err := runLaunch()
+			if err != nil {
+				t.Fatalf("notice launch: %v\n%s", err, stderr)
+			}
+			if len(gotArgs) != tc.wantPromptAt+1 {
+				t.Fatalf("args = %#v (len %d), want len %d\nstderr:\n%s", gotArgs, len(gotArgs), tc.wantPromptAt+1, stderr)
+			}
+			for i, want := range tc.wantPrefix {
+				switch want {
+				case "<ROOT>":
+					if gotArgs[i] != f.root {
+						t.Fatalf("args[%d] = %q, want %q (all=%#v)", i, gotArgs[i], f.root, gotArgs)
+					}
+				case "<POINTER>":
+					if !strings.Contains(gotArgs[i], filepath.Join(f.root, "AGENTS.md")) {
+						t.Fatalf("args[%d] = %q, want AGENTS.md pointer (all=%#v)", i, gotArgs[i], gotArgs)
+					}
+				default:
+					if gotArgs[i] != want {
+						t.Fatalf("args[%d] = %q, want %q (all=%#v)", i, gotArgs[i], want, gotArgs)
+					}
+				}
+			}
+			if tc.wantFlag != "" && gotArgs[tc.wantPromptAt-1] != tc.wantFlag {
+				t.Fatalf("prompt flag args[%d] = %q, want %q (all=%#v)", tc.wantPromptAt-1, gotArgs[tc.wantPromptAt-1], tc.wantFlag, gotArgs)
+			}
+			prompt := gotArgs[tc.wantPromptAt]
+			if !strings.Contains(prompt, "changes --manifest acme") || !strings.Contains(prompt, "--to "+head) {
+				t.Fatalf("notice prompt = %q, want changes command for %s", prompt, head)
+			}
+			if state := f.noticed(t); state.Noticed != head || state.Baseline {
+				t.Fatalf("notice state = %#v, want Noticed=%s", state, head)
+			}
+		})
 	}
 }
