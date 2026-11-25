@@ -1,17 +1,93 @@
 # my
 
-`my` is a small, dependency-free CLI that bootstraps an AI agent's working
-environment from a single organization manifest. One command turns a fresh
-machine into one where installed AI harnesses — Claude Code, Codex, OpenCode,
-Antigravity, Grok, and Cursor — share the same company context,
-manifest-defined launch profiles, and local tooling.
+`my` sets up the organization that a group of AI agents works inside: the same
+contract, roles, skills and reference material for every agent, whichever
+harness it runs in (Claude Code, Codex, OpenCode, Antigravity, Grok or Cursor).
+All of it comes from one organization manifest, a Git repository you control.
 
-It is built for a world where **agents are the primary operators**. Humans own
-intent — goals, products, decisions — and express it as content in a Git repo.
-`my` is the deterministic, machine-friendly bridge that gets that content and
-those capabilities onto every agent surface, the same way, every time.
+[CLI documentation](https://my-cli.com/) · [Shrooms README](https://github.com/mostlydev/shrooms#readme)
 
-Documentation: https://my-cli.com/
+## Rooms, and why the work is split into them
+
+Put every agent in one shared space, with nothing separating one project from
+another, and their contexts drift together. Each agent carries every other
+piece of work along with its own, and a decision about one project starts to
+read like a rule for all of them. The shared context converges, then
+collapses: no agent still holds the working detail of its own subject.
+
+People work the same way. A team in its own workshop keeps its craft, and
+teams work together by sending each other complete briefs, not by sharing one
+crowded room. A studio can give the team drawing a poster its own workshop.
+The artists keep the sketches, revisions and reasons for their choices
+together. When the print team needs the approved dimensions, it asks for those
+without taking on the whole design conversation.
+
+So agents work in rooms. A room gives the people and agents working on one
+folder's project a place to keep that conversation. Each room has its own
+identity, topic and members. One member holds the talking stick to change
+shared files while others read, test in isolation or review. Rooms coordinate
+by asking each other, not by merging. A shrooms member can be an agent
+session, meaning one conversation in a harness. A **my-cli session** is the
+workspace that can host several of those conversations.
+
+`my` prepares the workspace from the organization manifest. It supplies the
+contract, reference material and the tools and skills selected for the work.
+[Shrooms](https://github.com/mostlydev/shrooms#readme) (the `tt` command)
+manages room membership, messages and turns.
+
+Picture a street of small workshops. In each one, a few agents work at their
+benches on one piece of work and take turns changing what is on the shared
+table. Every workshop keeps the same house rules, draws on the same library
+and hands finished work on through the same doors. When the house rules
+change, each person is told what changed the next time they start work.
+
+### A piece of work gets its own room
+
+A my-cli session is one piece of work: a folder under `sessions/<id>` with its
+own Git worktree of each content mount, its own scratch space and its own
+generated guidance. When `tt` confirms the session room, `my` points the
+harness at it. `--print` shows what a launch would run without starting it (paths shortened):
+
+```console
+$ my ai --new-session --print codex
+started session 2026-11-25-089d (path: …/acme/sessions/2026-11-25-089d)
+  join (another harness): my session join 2026-11-25-089d <harness>
+  finish:                 my session finish 2026-11-25-089d --land|--publish|--discard
+room	…/acme/sessions/2026-11-25-089d	created	people join with: tt chat --in …/acme/sessions/2026-11-25-089d
+cd …/acme/sessions/2026-11-25-089d && TT_ROOM=…/acme/sessions/2026-11-25-089d codex
+```
+
+Without `--print`, `my` starts the harness itself, pointed at that room. Other
+agents join the same session and room with `my session join <id> <harness>`,
+and a person joins the conversation with the `tt chat --in` line. Work leaves
+the session only through `my session finish`.
+
+### What every room shares
+
+- **The contract.** The rules the organization gives its agents. Put the reason in the rule: an agent that knows why a rule exists
+  can serve its purpose in a case the wording did not foresee.
+- **An organization role**, chosen for an umbrella with `my setup --role`. It
+  decides which guidance, mounts, skills, tools and services a launch loads.
+  It is not a room role. Room roles (architect, implementer, tester, reviewer,
+  scribe) are set per room in shrooms and say what a member is responsible for
+  there.
+- **Skills and reference material.** The organization's skills, its handbook
+  and its records, mounted into the umbrella.
+- **The change notice.** When the manifest changes, the next session start
+  shows each person what changed, with links when the manifest has a supported remote.
+
+### Briefs between rooms
+
+A room cannot see another room's conversation, and a visitor may know earlier
+decisions the room has never seen. So a message to a room carries who will use
+the result, what they need to do with it, which earlier decisions matter, and
+how to tell it works: enough for the room to carry on if the sender went away.
+A member that cannot work out why something is wanted asks the sender before
+building. Test the result where the recipient will use it. What counts is that
+the result works for its purpose, not that a list of instructions was
+followed.
+
+## Install
 
 Bootstrap prerequisites: a POSIX shell and standard utilities (including `tty`),
 `curl`, gzip-capable `tar` (`gzip` on GNU systems), a SHA256 verifier (`sha256sum`
@@ -72,7 +148,7 @@ so agents know how to use the CLI itself.
 
 ## The Model
 
-`my` has eight concepts. Everything in the CLI is one of these:
+`my` has ten concepts. Everything in the CLI is one of these:
 
 | Concept | What it is |
 |---|---|
@@ -84,6 +160,8 @@ so agents know how to use the CLI itself.
 | **Catalog** | JSON inventories for products (business entities, which may link repos) and repos (the organization's repositories). Users opt specific repos into their umbrella on demand. Customer identities are mounted workspace records, not manifest catalog rows. |
 | **Guidance** | Generated root `AGENTS.md` instructions for agents, built from a public baseline plus manifest-declared and role-specific fragments. `CLAUDE.md` points to the same file. |
 | **Tool** | An external executable the org depends on. `my` reports presence and install hints — it never silently installs tools. |
+| **Contract** | The organization's rules for agents, kept in the manifest (inline or in a contract file). Every launch writes them into the generated guidance; harnesses with a live adapter also receive changes during a session. |
+| **Room** | One folder's shared space in [shrooms](https://github.com/mostlydev/shrooms#readme): members, messages and the talking stick. A my-cli session gets its own room when `tt` is installed. |
 
 Skills arrive from two places, split by a public/private line. The `my-cli`
 self-skill is **public** and travels **inside the CLI binary** — it is
@@ -92,6 +170,129 @@ current on its own. **Organization skills** are **private** to a manifest repo
 you control and appear only once you add and sync that manifest, so they can
 carry guidance specific to your team. Nothing organization-specific is ever
 baked into the public CLI.
+
+## Organization roles
+
+An organization manifest can define roles, one for each kind of work the
+organization does. A role declares its purpose and its scope: the mounts,
+skills, tools, services and guidance files that kind of work uses. Policies
+can name the roles they apply to. These are organization roles. Room roles in
+shrooms are a separate thing (see [What every room shares](#what-every-room-shares)).
+
+Write the purpose as carefully as the scope. An agent that knows what a role
+is for can handle a case its guidance did not foresee, and can ask when a
+request leaves out its reason or falls outside the role.
+
+Each umbrella has one selected role:
+
+```console
+$ my roles list
+illustrator - Draws and prepares artwork for print and web.
+$ my setup --role illustrator
+```
+
+`my` stores the choice in `.my-cli/state.json` in the umbrella and rebuilds
+what depends on it:
+
+- **Guidance** (`AGENTS.md`, with `CLAUDE.md` pointing to it) adds the role's
+  `guidance_paths` and lists the policies that apply to everyone plus those
+  that name this role. Policies limited to other roles are left out.
+- **Organization skills.** `my ai` puts only the role's skills into the launch
+  directory. `--skills` or `--profile` choose differently, and the choice is
+  still checked against the mounts, services and tools the role has.
+- **MCP services** (`.mcp.json`) include only the services the role can see.
+- **`my compile --role <id>`** refuses a role whose skills need a mount,
+  service or tool the role does not include.
+
+To switch, run `my setup --role <other>` and start a new launch.
+
+### What reaches each harness at launch
+
+Before `my ai <harness>` starts the harness, it brings three things up to date:
+
+1. **Guidance.** The generated `AGENTS.md` at the umbrella root (with
+   `CLAUDE.md` pointing to it), and in a session, a session `AGENTS.md` and
+   `CLAUDE.md` that wrap the umbrella guidance with the session's worktree
+   rules.
+2. **Skills.** The bundled `my-cli` skill goes into each harness's own global
+   skills folder: `~/.claude/skills`, `~/.codex/skills`,
+   `~/.gemini/config/skills` for Antigravity, `~/.grok/skills`,
+   `~/.cursor/skills` and `~/.config/opencode/skills`. Organization skills are
+   placed per launch under `<launch-root>/.agents/skills`, plus
+   `.claude/skills` for Claude Code and `.grok/skills` for Grok, so umbrellas
+   and roles do not mix.
+3. **The contract and its changes.** Harnesses with a verified hook adapter
+   receive contract changes during a long session. When the manifest has
+   changed since a person was last told, the launch shows what changed and,
+   when `my` owns the first prompt, asks the agent to go over it first.
+
+Where you start decides what the launch sees:
+
+- **Umbrella root** (`my ai <harness>`): umbrella guidance, the role's
+  organization skills and `.mcp.json`.
+- **Session** (`my ai --new-session <harness>`, or `my ai -r <id> <harness>`
+  to resume one): runs in `sessions/<id>` with session guidance, the session's
+  own mount worktrees and its organization skills.
+- **Repository** (`my ai --repo <id> <harness>`): runs in `repos/<id>` with the
+  repository's own files and `AGENTS.md`, plus the organization guidance:
+  Claude Code walks up to the umbrella `CLAUDE.md`, Antigravity and Cursor
+  receive `--add-dir <umbrella>`, Codex receives
+  `-c project_root_markers=[".my-cli"]` (preserving any preconfigured
+  `developer_instructions`), OpenCode receives `OPENCODE_CONFIG_CONTENT` with
+  the umbrella `AGENTS.md` path in `instructions` (merging with user
+  `opencode.json` `instructions`), and Grok receives a neutral `--rules`
+  pointer to both `AGENTS.md` files without placing contract text in process
+  arguments.
+
+| Harness | Instruction file | Global `my-cli` skill | Launch-root org skills | `--repo` umbrella guidance | Live contract hook | Confirmed by a real launch |
+| --- | --- | --- | --- | --- | --- | --- |
+| Claude Code (`claude`) | `CLAUDE.md` (points to `AGENTS.md`) | `~/.claude/skills` | `.claude/skills` (deferred on `--repo`) | Walks up to umbrella `CLAUDE.md` | `--settings` (`>= 2.1.310`) | Umbrella & session: `CLAUDE.md`, org skill, live hook; `--repo`: umbrella `CLAUDE.md` and live hook (org skills deferred, repo `AGENTS.md` unread); change notice |
+| Codex (`codex`) | `AGENTS.md` | `~/.codex/skills` | `.agents/skills` (also loaded on `--repo`) | `-c project_root_markers=[".my-cli"]` | `-c hooks.*` (`>= 0.163.0`, after `/hooks` trust) | Umbrella, session & `--repo`: `AGENTS.md` and org skill (repo preserves user `developer_instructions`); change notice; live hook untrusted until `/hooks` |
+| Antigravity (`agy`) | `AGENTS.md` | `~/.gemini/config/skills` | `.agents/skills` (also loaded on `--repo`) | `--add-dir <umbrella>` | `~/.gemini/config/hooks.json` (`>= 1.5.15`) | Umbrella, session & `--repo`: `AGENTS.md` and org skill; change notice (hook adapter unit-tested) |
+| Grok (`grok`) | `AGENTS.md` (plus `--rules` pointer) | `~/.grok/skills` | `.grok/skills` (requires trusted dir) | Neutral `--rules` pointer to both `AGENTS.md` files | None; restart to reload | Umbrella, session & `--repo`: `AGENTS.md` via `--rules`; project skills unread in untrusted dirs; terminal notice only (TUI waits on folder trust before running the opening prompt) |
+| OpenCode (`opencode`) | `AGENTS.md` | `~/.config/opencode/skills` | Global compatibility install | `OPENCODE_CONFIG_CONTENT` `instructions` | None; restart to reload | Umbrella, session & `--repo` (isolated config): `AGENTS.md` and global org skill (repo merges with user `opencode.json` instructions); change notice |
+| Cursor (`cursor-agent`) | `AGENTS.md` | `~/.cursor/skills` | `.agents/skills` | `--add-dir <umbrella>` | None; restart to reload | CLI started, authentication prevented a model response |
+
+Grok skips project `AGENTS.md` and project skills in untrusted directories and
+rejects `--add-dir` at runtime, so `my` passes a neutral `--rules` pointer to
+the generated `AGENTS.md` file(s) instead of putting rule text in command-line
+arguments. The last column reports what the model actually read in real
+launches on the test machine, distinguishing live hook emission and terminal
+output from model-visible instructions, skills and notice replies; the earlier
+columns describe how `my` configures each harness. OpenCode was verified in an
+isolated XDG config without user plugins; for Cursor, the CLI started, and
+authentication prevented a model response, so its row comes from the code and
+its unit tests.
+
+## When the contract changes
+
+A studio might ask for approval before publishing a layered source file
+because it can contain sketches the artist left out of the final image.
+Knowing the reason tells the reviewer what to check: open the file the
+recipient will receive and inspect its layers. The rule guides the agent;
+it is not an access control. If publication requires a second person's
+approval, enforce that in the publishing service, because editing a
+contract cannot recall a published file.
+
+Your first successful harness launch records a starting revision for you
+and that manifest. After a sync brings in changes, the next launch prints
+a summary and, when `my` supplies the opening prompt, asks the agent to
+read the changes and explain them. In a studio fixture, the agent reported
+three changes:
+
+- Approval before publishing an image now also covers its layered source file.
+- Captions must credit every collaborator by name.
+- The studio added `magick` to convert artwork between print and web formats.
+
+For a GitHub origin, the notice links to the compare view (or commits, if
+history diverged) and any pull requests referenced in commit subjects; a
+local-path origin shows no links beyond the header's short commit range.
+When the harness starts with the notice prompt, `my` records that revision
+as seen so the next launch does not repeat it. If you pass your own harness
+arguments, the terminal still prints the summary and leaves the notice
+pending. Run `my changes` to read and record unseen changes, or
+`my changes --peek` to inspect them without advancing the record. An
+incomplete comparison never advances the record.
 
 ## Commands
 
@@ -676,7 +877,7 @@ into a pull or publish hold.
 | Claude Code | `~/.claude/skills/<skill>` |
 | Codex | `~/.codex/skills/<skill>` |
 | OpenCode | `~/.config/opencode/skills/<skill>` |
-| Antigravity | `~/.agents/skills/<skill>` |
+| Antigravity | `~/.gemini/config/skills/<skill>` |
 | Grok | `~/.grok/skills/<skill>` |
 | Cursor | `~/.cursor/skills/<skill>` |
 
