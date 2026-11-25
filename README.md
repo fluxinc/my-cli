@@ -220,28 +220,30 @@ final audit of the release candidate.)*
 
 A studio might ask for approval before publishing a layered source file
 because it can contain sketches the artist left out of the final image.
-Knowing the reason tells the reviewer what to check. Open the file the
-recipient will receive and inspect its layers. The rule guides the agent.
-If publication requires a second person's approval, enforce that requirement
-in the publishing service. Editing the contract cannot recall a published file.
+Knowing the reason tells the reviewer what to check: open the file the
+recipient will receive and inspect its layers. The rule guides the agent;
+it is not an access control. If publication requires a second person's
+approval, enforce that in the publishing service, because editing a
+contract cannot recall a published file.
 
-The first successful harness launch records a starting revision for that
-user and manifest. After a sync brings in changes, the next launch prints
-a summary. When `my` supplies the opening prompt, it asks the agent to read
-the changes and explain them. In a studio fixture, the agent reported three
-changes:
+Your first successful harness launch records a starting revision for you
+and that manifest. After a sync brings in changes, the next launch prints
+a summary and, when `my` supplies the opening prompt, asks the agent to
+read the changes and explain them. In a studio fixture, the agent reported
+three changes:
 
 - Approval before publishing an image now also covers its layered source file.
 - Captions must credit every collaborator by name.
 - The studio added `magick` to convert artwork between print and web formats.
 
-For a GitHub origin the notice links to the revisions and, when found in
-commit history, the pull requests. A local-path origin shows the commit IDs.
-When the harness starts with the notice prompt, `my` records the revision as
-seen. If you supply your own harness arguments, the terminal still shows the
-summary and the notice stays pending. Run `my changes` to read and record it,
-or `my changes --peek` to read it without advancing the record. If the
-comparison is incomplete, it stays pending for another attempt.
+For a GitHub origin, the notice links to the compare view (or commits, if
+history diverged) and any pull requests referenced in commit subjects; a
+local-path origin shows commit IDs. When the harness starts with the notice
+prompt, `my` records that revision as seen so the next launch does not
+repeat it. If you pass your own harness arguments, the terminal still
+prints the summary and leaves the notice pending. Run `my changes` to read
+and record unseen changes, or `my changes --peek` to inspect them without
+advancing the record. An incomplete comparison never advances the record.
 
 ## Commands
 
