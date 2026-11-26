@@ -244,14 +244,19 @@ Where you start decides what the launch sees:
   pointer to both `AGENTS.md` files without placing contract text in process
   arguments.
 
+Repository launches do not install or refresh organization skills. Codex,
+Antigravity and Cursor can discover skills left in the umbrella by an earlier
+launch. A fresh umbrella can have none, and an existing copy can reflect
+an earlier role or manifest revision.
+
 | Harness | Instruction file | Global `my-cli` skill | Launch-root org skills | `--repo` umbrella guidance | Live contract hook | Confirmed by a real launch |
 | --- | --- | --- | --- | --- | --- | --- |
 | Claude Code (`claude`) | `CLAUDE.md` (points to `AGENTS.md`) | `~/.claude/skills` | `.claude/skills` (deferred on `--repo`) | Walks up to umbrella `CLAUDE.md` | `--settings` (`>= 2.1.310`) | Umbrella & session: `CLAUDE.md`, org skill, live hook; `--repo`: umbrella `CLAUDE.md` and live hook (org skills deferred, repo `AGENTS.md` unread); change notice |
-| Codex (`codex`) | `AGENTS.md` | `~/.codex/skills` | `.agents/skills` (also loaded on `--repo`) | `-c project_root_markers=[".my-cli"]` | `-c hooks.*` (`>= 0.163.0`, after `/hooks` trust) | Umbrella, session & `--repo`: `AGENTS.md` and org skill (repo preserves user `developer_instructions`); change notice; live hook untrusted until `/hooks` |
-| Antigravity (`agy`) | `AGENTS.md` | `~/.gemini/config/skills` | `.agents/skills` (also loaded on `--repo`) | `--add-dir <umbrella>` | `~/.gemini/config/hooks.json` (`>= 1.5.15`) | Umbrella, session & `--repo`: `AGENTS.md` and org skill; change notice (hook adapter unit-tested) |
+| Codex (`codex`) | `AGENTS.md` | `~/.codex/skills` | `.agents/skills` (on `--repo`, from the last umbrella launch) | `-c project_root_markers=[".my-cli"]` | `-c hooks.*` (`>= 0.163.0`, after `/hooks` trust) | Umbrella, session & `--repo`: `AGENTS.md` and org skill (repo preserves user `developer_instructions`); change notice; live hook untrusted until `/hooks` |
+| Antigravity (`agy`) | `AGENTS.md` | `~/.gemini/config/skills` | `.agents/skills` (on `--repo`, from the last umbrella launch) | `--add-dir <umbrella>` | `~/.gemini/config/hooks.json` (`>= 1.5.15`) | Umbrella, session & `--repo`: `AGENTS.md` and org skill; change notice (hook adapter unit-tested) |
 | Grok (`grok`) | `AGENTS.md` (plus `--rules` pointer) | `~/.grok/skills` | `.grok/skills` (requires trusted dir) | Neutral `--rules` pointer to both `AGENTS.md` files | None; restart to reload | Umbrella, session & `--repo`: `AGENTS.md` via `--rules`; project skills unread in untrusted dirs; terminal notice only (TUI waits on folder trust before running the opening prompt) |
 | OpenCode (`opencode`) | `AGENTS.md` | `~/.config/opencode/skills` | Global compatibility install | `OPENCODE_CONFIG_CONTENT` `instructions` | None; restart to reload | Umbrella, session & `--repo` (isolated config): `AGENTS.md` and global org skill (repo merges with user `opencode.json` instructions); change notice |
-| Cursor (`cursor-agent`) | `AGENTS.md` | `~/.cursor/skills` | `.agents/skills` (also loaded on `--repo`) | `--add-dir <umbrella>` | None; restart to reload | Umbrella, session & `--repo`: `AGENTS.md` and org skill; change notice |
+| Cursor (`cursor-agent`) | `AGENTS.md` | `~/.cursor/skills` | `.agents/skills` (on `--repo`, from the last umbrella launch) | `--add-dir <umbrella>` | None; restart to reload | Umbrella, session & `--repo`: `AGENTS.md` and org skill; change notice |
 
 Grok skips project `AGENTS.md` and project skills in untrusted directories and
 rejects `--add-dir` at runtime, so `my` passes a neutral `--rules` pointer to
