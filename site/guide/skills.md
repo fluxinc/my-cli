@@ -127,7 +127,7 @@ copy into the harness skill directory.
 | Claude Code | `~/.claude/skills/<skill>` |
 | Codex | `~/.codex/skills/<skill>` |
 | OpenCode | `~/.config/opencode/skills/<skill>` |
-| Antigravity | `~/.agents/skills/<skill>` |
+| Antigravity | `~/.gemini/config/skills/<skill>` |
 | Grok | `~/.grok/skills/<skill>` |
 | Cursor | `~/.cursor/skills/<skill>` |
 

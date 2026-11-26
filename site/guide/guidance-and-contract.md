@@ -241,6 +241,11 @@ A launch that resumes or forks a conversation by ID (`claude --resume ID`,
 fork still lists the rules retracted since. Every update says it is the complete
 contract and supersedes any earlier contract text in the conversation.
 
+Antigravity 1.5.15+ uses a hook group in `~/.gemini/config/hooks.json`.
+During a `my ai` launch, `SessionStart` binds the conversation and
+`PreInvocation` emits the current contract when needed. To remove the
+managed group and self-skill, run `my skills self uninstall antigravity`.
+
 Hooks read local state only. Run `my sync` or use the normal refresh path to
 bring merged changes to the machine. This is context delivery, not a guarantee
 that an already-issued action will reconsider a new rule.

@@ -949,6 +949,11 @@ rationale.
 `my` is pre-alpha and evolving quickly. The phases, with detailed plans
 indexed in [docs/plans/](docs/plans/README.md):
 
+- **Shipped (v0.54.0) — session rooms, harness guidance and manifest change notices.** Each my-cli session can use its own Shrooms room.
+  Harness launches carry organization guidance, and manifest change notices
+  show the rules, tools and skills that changed since a user's last launch.
+  See [the harness checks](#what-reaches-each-harness-at-launch) and
+  [contract changes](#when-the-contract-changes).
 - **Shipped (v0.52.0) — commit pins in the launch projection.**
   `my compile --role <id> --umbrella DIR` adds a commit pin to each projected mount from that
   umbrella's base checkouts, using local Git only, so a contained runner can
