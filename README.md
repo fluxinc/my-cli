@@ -251,7 +251,7 @@ Where you start decides what the launch sees:
 | Antigravity (`agy`) | `AGENTS.md` | `~/.gemini/config/skills` | `.agents/skills` (also loaded on `--repo`) | `--add-dir <umbrella>` | `~/.gemini/config/hooks.json` (`>= 1.5.15`) | Umbrella, session & `--repo`: `AGENTS.md` and org skill; change notice (hook adapter unit-tested) |
 | Grok (`grok`) | `AGENTS.md` (plus `--rules` pointer) | `~/.grok/skills` | `.grok/skills` (requires trusted dir) | Neutral `--rules` pointer to both `AGENTS.md` files | None; restart to reload | Umbrella, session & `--repo`: `AGENTS.md` via `--rules`; project skills unread in untrusted dirs; terminal notice only (TUI waits on folder trust before running the opening prompt) |
 | OpenCode (`opencode`) | `AGENTS.md` | `~/.config/opencode/skills` | Global compatibility install | `OPENCODE_CONFIG_CONTENT` `instructions` | None; restart to reload | Umbrella, session & `--repo` (isolated config): `AGENTS.md` and global org skill (repo merges with user `opencode.json` instructions); change notice |
-| Cursor (`cursor-agent`) | `AGENTS.md` | `~/.cursor/skills` | `.agents/skills` | `--add-dir <umbrella>` | None; restart to reload | CLI started, authentication prevented a model response |
+| Cursor (`cursor-agent`) | `AGENTS.md` | `~/.cursor/skills` | `.agents/skills` (also loaded on `--repo`) | `--add-dir <umbrella>` | None; restart to reload | Umbrella, session & `--repo`: `AGENTS.md` and org skill; change notice |
 
 Grok skips project `AGENTS.md` and project skills in untrusted directories and
 rejects `--add-dir` at runtime, so `my` passes a neutral `--rules` pointer to
@@ -260,9 +260,7 @@ arguments. The last column reports what the model actually read in real
 launches on the test machine, distinguishing live hook emission and terminal
 output from model-visible instructions, skills and notice replies; the earlier
 columns describe how `my` configures each harness. OpenCode was verified in an
-isolated XDG config without user plugins; for Cursor, the CLI started, and
-authentication prevented a model response, so its row comes from the code and
-its unit tests.
+isolated XDG config without user plugins.
 
 ## When the contract changes
 
